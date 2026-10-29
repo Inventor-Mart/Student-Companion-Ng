@@ -1,0 +1,6 @@
+{
+  "name": "Student Companion",
+  "description": "Offline-first gamified learning app and tutoring marketplace for Nigerian secondary school students (JSS1-SS3, WAEC, NECO, JAMB).",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
