@@ -31,8 +31,12 @@ export const ParentPortal: React.FC = () => {
     approveTutorBooking,
     rejectTutorBooking,
     student,
-    examResults
+    examResults,
+    currentUserProfile
   } = useApp();
+
+  const parentName = currentUserProfile?.fullName || 'Registered Parent';
+  const wardName = currentUserProfile?.parentData?.wardName || (student.name && student.name !== '' ? student.name : 'Registered Ward');
 
   const [enteredPin, setEnteredPin] = useState<string>('');
   const [pinError, setPinError] = useState<string>('');
@@ -79,19 +83,11 @@ export const ParentPortal: React.FC = () => {
             <button
               onClick={() => {
                 const ok = unlockParentPin(enteredPin);
-                if (!ok) setPinError('Incorrect PIN. Default demo PIN is 1234');
+                if (!ok) setPinError('Incorrect PIN. Please enter your registered 4-digit PIN');
               }}
-              className="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl transition-colors shadow-sm"
+              className="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl transition-colors shadow-sm cursor-pointer"
             >
               Unlock Dashboard
-            </button>
-
-            {/* Quick Demo Unlock Button */}
-            <button
-              onClick={() => unlockParentPin('1234')}
-              className="text-[11px] text-emerald-400 hover:text-emerald-300 underline block mx-auto pt-1"
-            >
-              Demo 1-Click Unlock (PIN: 1234)
             </button>
           </div>
         </div>
@@ -123,7 +119,7 @@ export const ParentPortal: React.FC = () => {
             </span>
           </div>
           <p className="text-xs text-slate-400 mt-0.5">
-            Monitoring: <strong className="text-slate-200">{student.name}</strong> ({student.school})
+            Parent: <strong className="text-slate-200">{parentName}</strong> · Ward: <strong className="text-emerald-400">{wardName}</strong>
           </p>
         </div>
 

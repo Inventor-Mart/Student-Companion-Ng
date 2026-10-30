@@ -20,11 +20,15 @@ import {
 export const StudentDashboard: React.FC = () => {
   const {
     student,
+    currentUserProfile,
     setActiveStudentTab,
     openNoteReader,
     startExam,
     setIsUniformModalOpen
   } = useApp();
+
+  const displayName = student.name || currentUserProfile?.fullName || 'Registered Student';
+  const displaySchool = student.school || 'Secondary School';
 
   // Pick jump back in note
   const jumpBackNote = NIGERIAN_CURRICULUM_TOPICS[0];
@@ -50,7 +54,7 @@ export const StudentDashboard: React.FC = () => {
             {/* Avatar with Uniform Badge */}
             <div className="relative">
               <img
-                src={student.uniformPhotoUrl || "https://api.dicebear.com/7.x/micah/svg?seed=Tunde&backgroundColor=1e293b"}
+                src={student.uniformPhotoUrl || `https://api.dicebear.com/7.x/micah/svg?seed=${encodeURIComponent(displayName)}&backgroundColor=1e293b`}
                 alt="Student Avatar"
                 className="w-13 h-13 rounded-2xl object-cover bg-slate-800 ring-2 ring-emerald-500/40"
               />
@@ -67,14 +71,14 @@ export const StudentDashboard: React.FC = () => {
             <div>
               <div className="flex items-center gap-1.5">
                 <h2 className="text-base font-bold text-white tracking-tight leading-tight">
-                  {student.name}
+                  {displayName}
                 </h2>
                 <span className="text-[11px] font-semibold text-emerald-400 bg-emerald-950/80 border border-emerald-800/60 rounded px-1.5 py-0.2">
                   {student.rank}
                 </span>
               </div>
               <p className="text-xs text-slate-400 mt-0.5">
-                {student.school} · {student.classLevel} ({student.stream})
+                {displaySchool} · {student.classLevel} ({student.stream})
               </p>
             </div>
           </div>

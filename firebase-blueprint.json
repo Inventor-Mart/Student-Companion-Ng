@@ -1,0 +1,336 @@
+{
+  "entities": {
+    "StudentProfile": {
+      "title": "StudentProfile",
+      "description": "Profile data for Nigerian secondary school students",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_-]+$",
+          "description": "Unique student UID corresponding to auth.uid"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 100,
+          "description": "Student full name"
+        },
+        "school": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 150,
+          "description": "Registered secondary school name"
+        },
+        "classLevel": {
+          "type": "string",
+          "enum": ["JSS 1", "JSS 2", "JSS 3", "SS 1", "SS 2", "SS 3"],
+          "description": "Nigerian curriculum class level"
+        },
+        "stream": {
+          "type": "string",
+          "enum": ["Junior", "Science", "Non-Science"],
+          "description": "Academic stream"
+        },
+        "xp": {
+          "type": "number",
+          "description": "Gamified experience points"
+        },
+        "rank": {
+          "type": "string",
+          "enum": ["Fresher", "Scholar", "Prefect", "Senior Boy", "Senior Girl"],
+          "description": "Academic rank in school"
+        },
+        "streakDays": {
+          "type": "number",
+          "description": "Consecutive days of study"
+        },
+        "lastStudyDate": {
+          "type": "string",
+          "maxLength": 20,
+          "description": "ISO date string of last active study session"
+        },
+        "uniformVerified": {
+          "type": "boolean",
+          "description": "Whether school uniform badge is verified"
+        },
+        "uniformPhotoUrl": {
+          "type": "string",
+          "maxLength": 500,
+          "description": "URL of verified school uniform photo"
+        },
+        "downloadedSubjectIds": {
+          "type": "array",
+          "description": "List of subject IDs saved for offline access"
+        },
+        "completedQuizIds": {
+          "type": "array",
+          "description": "List of completed CBT quiz identifiers"
+        }
+      },
+      "required": ["id", "name", "school", "classLevel", "stream", "xp", "rank", "streakDays"]
+    },
+    "ExamResult": {
+      "title": "ExamResult",
+      "description": "CBT mock exam result records for WAEC, JAMB, and NECO",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_-]+$",
+          "description": "Result document ID"
+        },
+        "studentId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_-]+$",
+          "description": "Student UID who took the exam"
+        },
+        "examId": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "Exam identifier"
+        },
+        "examTitle": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "Exam title"
+        },
+        "subject": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "Subject tested"
+        },
+        "score": {
+          "type": "number",
+          "description": "Score achieved"
+        },
+        "totalQuestions": {
+          "type": "number",
+          "description": "Total exam questions"
+        },
+        "percentage": {
+          "type": "number",
+          "description": "Calculated score percentage"
+        },
+        "timeSpentSeconds": {
+          "type": "number",
+          "description": "Time spent in seconds"
+        },
+        "xpAwarded": {
+          "type": "number",
+          "description": "XP rewarded to student"
+        },
+        "date": {
+          "type": "string",
+          "maxLength": 50,
+          "description": "Exam submission date timestamp"
+        }
+      },
+      "required": ["id", "studentId", "examId", "examTitle", "subject", "score", "totalQuestions", "percentage", "xpAwarded"]
+    },
+    "ParentWallet": {
+      "title": "ParentWallet",
+      "description": "Escrow and funding wallet for parent accounts",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_-]+$",
+          "description": "Parent auth UID"
+        },
+        "balanceNaira": {
+          "type": "number",
+          "description": "Current wallet balance in Nigerian Naira"
+        },
+        "pin": {
+          "type": "string",
+          "maxLength": 10,
+          "description": "Encrypted or hashed security PIN"
+        },
+        "updatedAt": {
+          "type": "string",
+          "maxLength": 50,
+          "description": "Last updated date"
+        }
+      },
+      "required": ["userId", "balanceNaira"]
+    },
+    "TutorBooking": {
+      "title": "TutorBooking",
+      "description": "Vetted tutor booking session with parent approval escrow",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_-]+$",
+          "description": "Unique booking identifier"
+        },
+        "tutorId": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "ID of vetted tutor"
+        },
+        "tutorName": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "Tutor full name"
+        },
+        "tutorPhoto": {
+          "type": "string",
+          "maxLength": 500,
+          "description": "Tutor avatar image URL"
+        },
+        "studentId": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "Booking student UID"
+        },
+        "studentName": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "Student full name"
+        },
+        "subject": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "Academic subject"
+        },
+        "topic": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "Target topic for the session"
+        },
+        "bookingType": {
+          "type": "string",
+          "enum": ["online", "physical"],
+          "description": "Session mode"
+        },
+        "date": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "Session date"
+        },
+        "timeSlot": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "Session time slot"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pending_parent", "confirmed", "completed", "cancelled"],
+          "description": "Lifecycle state of the booking"
+        },
+        "amountNaira": {
+          "type": "number",
+          "description": "Session fee in Naira"
+        },
+        "isParentApproved": {
+          "type": "boolean",
+          "description": "Whether parent approved escrow payment"
+        },
+        "createdAt": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "Creation timestamp"
+        }
+      },
+      "required": ["id", "tutorId", "tutorName", "studentId", "studentName", "subject", "topic", "bookingType", "date", "timeSlot", "status", "amountNaira", "isParentApproved"]
+    },
+    "ChatMessage": {
+      "title": "ChatMessage",
+      "description": "Real-time communication message between student and verified tutor",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_-]+$",
+          "description": "Message identifier"
+        },
+        "senderId": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "Auth UID of the message author"
+        },
+        "sender": {
+          "type": "string",
+          "enum": ["student", "tutor"],
+          "description": "Author role"
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000,
+          "description": "Sanitized text content of the message"
+        },
+        "timestamp": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "ISO timestamp or display time"
+        }
+      },
+      "required": ["id", "senderId", "sender", "text", "timestamp"]
+    },
+    "Admin": {
+      "title": "Admin",
+      "description": "Administrative authority and curriculum verification roles",
+      "type": "object",
+      "properties": {
+        "email": {
+          "type": "string",
+          "maxLength": 150,
+          "description": "Verified administrator email"
+        },
+        "role": {
+          "type": "string",
+          "enum": ["superadmin", "curriculum_moderator"],
+          "description": "Admin privilege level"
+        }
+      },
+      "required": ["email", "role"]
+    }
+  },
+  "firestore": {
+    "/students/{studentId}": {
+      "schema": {
+        "$ref": "#/entities/StudentProfile"
+      },
+      "description": "Student profiles and academic records"
+    },
+    "/students/{studentId}/examResults/{resultId}": {
+      "schema": {
+        "$ref": "#/entities/ExamResult"
+      },
+      "description": "Subcollection of CBT exam records owned by student"
+    },
+    "/wallets/{userId}": {
+      "schema": {
+        "$ref": "#/entities/ParentWallet"
+      },
+      "description": "Secure parent wallet documents"
+    },
+    "/tutorBookings/{bookingId}": {
+      "schema": {
+        "$ref": "#/entities/TutorBooking"
+      },
+      "description": "Vetted tutor bookings with escrow states"
+    },
+    "/chats/{chatId}/messages/{messageId}": {
+      "schema": {
+        "$ref": "#/entities/ChatMessage"
+      },
+      "description": "Subcollection of chat messages within a direct tutoring thread"
+    },
+    "/admins/{adminId}": {
+      "schema": {
+        "$ref": "#/entities/Admin"
+      },
+      "description": "Authorized admin accounts and curriculum verifiers"
+    }
+  }
+}

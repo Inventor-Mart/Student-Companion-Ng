@@ -1,33 +1,76 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
-import { Wifi, WifiOff, BatteryCharging, Signal } from 'lucide-react';
+import { Wifi, WifiOff, BatteryCharging, Signal, SlidersHorizontal } from 'lucide-react';
+import { InAppControlsDrawer } from './InAppControlsDrawer';
 
 export const AndroidDeviceFrame: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { isDeviceFrame, isOffline } = useApp();
+  const { isDeviceFrame, isOffline, currentRole } = useApp();
+  const [isControlsOpen, setIsControlsOpen] = useState(false);
+
+  const roleLabel = {
+    student: 'Student',
+    parent: 'Parent',
+    tutor: 'Tutor',
+    admin: 'Admin'
+  }[currentRole] || 'App';
 
   if (!isDeviceFrame) {
-    // Full screen responsive view
+    // 100% Full-Screen Responsive View - Fills the entire preview pane
     return (
-      <main className="w-full min-h-[calc(100vh-65px)] bg-slate-900 text-slate-100 flex flex-col">
-        <div className="w-full max-w-4xl mx-auto flex-1 flex flex-col shadow-2xl bg-slate-950 border-x border-slate-800">
+      <main className="w-full h-screen min-h-screen bg-[#070D18] text-slate-100 flex flex-col relative overflow-hidden">
+        {/* Full-Screen In-App Mobile Top Bar */}
+        <header className="h-12 sm:h-13 w-full bg-[#0B1526]/95 backdrop-blur-md px-4 sm:px-6 flex items-center justify-between border-b border-[#1A2C49] shrink-0 z-30 select-none">
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-[#14233C] flex items-center justify-center text-[#84E000] font-black text-xs sm:text-sm">
+              SC
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-sm sm:text-base font-bold text-white tracking-tight">Student Companion</span>
+              <span className="text-[10px] font-bold text-[#84E000] bg-[#84E000]/15 border border-[#84E000]/30 px-2 py-0.5 rounded-full uppercase">
+                {roleLabel}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2.5">
+            {isOffline && (
+              <span className="flex items-center gap-1.5 text-xs text-amber-400 bg-amber-950/60 border border-amber-800/60 px-2.5 py-1 rounded-full font-medium">
+                <WifiOff className="w-3.5 h-3.5" />
+                Offline
+              </span>
+            )}
+            <button
+              onClick={() => setIsControlsOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#14233C] hover:bg-[#1D3254] active:scale-95 text-slate-200 hover:text-white border border-[#223B63] transition-all cursor-pointer text-xs font-semibold"
+            >
+              <SlidersHorizontal className="w-3.5 h-3.5 text-[#84E000]" />
+              <span>Menu</span>
+            </button>
+          </div>
+        </header>
+
+        {/* Content Viewport filling 100% available width and height */}
+        <div className="w-full flex-1 flex flex-col bg-slate-950 relative overflow-hidden">
           {children}
+          <InAppControlsDrawer isOpen={isControlsOpen} onClose={() => setIsControlsOpen(false)} />
         </div>
       </main>
     );
   }
 
-  // Realistic Android Smartphone Container
+  // Realistic Android Smartphone Container (Tall Modern Flagship 20:9 Ratio)
   return (
-    <main className="w-full min-h-[calc(100vh-65px)] bg-slate-950 flex items-center justify-center p-2 sm:p-6 overflow-y-auto">
-      {/* Outer Phone Shell */}
-      <div className="relative w-full max-w-[420px] h-[860px] max-h-[92vh] bg-slate-900 rounded-[44px] p-3 shadow-[0_25px_60px_-15px_rgba(0,0,0,0.8),0_0_0_2px_rgba(51,65,85,0.7)] flex flex-col border border-slate-700/60 transition-all duration-300">
-        {/* Hardware details: Side buttons styling */}
-        <div className="absolute -left-[5px] top-28 w-[3px] h-12 bg-slate-600 rounded-l-sm" />
-        <div className="absolute -left-[5px] top-44 w-[3px] h-12 bg-slate-600 rounded-l-sm" />
-        <div className="absolute -right-[5px] top-32 w-[3px] h-16 bg-slate-600 rounded-r-sm" />
+    <main className="w-full min-h-screen bg-[#070D18] flex items-center justify-center p-2 sm:py-5 sm:px-4 overflow-y-auto">
+      {/* Outer Phone Shell - Modern Tall Flagship (20:9 ratio) */}
+      <div className="relative w-full max-w-[414px] sm:max-w-[422px] h-[930px] sm:h-[950px] max-h-[97vh] bg-slate-900 rounded-[50px] p-2.5 sm:p-3 shadow-[0_25px_65px_-15px_rgba(0,0,0,0.85),0_0_0_2px_rgba(51,65,85,0.75)] flex flex-col border border-slate-700/60 transition-all duration-300 shrink-0">
+        {/* Hardware details: Sleek flagship aluminum side buttons */}
+        <div className="absolute -left-[5px] top-32 w-[3px] h-14 bg-slate-600 rounded-l-sm" />
+        <div className="absolute -left-[5px] top-50 w-[3px] h-14 bg-slate-600 rounded-l-sm" />
+        <div className="absolute -right-[5px] top-36 w-[3px] h-20 bg-slate-600 rounded-r-sm" />
 
-        {/* Screen Glass */}
-        <div className="relative w-full h-full bg-slate-950 rounded-[36px] overflow-hidden flex flex-col border border-slate-800">
+        {/* Screen Glass - Expanded Vertical Display with Flagship Curvature */}
+        <div className="relative w-full h-full bg-slate-950 rounded-[40px] overflow-hidden flex flex-col border border-slate-800/90 shadow-inner">
+          
           {/* Android Status Bar */}
           <div className="h-9 w-full bg-slate-950/95 backdrop-blur-sm px-6 flex items-center justify-between text-slate-300 select-none shrink-0 z-40 border-b border-slate-900/40">
             {/* Clock */}
@@ -53,9 +96,36 @@ export const AndroidDeviceFrame: React.FC<{ children: React.ReactNode }> = ({ ch
             </div>
           </div>
 
+          {/* In-App Mobile Top App Bar */}
+          <div className="h-11 w-full bg-[#0B1526] px-4 flex items-center justify-between border-b border-[#1A2C49] shrink-0 z-30 select-none">
+            <div className="flex items-center gap-2">
+              <div className="w-6 h-6 rounded-md bg-[#14233C] flex items-center justify-center text-[#84E000] font-black text-[11px]">
+                SC
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs font-bold text-white tracking-tight">Student Companion</span>
+                <span className="text-[9px] font-bold text-[#84E000] bg-[#84E000]/15 border border-[#84E000]/30 px-1.5 py-0.2 rounded uppercase">
+                  {roleLabel}
+                </span>
+              </div>
+            </div>
+
+            {/* In-App Menu Drawer Trigger */}
+            <button
+              onClick={() => setIsControlsOpen(true)}
+              className="flex items-center gap-1 px-2 py-1 rounded-lg bg-[#14233C] hover:bg-[#1D3254] active:scale-95 text-slate-200 hover:text-white border border-[#223B63] transition-all cursor-pointer text-[11px] font-semibold"
+              title="Open Role Switcher & Controls"
+            >
+              <SlidersHorizontal className="w-3.5 h-3.5 text-[#84E000]" />
+              <span>Menu</span>
+            </button>
+          </div>
+
           {/* Screen Body */}
           <div className="relative flex-1 w-full overflow-hidden flex flex-col">
             {children}
+            {/* Native In-App Drawer Modal */}
+            <InAppControlsDrawer isOpen={isControlsOpen} onClose={() => setIsControlsOpen(false)} />
           </div>
 
           {/* Android Bottom Navigation / Gesture Bar */}

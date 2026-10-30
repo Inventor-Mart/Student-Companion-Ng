@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
-import { VETTED_NIGERIAN_TUTORS } from '../../data/tutorsData';
 import {
   Users,
   Calendar,
@@ -12,8 +11,11 @@ import {
   CheckCircle2,
   Clock,
   MapPin,
-  ArrowUpRight
+  ArrowUpRight,
+  AlertCircle
 } from 'lucide-react';
+
+import { TutorSecurityVerificationModal } from '../auth/VerificationModals';
 
 export const TutorPortal: React.FC = () => {
   const {
@@ -22,16 +24,36 @@ export const TutorPortal: React.FC = () => {
     setActiveTutorChatId,
     chatMessages,
     sendChatMessage,
-    student
+    currentUserProfile,
+    tutorVerification
   } = useApp();
 
-  const currentTutor = VETTED_NIGERIAN_TUTORS[0]; // Engr. Adewale Bakare
+  const tutorName = currentUserProfile?.fullName || 'Registered Educator';
+  const tutorData = currentUserProfile?.tutorData;
+  const tutorSpecialization = tutorData?.subjectSpecialization || 'Secondary School Educator';
+  const tutorQualification = tutorData?.qualification || 'Verified Educator';
+  const tutorHourlyRate = tutorData?.hourlyRate || 3500;
+  const tutorId = currentUserProfile?.id || 'tutor-current-user';
+  const isVerified = Boolean(tutorVerification?.isVerified || tutorData?.verification?.isVerified);
+
   const [chatInput, setChatInput] = useState<string>('');
   const [activeTab, setActiveTab] = useState<'sessions' | 'earnings' | 'chat'>('sessions');
+  const [isVerificationModalOpen, setIsVerificationModalOpen] = useState(false);
+  const [payoutStatusMessage, setPayoutStatusMessage] = useState<string>('');
 
-  const myBookings = tutorBookings.filter(b => b.tutorId === currentTutor.id);
-  const currentChatId = activeTutorChatId || currentTutor.id;
+  // Filter bookings strictly for this registered tutor
+  const myBookings = tutorBookings.filter(b => b.tutorId === tutorId);
+  const currentChatId = activeTutorChatId || tutorId;
   const currentMessages = chatMessages[currentChatId] || [];
+
+  // Calculate real earnings from real bookings
+  const availablePayout = myBookings
+    .filter(b => b.status === 'completed')
+    .reduce((sum, b) => sum + b.amountNaira, 0);
+
+  const heldInEscrow = myBookings
+    .filter(b => b.status === 'confirmed' || b.status === 'pending_parent')
+    .reduce((sum, b) => sum + b.amountNaira, 0);
 
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
@@ -41,6 +63,22 @@ export const TutorPortal: React.FC = () => {
     setChatInput('');
   };
 
+  const handleRequestPayout = () => {
+    if (!tutorVerification) {
+      setIsVerificationModalOpen(true);
+      return;
+    }
+    if (availablePayout <= 0) {
+      setPayoutStatusMessage('No completed sessions available for payout yet.');
+      setTimeout(() => setPayoutStatusMessage(''), 3000);
+      return;
+    }
+    setPayoutStatusMessage(
+      `Payout of ₦${availablePayout.toLocaleString()} initiated to ${tutorVerification.bankName} (${tutorVerification.accountNumber}). Processing within 15 minutes.`
+    );
+    setTimeout(() => setPayoutStatusMessage(''), 5000);
+  };
+
   return (
     <div className="flex-1 w-full overflow-y-auto px-4 py-4 space-y-4 touch-pan-y text-slate-100">
       {/* Tutor Profile Header */}
@@ -48,20 +86,29 @@ export const TutorPortal: React.FC = () => {
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-3">
             <img
-              src={currentTutor.avatarUrl}
-              alt={currentTutor.name}
+              src={`https://api.dicebear.com/7.x/micah/svg?seed=${encodeURIComponent(tutorName)}&backgroundColor=047857`}
+              alt={tutorName}
               className="w-12 h-12 rounded-2xl object-cover bg-slate-800 ring-2 ring-emerald-500/50"
             />
             <div>
               <div className="flex items-center gap-1.5">
-                <h2 className="text-sm font-bold text-white leading-tight">{currentTutor.name}</h2>
-                <span className="text-emerald-400 bg-emerald-950 p-0.5 rounded border border-emerald-800" title="NIN Verified">
-                  <ShieldCheck className="w-3.5 h-3.5" />
-                </span>
+                <h2 className="text-sm font-bold text-white leading-tight">{tutorName}</h2>
+                {isVerified ? (
+                  <span className="text-emerald-400 bg-emerald-950 p-0.5 rounded border border-emerald-800" title="NIN Verified Educator">
+                    <ShieldCheck className="w-3.5 h-3.5" />
+                  </span>
+                ) : (
+                  <button
+                    onClick={() => setIsVerificationModalOpen(true)}
+                    className="text-[10px] text-amber-400 bg-amber-950/70 px-1.5 py-0.2 rounded border border-amber-800 font-semibold cursor-pointer"
+                  >
+                    Verify NIN
+                  </button>
+                )}
               </div>
-              <p className="text-xs text-slate-400 mt-0.5">{currentTutor.tagline}</p>
+              <p className="text-xs text-slate-400 mt-0.5">{tutorSpecialization}</p>
               <span className="text-[10px] text-slate-400 block mt-0.5">
-                {currentTutor.education} · {currentTutor.location}
+                {tutorQualification} · Registered Educator
               </span>
             </div>
           </div>
@@ -69,7 +116,7 @@ export const TutorPortal: React.FC = () => {
           <div className="text-right">
             <span className="text-[10px] text-slate-400 block">Hourly Rate</span>
             <span className="text-xs font-bold text-emerald-400 font-mono">
-              ₦{currentTutor.hourlyRateNaira.toLocaleString()}
+              ₦{tutorHourlyRate.toLocaleString()}
             </span>
           </div>
         </div>
@@ -87,7 +134,7 @@ export const TutorPortal: React.FC = () => {
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as any)}
-                className={`flex-1 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors ${
+                className={`flex-1 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
                   isActive
                     ? 'bg-slate-800 text-white shadow-sm'
                     : 'text-slate-400 hover:text-slate-200'
@@ -112,11 +159,11 @@ export const TutorPortal: React.FC = () => {
           </div>
 
           {myBookings.length === 0 ? (
-            <div className="bg-slate-900/60 rounded-2xl p-6 text-center border border-slate-800">
-              <Calendar className="w-8 h-8 text-slate-500 mx-auto mb-2" />
-              <span className="text-xs text-slate-300 font-semibold block">No sessions booked yet</span>
-              <p className="text-[11px] text-slate-500 mt-1">
-                New student requests from Lagos and Abuja will appear here.
+            <div className="bg-slate-900/60 rounded-2xl p-8 text-center border border-slate-800 space-y-2">
+              <Calendar className="w-9 h-9 text-slate-600 mx-auto" />
+              <span className="text-xs text-slate-300 font-semibold block">No session requests yet</span>
+              <p className="text-[11px] text-slate-500 max-w-xs mx-auto leading-relaxed">
+                When students or parents in your area book online or physical home tutoring sessions with you, they will appear here.
               </p>
             </div>
           ) : (
@@ -134,45 +181,39 @@ export const TutorPortal: React.FC = () => {
                           b.status === 'confirmed'
                             ? 'bg-emerald-950 text-emerald-400 border-emerald-800'
                             : b.status === 'pending_parent'
-                            ? 'bg-amber-950 text-amber-300 border-amber-800'
+                            ? 'bg-amber-950 text-amber-400 border-amber-800'
                             : 'bg-slate-800 text-slate-400 border-slate-700'
                         }`}
                       >
                         {b.status === 'confirmed'
-                          ? 'Escrow Funded ✓'
+                          ? 'Confirmed & Escrow Funded'
                           : b.status === 'pending_parent'
-                          ? 'Awaiting Parent PIN'
-                          : b.status}
+                          ? 'Awaiting Parent PIN Approval'
+                          : 'Completed'}
                       </span>
                     </div>
-                    <p className="text-xs text-slate-300 mt-0.5">
-                      {b.subject}: {b.topic}
-                    </p>
+                    <p className="text-xs text-slate-400 mt-1">{b.subject} · {b.topic}</p>
                   </div>
+                  <div className="text-right">
+                    <span className="text-xs font-mono font-bold text-emerald-400">
+                      ₦{b.amountNaira.toLocaleString()}
+                    </span>
+                    <span className="text-[10px] text-slate-500 block uppercase">{b.bookingType}</span>
+                  </div>
+                </div>
 
-                  <span className="text-xs font-mono font-bold text-emerald-400">
-                    ₦{b.amountNaira.toLocaleString()}
+                <div className="flex items-center justify-between text-[11px] text-slate-400 pt-2 border-t border-slate-800">
+                  <span className="flex items-center gap-1">
+                    <Clock className="w-3 h-3" /> {b.date} ({b.timeSlot})
                   </span>
-                </div>
-
-                <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-800 text-xs text-slate-300 space-y-1">
-                  <div className="flex items-center gap-2">
-                    <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                    <span>{b.date} ({b.timeSlot})</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-[11px] text-slate-400">
-                    <MapPin className="w-3.5 h-3.5" />
-                    <span>Format: {b.bookingType === 'physical' ? 'Physical Home Tutoring' : 'Online Classroom'}</span>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2 pt-1">
                   <button
-                    onClick={() => setActiveTab('chat')}
-                    className="flex-1 py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 flex items-center justify-center gap-1.5 transition-colors"
+                    onClick={() => {
+                      setActiveTutorChatId(b.studentId);
+                      setActiveTab('chat');
+                    }}
+                    className="text-emerald-400 hover:underline font-semibold"
                   >
-                    <MessageSquare className="w-3.5 h-3.5" />
-                    <span>Message Student (Masked)</span>
+                    Open Masked Chat
                   </button>
                 </div>
               </div>
@@ -181,51 +222,103 @@ export const TutorPortal: React.FC = () => {
         </div>
       )}
 
-      {/* Tab 2: Earnings */}
+      {/* Tab 2: Earnings & Payout */}
       {activeTab === 'earnings' && (
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div className="bg-slate-900 rounded-2xl p-4 border border-slate-800 space-y-1">
               <span className="text-[11px] text-slate-400 block">Available for Payout</span>
-              <div className="text-xl font-bold font-mono text-emerald-400">₦42,500</div>
-              <span className="text-[10px] text-slate-500 block">Ready to withdraw</span>
+              <div className="text-xl font-bold font-mono text-emerald-400">
+                ₦{availablePayout.toLocaleString()}
+              </div>
+              <span className="text-[10px] text-slate-500 block">
+                {availablePayout > 0 ? 'Ready to withdraw' : 'Completed sessions payout'}
+              </span>
             </div>
 
             <div className="bg-slate-900 rounded-2xl p-4 border border-slate-800 space-y-1">
               <span className="text-[11px] text-slate-400 block">Held in Escrow</span>
-              <div className="text-xl font-bold font-mono text-amber-400">₦9,000</div>
-              <span className="text-[10px] text-slate-500 block">1 active session</span>
+              <div className="text-xl font-bold font-mono text-amber-400">
+                ₦{heldInEscrow.toLocaleString()}
+              </div>
+              <span className="text-[10px] text-slate-500 block">
+                {myBookings.filter(b => b.status === 'confirmed').length} active session(s)
+              </span>
             </div>
           </div>
 
+          {/* Nigerian Payout Bank Account */}
           <div className="bg-slate-900 rounded-2xl p-4 border border-slate-800 space-y-3">
-            <h4 className="text-xs font-bold text-white flex items-center gap-2">
-              <Building className="w-4 h-4 text-emerald-400" />
-              <span>Nigerian Payout Bank Account</span>
-            </h4>
-
-            <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-1 text-xs">
-              <div className="flex justify-between text-slate-300">
-                <span>Bank:</span>
-                <span className="font-bold text-white">Guaranty Trust Bank (GTBank)</span>
-              </div>
-              <div className="flex justify-between text-slate-300">
-                <span>Account Number:</span>
-                <span className="font-mono text-white">012****892</span>
-              </div>
-              <div className="flex justify-between text-slate-300">
-                <span>Account Name:</span>
-                <span className="text-emerald-400 font-semibold">Adewale S. Bakare</span>
-              </div>
+            <div className="flex items-center justify-between">
+              <h4 className="text-xs font-bold text-white flex items-center gap-2">
+                <Building className="w-4 h-4 text-emerald-400" />
+                <span>Nigerian Payout Bank Account</span>
+              </h4>
+              <button
+                type="button"
+                onClick={() => setIsVerificationModalOpen(true)}
+                className="text-[10px] text-emerald-400 hover:underline font-semibold cursor-pointer"
+              >
+                {tutorVerification ? 'Edit Details' : 'Verify Details'}
+              </button>
             </div>
 
-            <button
-              onClick={() => alert('Payout of ₦42,500 initiated to your GTBank account. Expected settlement within 15 minutes.')}
-              className="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl transition-colors shadow-sm flex items-center justify-center gap-1.5"
-            >
-              <ArrowUpRight className="w-4 h-4" />
-              <span>Request Payout (₦42,500)</span>
-            </button>
+            {tutorVerification ? (
+              <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-1.5 text-xs">
+                <div className="flex justify-between text-slate-300">
+                  <span>NIN Identity:</span>
+                  <span className="font-mono text-emerald-400 font-semibold flex items-center gap-1">
+                    <ShieldCheck className="w-3.5 h-3.5" />
+                    {tutorVerification.nin.slice(0, 3)}****{tutorVerification.nin.slice(-2)} (NIMC Verified)
+                  </span>
+                </div>
+                <div className="flex justify-between text-slate-300">
+                  <span>Bank:</span>
+                  <span className="font-bold text-white">{tutorVerification.bankName}</span>
+                </div>
+                <div className="flex justify-between text-slate-300">
+                  <span>Account Number:</span>
+                  <span className="font-mono text-white">{tutorVerification.accountNumber}</span>
+                </div>
+                <div className="flex justify-between text-slate-300">
+                  <span>Account Name:</span>
+                  <span className="text-emerald-400 font-semibold">{tutorVerification.accountName}</span>
+                </div>
+              </div>
+            ) : (
+              <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 text-center space-y-2">
+                <AlertCircle className="w-6 h-6 text-amber-400 mx-auto" />
+                <p className="text-xs text-slate-300 font-medium">
+                  No verified Nigerian payout bank account connected yet.
+                </p>
+                <p className="text-[11px] text-slate-500">
+                  Add your National Identification Number (NIN) and commercial bank account to receive automated session payouts.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setIsVerificationModalOpen(true)}
+                  className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-colors cursor-pointer"
+                >
+                  Verify NIN & Bank Details
+                </button>
+              </div>
+            )}
+
+            {payoutStatusMessage && (
+              <div className="p-2.5 rounded-xl bg-emerald-950/80 border border-emerald-800 text-emerald-300 text-xs">
+                {payoutStatusMessage}
+              </div>
+            )}
+
+            {availablePayout > 0 && (
+              <button
+                onClick={handleRequestPayout}
+                className="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-500 active:scale-[0.98] text-white text-xs font-bold rounded-xl transition-all shadow-sm flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <ArrowUpRight className="w-4 h-4" />
+                <span>Request Payout (₦{availablePayout.toLocaleString()})</span>
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -236,13 +329,11 @@ export const TutorPortal: React.FC = () => {
           {/* Chat Header */}
           <div className="px-4 py-3 bg-slate-950/80 border-b border-slate-800 flex items-center justify-between">
             <div className="flex items-center gap-2.5">
-              <img
-                src={student.uniformPhotoUrl || "https://api.dicebear.com/7.x/micah/svg?seed=Tunde&backgroundColor=1e293b"}
-                alt="Student"
-                className="w-8 h-8 rounded-full object-cover bg-slate-800 ring-1 ring-slate-700"
-              />
+              <div className="w-8 h-8 rounded-full bg-emerald-950 border border-emerald-800 flex items-center justify-center text-emerald-400 font-bold text-xs">
+                💬
+              </div>
               <div>
-                <h4 className="text-xs font-bold text-white">{student.name}</h4>
+                <h4 className="text-xs font-bold text-white">Direct Student Communication</h4>
                 <span className="text-[10px] text-emerald-400 flex items-center gap-1">
                   <ShieldCheck className="w-3 h-3" /> Masked Channel (Privacy Protected)
                 </span>
@@ -252,26 +343,36 @@ export const TutorPortal: React.FC = () => {
 
           {/* Messages Feed */}
           <div className="flex-1 overflow-y-auto p-4 space-y-3 touch-pan-y">
-            {currentMessages.map(msg => {
-              const isTutor = msg.sender === 'tutor';
-              return (
-                <div
-                  key={msg.id}
-                  className={`flex flex-col ${isTutor ? 'items-end' : 'items-start'}`}
-                >
+            {currentMessages.length === 0 ? (
+              <div className="h-full flex flex-col items-center justify-center text-center p-6 space-y-2">
+                <MessageSquare className="w-8 h-8 text-slate-600" />
+                <span className="text-xs text-slate-300 font-semibold">No messages yet</span>
+                <p className="text-[11px] text-slate-500 max-w-xs">
+                  When a student or parent with an active booking messages you, their conversation will appear here.
+                </p>
+              </div>
+            ) : (
+              currentMessages.map(msg => {
+                const isTutor = msg.sender === 'tutor';
+                return (
                   <div
-                    className={`max-w-[80%] rounded-2xl px-3.5 py-2.5 text-xs ${
-                      isTutor
-                        ? 'bg-emerald-600 text-white rounded-br-none'
-                        : 'bg-slate-800 text-slate-200 rounded-bl-none border border-slate-700'
-                    }`}
+                    key={msg.id}
+                    className={`flex flex-col ${isTutor ? 'items-end' : 'items-start'}`}
                   >
-                    <p className="leading-relaxed">{msg.text}</p>
+                    <div
+                      className={`max-w-[80%] rounded-2xl px-3.5 py-2.5 text-xs ${
+                        isTutor
+                          ? 'bg-emerald-600 text-white rounded-br-none'
+                          : 'bg-slate-800 text-slate-200 rounded-bl-none border border-slate-700'
+                      }`}
+                    >
+                      <p className="leading-relaxed">{msg.text}</p>
+                    </div>
+                    <span className="text-[10px] text-slate-500 mt-1 font-mono">{msg.timestamp}</span>
                   </div>
-                  <span className="text-[10px] text-slate-500 mt-1 font-mono">{msg.timestamp}</span>
-                </div>
-              );
-            })}
+                );
+              })
+            )}
           </div>
 
           {/* Input Bar */}
@@ -285,13 +386,21 @@ export const TutorPortal: React.FC = () => {
             />
             <button
               type="submit"
-              className="p-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white transition-colors"
+              disabled={!chatInput.trim()}
+              className="p-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white transition-colors cursor-pointer"
             >
               <Send className="w-4 h-4" />
             </button>
           </form>
         </div>
       )}
+
+      {/* Progressive Tutor Security & Payout Verification Modal */}
+      <TutorSecurityVerificationModal
+        isOpen={isVerificationModalOpen}
+        onClose={() => setIsVerificationModalOpen(false)}
+        onSuccess={() => setIsVerificationModalOpen(false)}
+      />
     </div>
   );
 };

@@ -15,7 +15,9 @@ export const VETTED_NIGERIAN_TUTORS: Tutor[] = [
     education: 'B.Eng Mechanical Engineering (Unilag, First Class Hons)',
     avatarUrl: 'https://api.dicebear.com/7.x/micah/svg?seed=Adewale&backgroundColor=b6e3f4',
     bio: 'Former Olympiad coach with over a decade experience preparing secondary school candidates for Distinction grades in WAEC and 300+ in JAMB UTME. Patient, step-by-step problem solver.',
-    availableDays: ['Mondays', 'Wednesdays', 'Saturdays']
+    availableDays: ['Mondays', 'Wednesdays', 'Saturdays'],
+    lat: 6.5965,
+    lng: 3.3421
   },
   {
     id: 'tutor-amara-biology',
@@ -31,7 +33,9 @@ export const VETTED_NIGERIAN_TUTORS: Tutor[] = [
     education: 'MBBS (University of Nigeria, Nsukka)',
     avatarUrl: 'https://api.dicebear.com/7.x/micah/svg?seed=Amarachi&backgroundColor=ffd5dc',
     bio: 'Passionate about simplifying complex metabolic cycles, genetics, and organic chemistry. Dedicated to mentoring university pre-med aspirants and SS1-SS3 students.',
-    availableDays: ['Tuesdays', 'Thursdays', 'Sundays']
+    availableDays: ['Tuesdays', 'Thursdays', 'Sundays'],
+    lat: 9.0765,
+    lng: 7.4893
   },
   {
     id: 'tutor-folake-arts',
@@ -47,7 +51,9 @@ export const VETTED_NIGERIAN_TUTORS: Tutor[] = [
     education: 'M.A. English Studies (University of Ibadan)',
     avatarUrl: 'https://api.dicebear.com/7.x/micah/svg?seed=Folashade&backgroundColor=d1d4f9',
     bio: 'Certified WAEC and NECO Paper 3 (Test of Orals) examiner. Specializes in essay writing composition, grammatical concord, and African/Non-African prose and poetry analysis.',
-    availableDays: ['Mondays', 'Tuesdays', 'Fridays']
+    availableDays: ['Mondays', 'Tuesdays', 'Fridays'],
+    lat: 7.4244,
+    lng: 3.9056
   },
   {
     id: 'tutor-chidi-commercial',
@@ -63,6 +69,44 @@ export const VETTED_NIGERIAN_TUTORS: Tutor[] = [
     education: 'B.Sc Economics (Covenant University), Associate ICAN',
     avatarUrl: 'https://api.dicebear.com/7.x/micah/svg?seed=Chidiebere&backgroundColor=ffdfbf',
     bio: 'Bridging classroom theory with real-world financial literacy. Helping senior secondary commercial students conquer quantitative economics, national income accounting, and market models.',
-    availableDays: ['Wednesdays', 'Saturdays', 'Sundays']
+    availableDays: ['Wednesdays', 'Saturdays', 'Sundays'],
+    lat: 4.8156,
+    lng: 7.0099
+  },
+  {
+    id: 'tutor-amina-kano',
+    name: 'Malama Amina Danjuma',
+    tagline: 'STEM & Mathematics Mentor (Bayero University)',
+    subjects: ['Mathematics', 'Further Mathematics', 'Basic Science'],
+    rating: 4.94,
+    reviewCount: 53,
+    hourlyRateNaira: 3800,
+    location: 'Nassarawa GRA',
+    state: 'Kano State',
+    isNinVerified: true,
+    education: 'B.Sc Ed Mathematics (BUK), M.Ed (ABU Zaria)',
+    avatarUrl: 'https://api.dicebear.com/7.x/micah/svg?seed=Amina&backgroundColor=bbf7d0',
+    bio: 'Dedicated mathematics coach with strong background in bilingual and contextualized STEM instruction. Helping northern students excel in WAEC, NECO, and National Olympiads.',
+    availableDays: ['Mondays', 'Thursdays', 'Saturdays'],
+    lat: 12.0022,
+    lng: 8.5920
+  },
+  {
+    id: 'tutor-nnamdi-enugu',
+    name: 'Nnamdi Obi, M.Sc',
+    tagline: 'Physics & Engineering Mechanics Tutor (UNN Alum)',
+    subjects: ['Physics', 'Chemistry', 'Technical Drawing'],
+    rating: 4.96,
+    reviewCount: 71,
+    hourlyRateNaira: 4200,
+    location: 'Independence Layout',
+    state: 'Enugu State',
+    isNinVerified: true,
+    education: 'M.Sc Applied Physics (University of Nigeria Nsukka)',
+    avatarUrl: 'https://api.dicebear.com/7.x/micah/svg?seed=Nnamdi&backgroundColor=e9d5ff',
+    bio: 'Specialist in electricity, electromagnetism, and atomic physics. Known for interactive laboratory-grade home demonstrations and high-velocity JAMB CBT problem shortcuts.',
+    availableDays: ['Tuesdays', 'Wednesdays', 'Saturdays'],
+    lat: 6.4413,
+    lng: 7.5029
   }
 ];

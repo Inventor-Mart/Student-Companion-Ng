@@ -71,7 +71,9 @@ export const MathSprintGame: React.FC<{
   const handleGameOver = useCallback(() => {
     setIsGameOver(true);
     const xpReward = Math.max(50, scoreRef.current * 15);
-    onAwardXP(xpReward, 'WAEC Math Sprint');
+    setTimeout(() => {
+      onAwardXP(xpReward, 'WAEC Math Sprint');
+    }, 0);
     try {
       confetti({ particleCount: 60, spread: 70, origin: { y: 0.6 } });
     } catch {}

@@ -68,7 +68,9 @@ export const NigerianGeoGame: React.FC<{
   const handleGameOver = useCallback(() => {
     setIsGameOver(true);
     const xpReward = Math.max(50, scoreRef.current * 18);
-    onAwardXP(xpReward, 'Nigerian Geo Blitz');
+    setTimeout(() => {
+      onAwardXP(xpReward, 'Nigerian Geo Blitz');
+    }, 0);
     try {
       confetti({ particleCount: 65, spread: 70, origin: { y: 0.6 } });
     } catch {}

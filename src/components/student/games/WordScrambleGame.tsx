@@ -63,7 +63,9 @@ export const WordScrambleGame: React.FC<{
   const handleGameOver = useCallback(() => {
     setIsGameOver(true);
     const xpReward = Math.max(50, scoreRef.current * 25);
-    onAwardXP(xpReward, 'WAEC Word Scramble');
+    setTimeout(() => {
+      onAwardXP(xpReward, 'WAEC Word Scramble');
+    }, 0);
     try {
       confetti({ particleCount: 65, spread: 70, origin: { y: 0.6 } });
     } catch {}

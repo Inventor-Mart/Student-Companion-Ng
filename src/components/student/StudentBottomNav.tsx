@@ -1,6 +1,6 @@
 import React from 'react';
 import { useApp } from '../../context/AppContext';
-import { LayoutDashboard, BookOpen, Award, Trophy, Users, Gamepad2, Atom } from 'lucide-react';
+import { LayoutDashboard, BookOpen, Award, Trophy, Users, Gamepad2, Atom, Sparkles } from 'lucide-react';
 
 export const StudentBottomNav: React.FC = () => {
   const { activeStudentTab, setActiveStudentTab } = useApp();
@@ -12,14 +12,15 @@ export const StudentBottomNav: React.FC = () => {
       icon: LayoutDashboard
     },
     {
+      id: 'ai-coach',
+      label: 'AI Coach',
+      icon: Sparkles,
+      isLive: true
+    },
+    {
       id: 'syllabus',
       label: 'Syllabus',
       icon: BookOpen
-    },
-    {
-      id: 'formulas',
-      label: 'Formulas',
-      icon: Atom
     },
     {
       id: 'cbt',
@@ -27,15 +28,19 @@ export const StudentBottomNav: React.FC = () => {
       icon: Award
     },
     {
-      id: 'competitions',
-      label: 'Competitions',
-      icon: Trophy,
-      isLive: true
-    },
-    {
       id: 'tutors',
       label: 'Tutors',
       icon: Users
+    },
+    {
+      id: 'formulas',
+      label: 'Formulas',
+      icon: Atom
+    },
+    {
+      id: 'competitions',
+      label: 'Contest',
+      icon: Trophy
     },
     {
       id: 'games',

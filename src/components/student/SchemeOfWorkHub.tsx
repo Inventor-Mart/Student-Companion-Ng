@@ -693,13 +693,24 @@ This digital module is aligned with the Nigerian Educational Research and Develo
                         )}
                       </div>
 
-                      <button
-                        onClick={() => openNoteReader(topic)}
-                        className="flex items-center gap-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-xl transition-colors shadow-sm cursor-pointer"
-                      >
-                        <span>Read Notes</span>
-                        <ArrowRight className="w-3.5 h-3.5" />
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => setActiveStudentTab('ai-coach')}
+                          className="flex items-center gap-1 px-2.5 py-1.5 bg-emerald-950/80 hover:bg-emerald-900 text-emerald-300 border border-emerald-800/60 text-xs font-semibold rounded-xl transition-colors cursor-pointer"
+                          title="Ask Gemini AI Study Coach to explain this topic"
+                        >
+                          <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+                          <span>AI Coach</span>
+                        </button>
+
+                        <button
+                          onClick={() => openNoteReader(topic)}
+                          className="flex items-center gap-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-xl transition-colors shadow-sm cursor-pointer"
+                        >
+                          <span>Read Notes</span>
+                          <ArrowRight className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 );

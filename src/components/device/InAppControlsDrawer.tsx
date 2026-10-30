@@ -1,0 +1,335 @@
+import React from 'react';
+import { useApp } from '../../context/AppContext';
+import { UserRole } from '../../types';
+import {
+  X,
+  Wifi,
+  WifiOff,
+  Smartphone,
+  Maximize2,
+  RotateCcw,
+  GraduationCap,
+  Users,
+  ShieldCheck,
+  Building2,
+  LogOut,
+  ChevronRight,
+  BookOpen,
+  Home
+} from 'lucide-react';
+
+interface InAppControlsDrawerProps {
+  isOpen: boolean;
+  onClose: () => void;
+}
+
+export const InAppControlsDrawer: React.FC<InAppControlsDrawerProps> = ({
+  isOpen,
+  onClose
+}) => {
+  const {
+    currentRole,
+    setCurrentRole,
+    isOffline,
+    setIsOffline,
+    isDeviceFrame,
+    setIsDeviceFrame,
+    signOutApp,
+    currentUserProfile,
+    student,
+    currentUser,
+    loginWithGoogle,
+    logoutUser,
+    authLoading,
+    setCurrentScreen
+  } = useApp();
+
+  if (!isOpen) return null;
+
+  const roles: { id: UserRole; label: string; icon: React.ReactNode; desc: string; badge: string }[] = [
+    {
+      id: 'student',
+      label: 'Student',
+      icon: <GraduationCap className="w-4 h-4 text-[#84E000]" />,
+      desc: 'CBT Drills, Lesson Notes & Games',
+      badge: 'Active Learner'
+    },
+    {
+      id: 'parent',
+      label: 'Parent',
+      icon: <ShieldCheck className="w-4 h-4 text-[#FF5B00]" />,
+      desc: 'PIN Wallet & Tutor Approvals',
+      badge: 'Guardian'
+    },
+    {
+      id: 'tutor',
+      label: 'Tutor',
+      icon: <Users className="w-4 h-4 text-sky-400" />,
+      desc: 'Live Sessions & Earnings',
+      badge: 'Verified Educator'
+    },
+    {
+      id: 'admin',
+      label: 'School Admin',
+      icon: <Building2 className="w-4 h-4 text-purple-400" />,
+      desc: 'Inter-School Standings & Metrics',
+      badge: 'Institution'
+    }
+  ];
+
+  return (
+    <div className="absolute inset-0 z-50 flex overflow-hidden">
+      {/* Dimmed Backdrop */}
+      <div
+        onClick={onClose}
+        className="absolute inset-0 bg-black/60 backdrop-blur-[2px] transition-opacity"
+      />
+
+      {/* Slide-in Drawer (Anchored inside the Phone Screen) */}
+      <div className="relative ml-auto w-full max-w-[320px] h-full bg-[#0D1829] border-l border-[#1E304F] text-slate-100 flex flex-col shadow-2xl z-10 animate-in slide-in-from-right duration-200">
+        
+        {/* Drawer Header */}
+        <div className="flex items-center justify-between px-4 py-3.5 border-b border-[#1E304F] bg-[#0A1322]">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-[#84E000]" />
+            <h3 className="text-sm font-bold text-white tracking-tight">App Controls</h3>
+          </div>
+          <button
+            onClick={onClose}
+            className="w-8 h-8 rounded-lg bg-[#162746] hover:bg-[#1E355D] active:scale-95 flex items-center justify-center text-slate-300 hover:text-white transition-all cursor-pointer"
+            aria-label="Close menu"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Scrollable Drawer Body */}
+        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-5 text-xs">
+          
+          {/* Active Account Card */}
+          <div className="p-3 rounded-2xl bg-[#091222] border border-[#1E304F]">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
+              Active Account
+            </span>
+            <div className="flex items-center justify-between">
+              <div>
+                <h4 className="font-bold text-white text-sm">
+                  {currentUserProfile?.fullName || (student?.name && student.name !== '' ? student.name : 'Registered Member')}
+                </h4>
+                <p className="text-[11px] text-slate-400 capitalize">
+                  {currentUserProfile?.role || currentRole} • {currentRole === 'student' ? student?.classLevel || 'Student' : 'Portal Access'}
+                </p>
+              </div>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#84E000]/15 text-[#84E000] border border-[#84E000]/30 uppercase">
+                Active
+              </span>
+            </div>
+          </div>
+
+          {/* Section 1: Active Role & Security Gate */}
+          <div>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-2 px-1">
+              Active Portal & Security Gate
+            </span>
+            <div className="p-3 rounded-2xl bg-[#101C31] border border-[#1C2F4D] space-y-2">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-[#15253F] border border-emerald-500/40 flex items-center justify-center text-emerald-400">
+                  {currentRole === 'student' && <GraduationCap className="w-4 h-4" />}
+                  {currentRole === 'parent' && <ShieldCheck className="w-4 h-4 text-[#FF5B00]" />}
+                  {currentRole === 'tutor' && <Users className="w-4 h-4 text-sky-400" />}
+                  {currentRole === 'admin' && <Building2 className="w-4 h-4 text-purple-400" />}
+                </div>
+                <div>
+                  <span className="font-bold text-white text-xs block capitalize">
+                    {currentRole === 'student' ? 'Student Learning Portal' : currentRole === 'parent' ? 'Parent Escrow & Wallet' : currentRole === 'tutor' ? 'Verified Tutor Hub' : 'School Admin Portal'}
+                  </span>
+                  <span className="text-[10px] text-emerald-400 font-semibold">
+                    ✓ Authenticated Access
+                  </span>
+                </div>
+              </div>
+
+              <p className="text-[10px] text-slate-400 leading-relaxed pt-1 border-t border-slate-800">
+                To access another portal (e.g. as a Parent, Tutor, or School Admin), you must sign in with an account registered for that role.
+              </p>
+
+              <button
+                onClick={() => {
+                  signOutApp();
+                  onClose();
+                }}
+                className="w-full mt-1 py-1.5 px-3 rounded-xl bg-[#15253F] hover:bg-[#1D3254] border border-[#233C68] text-slate-200 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <LogOut className="w-3.5 h-3.5 text-slate-400" />
+                <span>Switch to Another Persona / Account</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Section 2: Environment & Network Simulator */}
+          <div>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-2 px-1">
+              Environment & Simulator
+            </span>
+            <div className="space-y-2">
+              {/* Offline Mode Toggle */}
+              <button
+                onClick={() => setIsOffline((prev) => !prev)}
+                className={`w-full flex items-center justify-between p-2.5 rounded-xl border transition-all cursor-pointer ${
+                  isOffline
+                    ? 'bg-amber-950/40 border-amber-600/50 text-amber-200'
+                    : 'bg-[#101C31] border-[#1C2F4D] text-slate-200 hover:bg-[#162846]'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${isOffline ? 'bg-amber-900/40 text-amber-400' : 'bg-[#0C1525] text-emerald-400'}`}>
+                    {isOffline ? <WifiOff className="w-4 h-4" /> : <Wifi className="w-4 h-4" />}
+                  </div>
+                  <div className="text-left">
+                    <span className="font-semibold block">
+                      {isOffline ? 'Offline Mode (Active)' : 'Online Mode'}
+                    </span>
+                    <span className="text-[10px] text-slate-400">
+                      {isOffline ? 'Testing cached lesson notes & CBT' : 'Connected to cloud network'}
+                    </span>
+                  </div>
+                </div>
+                <div className={`w-9 h-5 rounded-full p-0.5 transition-colors ${isOffline ? 'bg-amber-500' : 'bg-slate-700'}`}>
+                  <div className={`w-4 h-4 rounded-full bg-white transition-transform ${isOffline ? 'translate-x-4' : 'translate-x-0'}`} />
+                </div>
+              </button>
+
+              {/* Viewport Frame Toggle */}
+              <button
+                onClick={() => setIsDeviceFrame((prev) => !prev)}
+                className="w-full flex items-center justify-between p-2.5 rounded-xl border border-[#1C2F4D] bg-[#101C31] hover:bg-[#162846] text-slate-200 transition-all cursor-pointer"
+              >
+                <div className="flex items-center gap-2.5">
+                  <div className="w-7 h-7 rounded-lg bg-[#0C1525] flex items-center justify-center text-slate-300">
+                    {isDeviceFrame ? <Maximize2 className="w-4 h-4" /> : <Smartphone className="w-4 h-4 text-emerald-400" />}
+                  </div>
+                  <div className="text-left">
+                    <span className="font-semibold block">
+                      {isDeviceFrame ? 'Full-Screen View' : 'Android Frame View'}
+                    </span>
+                    <span className="text-[10px] text-slate-400">
+                      Toggle responsive desktop framing
+                    </span>
+                  </div>
+                </div>
+                <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
+              </button>
+            </div>
+          </div>
+
+          {/* Section 3: Cloud Sync & Account */}
+          <div>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-2 px-1">
+              Account & Cloud Sync
+            </span>
+            <div className="p-2.5 rounded-xl border border-[#1C2F4D] bg-[#101C31]">
+              {currentUser ? (
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 truncate">
+                    <div className="w-7 h-7 rounded-full bg-emerald-600/30 border border-emerald-500/50 flex items-center justify-center text-emerald-300 font-bold text-xs shrink-0">
+                      {(currentUser.displayName || currentUser.email || 'U')[0].toUpperCase()}
+                    </div>
+                    <div className="truncate">
+                      <span className="font-bold text-white block truncate text-[11px]">
+                        {currentUser.displayName || 'Google User'}
+                      </span>
+                      <span className="text-[10px] text-slate-400 truncate block">
+                        {currentUser.email}
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    onClick={logoutUser}
+                    className="p-1.5 text-slate-400 hover:text-rose-400 transition-colors"
+                    title="Sign Out"
+                  >
+                    <LogOut className="w-4 h-4" />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={loginWithGoogle}
+                  disabled={authLoading}
+                  className="w-full py-2 px-3 rounded-lg bg-[#162746] hover:bg-[#1E355D] border border-[#233C68] flex items-center justify-center gap-2 text-white font-medium transition-all cursor-pointer"
+                >
+                  <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24">
+                    <path
+                      fill="#4285F4"
+                      d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                    />
+                    <path
+                      fill="#34A853"
+                      d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                    />
+                    <path
+                      fill="#FBBC05"
+                      d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+                    />
+                    <path
+                      fill="#EA4335"
+                      d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+                    />
+                  </svg>
+                  <span>{authLoading ? 'Signing in...' : 'Sign in with Google'}</span>
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Section 4: Quick Navigation & Reset */}
+          <div>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-2 px-1">
+              Navigation
+            </span>
+            <div className="space-y-1.5">
+              <button
+                onClick={() => {
+                  setCurrentScreen('landing');
+                  onClose();
+                }}
+                className="w-full flex items-center gap-2.5 p-2 rounded-xl bg-[#101C31] hover:bg-[#162846] border border-[#1C2F4D] text-slate-200 transition-all cursor-pointer"
+              >
+                <Home className="w-4 h-4 text-[#84E000]" />
+                <span className="font-semibold">Return to Landing Page</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  setCurrentScreen('know_more');
+                  onClose();
+                }}
+                className="w-full flex items-center gap-2.5 p-2 rounded-xl bg-[#101C31] hover:bg-[#162846] border border-[#1C2F4D] text-slate-200 transition-all cursor-pointer"
+              >
+                <BookOpen className="w-4 h-4 text-sky-400" />
+                <span className="font-semibold">Open "Know More" Syllabus</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  signOutApp();
+                  onClose();
+                }}
+                className="w-full flex items-center gap-2.5 p-2 rounded-xl bg-rose-950/20 hover:bg-rose-950/40 border border-rose-900/50 text-rose-300 transition-all cursor-pointer mt-2"
+              >
+                <LogOut className="w-4 h-4 text-rose-400" />
+                <span className="font-semibold">Log Out / Switch Account</span>
+              </button>
+            </div>
+          </div>
+
+        </div>
+
+        {/* Drawer Footer */}
+        <div className="px-4 py-3 border-t border-[#1E304F] bg-[#0A1322] flex items-center justify-between text-[11px] text-slate-400">
+          <span>Student Companion v2.0</span>
+          <span className="text-[#84E000] font-semibold">🇳🇬 Nigeria</span>
+        </div>
+      </div>
+    </div>
+  );
+};

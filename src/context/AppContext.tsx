@@ -1,5 +1,13 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import confetti from 'canvas-confetti';
+import { User, onAuthStateChanged } from 'firebase/auth';
+import {
+  doc,
+  collection,
+  onSnapshot,
+  setDoc,
+  updateDoc
+} from 'firebase/firestore';
 import {
   UserRole,
   StudentProfile,
@@ -9,24 +17,55 @@ import {
   TutorBooking,
   ParentWallet,
   StudentRank,
-  ChatMessage
+  ChatMessage,
+  VerifiedAddress,
+  TutorVerificationDetails,
+  RegisteredUserProfile
 } from '../types';
-import { NIGERIAN_CURRICULUM_TOPICS } from '../data/curriculumData';
-import { CBT_EXAMS_DATABASE } from '../data/cbtExamData';
-import { VETTED_NIGERIAN_TUTORS } from '../data/tutorsData';
+import {
+  auth,
+  db,
+  signInWithGoogle,
+  logOut,
+  handleFirestoreError,
+  OperationType
+} from '../lib/firebase';
 
 interface AppContextType {
   // Navigation & Frame
   currentRole: UserRole;
   setCurrentRole: (role: UserRole) => void;
+  targetSignUpRole: UserRole | null;
+  setTargetSignUpRole: (role: UserRole | null) => void;
   isDeviceFrame: boolean;
   setIsDeviceFrame: (val: boolean | ((prev: boolean) => boolean)) => void;
   isOffline: boolean;
   setIsOffline: (val: boolean | ((prev: boolean) => boolean)) => void;
+  isLandingView: boolean;
+  setIsLandingView: (val: boolean | ((prev: boolean) => boolean)) => void;
+  currentScreen: 'landing' | 'signin' | 'signup' | 'know_more' | 'app';
+  setCurrentScreen: (screen: 'landing' | 'signin' | 'signup' | 'know_more' | 'app') => void;
+
+  // Progressive Verification & Onboarding
+  currentUserProfile: RegisteredUserProfile | null;
+  isAuthenticated: boolean;
+  verifiedAddress: VerifiedAddress | null;
+  saveVerifiedAddress: (addr: VerifiedAddress) => void;
+  tutorVerification: TutorVerificationDetails | null;
+  saveTutorVerification: (data: TutorVerificationDetails) => void;
+  registerNewUser: (role: UserRole, profileData: any) => void;
+  signOutApp: () => void;
+
+  // Firebase Auth
+  currentUser: User | null;
+  authLoading: boolean;
+  loginWithGoogle: () => Promise<void>;
+  logoutUser: () => Promise<void>;
+  isFirebaseConnected: boolean;
 
   // Student Navigation
-  activeStudentTab: 'dashboard' | 'syllabus' | 'cbt' | 'competitions' | 'formulas' | 'tutors' | 'games';
-  setActiveStudentTab: (tab: 'dashboard' | 'syllabus' | 'cbt' | 'competitions' | 'formulas' | 'tutors' | 'games') => void;
+  activeStudentTab: 'dashboard' | 'syllabus' | 'cbt' | 'competitions' | 'formulas' | 'tutors' | 'games' | 'ai-coach';
+  setActiveStudentTab: (tab: 'dashboard' | 'syllabus' | 'cbt' | 'competitions' | 'formulas' | 'tutors' | 'games' | 'ai-coach') => void;
   activeReadingNote: CurriculumTopic | null;
   openNoteReader: (topic: CurriculumTopic) => void;
   closeNoteReader: () => void;
@@ -66,100 +105,83 @@ interface AppContextType {
   resetDemoData: () => void;
 }
 
-const DEFAULT_STUDENT: StudentProfile = {
-  id: 'std-tunde-001',
-  name: 'Tunde Balogun',
-  school: "King's College, Lagos",
+const INITIAL_EMPTY_STUDENT: StudentProfile = {
+  id: '',
+  name: '',
+  school: '',
   classLevel: 'SS 2',
   stream: 'Science',
-  xp: 4250,
-  rank: 'Scholar',
-  streakDays: 8,
+  xp: 0,
+  rank: 'Fresher',
+  streakDays: 0,
   lastStudyDate: new Date().toISOString().split('T')[0],
   uniformVerified: false,
   uniformPhotoUrl: null,
-  downloadedSubjectIds: ['bio-ss2-genetics', 'phy-ss2-projectiles'],
-  completedQuizIds: ['quiz-ss2-phy-projectiles']
+  downloadedSubjectIds: [],
+  completedQuizIds: []
 };
 
-const DEFAULT_WALLET: ParentWallet = {
-  balanceNaira: 35000,
-  pin: '1234',
-  transactions: [
-    {
-      id: 'tx-001',
-      type: 'credit',
-      amountNaira: 50000,
-      description: 'Wallet Top-up via Paystack (Debit Card)',
-      timestamp: 'Yesterday at 04:15 PM',
-      status: 'successful',
-      reference: 'PSTK_98124890'
-    },
-    {
-      id: 'tx-002',
-      type: 'debit',
-      amountNaira: 15000,
-      description: 'Term 2 Premium Scheme & WAEC Drills Access',
-      timestamp: 'Yesterday at 04:20 PM',
-      status: 'successful',
-      reference: 'SUB_0091238'
-    }
-  ]
-};
-
-const DEFAULT_BOOKINGS: TutorBooking[] = [
-  {
-    id: 'book-001',
-    tutorId: 'tutor-adewale-math',
-    tutorName: 'Engr. Adewale Bakare',
-    tutorPhoto: 'https://api.dicebear.com/7.x/micah/svg?seed=Adewale&backgroundColor=b6e3f4',
-    studentId: 'std-tunde-001',
-    studentName: 'Tunde Balogun',
-    subject: 'Physics',
-    topic: 'Projectile Motion & Trajectory Calculations',
-    bookingType: 'physical',
-    date: 'Saturday, Nov 1st',
-    timeSlot: '11:00 AM - 01:00 PM (2 hrs)',
-    status: 'pending_parent',
-    amountNaira: 9000,
-    isParentApproved: false,
-    createdAt: new Date().toISOString()
-  }
-];
-
-const DEFAULT_CHATS: Record<string, ChatMessage[]> = {
-  'tutor-adewale-math': [
-    {
-      id: 'msg-1',
-      sender: 'tutor',
-      text: 'Good day Tunde! I noticed your request for the Projectile Motion home session. Looking forward to going through past WAEC calculations together.',
-      timestamp: '10:14 AM'
-    },
-    {
-      id: 'msg-2',
-      sender: 'student',
-      text: 'Thank you Sir! My father is reviewing the booking request on the Parent dashboard now.',
-      timestamp: '10:18 AM'
-    }
-  ]
+const INITIAL_EMPTY_WALLET: ParentWallet = {
+  balanceNaira: 0,
+  pin: '',
+  transactions: []
 };
 
 const AppContext = createContext<AppContextType | null>(null);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Navigation & Presentation
-  const [currentRole, setCurrentRole] = useState<UserRole>('student');
-  const [isDeviceFrame, setIsDeviceFrame] = useState<boolean>(true);
+  // Registered User & Auth State
+  const [currentUserProfile, setCurrentUserProfile] = useState<RegisteredUserProfile | null>(() => {
+    const saved = localStorage.getItem('sc_user_profile');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed.id && !parsed.id.includes('tunde')) return parsed;
+      } catch {}
+    }
+    return null;
+  });
+
+  // Navigation & Presentation (bound to registered role)
+  const [currentRole, setCurrentRole] = useState<UserRole>(() => {
+    const saved = localStorage.getItem('sc_user_profile');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed.role) return parsed.role;
+      } catch {}
+    }
+    return 'student';
+  });
+  const [targetSignUpRole, setTargetSignUpRole] = useState<UserRole | null>(null);
+  const [isDeviceFrame, setIsDeviceFrame] = useState<boolean>(false);
   const [isOffline, setIsOffline] = useState<boolean>(false);
-  const [activeStudentTab, setActiveStudentTab] = useState<'dashboard' | 'syllabus' | 'cbt' | 'competitions' | 'formulas' | 'tutors' | 'games'>('dashboard');
+  const [isLandingView, setIsLandingView] = useState<boolean>(true);
+  const [currentScreen, setCurrentScreen] = useState<'landing' | 'signin' | 'signup' | 'know_more' | 'app'>('landing');
+  const [activeStudentTab, setActiveStudentTab] = useState<'dashboard' | 'syllabus' | 'cbt' | 'competitions' | 'formulas' | 'tutors' | 'games' | 'ai-coach'>('dashboard');
   const [activeReadingNote, setActiveReadingNote] = useState<CurriculumTopic | null>(null);
   const [activeExam, setActiveExam] = useState<CBTExam | null>(null);
   const [isUniformModalOpen, setIsUniformModalOpen] = useState<boolean>(false);
 
-  // Student State
+  const isAuthenticated = Boolean(currentUserProfile);
+
+  // Firebase Auth State
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [authLoading, setAuthLoading] = useState<boolean>(true);
+  const [isFirebaseConnected, setIsFirebaseConnected] = useState<boolean>(false);
+
+  // Student State (Pristine - no mock personas)
   const [student, setStudent] = useState<StudentProfile>(() => {
     const saved = localStorage.getItem('sc_student');
-    return saved ? JSON.parse(saved) : DEFAULT_STUDENT;
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed.name && parsed.name !== 'Tunde Balogun' && parsed.id !== 'std-tunde-001') {
+          return parsed;
+        }
+      } catch {}
+    }
+    return INITIAL_EMPTY_STUDENT;
   });
 
   const [examResults, setExamResults] = useState<CBTExamResult[]>(() => {
@@ -167,25 +189,57 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return saved ? JSON.parse(saved) : [];
   });
 
-  // Parent State
+  // Parent State (Pristine - 0 balance, no mock data)
   const [parentWallet, setParentWallet] = useState<ParentWallet>(() => {
     const saved = localStorage.getItem('sc_wallet');
-    return saved ? JSON.parse(saved) : DEFAULT_WALLET;
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed.pin && parsed.balanceNaira !== 35000) {
+          return parsed;
+        }
+      } catch {}
+    }
+    return INITIAL_EMPTY_WALLET;
   });
   const [isParentPinUnlocked, setIsParentPinUnlocked] = useState<boolean>(false);
 
-  // Tutor Bookings & Chats
+  // Tutor Bookings & Chats (Pristine - empty)
   const [tutorBookings, setTutorBookings] = useState<TutorBooking[]>(() => {
     const saved = localStorage.getItem('sc_bookings');
-    return saved ? JSON.parse(saved) : DEFAULT_BOOKINGS;
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && !parsed.some((b: any) => b.id === 'book-001')) {
+          return parsed;
+        }
+      } catch {}
+    }
+    return [];
   });
   const [activeTutorChatId, setActiveTutorChatId] = useState<string | null>(null);
   const [chatMessages, setChatMessages] = useState<Record<string, ChatMessage[]>>(() => {
     const saved = localStorage.getItem('sc_chats');
-    return saved ? JSON.parse(saved) : DEFAULT_CHATS;
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (!parsed['tutor-adewale-math']) {
+          return parsed;
+        }
+      } catch {}
+    }
+    return {};
   });
 
-  // Persistence effects
+  // Calculate Rank based on XP
+  const calculateRank = (xp: number): StudentRank => {
+    if (xp >= 15000) return 'Senior Boy';
+    if (xp >= 7500) return 'Prefect';
+    if (xp >= 2500) return 'Scholar';
+    return 'Fresher';
+  };
+
+  // Local storage persistence fallbacks
   useEffect(() => {
     localStorage.setItem('sc_student', JSON.stringify(student));
   }, [student]);
@@ -206,54 +260,208 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.setItem('sc_chats', JSON.stringify(chatMessages));
   }, [chatMessages]);
 
-  // Calculate Rank based on XP
-  const calculateRank = (xp: number): StudentRank => {
-    if (xp >= 15000) return 'Senior Boy';
-    if (xp >= 7500) return 'Prefect';
-    if (xp >= 2500) return 'Scholar';
-    return 'Fresher';
-  };
+  // Auth Listener
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      setCurrentUser(user);
+      setAuthLoading(false);
+      setIsFirebaseConnected(!!user);
 
-  const addStudentXP = (amount: number, reason?: string) => {
-    setStudent(prev => {
-      const newXP = prev.xp + amount;
-      const newRank = calculateRank(newXP);
-      return {
-        ...prev,
-        xp: newXP,
-        rank: newRank
-      };
+      if (user) {
+        // Sync student profile from Firestore
+        const studentDocRef = doc(db, 'students', user.uid);
+        const path = `students/${user.uid}`;
+
+        const unsubDoc = onSnapshot(
+          studentDocRef,
+          (docSnap) => {
+            if (docSnap.exists()) {
+              const data = docSnap.data() as StudentProfile;
+              setStudent(data);
+            } else {
+              // Seed new user profile in Firestore
+              const newProfile: StudentProfile = {
+                id: user.uid,
+                name: user.displayName || 'Registered Student',
+                school: '',
+                classLevel: 'SS 2',
+                stream: 'Science',
+                xp: 0,
+                rank: 'Fresher',
+                streakDays: 1,
+                lastStudyDate: new Date().toISOString().split('T')[0],
+                uniformVerified: false,
+                uniformPhotoUrl: user.photoURL || null,
+                downloadedSubjectIds: [],
+                completedQuizIds: []
+              };
+              setDoc(studentDocRef, newProfile).catch((err) => {
+                handleFirestoreError(err, OperationType.CREATE, path);
+              });
+              setStudent(newProfile);
+            }
+          },
+          (error) => {
+            handleFirestoreError(error, OperationType.GET, path);
+          }
+        );
+
+        // Sync exam results subcollection
+        const examResultsColRef = collection(db, 'students', user.uid, 'examResults');
+        const examPath = `students/${user.uid}/examResults`;
+        const unsubExams = onSnapshot(
+          examResultsColRef,
+          (snapshot) => {
+            const results: CBTExamResult[] = [];
+            snapshot.forEach((docItem) => {
+              results.push(docItem.data() as CBTExamResult);
+            });
+            if (results.length > 0) {
+              setExamResults(results);
+            }
+          },
+          (error) => {
+            handleFirestoreError(error, OperationType.LIST, examPath);
+          }
+        );
+
+        // Sync parent wallet
+        const walletDocRef = doc(db, 'wallets', user.uid);
+        const walletPath = `wallets/${user.uid}`;
+        const unsubWallet = onSnapshot(
+          walletDocRef,
+          (snap) => {
+            if (snap.exists()) {
+              const data = snap.data() as ParentWallet;
+              setParentWallet(prev => ({ ...prev, ...data }));
+            } else {
+              setDoc(walletDocRef, {
+                userId: user.uid,
+                balanceNaira: 35000,
+                pin: '1234',
+                updatedAt: new Date().toISOString()
+              }).catch((err) => {
+                handleFirestoreError(err, OperationType.CREATE, walletPath);
+              });
+            }
+          },
+          (error) => {
+            handleFirestoreError(error, OperationType.GET, walletPath);
+          }
+        );
+
+        return () => {
+          unsubDoc();
+          unsubExams();
+          unsubWallet();
+        };
+      }
     });
-    // Trigger celebratory particle burst
+
+    return () => unsubscribe();
+  }, []);
+
+  const loginWithGoogle = async () => {
     try {
-      confetti({
-        particleCount: 45,
-        spread: 60,
-        origin: { y: 0.7 }
-      });
-    } catch {
-      // safe fallback
+      await signInWithGoogle();
+      confetti({ particleCount: 50, spread: 60, origin: { y: 0.6 } });
+    } catch (error) {
+      console.error('Failed to sign in with Google:', error);
     }
   };
 
+  const logoutUser = async () => {
+    try {
+      await logOut();
+      setCurrentUser(null);
+      setIsFirebaseConnected(false);
+    } catch (error) {
+      console.error('Failed to sign out:', error);
+    }
+  };
+
+  const addStudentXP = (amount: number, reason?: string) => {
+    setTimeout(() => {
+      setStudent(prev => {
+        const newXP = prev.xp + amount;
+        const newRank = calculateRank(newXP);
+        const updated = {
+          ...prev,
+          xp: newXP,
+          rank: newRank
+        };
+
+        if (currentUser && !isOffline) {
+          const docRef = doc(db, 'students', currentUser.uid);
+          const path = `students/${currentUser.uid}`;
+          updateDoc(docRef, {
+            xp: newXP,
+            rank: newRank,
+            streakDays: prev.streakDays,
+            lastStudyDate: new Date().toISOString().split('T')[0]
+          }).catch(err => {
+            handleFirestoreError(err, OperationType.UPDATE, path);
+          });
+        }
+
+        return updated;
+      });
+
+      try {
+        confetti({
+          particleCount: 45,
+          spread: 60,
+          origin: { y: 0.7 }
+        });
+      } catch {}
+    }, 0);
+  };
+
   const updateStudentClass = (classLevel: any, stream: any) => {
-    setStudent(prev => ({
-      ...prev,
-      classLevel,
-      stream
-    }));
+    setStudent(prev => {
+      const updated = {
+        ...prev,
+        classLevel,
+        stream
+      };
+
+      if (currentUser && !isOffline) {
+        const docRef = doc(db, 'students', currentUser.uid);
+        const path = `students/${currentUser.uid}`;
+        updateDoc(docRef, { classLevel, stream }).catch(err => {
+          handleFirestoreError(err, OperationType.UPDATE, path);
+        });
+      }
+
+      return updated;
+    });
   };
 
   const verifySchoolUniform = (photoUrl: string) => {
     setStudent(prev => {
       const updatedXP = prev.xp + (prev.uniformVerified ? 0 : 500);
-      return {
+      const updated = {
         ...prev,
         uniformVerified: true,
         uniformPhotoUrl: photoUrl,
         xp: updatedXP,
         rank: calculateRank(updatedXP)
       };
+
+      if (currentUser && !isOffline) {
+        const docRef = doc(db, 'students', currentUser.uid);
+        const path = `students/${currentUser.uid}`;
+        updateDoc(docRef, {
+          uniformVerified: true,
+          uniformPhotoUrl: photoUrl,
+          xp: updatedXP,
+          rank: calculateRank(updatedXP)
+        }).catch(err => {
+          handleFirestoreError(err, OperationType.UPDATE, path);
+        });
+      }
+
+      return updated;
     });
 
     try {
@@ -268,13 +476,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const toggleDownloadNote = (topicId: string) => {
     setStudent(prev => {
       const isDownloaded = prev.downloadedSubjectIds.includes(topicId);
-      const updated = isDownloaded
+      const updatedList = isDownloaded
         ? prev.downloadedSubjectIds.filter(id => id !== topicId)
         : [...prev.downloadedSubjectIds, topicId];
-      return {
+      const updated = {
         ...prev,
-        downloadedSubjectIds: updated
+        downloadedSubjectIds: updatedList
       };
+
+      if (currentUser && !isOffline) {
+        const docRef = doc(db, 'students', currentUser.uid);
+        const path = `students/${currentUser.uid}`;
+        updateDoc(docRef, { downloadedSubjectIds: updatedList }).catch(err => {
+          handleFirestoreError(err, OperationType.UPDATE, path);
+        });
+      }
+
+      return updated;
     });
   };
 
@@ -297,6 +515,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const saveExamResult = (result: CBTExamResult) => {
     setExamResults(prev => [result, ...prev]);
     addStudentXP(result.xpAwarded);
+
+    if (currentUser && !isOffline) {
+      const resultDocRef = doc(db, 'students', currentUser.uid, 'examResults', result.id);
+      const path = `students/${currentUser.uid}/examResults/${result.id}`;
+      setDoc(resultDocRef, {
+        id: result.id,
+        studentId: currentUser.uid,
+        examId: result.examId,
+        examTitle: result.examTitle,
+        subject: result.subject,
+        score: result.score,
+        totalQuestions: result.totalQuestions,
+        percentage: result.percentage,
+        timeSpentSeconds: result.timeSpentSeconds,
+        xpAwarded: result.xpAwarded,
+        date: result.date
+      }).catch(err => {
+        handleFirestoreError(err, OperationType.CREATE, path);
+      });
+    }
   };
 
   // Parent PIN & Wallet
@@ -323,11 +561,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       reference: `PSTK_${Math.floor(Math.random() * 900000 + 100000)}`
     };
 
-    setParentWallet(prev => ({
-      ...prev,
-      balanceNaira: prev.balanceNaira + amountNaira,
-      transactions: [newTx, ...prev.transactions]
-    }));
+    setParentWallet(prev => {
+      const updatedBalance = prev.balanceNaira + amountNaira;
+      const updated = {
+        ...prev,
+        balanceNaira: updatedBalance,
+        transactions: [newTx, ...prev.transactions]
+      };
+
+      if (currentUser && !isOffline) {
+        const walletDocRef = doc(db, 'wallets', currentUser.uid);
+        const path = `wallets/${currentUser.uid}`;
+        updateDoc(walletDocRef, {
+          balanceNaira: updatedBalance,
+          updatedAt: new Date().toISOString()
+        }).catch(err => {
+          handleFirestoreError(err, OperationType.UPDATE, path);
+        });
+      }
+
+      return updated;
+    });
 
     try {
       confetti({
@@ -346,7 +600,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return false; // Insufficient funds
     }
 
-    // Debit wallet in escrow
     const debitTx: any = {
       id: `tx-escrow-${Date.now().toString().slice(-6)}`,
       type: 'debit',
@@ -357,11 +610,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       reference: `ESCROW_${bookingId}`
     };
 
-    setParentWallet(prev => ({
-      ...prev,
-      balanceNaira: prev.balanceNaira - targetBooking.amountNaira,
-      transactions: [debitTx, ...prev.transactions]
-    }));
+    setParentWallet(prev => {
+      const updatedBalance = prev.balanceNaira - targetBooking.amountNaira;
+      const updated = {
+        ...prev,
+        balanceNaira: updatedBalance,
+        transactions: [debitTx, ...prev.transactions]
+      };
+
+      if (currentUser && !isOffline) {
+        const walletDocRef = doc(db, 'wallets', currentUser.uid);
+        const path = `wallets/${currentUser.uid}`;
+        updateDoc(walletDocRef, {
+          balanceNaira: updatedBalance,
+          updatedAt: new Date().toISOString()
+        }).catch(err => {
+          handleFirestoreError(err, OperationType.UPDATE, path);
+        });
+      }
+
+      return updated;
+    });
 
     setTutorBookings(prev =>
       prev.map(b =>
@@ -405,21 +674,48 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const createTutorBooking = (
     params: Omit<TutorBooking, 'id' | 'createdAt' | 'status' | 'isParentApproved'>
   ): TutorBooking => {
+    const bookingId = `book-${Date.now().toString().slice(-6)}`;
     const newBooking: TutorBooking = {
       ...params,
-      id: `book-${Date.now().toString().slice(-6)}`,
+      id: bookingId,
       createdAt: new Date().toISOString(),
       status: params.bookingType === 'physical' ? 'pending_parent' : 'confirmed',
       isParentApproved: params.bookingType === 'online'
     };
 
     setTutorBookings(prev => [newBooking, ...prev]);
+
+    if (currentUser && !isOffline) {
+      const bookingDocRef = doc(db, 'tutorBookings', bookingId);
+      const path = `tutorBookings/${bookingId}`;
+      setDoc(bookingDocRef, {
+        id: bookingId,
+        tutorId: newBooking.tutorId,
+        tutorName: newBooking.tutorName,
+        tutorPhoto: newBooking.tutorPhoto,
+        studentId: currentUser.uid,
+        studentName: newBooking.studentName,
+        subject: newBooking.subject,
+        topic: newBooking.topic,
+        bookingType: newBooking.bookingType,
+        date: newBooking.date,
+        timeSlot: newBooking.timeSlot,
+        status: newBooking.status,
+        amountNaira: newBooking.amountNaira,
+        isParentApproved: newBooking.isParentApproved,
+        createdAt: newBooking.createdAt
+      }).catch(err => {
+        handleFirestoreError(err, OperationType.CREATE, path);
+      });
+    }
+
     return newBooking;
   };
 
   const sendChatMessage = (tutorId: string, text: string, sender: 'student' | 'tutor') => {
+    const msgId = `msg-${Date.now()}`;
     const newMsg: ChatMessage = {
-      id: `msg-${Date.now()}`,
+      id: msgId,
       sender,
       text,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -429,19 +725,130 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ...prev,
       [tutorId]: [...(prev[tutorId] || []), newMsg]
     }));
+
+    if (currentUser && !isOffline) {
+      const chatId = `chat_${currentUser.uid}_${tutorId}`;
+      const msgDocRef = doc(db, 'chats', chatId, 'messages', msgId);
+      const path = `chats/${chatId}/messages/${msgId}`;
+      setDoc(msgDocRef, {
+        id: msgId,
+        senderId: currentUser.uid,
+        sender,
+        text,
+        timestamp: newMsg.timestamp
+      }).catch(err => {
+        handleFirestoreError(err, OperationType.CREATE, path);
+      });
+    }
+  };
+
+  // Progressive Verification State
+  const [verifiedAddress, setVerifiedAddress] = useState<VerifiedAddress | null>(() => {
+    const saved = localStorage.getItem('sc_verified_address');
+    return saved ? JSON.parse(saved) : null;
+  });
+
+  const [tutorVerification, setTutorVerification] = useState<TutorVerificationDetails | null>(() => {
+    const saved = localStorage.getItem('sc_tutor_verification');
+    return saved ? JSON.parse(saved) : null;
+  });
+
+  const saveVerifiedAddress = (addr: VerifiedAddress) => {
+    setVerifiedAddress(addr);
+    localStorage.setItem('sc_verified_address', JSON.stringify(addr));
+  };
+
+  const saveTutorVerification = (data: TutorVerificationDetails) => {
+    setTutorVerification(data);
+    localStorage.setItem('sc_tutor_verification', JSON.stringify(data));
+  };
+
+  const registerNewUser = (role: UserRole, profileData: any) => {
+    const newId = `usr_${role}_${Date.now()}`;
+    const fullName = profileData.fullName || profileData.name || 'User';
+    const email = profileData.email || '';
+
+    const newProfile: RegisteredUserProfile = {
+      id: newId,
+      role,
+      fullName,
+      email,
+      createdAt: new Date().toISOString()
+    };
+
+    setCurrentRole(role);
+
+    if (role === 'student') {
+      const freshStudent: StudentProfile = {
+        id: newId,
+        name: fullName,
+        school: profileData.schoolName || profileData.school || "Secondary School",
+        classLevel: profileData.classLevel || 'SS 2',
+        stream: profileData.stream || 'Science',
+        xp: 0,
+        rank: 'Fresher',
+        streakDays: 1,
+        lastStudyDate: new Date().toISOString().split('T')[0],
+        uniformVerified: false,
+        uniformPhotoUrl: null,
+        downloadedSubjectIds: [],
+        completedQuizIds: []
+      };
+      newProfile.studentData = freshStudent;
+      setStudent(freshStudent);
+      localStorage.setItem('sc_student', JSON.stringify(freshStudent));
+    } else if (role === 'parent') {
+      newProfile.parentData = {
+        phone: profileData.phone || '',
+        wardName: profileData.wardName || '',
+        pin: profileData.pin || ''
+      };
+      const freshWallet: ParentWallet = {
+        balanceNaira: 0,
+        pin: profileData.pin || '',
+        transactions: []
+      };
+      setParentWallet(freshWallet);
+      localStorage.setItem('sc_wallet', JSON.stringify(freshWallet));
+    } else if (role === 'tutor') {
+      newProfile.tutorData = {
+        subjectSpecialization: profileData.subjectSpecialization || 'General Subjects',
+        qualification: profileData.qualification || '',
+        hourlyRate: Number(profileData.hourlyRate) || 3000,
+        teachingMode: profileData.teachingMode || 'both'
+      };
+    } else if (role === 'admin') {
+      newProfile.adminData = {
+        schoolName: profileData.schoolName || 'Secondary School',
+        schoolType: profileData.schoolType || 'College'
+      };
+    }
+
+    setCurrentUserProfile(newProfile);
+    localStorage.setItem('sc_user_profile', JSON.stringify(newProfile));
+    setTargetSignUpRole(null);
+    setCurrentScreen('app');
+  };
+
+  const signOutApp = () => {
+    setCurrentUserProfile(null);
+    localStorage.removeItem('sc_user_profile');
+    localStorage.removeItem('sc_student');
+    localStorage.removeItem('sc_wallet');
+    localStorage.removeItem('sc_bookings');
+    localStorage.removeItem('sc_chats');
+    setStudent(INITIAL_EMPTY_STUDENT);
+    setParentWallet(INITIAL_EMPTY_WALLET);
+    setTutorBookings([]);
+    setChatMessages({});
+    setExamResults([]);
+    setIsParentPinUnlocked(false);
+    setTargetSignUpRole(null);
+    setCurrentScreen('landing');
   };
 
   const resetDemoData = () => {
-    setStudent(DEFAULT_STUDENT);
-    setParentWallet(DEFAULT_WALLET);
-    setTutorBookings(DEFAULT_BOOKINGS);
-    setChatMessages(DEFAULT_CHATS);
-    setExamResults([]);
-    setIsParentPinUnlocked(false);
-    setActiveStudentTab('dashboard');
-    setActiveReadingNote(null);
-    setActiveExam(null);
-    localStorage.clear();
+    signOutApp();
   };
 
   return (
@@ -449,10 +856,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       value={{
         currentRole,
         setCurrentRole,
+        targetSignUpRole,
+        setTargetSignUpRole,
         isDeviceFrame,
         setIsDeviceFrame,
         isOffline,
         setIsOffline,
+        isLandingView,
+        setIsLandingView,
+        currentScreen,
+        setCurrentScreen,
+        currentUserProfile,
+        isAuthenticated,
+        verifiedAddress,
+        saveVerifiedAddress,
+        tutorVerification,
+        saveTutorVerification,
+        registerNewUser,
+        signOutApp,
+        currentUser,
+        authLoading,
+        loginWithGoogle,
+        logoutUser,
+        isFirebaseConnected,
         activeStudentTab,
         setActiveStudentTab,
         activeReadingNote,

@@ -97,6 +97,8 @@ export interface Tutor {
   avatarUrl: string;
   bio: string;
   availableDays: string[];
+  lat: number;
+  lng: number;
 }
 
 export type BookingType = 'online' | 'physical';
@@ -161,4 +163,46 @@ export interface ChatMessage {
   sender: 'student' | 'tutor';
   text: string;
   timestamp: string;
+}
+
+export interface VerifiedAddress {
+  street: string;
+  lga: string;
+  state: string;
+  landmark: string;
+  phone: string;
+}
+
+export interface TutorVerificationDetails {
+  nin: string;
+  bankName: string;
+  accountNumber: string;
+  accountName: string;
+  isVerified: boolean;
+}
+
+export interface RegisteredUserProfile {
+  id: string;
+  role: UserRole;
+  fullName: string;
+  email: string;
+  createdAt: string;
+  studentData?: StudentProfile;
+  parentData?: {
+    phone: string;
+    wardName: string;
+    pin: string;
+    address?: VerifiedAddress;
+  };
+  tutorData?: {
+    subjectSpecialization: string;
+    qualification: string;
+    hourlyRate: number;
+    teachingMode: 'both' | 'online' | 'physical';
+    verification?: TutorVerificationDetails;
+  };
+  adminData?: {
+    schoolName: string;
+    schoolType: string;
+  };
 }
