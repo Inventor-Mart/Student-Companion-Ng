@@ -27,6 +27,7 @@ type ContentBlock =
   | { type: 'callout'; text: string }
   | { type: 'list'; items: string[] }
   | { type: 'formula'; text: string }
+  | { type: 'code'; text: string }
   | { type: 'paragraph'; text: string };
 
 // Helper to sanitize LaTeX mathematical symbols and clean notation
@@ -172,9 +173,31 @@ const parseMarkdownBlocks = (rawMarkdown: string): ContentBlock[] => {
   // Division equation pattern: 25 ÷ 2 = 12 R 1 or $$25 \div 2 = 12 \text{ R } 1$$
   const divisionRegex = /(\d+)\s*(?:\\div|÷|\/)\s*(\d+)\s*=\s*(\d+)\s*(?:\\text\{\s*R\s*\}|R|Remainder)\s*(\d+)/i;
 
+  let inCodeBlock = false;
+  let currentCodeLines: string[] = [];
+
   for (let i = 0; i < lines.length; i++) {
     const rawLine = lines[i];
     const trimmed = rawLine.trim();
+
+    // Check code fence (e.g. ```)
+    if (trimmed.startsWith('```')) {
+      if (inCodeBlock) {
+        inCodeBlock = false;
+        blocks.push({ type: 'code', text: currentCodeLines.join('\n') });
+        currentCodeLines = [];
+        continue;
+      } else {
+        flushAll();
+        inCodeBlock = true;
+        continue;
+      }
+    }
+
+    if (inCodeBlock) {
+      currentCodeLines.push(rawLine);
+      continue;
+    }
 
     if (!trimmed) {
       flushAll();
@@ -550,6 +573,15 @@ export const LessonNoteReader: React.FC = () => {
               return (
                 <div key={idx} className="my-2 p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-center font-mono text-xs sm:text-sm text-emerald-300 font-semibold shadow-inner">
                   {renderFormattedSpan(block.text, `formula-${idx}`)}
+                </div>
+              );
+            }
+
+            // Preformatted Model Composition / Letter / Poetry Block
+            if (block.type === 'code') {
+              return (
+                <div key={idx} className="my-3 p-4 rounded-xl bg-slate-900/95 border border-amber-500/30 border-l-4 border-l-amber-500 font-mono text-xs sm:text-[13px] text-amber-100 whitespace-pre-wrap leading-relaxed overflow-x-auto shadow-md">
+                  {block.text}
                 </div>
               );
             }

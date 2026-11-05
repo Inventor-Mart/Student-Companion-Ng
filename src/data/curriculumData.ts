@@ -4,6 +4,36 @@ import { JSS1_REMAINING_SUBJECTS_TOPICS } from './jss1RemainingSubjectsData';
 import { JSS2_SECOND_TERM_TOPICS } from './jss2SecondTermData';
 import { JSS2_REMAINING_SUBJECTS_TOPICS } from './jss2RemainingSubjectsData';
 import { JSS3_ENGLISH_TOPICS } from './jss3EnglishData';
+import { JSS3_MATH_TOPICS } from './jss3MathData';
+import { JSS3_BASIC_SCIENCE_TOPICS } from './jss3BasicScienceData';
+import { JSS3_BASIC_TECH_TOPICS } from './jss3BasicTechData';
+import { JSS3_COMPUTER_STUDIES_TOPICS } from './jss3ComputerStudiesData';
+import { JSS3_AGRIC_SCIENCE_TOPICS } from './jss3AgricScienceData';
+import { JSS3_LITERATURE_TOPICS } from './jss3LiteratureData';
+import { JSS3_CIVIC_TOPICS } from './jss3CivicData';
+import { JSS3_SOCIAL_STUDIES_TOPICS } from './jss3SocialStudiesData';
+import { JSS3_CRS_TOPICS } from './jss3CRSData';
+import { JSS3_HISTORY_TOPICS } from './jss3HistoryData';
+import { JSS3_BUSINESS_STUDIES_TOPICS } from './jss3BusinessStudiesData';
+import { JSS3_HOME_ECONOMICS_TOPICS } from './jss3HomeEconomicsData';
+import { JSS3_CCA_TOPICS } from './jss3CCAData';
+import { JSS3_PHE_TOPICS } from './jss3PHEData';
+export { JSS1_ENGLISH_TOPICS } from './jss1EnglishData';
+export { JSS2_ENGLISH_TOPICS } from './jss2EnglishData';
+export { JSS3_MATH_TOPICS } from './jss3MathData';
+export { JSS3_BASIC_SCIENCE_TOPICS } from './jss3BasicScienceData';
+export { JSS3_BASIC_TECH_TOPICS } from './jss3BasicTechData';
+export { JSS3_COMPUTER_STUDIES_TOPICS } from './jss3ComputerStudiesData';
+export { JSS3_AGRIC_SCIENCE_TOPICS } from './jss3AgricScienceData';
+export { JSS3_LITERATURE_TOPICS } from './jss3LiteratureData';
+export { JSS3_CIVIC_TOPICS } from './jss3CivicData';
+export { JSS3_SOCIAL_STUDIES_TOPICS } from './jss3SocialStudiesData';
+export { JSS3_CRS_TOPICS } from './jss3CRSData';
+export { JSS3_HISTORY_TOPICS } from './jss3HistoryData';
+export { JSS3_BUSINESS_STUDIES_TOPICS } from './jss3BusinessStudiesData';
+export { JSS3_HOME_ECONOMICS_TOPICS } from './jss3HomeEconomicsData';
+export { JSS3_CCA_TOPICS } from './jss3CCAData';
+export { JSS3_PHE_TOPICS } from './jss3PHEData';
 
 export const OFFICIAL_SUBJECTS_BY_CLASS = {
   'JSS 1': [
@@ -143,6 +173,20 @@ export const NIGERIAN_CURRICULUM_TOPICS: CurriculumTopic[] = [
   ...JSS2_SECOND_TERM_TOPICS,
   ...JSS2_REMAINING_SUBJECTS_TOPICS,
   ...JSS3_ENGLISH_TOPICS,
+  ...JSS3_MATH_TOPICS,
+  ...JSS3_BASIC_SCIENCE_TOPICS,
+  ...JSS3_BASIC_TECH_TOPICS,
+  ...JSS3_COMPUTER_STUDIES_TOPICS,
+  ...JSS3_AGRIC_SCIENCE_TOPICS,
+  ...JSS3_LITERATURE_TOPICS,
+  ...JSS3_CIVIC_TOPICS,
+  ...JSS3_SOCIAL_STUDIES_TOPICS,
+  ...JSS3_CRS_TOPICS,
+  ...JSS3_HISTORY_TOPICS,
+  ...JSS3_BUSINESS_STUDIES_TOPICS,
+  ...JSS3_HOME_ECONOMICS_TOPICS,
+  ...JSS3_CCA_TOPICS,
+  ...JSS3_PHE_TOPICS,
   // ==========================================
   // JSS 1 SUBJECTS (15 SUBJECTS)
   // ==========================================
