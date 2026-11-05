@@ -86,7 +86,7 @@ export const CBT_EXAMS_DATABASE: CBTExam[] = [
     examType: 'WAEC',
     title: 'WAEC WASSCE Physics Core Drill',
     subject: 'Physics',
-    classLevel: 'SS 2',
+    classLevel: 'SS 3',
     durationMinutes: 8,
     year: 2024,
     xpReward: 300,
@@ -363,7 +363,7 @@ export const CBT_EXAMS_DATABASE: CBTExam[] = [
     examType: 'WAEC',
     title: 'WAEC Agricultural Science: Soil & Animal Husbandry',
     subject: 'Agricultural Science',
-    classLevel: 'SS 2',
+    classLevel: 'SS 3',
     durationMinutes: 8,
     year: 2025,
     xpReward: 300,
@@ -624,7 +624,7 @@ export const CBT_EXAMS_DATABASE: CBTExam[] = [
   // --- 10. BECE JUNIOR MATHEMATICS ---
   {
     id: 'bece-math-junior-2024',
-    examType: 'NECO',
+    examType: 'BECE',
     title: 'BECE Junior Secondary Mathematics Drill',
     subject: 'Mathematics',
     classLevel: 'JSS 3',
@@ -670,6 +670,271 @@ export const CBT_EXAMS_DATABASE: CBTExam[] = [
         correctOptionIndex: 1,
         explanation: 'Simple Interest = (Principal * Rate * Time) / 100 = (50,000 * 8 * 3) / 100 = 1,200,000 / 100 = ₦12,000.',
         topicRef: 'Commercial Arithmetic'
+      }
+    ]
+  },
+
+  // --- 11. BECE JUNIOR ENGLISH LANGUAGE ---
+  {
+    id: 'bece-english-junior-2025',
+    examType: 'BECE',
+    title: 'BECE Junior English Language & Concord Drill',
+    subject: 'English Language',
+    classLevel: 'JSS 3',
+    durationMinutes: 6,
+    year: 2025,
+    xpReward: 250,
+    questions: [
+      {
+        id: 1,
+        question: 'Choose the option that correctly completes the sentence: "Neither the teacher nor the students ______ in the classroom."',
+        options: [
+          'is',
+          'are',
+          'was',
+          'has been'
+        ],
+        correctOptionIndex: 1,
+        explanation: 'Under the rule of proximity in grammatical concord, when subjects are joined by "neither... nor", the verb agrees with the closer subject ("students", which is plural, hence "are").',
+        topicRef: 'Grammatical Concord'
+      },
+      {
+        id: 2,
+        question: 'Identify the figure of speech in the phrase: "The wind whispered secrets through the open window."',
+        options: [
+          'Simile',
+          'Metaphor',
+          'Personification',
+          'Hyperbole'
+        ],
+        correctOptionIndex: 2,
+        explanation: 'Personification attributes human qualities (whispering secrets) to non-human entities (the wind).',
+        topicRef: 'Figures of Speech'
+      },
+      {
+        id: 3,
+        question: 'What is the passive voice form of: "The principal addressed the assembly"?',
+        options: [
+          'The assembly was addressed by the principal',
+          'The assembly had been addressed by the principal',
+          'The assembly is being addressed by the principal',
+          'The principal has addressed the assembly'
+        ],
+        correctOptionIndex: 0,
+        explanation: 'Past simple active voice ("addressed") transforms to past simple passive ("was addressed").',
+        topicRef: 'Active & Passive Voice'
+      }
+    ]
+  },
+
+  // --- 12. JSS 1 CONTINUOUS ASSESSMENT DRILL ---
+  {
+    id: 'jss1-math-basic-science-2025',
+    examType: 'TERM_MOCK',
+    title: 'JSS 1 Continuous Assessment: Foundations Drill',
+    subject: 'Mathematics',
+    classLevel: 'JSS 1',
+    durationMinutes: 6,
+    year: 2025,
+    xpReward: 200,
+    questions: [
+      {
+        id: 1,
+        question: 'What is the Lowest Common Multiple (LCM) of 12, 18, and 24?',
+        options: [
+          '36',
+          '48',
+          '72',
+          '96'
+        ],
+        correctOptionIndex: 2,
+        explanation: 'Prime factorizations: 12 = 2² × 3, 18 = 2 × 3², 24 = 2³ × 3. LCM = 2³ × 3² = 8 × 9 = 72.',
+        topicRef: 'Number & Numeration'
+      },
+      {
+        id: 2,
+        question: 'Express 0.375 as a common fraction in its simplest form.',
+        options: [
+          '3/8',
+          '3/4',
+          '7/16',
+          '5/12'
+        ],
+        correctOptionIndex: 0,
+        explanation: '0.375 = 375/1000. Dividing both numerator and denominator by 125 gives 3/8.',
+        topicRef: 'Fractions & Decimals'
+      },
+      {
+        id: 3,
+        question: 'Which of the following properties distinguishes living things from non-living things (MR NIGER D)?',
+        options: [
+          'Ability to grow and reproduce',
+          'Fixed geometric crystalline shape',
+          'Complete absence of cellular respiration',
+          'Zero response to environmental stimuli'
+        ],
+        correctOptionIndex: 0,
+        explanation: 'All living organisms exhibit nutrition, irritability, movement, excretion, respiration, and reproduction (MR NIGER D).',
+        topicRef: 'Basic Science & Biology'
+      }
+    ]
+  },
+
+  // --- 13. JSS 2 CONTINUOUS ASSESSMENT DRILL ---
+  {
+    id: 'jss2-algebra-integrated-science-2025',
+    examType: 'TERM_MOCK',
+    title: 'JSS 2 Termly Continuous Assessment Drill',
+    subject: 'Mathematics',
+    classLevel: 'JSS 2',
+    durationMinutes: 6,
+    year: 2025,
+    xpReward: 220,
+    questions: [
+      {
+        id: 1,
+        question: 'Expand and simplify the algebraic expression: (2a + 3)(a - 4)',
+        options: [
+          '2a² - 5a - 12',
+          '2a² + 5a - 12',
+          '2a² - 8a + 12',
+          '2a² - 12'
+        ],
+        correctOptionIndex: 0,
+        explanation: '(2a + 3)(a - 4) = 2a² - 8a + 3a - 12 = 2a² - 5a - 12.',
+        topicRef: 'Algebraic Expansion'
+      },
+      {
+        id: 2,
+        question: 'Calculate the area of a trapezium whose parallel sides are 14 cm and 10 cm, with a perpendicular height of 6 cm.',
+        options: [
+          '72 cm²',
+          '144 cm²',
+          '60 cm²',
+          '84 cm²'
+        ],
+        correctOptionIndex: 0,
+        explanation: 'Area of trapezium = 0.5 × (sum of parallel sides) × height = 0.5 × (14 + 10) × 6 = 0.5 × 24 × 6 = 72 cm².',
+        topicRef: 'Plane Mensuration'
+      },
+      {
+        id: 3,
+        question: 'Which process in the water cycle involves liquid water changing into water vapor due to heat from the sun?',
+        options: [
+          'Condensation',
+          'Evaporation',
+          'Precipitation',
+          'Transpiration'
+        ],
+        correctOptionIndex: 1,
+        explanation: 'Evaporation is the phase transition from liquid water to atmospheric vapor powered by solar thermal energy.',
+        topicRef: 'Environmental Science'
+      }
+    ]
+  },
+
+  // --- 14. SS 1 PROMOTIONAL CONTINUOUS ASSESSMENT DRILL ---
+  {
+    id: 'ss1-promotional-math-biology-2025',
+    examType: 'TERM_MOCK',
+    title: 'SS 1 Senior Continuous Assessment Drill',
+    subject: 'Mathematics',
+    classLevel: 'SS 1',
+    durationMinutes: 7,
+    year: 2025,
+    xpReward: 260,
+    questions: [
+      {
+        id: 1,
+        question: 'Solve the simultaneous linear equations: 2x + y = 7 and x - y = 2',
+        options: [
+          'x = 3, y = 1',
+          'x = 4, y = -1',
+          'x = 2, y = 3',
+          'x = 5, y = -3'
+        ],
+        correctOptionIndex: 0,
+        explanation: 'Adding the two equations: (2x + x) + (y - y) = 7 + 2 => 3x = 9 => x = 3. Substituting x = 3 into second equation: 3 - y = 2 => y = 1.',
+        topicRef: 'Simultaneous Equations'
+      },
+      {
+        id: 2,
+        question: 'In biological classification, which hierarchy represents the correct descending sequence from broadest to most specific?',
+        options: [
+          'Kingdom, Phylum, Class, Order, Family, Genus, Species',
+          'Kingdom, Class, Phylum, Order, Genus, Family, Species',
+          'Phylum, Kingdom, Order, Class, Family, Species, Genus',
+          'Kingdom, Phylum, Order, Class, Genus, Family, Species'
+        ],
+        correctOptionIndex: 0,
+        explanation: 'The Linnaean hierarchy: Kingdom, Phylum, Class, Order, Family, Genus, Species (mnemonic: King Philip Came Over For Good Soup).',
+        topicRef: 'Classification of Living Things'
+      },
+      {
+        id: 3,
+        question: 'If log₁₀ 2 = 0.3010 and log₁₀ 3 = 0.4771, calculate the value of log₁₀ 18 without using a calculator.',
+        options: [
+          '1.2552',
+          '0.7781',
+          '1.5562',
+          '0.9542'
+        ],
+        correctOptionIndex: 0,
+        explanation: '18 = 2 × 3² => log₁₀ 18 = log₁₀ 2 + 2 log₁₀ 3 = 0.3010 + 2(0.4771) = 0.3010 + 0.9542 = 1.2552.',
+        topicRef: 'Logarithms & Indices'
+      }
+    ]
+  },
+
+  // --- 15. SS 2 PROMOTIONAL ASSESSMENT DRILL ---
+  {
+    id: 'ss2-promotional-physics-chemistry-2025',
+    examType: 'TERM_MOCK',
+    title: 'SS 2 Senior Promotional Assessment Drill',
+    subject: 'Physics',
+    classLevel: 'SS 2',
+    durationMinutes: 8,
+    year: 2025,
+    xpReward: 280,
+    questions: [
+      {
+        id: 1,
+        question: 'A car travelling at 20 m/s accelerates uniformly at 2.5 m/s² for 8 seconds. What total distance does it cover during this acceleration period?',
+        options: [
+          '240 meters',
+          '160 meters',
+          '320 meters',
+          '200 meters'
+        ],
+        correctOptionIndex: 0,
+        explanation: 'Using s = ut + 0.5at²: s = (20 × 8) + 0.5(2.5)(8²) = 160 + 0.5(2.5)(64) = 160 + 80 = 240 m.',
+        topicRef: 'Kinematics & Motion'
+      },
+      {
+        id: 2,
+        question: 'According to Le Chatelier’s principle, what will happen to the equilibrium of an exothermic reaction (N₂ + 3H₂ ⇌ 2NH₃ + Heat) when temperature is increased?',
+        options: [
+          'Equilibrium shifts to the right (more NH₃ produced)',
+          'Equilibrium shifts to the left (more N₂ and H₂ formed)',
+          'No change occurs to product or reactant concentrations',
+          'The equilibrium constant K increases'
+        ],
+        correctOptionIndex: 1,
+        explanation: 'For an exothermic reaction, adding heat pushes the equilibrium in the endothermic reverse direction (to the left) to absorb the excess heat.',
+        topicRef: 'Chemical Equilibrium'
+      },
+      {
+        id: 3,
+        question: 'What is the IUPAC name for the organic compound with chemical structure CH₃-CH(OH)-CH₂-CH₃?',
+        options: [
+          'Butan-2-ol',
+          'Butan-1-ol',
+          '2-methylpropan-2-ol',
+          'Butanoic acid'
+        ],
+        correctOptionIndex: 0,
+        explanation: 'A four-carbon saturated alkane chain with a hydroxyl (-OH) group on carbon 2 is designated Butan-2-ol.',
+        topicRef: 'Organic Chemistry & Alkanols'
       }
     ]
   }

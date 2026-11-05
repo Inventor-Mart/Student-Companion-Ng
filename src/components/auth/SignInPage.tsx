@@ -13,7 +13,7 @@ export const SignInPage: React.FC<SignInPageProps> = ({
   onSignInSuccess,
   onNavigateToSignUp
 }) => {
-  const { loginWithGoogle, authLoading, currentUser, currentUserProfile } = useApp();
+  const { loginWithGoogle, authLoading, currentUser, currentUserProfile, loginAsDeveloper } = useApp();
   const [emailOrUsername, setEmailOrUsername] = useState('');
   const [password, setPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -22,6 +22,8 @@ export const SignInPage: React.FC<SignInPageProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
+
+    const cleanInput = emailOrUsername.trim().toLowerCase();
 
     if (!emailOrUsername.trim()) {
       setErrorMsg('Please enter your email or username');
@@ -36,6 +38,14 @@ export const SignInPage: React.FC<SignInPageProps> = ({
     setIsSubmitting(true);
     setTimeout(() => {
       setIsSubmitting(false);
+
+      // If signing in with the developer email, verify and grant developer access
+      if (cleanInput === 'martorefe@gmail.com') {
+        loginAsDeveloper('martorefe@gmail.com');
+        onSignInSuccess();
+        return;
+      }
+
       if (currentUserProfile) {
         onSignInSuccess();
       } else if (onNavigateToSignUp) {
@@ -50,15 +60,10 @@ export const SignInPage: React.FC<SignInPageProps> = ({
     try {
       setErrorMsg(null);
       await loginWithGoogle();
-      if (currentUserProfile) {
-        onSignInSuccess();
-      } else if (onNavigateToSignUp) {
-        onNavigateToSignUp();
-      } else {
-        onSignInSuccess();
-      }
+      onSignInSuccess();
     } catch (err) {
       console.error('Google Sign In failed:', err);
+      setErrorMsg('Google sign in was cancelled or failed. Please try again.');
     }
   };
 
@@ -266,8 +271,9 @@ export const SignInPage: React.FC<SignInPageProps> = ({
             </button>
           </div>
 
+
           {/* Footer Text */}
-          <div className="mt-8 text-center text-sm font-normal text-slate-300">
+          <div className="mt-6 text-center text-sm font-normal text-slate-300">
             Don't have an account?{' '}
             <button
               onClick={() => {

@@ -85,11 +85,24 @@ export const TutorPortal: React.FC = () => {
       <div className="bg-slate-900 rounded-2xl p-4 border border-slate-800 space-y-3">
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-3">
-            <img
-              src={`https://api.dicebear.com/7.x/micah/svg?seed=${encodeURIComponent(tutorName)}&backgroundColor=047857`}
-              alt={tutorName}
-              className="w-12 h-12 rounded-2xl object-cover bg-slate-800 ring-2 ring-emerald-500/50"
-            />
+            {currentUserProfile?.avatarUrl ? (
+              <img
+                src={currentUserProfile.avatarUrl}
+                alt={tutorName}
+                className="w-12 h-12 rounded-2xl object-cover bg-slate-800 ring-2 ring-emerald-500/50"
+              />
+            ) : (
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-700 via-teal-800 to-slate-900 flex items-center justify-center text-white font-black text-sm ring-2 ring-emerald-500/50 shadow-inner">
+                {tutorName
+                  .trim()
+                  .split(/\s+/)
+                  .map(n => n[0])
+                  .filter(Boolean)
+                  .slice(0, 2)
+                  .join('')
+                  .toUpperCase() || 'ED'}
+              </div>
+            )}
             <div>
               <div className="flex items-center gap-1.5">
                 <h2 className="text-sm font-bold text-white leading-tight">{tutorName}</h2>

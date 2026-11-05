@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useApp } from '../../context/AppContext';
 import {
   Sparkles,
   Send,
@@ -19,36 +20,74 @@ interface AiStudyCoachProps {
   initialTopic?: string;
 }
 
-const QUICK_PROMPTS = [
+interface QuickPromptItem {
+  label: string;
+  prompt: string;
+  subject: string;
+  exam: string;
+  category: 'SS3' | 'JSS3' | 'JSS' | 'SS';
+}
+
+const ALL_QUICK_PROMPTS: QuickPromptItem[] = [
+  // SS 3 Exclusive Drills (JAMB / WAEC)
   {
     label: 'JAMB Physics: Projectile Motion',
     prompt: 'Give me a typical JAMB UTME question on projectile motion (maximum height and time of flight) and show the 30-second speed-solving trick.',
     subject: 'Physics',
-    exam: 'JAMB UTME'
+    exam: 'JAMB UTME',
+    category: 'SS3'
   },
   {
     label: 'WAEC Maths: Quadratic by Formula',
     prompt: 'Explain the quadratic formula step-by-step for 2x² - 5x - 3 = 0. Show what WAEC examiners award marks for in theory paper 2.',
     subject: 'Mathematics',
-    exam: 'WAEC WASSCE'
+    exam: 'WAEC WASSCE',
+    category: 'SS3'
   },
   {
     label: 'JAMB Chemistry: Gas Laws',
     prompt: 'Solve an ideal gas law question (PV = nRT) at STP with common distractor traps that JAMB sets in options A, B, C, D.',
     subject: 'Chemistry',
-    exam: 'JAMB UTME'
+    exam: 'JAMB UTME',
+    category: 'SS3'
   },
   {
     label: 'WAEC English: Summary Writing',
     prompt: 'What are the 5 golden rules for scoring maximum marks in WAEC English Language summary writing? Give a practical example.',
     subject: 'English Language',
-    exam: 'WAEC WASSCE'
+    exam: 'WAEC WASSCE',
+    category: 'SS3'
+  },
+  // JSS 3 BECE Drills
+  {
+    label: 'BECE Maths: Linear Equations',
+    prompt: 'Solve a typical BECE Junior WAEC linear equation problem step-by-step with clear working: 3(2x - 4) = 4x + 8.',
+    subject: 'Mathematics',
+    exam: 'BECE / Junior WAEC',
+    category: 'JSS3'
   },
   {
-    label: 'SS2 Biology: Photosynthesis Cycles',
-    prompt: 'Explain the light and dark reactions of photosynthesis in simple terms. Relate it to crops grown in Nigeria like cassava and maize.',
+    label: 'BECE English: Concord Rules',
+    prompt: 'Explain the rule of grammatical concord for compound subjects with either/or and neither/nor tested in BECE examinations.',
+    subject: 'English Language',
+    exam: 'BECE / Junior WAEC',
+    category: 'JSS3'
+  },
+  // Junior Continuous Assessment
+  {
+    label: 'JSS Basic Science: Living Cell',
+    prompt: 'Explain the characteristics of living organisms (MR NIGER D) and cellular respiration for Junior Secondary students.',
     subject: 'Biology',
-    exam: 'WAEC WASSCE'
+    exam: 'Continuous Assessment',
+    category: 'JSS'
+  },
+  // Senior Continuous Assessment (SS 1 / SS 2)
+  {
+    label: 'SS 2 Physics: Equations of Motion',
+    prompt: 'Derive the equations of uniformly accelerated linear motion (v = u + at, s = ut + 0.5at², v² = u² + 2as) with a worked sample problem.',
+    subject: 'Physics',
+    exam: 'Continuous Assessment',
+    category: 'SS'
   }
 ];
 
@@ -56,9 +95,16 @@ export const AiStudyCoach: React.FC<AiStudyCoachProps> = ({
   initialSubject = 'Mathematics',
   initialTopic
 }) => {
+  const { student } = useApp();
+  const isSS3 = student.classLevel === 'SS 3';
+  const isJSS3 = student.classLevel === 'JSS 3';
+  const isJunior = student.classLevel.startsWith('JSS');
+
+  const defaultExam = isSS3 ? 'WAEC WASSCE' : isJSS3 ? 'BECE / Junior WAEC' : 'Continuous Assessment';
+
   const [subject, setSubject] = useState<string>(initialSubject);
-  const [examType, setExamType] = useState<string>('WAEC WASSCE');
-  const [classLevel, setClassLevel] = useState<string>('Senior Secondary (SS 2)');
+  const [examType, setExamType] = useState<string>(defaultExam);
+  const [classLevel, setClassLevel] = useState<string>(student.classLevel || 'SS 3');
   const [userPrompt, setUserPrompt] = useState<string>(
     initialTopic ? `Please explain the NERDC curriculum topic "${initialTopic}" in ${initialSubject} with worked examples and exam tips.` : ''
   );
@@ -189,10 +235,28 @@ export const AiStudyCoach: React.FC<AiStudyCoachProps> = ({
               onChange={(e) => setExamType(e.target.value)}
               className="w-full bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-emerald-500"
             >
-              <option value="WAEC WASSCE">WAEC WASSCE (Step-by-step marks)</option>
-              <option value="JAMB UTME">JAMB UTME (40-sec shortcuts & traps)</option>
-              <option value="NECO SSCE">NECO SSCE (Theory & practicals)</option>
-              <option value="BECE / Junior WAEC">BECE / Junior WAEC (JSS3)</option>
+              {isSS3 ? (
+                <>
+                  <option value="WAEC WASSCE">WAEC WASSCE (Step-by-step marks)</option>
+                  <option value="JAMB UTME">JAMB UTME (40-sec shortcuts & traps)</option>
+                  <option value="NECO SSCE">NECO SSCE (Theory & practicals)</option>
+                </>
+              ) : isJSS3 ? (
+                <>
+                  <option value="BECE / Junior WAEC">BECE / Junior WAEC (JSS3)</option>
+                  <option value="Continuous Assessment">Junior Continuous Assessment</option>
+                </>
+              ) : isJunior ? (
+                <>
+                  <option value="Continuous Assessment">Termly Continuous Assessment</option>
+                  <option value="Junior Mock">Junior Foundation Mock</option>
+                </>
+              ) : (
+                <>
+                  <option value="Continuous Assessment">Termly Continuous Assessment</option>
+                  <option value="Senior Mock">Senior Promotional Mock</option>
+                </>
+              )}
             </select>
           </div>
 
@@ -205,10 +269,12 @@ export const AiStudyCoach: React.FC<AiStudyCoachProps> = ({
               onChange={(e) => setClassLevel(e.target.value)}
               className="w-full bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-emerald-500"
             >
-              <option value="SS 3 (Final Year)">SS 3 (Final Year Candidate)</option>
-              <option value="SS 2 (Senior)">SS 2 (Senior Secondary)</option>
-              <option value="SS 1 (Freshman)">SS 1 (Freshman Senior)</option>
-              <option value="JSS 3 (BECE)">JSS 3 (BECE Junior Secondary)</option>
+              <option value="SS 3">SS 3 (Final Year Candidate)</option>
+              <option value="SS 2">SS 2 (Senior Secondary)</option>
+              <option value="SS 1">SS 1 (Freshman Senior)</option>
+              <option value="JSS 3">JSS 3 (BECE Junior Secondary)</option>
+              <option value="JSS 2">JSS 2 (Junior Secondary)</option>
+              <option value="JSS 1">JSS 1 (Freshman Junior)</option>
             </select>
           </div>
         </div>
@@ -218,10 +284,21 @@ export const AiStudyCoach: React.FC<AiStudyCoachProps> = ({
       <div className="space-y-1.5">
         <div className="flex items-center gap-1.5 text-xs text-slate-400">
           <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
-          <span className="font-semibold text-slate-300">High-Yield Past Question Drills:</span>
+          <span className="font-semibold text-slate-300">
+            {isSS3
+              ? 'WAEC & JAMB High-Yield Past Question Drills:'
+              : isJSS3
+              ? 'BECE Junior WAEC Exam Drills:'
+              : 'Curriculum Continuous Assessment Drills:'}
+          </span>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          {QUICK_PROMPTS.map((qp, idx) => (
+          {(ALL_QUICK_PROMPTS.filter(qp => {
+            if (isSS3) return qp.category === 'SS3' || qp.category === 'SS';
+            if (isJSS3) return qp.category === 'JSS3' || qp.category === 'JSS';
+            if (isJunior) return qp.category === 'JSS';
+            return qp.category === 'SS';
+          })).map((qp, idx) => (
             <button
               key={idx}
               onClick={() => {

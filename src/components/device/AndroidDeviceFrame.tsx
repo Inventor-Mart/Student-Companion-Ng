@@ -2,9 +2,11 @@ import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Wifi, WifiOff, BatteryCharging, Signal, SlidersHorizontal } from 'lucide-react';
 import { InAppControlsDrawer } from './InAppControlsDrawer';
+import { DeveloperQuickBar } from '../admin/DeveloperQuickBar';
+import { HeaderClassSwitcher } from '../student/HeaderClassSwitcher';
 
 export const AndroidDeviceFrame: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { isDeviceFrame, isOffline, currentRole } = useApp();
+  const { isDeviceFrame, isOffline, currentRole, isSuperAdmin, switchRole } = useApp();
   const [isControlsOpen, setIsControlsOpen] = useState(false);
 
   const roleLabel = {
@@ -18,6 +20,9 @@ export const AndroidDeviceFrame: React.FC<{ children: React.ReactNode }> = ({ ch
     // 100% Full-Screen Responsive View - Fills the entire preview pane
     return (
       <main className="w-full h-screen min-h-screen bg-[#070D18] text-slate-100 flex flex-col relative overflow-hidden">
+        {/* Developer Quick-Switch Toolbar (shown when martorefe@gmail.com is signed in) */}
+        {isSuperAdmin && <DeveloperQuickBar onOpenDirectory={() => switchRole('admin')} />}
+
         {/* Full-Screen In-App Mobile Top Bar */}
         <header className="h-12 sm:h-13 w-full bg-[#0B1526]/95 backdrop-blur-md px-4 sm:px-6 flex items-center justify-between border-b border-[#1A2C49] shrink-0 z-30 select-none">
           <div className="flex items-center gap-2.5">
@@ -33,6 +38,7 @@ export const AndroidDeviceFrame: React.FC<{ children: React.ReactNode }> = ({ ch
           </div>
 
           <div className="flex items-center gap-2.5">
+            {currentRole === 'student' && <HeaderClassSwitcher />}
             {isOffline && (
               <span className="flex items-center gap-1.5 text-xs text-amber-400 bg-amber-950/60 border border-amber-800/60 px-2.5 py-1 rounded-full font-medium">
                 <WifiOff className="w-3.5 h-3.5" />
@@ -60,7 +66,14 @@ export const AndroidDeviceFrame: React.FC<{ children: React.ReactNode }> = ({ ch
 
   // Realistic Android Smartphone Container (Tall Modern Flagship 20:9 Ratio)
   return (
-    <main className="w-full min-h-screen bg-[#070D18] flex items-center justify-center p-2 sm:py-5 sm:px-4 overflow-y-auto">
+    <main className="w-full min-h-screen bg-[#070D18] flex flex-col items-center justify-center p-2 sm:py-5 sm:px-4 overflow-y-auto">
+      {/* Developer Quick-Switch Toolbar (shown when martorefe@gmail.com is signed in) */}
+      {isSuperAdmin && (
+        <div className="w-full max-w-4xl mb-2 rounded-xl overflow-hidden border border-slate-800 shadow-xl">
+          <DeveloperQuickBar onOpenDirectory={() => switchRole('admin')} />
+        </div>
+      )}
+
       {/* Outer Phone Shell - Modern Tall Flagship (20:9 ratio) */}
       <div className="relative w-full max-w-[414px] sm:max-w-[422px] h-[930px] sm:h-[950px] max-h-[97vh] bg-slate-900 rounded-[50px] p-2.5 sm:p-3 shadow-[0_25px_65px_-15px_rgba(0,0,0,0.85),0_0_0_2px_rgba(51,65,85,0.75)] flex flex-col border border-slate-700/60 transition-all duration-300 shrink-0">
         {/* Hardware details: Sleek flagship aluminum side buttons */}
@@ -110,15 +123,18 @@ export const AndroidDeviceFrame: React.FC<{ children: React.ReactNode }> = ({ ch
               </div>
             </div>
 
-            {/* In-App Menu Drawer Trigger */}
-            <button
-              onClick={() => setIsControlsOpen(true)}
-              className="flex items-center gap-1 px-2 py-1 rounded-lg bg-[#14233C] hover:bg-[#1D3254] active:scale-95 text-slate-200 hover:text-white border border-[#223B63] transition-all cursor-pointer text-[11px] font-semibold"
-              title="Open Role Switcher & Controls"
-            >
-              <SlidersHorizontal className="w-3.5 h-3.5 text-[#84E000]" />
-              <span>Menu</span>
-            </button>
+            <div className="flex items-center gap-1.5">
+              {currentRole === 'student' && <HeaderClassSwitcher />}
+              {/* In-App Menu Drawer Trigger */}
+              <button
+                onClick={() => setIsControlsOpen(true)}
+                className="flex items-center gap-1 px-2 py-1 rounded-lg bg-[#14233C] hover:bg-[#1D3254] active:scale-95 text-slate-200 hover:text-white border border-[#223B63] transition-all cursor-pointer text-[11px] font-semibold"
+                title="Open Role Switcher & Controls"
+              >
+                <SlidersHorizontal className="w-3.5 h-3.5 text-[#84E000]" />
+                <span>Menu</span>
+              </button>
+            </div>
           </div>
 
           {/* Screen Body */}

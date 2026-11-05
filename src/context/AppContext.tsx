@@ -6,7 +6,8 @@ import {
   collection,
   onSnapshot,
   setDoc,
-  updateDoc
+  updateDoc,
+  deleteDoc
 } from 'firebase/firestore';
 import {
   UserRole,
@@ -22,6 +23,7 @@ import {
   TutorVerificationDetails,
   RegisteredUserProfile
 } from '../types';
+import { INITIAL_USER_DIRECTORY } from '../data/mockUsersData';
 import {
   auth,
   db,
@@ -30,6 +32,15 @@ import {
   handleFirestoreError,
   OperationType
 } from '../lib/firebase';
+import {
+  safeSetItem,
+  safeGetItem,
+  safeRemoveItem,
+  cleanupBloatedStorage
+} from '../lib/storage';
+
+// Run cleanup immediately on load to recover quota from any oversized blobs
+cleanupBloatedStorage();
 
 interface AppContextType {
   // Navigation & Frame
@@ -55,6 +66,7 @@ interface AppContextType {
   saveTutorVerification: (data: TutorVerificationDetails) => void;
   registerNewUser: (role: UserRole, profileData: any) => void;
   signOutApp: () => void;
+  deleteAccount: (userId?: string) => Promise<void>;
 
   // Firebase Auth
   currentUser: User | null;
@@ -80,6 +92,7 @@ interface AppContextType {
   updateStudentClass: (classLevel: any, stream: any) => void;
   addStudentXP: (amount: number, reason?: string) => void;
   verifySchoolUniform: (photoUrl: string) => void;
+  updateStudentAvatar: (photoUrl: string) => void;
   toggleDownloadNote: (topicId: string) => void;
   examResults: CBTExamResult[];
   saveExamResult: (result: CBTExamResult) => void;
@@ -103,13 +116,23 @@ interface AppContextType {
 
   // Reset demo
   resetDemoData: () => void;
+
+  // Developer & Super Admin Capabilities
+  isSuperAdmin: boolean;
+  impersonatedUser: RegisteredUserProfile | null;
+  allRegisteredUsers: RegisteredUserProfile[];
+  startImpersonation: (user: RegisteredUserProfile) => void;
+  stopImpersonation: () => void;
+  updateUserRecord: (userId: string, updates: Partial<RegisteredUserProfile>) => Promise<void>;
+  switchRole: (role: UserRole) => void;
+  loginAsDeveloper: (email?: string) => void;
 }
 
 const INITIAL_EMPTY_STUDENT: StudentProfile = {
   id: '',
   name: '',
   school: '',
-  classLevel: 'SS 2',
+  classLevel: 'JSS 1',
   stream: 'Science',
   xp: 0,
   rank: 'Fresher',
@@ -127,15 +150,33 @@ const INITIAL_EMPTY_WALLET: ParentWallet = {
   transactions: []
 };
 
+export const SUPER_ADMIN_EMAIL = 'martorefe@gmail.com';
+export const isSuperAdminEmail = (email?: string | null) =>
+  email?.toLowerCase().trim() === SUPER_ADMIN_EMAIL;
+
+const PURGED_PATTERNS = ['tunde balogun', 'std-tunde-001'];
+
+const isPurgedRecord = (data: any) => {
+  if (!data) return false;
+  const email = (data.email || '').toLowerCase().trim();
+  if (email === SUPER_ADMIN_EMAIL) return false; // Developer / Super Admin is never purged
+  const str = `${data.fullName || ''} ${data.name || ''} ${data.id || ''}`.toLowerCase();
+  return PURGED_PATTERNS.some(p => str.includes(p));
+};
+
 const AppContext = createContext<AppContextType | null>(null);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Registered User & Auth State
   const [currentUserProfile, setCurrentUserProfile] = useState<RegisteredUserProfile | null>(() => {
-    const saved = localStorage.getItem('sc_user_profile');
+    const saved = safeGetItem('sc_user_profile');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
+        if (isPurgedRecord(parsed)) {
+          safeRemoveItem('sc_user_profile');
+          return null;
+        }
         if (parsed.id && !parsed.id.includes('tunde')) return parsed;
       } catch {}
     }
@@ -144,10 +185,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Navigation & Presentation (bound to registered role)
   const [currentRole, setCurrentRole] = useState<UserRole>(() => {
-    const saved = localStorage.getItem('sc_user_profile');
+    const saved = safeGetItem('sc_user_profile');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
+        if (isPurgedRecord(parsed)) {
+          safeRemoveItem('sc_user_profile');
+          return 'student';
+        }
         if (parsed.role) return parsed.role;
       } catch {}
     }
@@ -170,12 +215,39 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [authLoading, setAuthLoading] = useState<boolean>(true);
   const [isFirebaseConnected, setIsFirebaseConnected] = useState<boolean>(false);
 
-  // Student State (Pristine - no mock personas)
-  const [student, setStudent] = useState<StudentProfile>(() => {
-    const saved = localStorage.getItem('sc_student');
+  // User Directory State (for Super Admin & Inspection)
+  const [allRegisteredUsers, setAllRegisteredUsers] = useState<RegisteredUserProfile[]>(() => {
+    const saved = safeGetItem('sc_all_users');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch {}
+    }
+    return INITIAL_USER_DIRECTORY;
+  });
+
+  // User Impersonation State
+  const [impersonatedUser, setImpersonatedUser] = useState<RegisteredUserProfile | null>(null);
+
+  // Super Admin check
+  const isSuperAdmin = Boolean(
+    isSuperAdminEmail(currentUser?.email) ||
+    isSuperAdminEmail(currentUserProfile?.email) ||
+    currentUserProfile?.isSuperAdmin ||
+    currentUserProfile?.isDeveloper
+  );
+
+  // Student State (Pristine - no mock personas)
+  const [student, setStudent] = useState<StudentProfile>(() => {
+    const saved = safeGetItem('sc_student');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (isPurgedRecord(parsed)) {
+          safeRemoveItem('sc_student');
+          return INITIAL_EMPTY_STUDENT;
+        }
         if (parsed.name && parsed.name !== 'Tunde Balogun' && parsed.id !== 'std-tunde-001') {
           return parsed;
         }
@@ -185,13 +257,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
 
   const [examResults, setExamResults] = useState<CBTExamResult[]>(() => {
-    const saved = localStorage.getItem('sc_exam_results');
+    const saved = safeGetItem('sc_exam_results');
     return saved ? JSON.parse(saved) : [];
   });
 
   // Parent State (Pristine - 0 balance, no mock data)
   const [parentWallet, setParentWallet] = useState<ParentWallet>(() => {
-    const saved = localStorage.getItem('sc_wallet');
+    const saved = safeGetItem('sc_wallet');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
@@ -206,7 +278,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Tutor Bookings & Chats (Pristine - empty)
   const [tutorBookings, setTutorBookings] = useState<TutorBooking[]>(() => {
-    const saved = localStorage.getItem('sc_bookings');
+    const saved = safeGetItem('sc_bookings');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
@@ -219,7 +291,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
   const [activeTutorChatId, setActiveTutorChatId] = useState<string | null>(null);
   const [chatMessages, setChatMessages] = useState<Record<string, ChatMessage[]>>(() => {
-    const saved = localStorage.getItem('sc_chats');
+    const saved = safeGetItem('sc_chats');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
@@ -239,26 +311,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return 'Fresher';
   };
 
-  // Local storage persistence fallbacks
+  // Safe local storage persistence fallbacks
   useEffect(() => {
-    localStorage.setItem('sc_student', JSON.stringify(student));
+    safeSetItem('sc_student', JSON.stringify(student));
   }, [student]);
 
   useEffect(() => {
-    localStorage.setItem('sc_wallet', JSON.stringify(parentWallet));
+    safeSetItem('sc_wallet', JSON.stringify(parentWallet));
   }, [parentWallet]);
 
   useEffect(() => {
-    localStorage.setItem('sc_bookings', JSON.stringify(tutorBookings));
+    safeSetItem('sc_bookings', JSON.stringify(tutorBookings));
   }, [tutorBookings]);
 
   useEffect(() => {
-    localStorage.setItem('sc_exam_results', JSON.stringify(examResults));
+    safeSetItem('sc_exam_results', JSON.stringify(examResults));
   }, [examResults]);
 
   useEffect(() => {
-    localStorage.setItem('sc_chats', JSON.stringify(chatMessages));
+    safeSetItem('sc_chats', JSON.stringify(chatMessages));
   }, [chatMessages]);
+
+  useEffect(() => {
+    if (currentUserProfile) {
+      safeSetItem('sc_user_profile', JSON.stringify(currentUserProfile));
+    }
+  }, [currentUserProfile]);
 
   // Auth Listener
   useEffect(() => {
@@ -268,6 +346,40 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setIsFirebaseConnected(!!user);
 
       if (user) {
+        // Automatic Super Admin Promotion for martorefe@gmail.com
+        if (isSuperAdminEmail(user.email)) {
+          const adminDocRef = doc(db, 'admins', user.uid);
+          setDoc(
+            adminDocRef,
+            {
+              email: SUPER_ADMIN_EMAIL,
+              role: 'superadmin',
+              updatedAt: new Date().toISOString()
+            },
+            { merge: true }
+          ).catch(() => {});
+
+          const superProfile: RegisteredUserProfile = {
+            id: user.uid,
+            role: 'admin',
+            fullName: user.displayName || 'Martin Omorefe (Lead Developer)',
+            email: SUPER_ADMIN_EMAIL,
+            avatarUrl: user.photoURL || undefined,
+            emailVerified: true,
+            createdAt: new Date().toISOString(),
+            isSuperAdmin: true,
+            isDeveloper: true,
+            adminData: {
+              schoolName: 'Student Companion Central Administration',
+              schoolType: 'National Educational Directorate'
+            }
+          };
+
+          setCurrentUserProfile(superProfile);
+          safeSetItem('sc_user_profile', JSON.stringify(superProfile));
+          setCurrentRole('admin');
+        }
+
         // Sync student profile from Firestore
         const studentDocRef = doc(db, 'students', user.uid);
         const path = `students/${user.uid}`;
@@ -284,7 +396,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 id: user.uid,
                 name: user.displayName || 'Registered Student',
                 school: '',
-                classLevel: 'SS 2',
+                classLevel: 'JSS 1',
                 stream: 'Science',
                 xp: 0,
                 rank: 'Fresher',
@@ -417,22 +529,37 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }, 0);
   };
 
-  const updateStudentClass = (classLevel: any, stream: any) => {
+  const updateStudentClass = (classLevel: any, stream?: any) => {
+    const finalStream = stream || (typeof classLevel === 'string' && classLevel.startsWith('JSS') ? 'Science' : 'Science');
     setStudent(prev => {
       const updated = {
         ...prev,
         classLevel,
-        stream
+        stream: finalStream
       };
 
       if (currentUser && !isOffline) {
         const docRef = doc(db, 'students', currentUser.uid);
         const path = `students/${currentUser.uid}`;
-        updateDoc(docRef, { classLevel, stream }).catch(err => {
+        updateDoc(docRef, { classLevel, stream: finalStream }).catch(err => {
           handleFirestoreError(err, OperationType.UPDATE, path);
         });
       }
 
+      return updated;
+    });
+
+    setCurrentUserProfile(prev => {
+      if (!prev) return null;
+      const updated = {
+        ...prev,
+        studentData: prev.studentData ? {
+          ...prev.studentData,
+          classLevel,
+          stream: finalStream
+        } : undefined
+      };
+      safeSetItem('sc_user_profile', JSON.stringify(updated));
       return updated;
     });
   };
@@ -471,6 +598,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         origin: { y: 0.6 }
       });
     } catch {}
+  };
+
+  const updateStudentAvatar = (photoUrl: string) => {
+    setStudent(prev => {
+      const updated = {
+        ...prev,
+        uniformPhotoUrl: photoUrl
+      };
+
+      if (currentUser && !isOffline) {
+        const docRef = doc(db, 'students', currentUser.uid);
+        const path = `students/${currentUser.uid}`;
+        updateDoc(docRef, {
+          uniformPhotoUrl: photoUrl
+        }).catch(err => {
+          handleFirestoreError(err, OperationType.UPDATE, path);
+        });
+      }
+
+      return updated;
+    });
+
+    setCurrentUserProfile(prev => {
+      if (!prev) return null;
+      return { ...prev, avatarUrl: photoUrl };
+    });
   };
 
   const toggleDownloadNote = (topicId: string) => {
@@ -744,23 +897,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Progressive Verification State
   const [verifiedAddress, setVerifiedAddress] = useState<VerifiedAddress | null>(() => {
-    const saved = localStorage.getItem('sc_verified_address');
+    const saved = safeGetItem('sc_verified_address');
     return saved ? JSON.parse(saved) : null;
   });
 
   const [tutorVerification, setTutorVerification] = useState<TutorVerificationDetails | null>(() => {
-    const saved = localStorage.getItem('sc_tutor_verification');
+    const saved = safeGetItem('sc_tutor_verification');
     return saved ? JSON.parse(saved) : null;
   });
 
   const saveVerifiedAddress = (addr: VerifiedAddress) => {
     setVerifiedAddress(addr);
-    localStorage.setItem('sc_verified_address', JSON.stringify(addr));
+    safeSetItem('sc_verified_address', JSON.stringify(addr));
   };
 
   const saveTutorVerification = (data: TutorVerificationDetails) => {
     setTutorVerification(data);
-    localStorage.setItem('sc_tutor_verification', JSON.stringify(data));
+    safeSetItem('sc_tutor_verification', JSON.stringify(data));
   };
 
   const registerNewUser = (role: UserRole, profileData: any) => {
@@ -773,6 +926,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       role,
       fullName,
       email,
+      emailVerified: true,
+      verifiedAt: new Date().toISOString(),
       createdAt: new Date().toISOString()
     };
 
@@ -783,7 +938,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         id: newId,
         name: fullName,
         school: profileData.schoolName || profileData.school || "Secondary School",
-        classLevel: profileData.classLevel || 'SS 2',
+        classLevel: profileData.classLevel || 'JSS 1',
         stream: profileData.stream || 'Science',
         xp: 0,
         rank: 'Fresher',
@@ -796,7 +951,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
       newProfile.studentData = freshStudent;
       setStudent(freshStudent);
-      localStorage.setItem('sc_student', JSON.stringify(freshStudent));
+      safeSetItem('sc_student', JSON.stringify(freshStudent));
     } else if (role === 'parent') {
       newProfile.parentData = {
         phone: profileData.phone || '',
@@ -809,7 +964,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         transactions: []
       };
       setParentWallet(freshWallet);
-      localStorage.setItem('sc_wallet', JSON.stringify(freshWallet));
+      safeSetItem('sc_wallet', JSON.stringify(freshWallet));
     } else if (role === 'tutor') {
       newProfile.tutorData = {
         subjectSpecialization: profileData.subjectSpecialization || 'General Subjects',
@@ -825,18 +980,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     setCurrentUserProfile(newProfile);
-    localStorage.setItem('sc_user_profile', JSON.stringify(newProfile));
+    safeSetItem('sc_user_profile', JSON.stringify(newProfile));
     setTargetSignUpRole(null);
     setCurrentScreen('app');
   };
 
+  const deleteAccount = async (userId?: string) => {
+    const targetUid = userId || currentUser?.uid;
+    if (targetUid && !isOffline) {
+      try {
+        await deleteDoc(doc(db, 'students', targetUid));
+        await deleteDoc(doc(db, 'wallets', targetUid));
+      } catch (err) {
+        console.warn('Could not delete firestore docs:', err);
+      }
+    }
+    signOutApp();
+  };
+
   const signOutApp = () => {
     setCurrentUserProfile(null);
-    localStorage.removeItem('sc_user_profile');
-    localStorage.removeItem('sc_student');
-    localStorage.removeItem('sc_wallet');
-    localStorage.removeItem('sc_bookings');
-    localStorage.removeItem('sc_chats');
+    safeRemoveItem('sc_user_profile');
+    safeRemoveItem('sc_student');
+    safeRemoveItem('sc_wallet');
+    safeRemoveItem('sc_bookings');
+    safeRemoveItem('sc_chats');
     setStudent(INITIAL_EMPTY_STUDENT);
     setParentWallet(INITIAL_EMPTY_WALLET);
     setTutorBookings([]);
@@ -849,6 +1017,68 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const resetDemoData = () => {
     signOutApp();
+  };
+
+  const startImpersonation = (user: RegisteredUserProfile) => {
+    setImpersonatedUser(user);
+    setCurrentRole(user.role);
+    if (user.role === 'student' && user.studentData) {
+      setStudent(user.studentData);
+    } else if (user.role === 'parent' && user.parentData) {
+      setIsParentPinUnlocked(true);
+      setParentWallet(prev => ({
+        ...prev,
+        pin: user.parentData?.pin || '1234',
+        balanceNaira: prev.balanceNaira || 35000
+      }));
+    }
+    setCurrentScreen('app');
+  };
+
+  const stopImpersonation = () => {
+    setImpersonatedUser(null);
+    setCurrentRole('admin');
+  };
+
+  const switchRole = (role: UserRole) => {
+    setCurrentRole(role);
+  };
+
+  const updateUserRecord = async (userId: string, updates: Partial<RegisteredUserProfile>) => {
+    setAllRegisteredUsers(prev => {
+      const updated = prev.map(u => (u.id === userId ? { ...u, ...updates } : u));
+      safeSetItem('sc_all_users', JSON.stringify(updated));
+      return updated;
+    });
+
+    if (impersonatedUser && impersonatedUser.id === userId) {
+      const updated = { ...impersonatedUser, ...updates };
+      setImpersonatedUser(updated);
+      if (updated.studentData) setStudent(updated.studentData);
+    }
+  };
+
+  const loginAsDeveloper = (emailInput?: string) => {
+    const targetEmail = (emailInput || SUPER_ADMIN_EMAIL).toLowerCase().trim();
+    const devProfile: RegisteredUserProfile = {
+      id: 'usr-dev-martorefe',
+      role: 'admin',
+      fullName: 'Martin Omorefe (Lead Developer)',
+      email: targetEmail,
+      emailVerified: true,
+      isSuperAdmin: true,
+      isDeveloper: true,
+      createdAt: new Date().toISOString(),
+      adminData: {
+        schoolName: 'Student Companion Central Administration',
+        schoolType: 'Super Admin Directorate'
+      }
+    };
+    setCurrentUserProfile(devProfile);
+    safeSetItem('sc_user_profile', JSON.stringify(devProfile));
+    setCurrentRole('admin');
+    setCurrentScreen('app');
+    confetti({ particleCount: 60, spread: 70, origin: { y: 0.6 } });
   };
 
   return (
@@ -874,6 +1104,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         saveTutorVerification,
         registerNewUser,
         signOutApp,
+        deleteAccount,
         currentUser,
         authLoading,
         loginWithGoogle,
@@ -893,6 +1124,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateStudentClass,
         addStudentXP,
         verifySchoolUniform,
+        updateStudentAvatar,
         toggleDownloadNote,
         examResults,
         saveExamResult,
@@ -909,7 +1141,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setActiveTutorChatId,
         chatMessages,
         sendChatMessage,
-        resetDemoData
+        resetDemoData,
+        isSuperAdmin,
+        impersonatedUser,
+        allRegisteredUsers,
+        startImpersonation,
+        stopImpersonation,
+        updateUserRecord,
+        switchRole,
+        loginAsDeveloper
       }}
     >
       {children}

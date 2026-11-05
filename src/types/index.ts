@@ -45,7 +45,7 @@ export interface CurriculumTopic {
   isDownloaded?: boolean;
 }
 
-export type ExamType = 'JAMB_UTME' | 'WAEC' | 'NECO' | 'TERM_MOCK';
+export type ExamType = 'JAMB_UTME' | 'WAEC' | 'NECO' | 'BECE' | 'TERM_MOCK';
 
 export interface CBTQuestion {
   id: number;
@@ -186,6 +186,9 @@ export interface RegisteredUserProfile {
   role: UserRole;
   fullName: string;
   email: string;
+  avatarUrl?: string;
+  emailVerified: boolean;
+  verifiedAt?: string;
   createdAt: string;
   studentData?: StudentProfile;
   parentData?: {
@@ -205,4 +208,6 @@ export interface RegisteredUserProfile {
     schoolName: string;
     schoolType: string;
   };
+  isSuperAdmin?: boolean;
+  isDeveloper?: boolean;
 }

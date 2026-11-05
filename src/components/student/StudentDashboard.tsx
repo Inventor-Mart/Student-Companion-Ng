@@ -1,7 +1,9 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { useApp } from '../../context/AppContext';
 import { NIGERIAN_CURRICULUM_TOPICS } from '../../data/curriculumData';
 import { CBT_EXAMS_DATABASE } from '../../data/cbtExamData';
+import { compressImage } from '../../lib/storage';
+import { NigerianClassLevel } from '../../types';
 import {
   Flame,
   Award,
@@ -14,7 +16,8 @@ import {
   Users,
   CheckCircle2,
   Trophy,
-  Atom
+  Atom,
+  GraduationCap
 } from 'lucide-react';
 
 export const StudentDashboard: React.FC = () => {
@@ -24,15 +27,83 @@ export const StudentDashboard: React.FC = () => {
     setActiveStudentTab,
     openNoteReader,
     startExam,
-    setIsUniformModalOpen
+    setIsUniformModalOpen,
+    updateStudentAvatar,
+    updateStudentClass
   } = useApp();
+
+  const avatarFileInputRef = useRef<HTMLInputElement>(null);
 
   const displayName = student.name || currentUserProfile?.fullName || 'Registered Student';
   const displaySchool = student.school || 'Secondary School';
 
+  const getInitials = (name?: string | null): string => {
+    if (!name || !name.trim()) return 'S';
+    const parts = name.trim().split(/\s+/).filter(Boolean);
+    if (parts.length === 0) return 'S';
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  };
+
+  const handleAvatarFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      try {
+        const compressed = await compressImage(file, 256, 0.7);
+        if (compressed) {
+          updateStudentAvatar(compressed);
+        }
+      } catch (err) {
+        console.warn('Avatar compression error:', err);
+      }
+    }
+  };
+
   // Pick jump back in note
   const jumpBackNote = NIGERIAN_CURRICULUM_TOPICS[0];
-  const quickExam = CBT_EXAMS_DATABASE[0];
+
+  // Determine class-specific drill details & matching mock exam
+  const getDrillConfig = (classLevel: string) => {
+    if (classLevel === 'SS 3') {
+      const exam = CBT_EXAMS_DATABASE.find(e => e.classLevel === 'SS 3') || CBT_EXAMS_DATABASE[0];
+      return {
+        title: 'JAMB / WAEC Drill',
+        subtitle: 'Timed WASSCE & UTME national mock practice',
+        exam
+      };
+    }
+    if (classLevel === 'JSS 3') {
+      const exam = CBT_EXAMS_DATABASE.find(e => e.classLevel === 'JSS 3') || CBT_EXAMS_DATABASE[0];
+      return {
+        title: 'BECE Junior Drill',
+        subtitle: 'Timed Junior Secondary Certificate mock',
+        exam
+      };
+    }
+    if (classLevel === 'JSS 1' || classLevel === 'JSS 2') {
+      const exam =
+        CBT_EXAMS_DATABASE.find(e => e.classLevel === classLevel) ||
+        CBT_EXAMS_DATABASE.find(e => e.classLevel === 'JSS 1') ||
+        CBT_EXAMS_DATABASE[0];
+      return {
+        title: 'Junior Termly Drill',
+        subtitle: `${classLevel} continuous assessment practice`,
+        exam
+      };
+    }
+    // SS 1 or SS 2
+    const exam =
+      CBT_EXAMS_DATABASE.find(e => e.classLevel === classLevel) ||
+      CBT_EXAMS_DATABASE.find(e => e.classLevel === 'SS 1') ||
+      CBT_EXAMS_DATABASE[0];
+    return {
+      title: 'Senior Assessment Drill',
+      subtitle: `${classLevel} continuous assessment & mock`,
+      exam
+    };
+  };
+
+  const drillConfig = getDrillConfig(student.classLevel);
 
   // Calculate XP percentage to next rank
   // Ranks: Fresher (0-2500), Scholar (2500-7500), Prefect (7500-15000), Senior Boy (15000+)
@@ -51,13 +122,43 @@ export const StudentDashboard: React.FC = () => {
       <div className="bg-slate-900/90 rounded-2xl p-4 border border-slate-800 shadow-sm">
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-3">
-            {/* Avatar with Uniform Badge */}
+            {/* Interactive Avatar with Upload Trigger and Initials Fallback */}
             <div className="relative">
-              <img
-                src={student.uniformPhotoUrl || `https://api.dicebear.com/7.x/micah/svg?seed=${encodeURIComponent(displayName)}&backgroundColor=1e293b`}
-                alt="Student Avatar"
-                className="w-13 h-13 rounded-2xl object-cover bg-slate-800 ring-2 ring-emerald-500/40"
-              />
+              <button
+                type="button"
+                onClick={() => avatarFileInputRef.current?.click()}
+                className="relative group w-14 h-14 rounded-2xl overflow-hidden ring-2 ring-emerald-500/40 hover:ring-emerald-400 transition-all cursor-pointer focus:outline-none focus:ring-emerald-400 flex items-center justify-center bg-slate-800"
+                title="Click on avatar to choose a picture"
+              >
+                {student.uniformPhotoUrl ? (
+                  <img
+                    src={student.uniformPhotoUrl}
+                    alt={displayName}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full bg-gradient-to-br from-emerald-600 via-teal-700 to-slate-900 flex items-center justify-center text-white font-black text-sm tracking-wider shadow-inner">
+                    {getInitials(displayName)}
+                  </div>
+                )}
+
+                {/* Hover overlay with camera icon */}
+                <div className="absolute inset-0 bg-black/60 backdrop-blur-[1px] opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center text-white transition-opacity">
+                  <Camera className="w-4 h-4 text-emerald-300" />
+                  <span className="text-[8px] font-bold mt-0.5">Change</span>
+                </div>
+              </button>
+
+              {/* Corner Camera Badge indicator */}
+              <button
+                type="button"
+                onClick={() => avatarFileInputRef.current?.click()}
+                className="absolute -top-1 -left-1 bg-slate-900 text-emerald-400 hover:text-emerald-300 rounded-full p-1 border border-slate-700 hover:border-emerald-500 transition-colors shadow-sm cursor-pointer"
+                title="Choose a picture"
+              >
+                <Camera className="w-2.5 h-2.5 stroke-[2.5]" />
+              </button>
+
               {student.uniformVerified && (
                 <div
                   className="absolute -bottom-1 -right-1 bg-emerald-500 text-slate-950 rounded-full p-0.5 shadow-md"
@@ -66,6 +167,15 @@ export const StudentDashboard: React.FC = () => {
                   <ShieldCheck className="w-3.5 h-3.5 stroke-[2.5]" />
                 </div>
               )}
+
+              {/* Hidden file input for avatar picker */}
+              <input
+                ref={avatarFileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleAvatarFileChange}
+                className="hidden"
+              />
             </div>
 
             <div>
@@ -93,8 +203,39 @@ export const StudentDashboard: React.FC = () => {
           </div>
         </div>
 
-        {/* XP Progress Bar */}
+        {/* Quick Class Switcher (JSS 1 to SS 3) */}
         <div className="mt-3.5 pt-3 border-t border-slate-800/80">
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-[11px] font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+              <GraduationCap className="w-3.5 h-3.5 text-[#84E000]" />
+              <span>Select Active Class</span>
+            </span>
+            <span className="text-[10px] text-[#84E000] font-semibold">Tap to switch class</span>
+          </div>
+          <div className="grid grid-cols-6 gap-1 p-1 bg-slate-950/80 border border-slate-800/90 rounded-xl">
+            {(['JSS 1', 'JSS 2', 'JSS 3', 'SS 1', 'SS 2', 'SS 3'] as NigerianClassLevel[]).map((lvl) => {
+              const isActive = student.classLevel === lvl;
+              return (
+                <button
+                  key={lvl}
+                  type="button"
+                  onClick={() => updateStudentClass(lvl, lvl.startsWith('JSS') ? 'Science' : (student.stream || 'Science'))}
+                  className={`py-1.5 px-1 rounded-lg text-xs font-bold transition-all text-center cursor-pointer ${
+                    isActive
+                      ? 'bg-[#84E000] text-slate-950 shadow-md shadow-[#84E000]/30 ring-1 ring-white'
+                      : 'text-slate-400 hover:text-white hover:bg-slate-800/70'
+                  }`}
+                  title={`Switch to ${lvl}`}
+                >
+                  {lvl}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* XP Progress Bar */}
+        <div className="mt-3 pt-2.5 border-t border-slate-800/80">
           <div className="flex items-center justify-between text-xs mb-1.5">
             <span className="text-slate-400 font-medium flex items-center gap-1">
               <Award className="w-3.5 h-3.5 text-emerald-400" />
@@ -246,7 +387,7 @@ export const StudentDashboard: React.FC = () => {
       <div className="grid grid-cols-2 gap-2.5">
         {/* CBT Simulator Quick Start */}
         <button
-          onClick={() => startExam(quickExam)}
+          onClick={() => startExam(drillConfig.exam)}
           className="bg-slate-900/90 hover:bg-slate-800/90 border border-slate-800 hover:border-emerald-700/60 rounded-2xl p-3.5 text-left flex flex-col justify-between transition-all group"
         >
           <div className="w-8 h-8 rounded-xl bg-amber-950/80 border border-amber-700/40 flex items-center justify-center text-amber-400 mb-2">
@@ -254,10 +395,10 @@ export const StudentDashboard: React.FC = () => {
           </div>
           <div>
             <div className="text-xs font-bold text-white group-hover:text-amber-300 transition-colors">
-              JAMB / WAEC Drill
+              {drillConfig.title}
             </div>
             <p className="text-[11px] text-slate-400 mt-0.5">
-              Timed CBT simulation with explanations
+              {drillConfig.subtitle}
             </p>
           </div>
           <div className="mt-2 text-[10px] text-emerald-400 font-semibold flex items-center gap-1">
@@ -372,29 +513,35 @@ export const StudentDashboard: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-3">
-          <img
-            src="https://api.dicebear.com/7.x/micah/svg?seed=Praise&backgroundColor=ffd5dc"
-            alt="Praise Adebayo"
-            className="w-11 h-11 rounded-xl object-cover bg-slate-800 ring-1 ring-amber-500/50"
-          />
+          {student.uniformPhotoUrl ? (
+            <img
+              src={student.uniformPhotoUrl}
+              alt={displayName}
+              className="w-11 h-11 rounded-xl object-cover ring-1 ring-amber-500/50 shadow-inner shrink-0"
+            />
+          ) : (
+            <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-amber-600 via-amber-700 to-emerald-900 flex items-center justify-center text-white font-black text-xs ring-1 ring-amber-500/50 shadow-inner shrink-0">
+              {getInitials(displayName)}
+            </div>
+          )}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
               <h4 className="text-xs font-bold text-white truncate">
-                Praise Adebayo
+                {displayName}
               </h4>
               <span className="text-[10px] font-semibold text-emerald-400 bg-emerald-950 px-1.5 py-0.2 rounded border border-emerald-800">
-                Senior Boy
+                {student.rank}
               </span>
             </div>
             <p className="text-[11px] text-slate-400 truncate">
-              King's College Lagos · SS 3 Science
+              {displaySchool} · {student.classLevel} ({student.stream})
             </p>
             <div className="flex items-center gap-2 text-[10px] text-amber-300 font-mono mt-0.5">
-              <span>14,850 XP</span>
+              <span>{student.xp.toLocaleString()} XP</span>
               <span>·</span>
-              <span>28 Day Streak 🔥</span>
+              <span>{student.streakDays} Day Streak 🔥</span>
               <span>·</span>
-              <span className="text-emerald-400 font-semibold">₦50k Prize Active</span>
+              <span className="text-emerald-400 font-semibold">₦50k Prize Contender</span>
             </div>
           </div>
         </div>

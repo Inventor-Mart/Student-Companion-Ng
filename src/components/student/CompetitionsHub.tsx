@@ -23,9 +23,20 @@ import {
 import confetti from 'canvas-confetti';
 
 export const CompetitionsHub: React.FC = () => {
-  const { student, startExam, addStudentXP } = useApp();
+  const { student, currentUserProfile, startExam, addStudentXP } = useApp();
   const [activeTab, setActiveTab] = useState<'weekly' | 'termly' | 'spotlight' | 'prizes'>('weekly');
   const [hasEnteredThisWeek, setHasEnteredThisWeek] = useState<boolean>(false);
+
+  const studentName = student.name || currentUserProfile?.fullName || 'Registered Student';
+  const studentSchool = student.school || 'Secondary School';
+
+  const getInitials = (name?: string | null): string => {
+    if (!name || !name.trim()) return 'S';
+    const parts = name.trim().split(/\s+/).filter(Boolean);
+    if (parts.length === 0) return 'S';
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  };
 
   // Find a high stakes exam for the weekly challenge
   const weeklyChallengeExam = CBT_EXAMS_DATABASE[0];
@@ -353,39 +364,45 @@ export const CompetitionsHub: React.FC = () => {
             <div className="flex items-center justify-between">
               <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 bg-amber-950 px-2 py-0.5 rounded border border-amber-800 flex items-center gap-1">
                 <Crown className="w-3 h-3 text-amber-400" />
-                <span>Current Student of the Week</span>
+                <span>Student of the Week Competition</span>
               </span>
-              <span className="text-[10px] text-amber-300 font-mono">Week 8 Spotlight</span>
+              <span className="text-[10px] text-amber-300 font-mono">Week 8 Contender</span>
             </div>
 
             <div className="flex items-center gap-3.5">
-              <img
-                src="https://api.dicebear.com/7.x/micah/svg?seed=Praise&backgroundColor=ffd5dc"
-                alt="Praise Adebayo"
-                className="w-14 h-14 rounded-2xl object-cover bg-slate-800 ring-2 ring-amber-500"
-              />
+              {student.uniformPhotoUrl ? (
+                <img
+                  src={student.uniformPhotoUrl}
+                  alt={studentName}
+                  className="w-14 h-14 rounded-2xl object-cover ring-2 ring-amber-500 shrink-0"
+                />
+              ) : (
+                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-amber-600 via-amber-700 to-emerald-900 flex items-center justify-center text-white font-black text-base ring-2 ring-amber-500 shadow-inner shrink-0">
+                  {getInitials(studentName)}
+                </div>
+              )}
               <div>
                 <h4 className="text-sm font-bold text-white flex items-center gap-2">
-                  <span>Praise Adebayo</span>
+                  <span>{studentName}</span>
                   <span className="text-[10px] font-semibold text-emerald-400 bg-emerald-950 px-1.5 py-0.2 rounded border border-emerald-800">
-                    Senior Boy
+                    {student.rank}
                   </span>
                 </h4>
                 <p className="text-xs text-slate-300 mt-0.5">
-                  King's College Lagos · SS 3 Science
+                  {studentSchool} · {student.classLevel} ({student.stream})
                 </p>
                 <div className="flex items-center gap-2 text-xs text-amber-400 font-mono mt-1">
-                  <span>14,850 XP</span>
+                  <span>{student.xp.toLocaleString()} XP</span>
                   <span>·</span>
-                  <span>28-Day Streak 🔥</span>
+                  <span>{student.streakDays}-Day Streak 🔥</span>
                   <span>·</span>
-                  <span>96% Accuracy</span>
+                  <span className="text-emerald-400 font-semibold">Active Contender</span>
                 </div>
               </div>
             </div>
 
             <p className="text-xs text-slate-300 bg-slate-950/70 p-3 rounded-2xl border border-amber-900/40 leading-relaxed">
-              "Praise completed 42 CBT timed drills with zero incorrect answers in Further Mathematics and Physics this week, leading King's College to the #1 spot nationwide."
+              Earn XP across your curriculum topics and timed CBT exams this week to climb the national standings and win the ₦50,000 weekly Student of the Week reward!
             </p>
           </div>
 

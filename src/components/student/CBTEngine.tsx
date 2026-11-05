@@ -40,25 +40,43 @@ export const CBTEngine: React.FC = () => {
 
 // Exam Catalog Component
 const CBTExamCatalog: React.FC<{ onSelectExam: (exam: CBTExam) => void; onOpenFormulas: () => void }> = ({ onSelectExam, onOpenFormulas }) => {
+  const { student } = useApp();
   const [filterType, setFilterType] = useState<string>('ALL');
   const [selectedSubject, setSelectedSubject] = useState<string>('ALL');
+  const [selectedClassFilter, setSelectedClassFilter] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
-  const subjectFilters = [
-    'ALL',
-    'Biology',
-    'Physics',
-    'Chemistry',
-    'Literature-in-English',
-    'Government',
-    'Further Mathematics',
-    'Agricultural Science',
-    'Christian Religious Studies (CRS)',
-    'Economics',
-    'Mathematics'
+  const classLevels: string[] = ['ALL', 'JSS 1', 'JSS 2', 'JSS 3', 'SS 1', 'SS 2', 'SS 3'];
+
+  // Unrestricted multi-class drill access: Filter based on user's selected tab, allowing exploration of all classes
+  const classAllowedExams = CBT_EXAMS_DATABASE.filter(e => {
+    if (selectedClassFilter === 'ALL') return true;
+    if (selectedClassFilter === 'SS 3') {
+      return e.classLevel === 'SS 3' || e.examType === 'JAMB_UTME' || e.examType === 'WAEC' || e.examType === 'NECO';
+    }
+    if (selectedClassFilter === 'JSS 3') {
+      return e.classLevel === 'JSS 3' || e.examType === 'BECE';
+    }
+    return e.classLevel === selectedClassFilter || (e.examType === 'TERM_MOCK' && e.classLevel === selectedClassFilter);
+  });
+
+  const availableSubjects = Array.from(new Set(classAllowedExams.map(e => e.subject)));
+  const subjectFilters = ['ALL', ...availableSubjects];
+
+  const boardTabs = [
+    { id: 'ALL', label: 'All Exam Types' },
+    { id: 'TERM_MOCK', label: 'Termly Mock' },
+    { id: 'BECE', label: 'BECE Junior WAEC' },
+    { id: 'WAEC', label: 'WAEC WASSCE' },
+    { id: 'JAMB_UTME', label: 'JAMB UTME' },
+    { id: 'NECO', label: 'NECO SSCE' }
   ];
 
-  const filteredExams = CBT_EXAMS_DATABASE.filter(e => {
+  const catalogSubtitle = selectedClassFilter === 'ALL'
+    ? 'All secondary school assessments unlocked: JSS 1 to SS 3, BECE, WAEC, JAMB UTME & NECO'
+    : `${selectedClassFilter} continuous assessment and examination drills with step-by-step solutions`;
+
+  const filteredExams = classAllowedExams.filter(e => {
     const matchesBoard = filterType === 'ALL' || e.examType === filterType;
     const matchesSubject = selectedSubject === 'ALL' || e.subject === selectedSubject;
     const matchesQuery =
@@ -78,11 +96,11 @@ const CBTExamCatalog: React.FC<{ onSelectExam: (exam: CBTExam) => void; onOpenFo
             CBT Examination Simulator
           </h2>
           <span className="text-[11px] font-semibold text-emerald-400 bg-emerald-950 px-2 py-0.5 rounded border border-emerald-800">
-            {CBT_EXAMS_DATABASE.length} Full Drills
+            {classAllowedExams.length} Available Drills
           </span>
         </div>
         <p className="text-xs text-slate-400 mt-0.5">
-          Timed WAEC, JAMB UTME & NECO drills with step-by-step marking schemes and explanations
+          {catalogSubtitle}
         </p>
       </div>
 
@@ -112,14 +130,30 @@ const CBTExamCatalog: React.FC<{ onSelectExam: (exam: CBTExam) => void; onOpenFo
         </button>
       </div>
 
+      {/* Class Level Filter Row */}
+      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+        <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider shrink-0 mr-1">
+          Class:
+        </span>
+        {classLevels.map(lvl => (
+          <button
+            key={lvl}
+            type="button"
+            onClick={() => setSelectedClassFilter(lvl)}
+            className={`px-2.5 py-1 rounded-lg text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+              selectedClassFilter === lvl
+                ? 'bg-[#84E000] text-slate-950 shadow-sm ring-1 ring-white'
+                : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+            }`}
+          >
+            {lvl === 'ALL' ? 'All Classes' : lvl}
+          </button>
+        ))}
+      </div>
+
       {/* Board Filter Tabs */}
       <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
-        {[
-          { id: 'ALL', label: 'All Exam Boards' },
-          { id: 'JAMB_UTME', label: 'JAMB UTME' },
-          { id: 'WAEC', label: 'WAEC WASSCE' },
-          { id: 'NECO', label: 'NECO / BECE' }
-        ].map(tab => (
+        {boardTabs.map(tab => (
           <button
             key={tab.id}
             onClick={() => setFilterType(tab.id)}

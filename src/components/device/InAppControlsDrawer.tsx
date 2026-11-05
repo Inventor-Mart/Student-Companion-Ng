@@ -1,6 +1,6 @@
 import React from 'react';
 import { useApp } from '../../context/AppContext';
-import { UserRole } from '../../types';
+import { UserRole, NigerianClassLevel } from '../../types';
 import {
   X,
   Wifi,
@@ -41,7 +41,12 @@ export const InAppControlsDrawer: React.FC<InAppControlsDrawerProps> = ({
     loginWithGoogle,
     logoutUser,
     authLoading,
-    setCurrentScreen
+    setCurrentScreen,
+    isSuperAdmin,
+    impersonatedUser,
+    stopImpersonation,
+    switchRole,
+    updateStudentClass
   } = useApp();
 
   if (!isOpen) return null;
@@ -149,22 +154,98 @@ export const InAppControlsDrawer: React.FC<InAppControlsDrawerProps> = ({
                 </div>
               </div>
 
-              <p className="text-[10px] text-slate-400 leading-relaxed pt-1 border-t border-slate-800">
-                To access another portal (e.g. as a Parent, Tutor, or School Admin), you must sign in with an account registered for that role.
-              </p>
+              {isSuperAdmin ? (
+                <div className="space-y-2 pt-1 border-t border-slate-800">
+                  <div className="flex items-center justify-between text-[10px]">
+                    <span className="text-emerald-400 font-bold">👑 Super Admin Mode Active</span>
+                    <span className="text-slate-400 font-mono">martorefe@gmail.com</span>
+                  </div>
+                  <p className="text-[10px] text-slate-300">
+                    Switch to any stakeholder portal instantly below:
+                  </p>
+                  <div className="grid grid-cols-2 gap-1.5 pt-1">
+                    {roles.map(r => (
+                      <button
+                        key={r.id}
+                        onClick={() => {
+                          if (impersonatedUser) stopImpersonation();
+                          switchRole(r.id);
+                          onClose();
+                        }}
+                        className={`flex items-center gap-1.5 p-2 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
+                          currentRole === r.id
+                            ? 'bg-emerald-950 border-emerald-500 text-emerald-300 font-bold'
+                            : 'bg-[#15253F] hover:bg-[#1D3254] border-slate-800 text-slate-200'
+                        }`}
+                      >
+                        {r.icon}
+                        <span>{r.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                  {impersonatedUser && (
+                    <button
+                      onClick={() => {
+                        stopImpersonation();
+                        onClose();
+                      }}
+                      className="w-full mt-2 py-1.5 px-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-extrabold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                    >
+                      <span>Exit Impersonation (Back to Admin)</span>
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <>
+                  <p className="text-[10px] text-slate-400 leading-relaxed pt-1 border-t border-slate-800">
+                    To access another portal (e.g. as a Parent, Tutor, or School Admin), you must sign in with an account registered for that role.
+                  </p>
 
-              <button
-                onClick={() => {
-                  signOutApp();
-                  onClose();
-                }}
-                className="w-full mt-1 py-1.5 px-3 rounded-xl bg-[#15253F] hover:bg-[#1D3254] border border-[#233C68] text-slate-200 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-              >
-                <LogOut className="w-3.5 h-3.5 text-slate-400" />
-                <span>Switch to Another Persona / Account</span>
-              </button>
+                  <button
+                    onClick={() => {
+                      signOutApp();
+                      onClose();
+                    }}
+                    className="w-full mt-1 py-1.5 px-3 rounded-xl bg-[#15253F] hover:bg-[#1D3254] border border-[#233C68] text-slate-200 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <LogOut className="w-3.5 h-3.5 text-slate-400" />
+                    <span>Switch to Another Persona / Account</span>
+                  </button>
+                </>
+              )}
             </div>
           </div>
+
+          {/* Student Class Switcher inside Menu Drawer */}
+          {currentRole === 'student' && (
+            <div>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-2 px-1">
+                Active Secondary Class Level
+              </span>
+              <div className="p-3 rounded-2xl bg-[#101C31] border border-[#1C2F4D]">
+                <div className="flex items-center justify-between text-xs mb-2">
+                  <span className="text-slate-300 font-semibold">Active Class: <strong className="text-[#84E000]">{student.classLevel}</strong></span>
+                  <span className="text-[10px] text-slate-400">All 6 Unlocked</span>
+                </div>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {(['JSS 1', 'JSS 2', 'JSS 3', 'SS 1', 'SS 2', 'SS 3'] as NigerianClassLevel[]).map(lvl => (
+                    <button
+                      key={lvl}
+                      type="button"
+                      onClick={() => updateStudentClass(lvl, lvl.startsWith('JSS') ? 'Science' : (student.stream || 'Science'))}
+                      className={`py-1.5 px-2 rounded-xl text-xs font-bold transition-all text-center cursor-pointer ${
+                        student.classLevel === lvl
+                          ? 'bg-[#84E000] text-slate-950 font-black shadow-sm ring-1 ring-white'
+                          : 'bg-[#15253F] hover:bg-[#1D3254] text-slate-200 border border-[#223B63]'
+                      }`}
+                    >
+                      {lvl}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Section 2: Environment & Network Simulator */}
           <div>

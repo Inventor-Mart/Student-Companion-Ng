@@ -184,6 +184,10 @@ export const SchemeOfWorkHub: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [expandedMatrixClass, setExpandedMatrixClass] = useState<NigerianClassLevel | 'ALL'>('ALL');
 
+  // 3-tier dropdown explorer state
+  const [explorerSubject, setExplorerSubject] = useState<string>('Mathematics');
+  const [explorerWeek, setExplorerWeek] = useState<number>(1);
+
   const classLevels: NigerianClassLevel[] = ['JSS 1', 'JSS 2', 'JSS 3', 'SS 1', 'SS 2', 'SS 3'];
 
   // Handle class level change and adjust stream
@@ -194,7 +198,21 @@ export const SchemeOfWorkHub: React.FC = () => {
     } else if (selectedStream === 'All') {
       setSelectedStream('Science');
     }
+    const newOfficial = lvl.startsWith('JSS')
+      ? OFFICIAL_SUBJECTS_BY_CLASS[lvl as 'JSS 1' | 'JSS 2' | 'JSS 3']
+      : OFFICIAL_SUBJECTS_BY_CLASS[lvl as 'SS 1' | 'SS 2' | 'SS 3'].Science;
+    if (newOfficial && newOfficial.length > 0 && !newOfficial.includes(explorerSubject)) {
+      setExplorerSubject(newOfficial[0]);
+      setExplorerWeek(1);
+    }
   };
+
+  // Keep selectedClass synchronized with global student.classLevel
+  React.useEffect(() => {
+    if (student.classLevel) {
+      handleSelectClass(student.classLevel);
+    }
+  }, [student.classLevel]);
 
   // Determine official subjects list for current selection in class view
   const getOfficialSubjects = (): { subject: string; stream: AcademicStream }[] => {
@@ -207,7 +225,6 @@ export const SchemeOfWorkHub: React.FC = () => {
       } else if (selectedStream === 'Non-Science') {
         return seniorConfig['Non-Science'].map(s => ({ subject: s, stream: 'Non-Science' as AcademicStream }));
       } else {
-        // All Senior Subjects (deduplicated or categorized)
         const combined: { subject: string; stream: AcademicStream }[] = [];
         seniorConfig.Science.forEach(s => combined.push({ subject: s, stream: 'Science' }));
         seniorConfig['Non-Science'].forEach(s => {
@@ -223,12 +240,32 @@ export const SchemeOfWorkHub: React.FC = () => {
   const officialSubjectsWithStream = getOfficialSubjects();
 
   // Helper to get or synthesize a high-yield topic for any official subject
-  const getTopicForSubject = (subjectName: string, streamOverride?: AcademicStream): CurriculumTopic => {
+  const getTopicForSubject = (
+    subjectName: string,
+    streamOverride?: AcademicStream,
+    termOverride?: '1st Term' | '2nd Term' | '3rd Term',
+    weekOverride?: number
+  ): CurriculumTopic => {
     const stream = streamOverride || (selectedClass.startsWith('JSS') ? 'Junior' : (selectedStream === 'Non-Science' ? 'Non-Science' : 'Science'));
+    const term = termOverride || (selectedTerm === 'All' ? '2nd Term' : selectedTerm);
 
-    const existing = NIGERIAN_CURRICULUM_TOPICS.find(
-      t => t.classLevel === selectedClass && t.subject.toLowerCase() === subjectName.toLowerCase()
-    );
+    const existing =
+      NIGERIAN_CURRICULUM_TOPICS.find(
+        t =>
+          t.classLevel === selectedClass &&
+          t.subject.toLowerCase() === subjectName.toLowerCase() &&
+          (termOverride ? t.term === termOverride : true) &&
+          (weekOverride !== undefined ? t.weekNumber === weekOverride : true)
+      ) ||
+      NIGERIAN_CURRICULUM_TOPICS.find(
+        t =>
+          t.classLevel === selectedClass &&
+          t.subject.toLowerCase() === subjectName.toLowerCase() &&
+          (termOverride ? t.term === termOverride : true)
+      ) ||
+      NIGERIAN_CURRICULUM_TOPICS.find(
+        t => t.classLevel === selectedClass && t.subject.toLowerCase() === subjectName.toLowerCase()
+      );
 
     if (existing) return existing;
 
@@ -247,13 +284,16 @@ export const SchemeOfWorkHub: React.FC = () => {
       ]
     };
 
+    const weekNum = weekOverride !== undefined ? weekOverride : 3;
+    const termVal = termOverride || (selectedTerm === 'All' ? '2nd Term' : selectedTerm);
+
     return {
-      id: `${subjectName.toLowerCase().replace(/[^a-z0-9]/g, '-')}-${selectedClass.toLowerCase().replace(' ', '')}-curriculum`,
+      id: `${subjectName.toLowerCase().replace(/[^a-z0-9]/g, '-')}-${selectedClass.toLowerCase().replace(' ', '')}-w${weekNum}-curriculum`,
       classLevel: selectedClass,
       stream: stream,
       subject: subjectName,
-      term: selectedTerm === 'All' ? '2nd Term' : selectedTerm,
-      weekNumber: 3,
+      term: termVal,
+      weekNumber: weekNum,
       topicTitle: metadata.topic,
       subtopics: metadata.subtopics,
       readingTimeMinutes: 7,
@@ -279,7 +319,7 @@ This digital module is aligned with the Nigerian Educational Research and Develo
 | **Week 5** | Mid-Term Assessment & Progress Review | Formative diagnostic testing and feedback |
 | **Week 6** | Advanced Structural Principles | In-depth topic exploration and derivations |
 | **Week 7** | Practical Laboratory / Studio Session | Hands-on application and documentation |
-| **Week 8** | Analytical Examination Drills | WAEC, NECO & JAMB past question analysis |
+| **Week 8** | Analytical Examination Drills | ${selectedClass === 'SS 3' ? 'WAEC & JAMB past question analysis' : selectedClass === 'JSS 3' ? 'BECE (Junior WAEC) mock question drills' : `${selectedClass} Continuous assessment & promotional test analysis`} |
 | **Week 9** | Comprehensive Revision & Summaries | Synthesis of key theorems and memory mnemonics |
 | **Week 10** | Terminal Examination & Scoring | Summative CBT assessment |
 
@@ -290,7 +330,18 @@ This digital module is aligned with the Nigerian Educational Research and Develo
 2. Link theoretical concepts to everyday Nigerian examples (agriculture, commerce, public governance, technological infrastructure).
 3. Test yourself regularly using the CBT Examination simulator to build speed and accuracy under timed conditions.`,
       keyTakeaways: metadata.takeaways,
-      associatedQuizId: 'jamb-utme-biology-2025'
+      associatedQuizId:
+        selectedClass === 'SS 3'
+          ? 'jamb-utme-biology-2025'
+          : selectedClass === 'JSS 3'
+          ? 'bece-math-junior-2024'
+          : selectedClass === 'JSS 1'
+          ? 'jss1-math-basic-science-2025'
+          : selectedClass === 'JSS 2'
+          ? 'jss2-algebra-integrated-science-2025'
+          : selectedClass === 'SS 1'
+          ? 'ss1-promotional-math-biology-2025'
+          : 'ss2-promotional-physics-chemistry-2025'
     };
   };
 
@@ -299,6 +350,30 @@ This digital module is aligned with the Nigerian Educational Research and Develo
     if (searchQuery.trim() === '') return true;
     return item.subject.toLowerCase().includes(searchQuery.toLowerCase());
   });
+
+  // List of available weeks (10 standard weeks, or up to 12 for exam/revision schemes)
+  const maxWeeksForSubject = Math.max(
+    10,
+    ...NIGERIAN_CURRICULUM_TOPICS.filter(
+      t =>
+        t.classLevel === selectedClass &&
+        t.subject.toLowerCase() === explorerSubject.toLowerCase() &&
+        t.term === '2nd Term'
+    ).map(t => t.weekNumber)
+  );
+
+  const availableWeeksForSubject = Array.from({ length: maxWeeksForSubject }, (_, i) => i + 1).map(wk => {
+    const note = getTopicForSubject(explorerSubject, undefined, '2nd Term', wk);
+    return {
+      weekNumber: wk,
+      shortTitle: note.topicTitle.length > 38 ? note.topicTitle.slice(0, 38) + '...' : note.topicTitle,
+      note
+    };
+  });
+
+  const activeExplorerNote =
+    availableWeeksForSubject.find(w => w.weekNumber === explorerWeek)?.note ||
+    availableWeeksForSubject[0].note;
 
   return (
     <div className="flex-1 w-full overflow-y-auto px-4 py-4 space-y-4 touch-pan-y text-slate-100">
@@ -354,6 +429,166 @@ This digital module is aligned with the Nigerian Educational Research and Develo
           </div>
           <ArrowRight className="w-4 h-4 text-indigo-400 group-hover:translate-x-0.5 transition-transform shrink-0" />
         </button>
+      </div>
+
+      {/* 3-Tier Lesson Notes Dropdown Navigator */}
+      <div className="bg-slate-900/95 border border-slate-800 rounded-2xl p-4 space-y-3.5 shadow-sm">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-xl bg-emerald-950/90 border border-emerald-700/60 flex items-center justify-center text-emerald-400 shrink-0">
+              <BookOpen className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="text-xs sm:text-sm font-bold text-white tracking-wide">
+                Lesson Notes Explorer
+              </h3>
+              <p className="text-[11px] text-slate-400">
+                Organized 2nd Term curriculum notes by Subject, Week & Topic
+              </p>
+            </div>
+          </div>
+          <span className="text-[10px] font-bold text-emerald-400 bg-emerald-950/80 px-2.5 py-1 rounded-lg border border-emerald-800/80">
+            {selectedClass} · 2nd Term
+          </span>
+        </div>
+
+        {/* 3 Dropdown Selectors */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+          {/* Dropdown 1: Select Subject */}
+          <div>
+            <label className="text-[10px] text-slate-400 font-semibold block mb-1">
+              1. Subject
+            </label>
+            <div className="relative">
+              <select
+                value={explorerSubject}
+                onChange={e => {
+                  setExplorerSubject(e.target.value);
+                  setExplorerWeek(1);
+                }}
+                className="w-full bg-slate-950 border border-slate-800 hover:border-slate-700 rounded-xl px-2.5 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 appearance-none pr-8 cursor-pointer"
+              >
+                {officialSubjectsWithStream.map(s => (
+                  <option key={s.subject} value={s.subject}>
+                    {s.subject}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-3 pointer-events-none" />
+            </div>
+          </div>
+
+          {/* Dropdown 2: Select Week */}
+          <div>
+            <label className="text-[10px] text-slate-400 font-semibold block mb-1">
+              2. Week
+            </label>
+            <div className="relative">
+              <select
+                value={explorerWeek}
+                onChange={e => setExplorerWeek(Number(e.target.value))}
+                className="w-full bg-slate-950 border border-slate-800 hover:border-slate-700 rounded-xl px-2.5 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 appearance-none pr-8 cursor-pointer"
+              >
+                {availableWeeksForSubject.map(w => (
+                  <option key={w.weekNumber} value={w.weekNumber}>
+                    Week {w.weekNumber}: {w.shortTitle}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-3 pointer-events-none" />
+            </div>
+          </div>
+
+          {/* Dropdown 3: Select Topic */}
+          <div>
+            <label className="text-[10px] text-slate-400 font-semibold block mb-1">
+              3. Topic
+            </label>
+            <div className="relative">
+              <select
+                value={explorerWeek}
+                onChange={e => setExplorerWeek(Number(e.target.value))}
+                className="w-full bg-slate-950 border border-slate-800 hover:border-slate-700 rounded-xl px-2.5 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 appearance-none pr-8 truncate cursor-pointer"
+              >
+                {availableWeeksForSubject.map(w => (
+                  <option key={`explorer-topic-wk-${w.weekNumber}`} value={w.weekNumber}>
+                    {w.note.topicTitle}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-3 pointer-events-none" />
+            </div>
+          </div>
+        </div>
+
+        {/* Selected Topic Detail Card with Direct Read Button */}
+        <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-3.5 space-y-2.5">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 text-[10px] text-slate-400 font-medium">
+                <span className="text-emerald-400 font-semibold">{activeExplorerNote.subject}</span>
+                <span>·</span>
+                <span>{activeExplorerNote.term}</span>
+                <span>·</span>
+                <span>Week {activeExplorerNote.weekNumber}</span>
+                <span>·</span>
+                <span className="flex items-center gap-0.5">
+                  <Clock className="w-3 h-3 text-slate-500" />
+                  {activeExplorerNote.readingTimeMinutes} min read
+                </span>
+              </div>
+              <h4 className="text-xs sm:text-sm font-bold text-white mt-1 leading-snug">
+                {activeExplorerNote.topicTitle}
+              </h4>
+              <p className="text-[11px] text-slate-300 mt-1 line-clamp-2 leading-relaxed">
+                {activeExplorerNote.summary}
+              </p>
+            </div>
+
+            <button
+              onClick={() => toggleDownloadNote(activeExplorerNote.id)}
+              className={`p-2 rounded-xl border transition-colors shrink-0 cursor-pointer ${
+                student.downloadedSubjectIds.includes(activeExplorerNote.id)
+                  ? 'bg-emerald-950 text-emerald-400 border-emerald-800'
+                  : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-white'
+              }`}
+              title="Save note for offline reading"
+            >
+              {student.downloadedSubjectIds.includes(activeExplorerNote.id) ? (
+                <Check className="w-4 h-4 text-emerald-400" />
+              ) : (
+                <Download className="w-4 h-4" />
+              )}
+            </button>
+          </div>
+
+          {/* Subtopics Pills */}
+          <div className="flex flex-wrap gap-1 pt-1">
+            {activeExplorerNote.subtopics.map((sub, sIdx) => (
+              <span
+                key={sIdx}
+                className="text-[10px] text-slate-400 bg-slate-900 px-2 py-0.5 rounded border border-slate-800"
+              >
+                {sub}
+              </span>
+            ))}
+          </div>
+
+          {/* Action Trigger */}
+          <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between">
+            <div className="text-[10px] text-slate-400 flex items-center gap-1">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Full lesson note ready for offline study</span>
+            </div>
+            <button
+              onClick={() => openNoteReader(activeExplorerNote)}
+              className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
+            >
+              <span>Read Full Note</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Main View Mode Selector: By Class vs Full Curriculum Matrix */}
@@ -452,7 +687,7 @@ This digital module is aligned with the Nigerian Educational Research and Develo
                       {sss}
                     </span>
                     <span className="text-xs font-semibold text-slate-200">
-                      Senior Secondary School {sss.slice(-1)} (WAEC & JAMB)
+                      Senior Secondary School {sss.slice(-1)} {sss === 'SS 3' ? '(WAEC & JAMB)' : '(Senior Curriculum)'}
                     </span>
                   </div>
                   <span className="text-[11px] font-semibold text-indigo-400">

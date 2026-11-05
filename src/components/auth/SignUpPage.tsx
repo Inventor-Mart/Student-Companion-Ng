@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { UserRole, NigerianClassLevel, AcademicStream } from '../../types';
 import {
@@ -16,7 +16,11 @@ import {
   Award,
   DollarSign,
   MapPin,
-  ChevronRight
+  ChevronRight,
+  KeyRound,
+  AlertCircle,
+  CheckCircle2,
+  RefreshCw
 } from 'lucide-react';
 
 interface SignUpPageProps {
@@ -33,20 +37,52 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
   const { registerNewUser, targetSignUpRole } = useApp();
 
   const effectiveRole = initialRole || targetSignUpRole;
-  const [step, setStep] = useState<1 | 2>(effectiveRole ? 2 : 1);
+  const [step, setStep] = useState<1 | 2 | 3>(effectiveRole ? 2 : 1);
   const [selectedRole, setSelectedRole] = useState<UserRole>(effectiveRole || 'student');
 
   // Common Fields
-  const [fullName, setFullName] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [nameError, setNameError] = useState<string | null>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
+  // Email Verification States
+  const [verificationCode, setVerificationCode] = useState<string>('');
+  const [inputCode, setInputCode] = useState<string>('');
+  const [verificationError, setVerificationError] = useState<string | null>(null);
+  const [emailDeliveryError, setEmailDeliveryError] = useState<string | null>(null);
+  const [resendTimer, setResendTimer] = useState<number>(30);
+  const [isSendingCode, setIsSendingCode] = useState<boolean>(false);
+  const [codeNotification, setCodeNotification] = useState<string | null>(null);
+
   // Student Fields
-  const [classLevel, setClassLevel] = useState<NigerianClassLevel>('SS 2');
+  const [classLevel, setClassLevel] = useState<NigerianClassLevel>('SS 3');
   const [stream, setStream] = useState<AcademicStream>('Science');
-  const [targetExam, setTargetExam] = useState<'WAEC' | 'JAMB_UTME' | 'NECO' | 'BECE'>('WAEC');
+  const [targetExam, setTargetExam] = useState<'WAEC' | 'JAMB_UTME' | 'NECO' | 'BECE' | 'INTERNAL'>('WAEC');
   const [schoolName, setSchoolName] = useState('');
   const [state, setState] = useState('Lagos');
+
+  const isCertificateClass = (level: NigerianClassLevel): boolean => {
+    return level === 'JSS 3' || level === 'SS 3';
+  };
+
+  const handleClassLevelChange = (val: NigerianClassLevel) => {
+    setClassLevel(val);
+    if (val.startsWith('JSS')) {
+      setStream('Junior');
+    } else if (stream === 'Junior') {
+      setStream('Science');
+    }
+
+    if (val === 'JSS 3') {
+      setTargetExam('BECE');
+    } else if (val === 'SS 3') {
+      setTargetExam(prev => (prev === 'BECE' || prev === 'INTERNAL' ? 'WAEC' : prev));
+    } else {
+      setTargetExam('INTERNAL');
+    }
+  };
 
   // Parent Fields
   const [phone, setPhone] = useState('');
@@ -105,21 +141,118 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
     }
   ];
 
-  const handleSubmit = (e: React.FormEvent) => {
+  useEffect(() => {
+    if (step === 3 && resendTimer > 0) {
+      const timer = setTimeout(() => {
+        setResendTimer(prev => prev - 1);
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [step, resendTimer]);
+
+  const sendVerificationCode = async (targetEmail: string): Promise<boolean> => {
+    setIsSendingCode(true);
+    setVerificationError(null);
+    setEmailDeliveryError(null);
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    setVerificationCode(code);
+    setResendTimer(30);
+
+    const displayName = `${firstName.trim()} ${lastName.trim()}`.trim() || 'Student';
+
+    try {
+      const response = await fetch('/api/send-verification-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: targetEmail,
+          code,
+          name: displayName,
+        }),
+      });
+
+      const result = await response.json().catch(() => ({}));
+
+      if (response.ok && result.success && result.delivered) {
+        const providerText = result.provider === 'gmail-smtp' ? 'Gmail' : 'Email Service';
+        setCodeNotification(`Verification code successfully sent to ${targetEmail} via ${providerText}. Check your inbox or spam.`);
+        setEmailDeliveryError(null);
+        return true;
+      } else {
+        const errorMsg = result.error || `Unable to deliver verification code to ${targetEmail}. Please check that the email address is correct.`;
+        setEmailDeliveryError(errorMsg);
+        setVerificationError(errorMsg);
+        setCodeNotification(null);
+        return false;
+      }
+    } catch (err) {
+      console.warn('Network issue calling verification service:', err);
+      const networkError = 'Network error: Unable to contact verification server. Please check your internet connection.';
+      setEmailDeliveryError(networkError);
+      setVerificationError(networkError);
+      setCodeNotification(null);
+      return false;
+    } finally {
+      setIsSendingCode(false);
+    }
+  };
+
+  const handleProceedToVerification = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    const trimmedFirst = firstName.trim();
+    const trimmedLast = lastName.trim();
+
+    if (!trimmedFirst || !trimmedLast) {
+      setNameError('Both First Name and Last Name are compulsory to complete registration.');
+      return;
+    }
+    setNameError(null);
+
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail || !trimmedEmail.includes('@')) {
+      setNameError('Please enter a valid email address for verification.');
+      return;
+    }
+
+    setEmailDeliveryError(null);
+    const delivered = await sendVerificationCode(trimmedEmail);
+    if (delivered) {
+      setInputCode('');
+      setStep(3);
+    }
+  };
+
+  const handleVerifyAndCreateAccount = (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (inputCode.trim() !== verificationCode) {
+      setVerificationError('Invalid 6-digit code. Please enter the verification code sent to your email.');
+      return;
+    }
+
+    setVerificationError(null);
+
+    const trimmedFirst = firstName.trim();
+    const trimmedLast = lastName.trim();
+    const computedFullName = `${trimmedFirst} ${trimmedLast}`;
 
     if (selectedRole === 'student') {
       registerNewUser('student', {
-        name: fullName.trim() || 'Student',
+        name: computedFullName,
+        firstName: trimmedFirst,
+        lastName: trimmedLast,
         email: email.trim(),
         classLevel,
         stream,
-        school: schoolName.trim() || "King's College, Lagos",
+        school: schoolName.trim() || 'Secondary School',
         targetExam
       });
     } else if (selectedRole === 'parent') {
       registerNewUser('parent', {
-        name: fullName.trim() || 'Parent / Guardian',
+        name: computedFullName,
+        firstName: trimmedFirst,
+        lastName: trimmedLast,
         email: email.trim(),
         phone: phone.trim(),
         wardName: wardName.trim(),
@@ -127,7 +260,9 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
       });
     } else if (selectedRole === 'tutor') {
       registerNewUser('tutor', {
-        name: fullName.trim() || 'Educator',
+        name: computedFullName,
+        firstName: trimmedFirst,
+        lastName: trimmedLast,
         email: email.trim(),
         phone: phone.trim(),
         subjects: [subjectSpecialization],
@@ -137,9 +272,11 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
       });
     } else {
       registerNewUser('admin', {
-        name: fullName.trim() || 'School Administrator',
+        name: computedFullName,
+        firstName: trimmedFirst,
+        lastName: trimmedLast,
         email: email.trim(),
-        schoolName: adminSchoolName.trim() || "Secondary School",
+        schoolName: adminSchoolName.trim() || 'Secondary School',
         schoolType
       });
     }
@@ -180,16 +317,21 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
           <div className="flex items-center justify-between mb-6 pb-4 border-b border-[#1E304F]">
             <div>
               <span className="text-[11px] font-bold text-[#84E000] uppercase tracking-wider block">
-                Step {step} of 2
+                Step {step} of 3
               </span>
               <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight mt-0.5">
-                {step === 1 ? 'Select Your Account Role' : `Complete Your ${roleCards.find(r => r.role === selectedRole)?.title} Profile`}
+                {step === 1
+                  ? 'Select Your Account Role'
+                  : step === 2
+                  ? `Complete Your ${roleCards.find(r => r.role === selectedRole)?.title} Profile`
+                  : 'Verify Your Email Address'}
               </h2>
             </div>
 
             <div className="flex items-center gap-1.5">
               <div className={`w-3 h-3 rounded-full transition-all ${step === 1 ? 'bg-[#84E000] scale-110' : 'bg-[#1E304F]'}`} />
               <div className={`w-3 h-3 rounded-full transition-all ${step === 2 ? 'bg-[#84E000] scale-110' : 'bg-[#1E304F]'}`} />
+              <div className={`w-3 h-3 rounded-full transition-all ${step === 3 ? 'bg-[#84E000] scale-110' : 'bg-[#1E304F]'}`} />
             </div>
           </div>
 
@@ -251,7 +393,7 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
 
           {/* STEP 2: ROLE-SPECIFIC FORM */}
           {step === 2 && (
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleProceedToVerification} className="space-y-4">
               
               {/* Active Role Indicator Banner with Change Role button */}
               <div className="flex items-center justify-between p-3 rounded-2xl bg-[#091222] border border-[#1A2C49]">
@@ -281,20 +423,53 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
                   Login Credentials
                 </span>
 
-                <div>
-                  <label className="text-xs font-semibold text-slate-300 block mb-1">Full Name</label>
-                  <div className="relative">
-                    <UserIcon className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                    <input
-                      type="text"
-                      required
-                      value={fullName}
-                      onChange={(e) => setFullName(e.target.value)}
-                      placeholder={selectedRole === 'student' ? 'e.g. Amina Okon' : selectedRole === 'parent' ? 'e.g. Mrs. Okon' : 'e.g. Engr. Adeyemi'}
-                      className="w-full bg-[#081220] border border-[#1E304F] focus:border-[#84E000] rounded-xl py-2.5 pl-10 pr-4 text-xs text-white placeholder-slate-500 focus:outline-none transition-colors"
-                    />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-semibold text-slate-300 block mb-1">
+                      First Name <span className="text-[#84E000] font-bold">*</span>
+                    </label>
+                    <div className="relative">
+                      <UserIcon className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        required
+                        value={firstName}
+                        onChange={(e) => {
+                          setFirstName(e.target.value);
+                          if (nameError) setNameError(null);
+                        }}
+                        placeholder="e.g. Amina"
+                        className="w-full bg-[#081220] border border-[#1E304F] focus:border-[#84E000] rounded-xl py-2.5 pl-10 pr-4 text-xs text-white placeholder-slate-500 focus:outline-none transition-colors"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-semibold text-slate-300 block mb-1">
+                      Last Name / Surname <span className="text-[#84E000] font-bold">*</span>
+                    </label>
+                    <div className="relative">
+                      <UserIcon className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        required
+                        value={lastName}
+                        onChange={(e) => {
+                          setLastName(e.target.value);
+                          if (nameError) setNameError(null);
+                        }}
+                        placeholder="e.g. Okon"
+                        className="w-full bg-[#081220] border border-[#1E304F] focus:border-[#84E000] rounded-xl py-2.5 pl-10 pr-4 text-xs text-white placeholder-slate-500 focus:outline-none transition-colors"
+                      />
+                    </div>
                   </div>
                 </div>
+
+                {nameError && (
+                  <div className="text-[11px] text-amber-300 bg-amber-950/70 border border-amber-800/80 p-2.5 rounded-xl flex items-center gap-2">
+                    <span>{nameError}</span>
+                  </div>
+                )}
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
@@ -341,20 +516,15 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
                       <label className="text-xs font-semibold text-slate-300 block mb-1">Class Level</label>
                       <select
                         value={classLevel}
-                        onChange={(e) => {
-                          const val = e.target.value as NigerianClassLevel;
-                          setClassLevel(val);
-                          if (val.startsWith('JSS')) setStream('Junior');
-                          else if (stream === 'Junior') setStream('Science');
-                        }}
+                        onChange={(e) => handleClassLevelChange(e.target.value as NigerianClassLevel)}
                         className="w-full bg-[#081220] border border-[#1E304F] focus:border-[#84E000] rounded-xl py-2.5 px-3 text-xs text-white focus:outline-none transition-colors"
                       >
                         <option value="JSS 1">JSS 1 (Junior 1)</option>
                         <option value="JSS 2">JSS 2 (Junior 2)</option>
-                        <option value="JSS 3">JSS 3 (BECE Prep)</option>
+                        <option value="JSS 3">JSS 3 (BECE Certificate Class)</option>
                         <option value="SS 1">SS 1 (Senior 1)</option>
                         <option value="SS 2">SS 2 (Senior 2)</option>
-                        <option value="SS 3">SS 3 (WAEC / JAMB)</option>
+                        <option value="SS 3">SS 3 (WAEC / JAMB / NECO Certificate Class)</option>
                       </select>
                     </div>
 
@@ -380,17 +550,70 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <label className="text-xs font-semibold text-slate-300 block mb-1">Target Examination</label>
-                      <select
-                        value={targetExam}
-                        onChange={(e) => setTargetExam(e.target.value as any)}
-                        className="w-full bg-[#081220] border border-[#1E304F] focus:border-[#84E000] rounded-xl py-2.5 px-3 text-xs text-white focus:outline-none transition-colors"
-                      >
-                        <option value="WAEC">WAEC SSCE (Senior Certificate)</option>
-                        <option value="JAMB_UTME">JAMB UTME (University Entrance)</option>
-                        <option value="NECO">NECO Senior School Certificate</option>
-                        <option value="BECE">Junior WAEC (BECE)</option>
-                      </select>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-xs font-semibold text-slate-300">
+                          Target Examination
+                        </label>
+                        {!isCertificateClass(classLevel) && (
+                          <span className="text-[10px] font-medium text-amber-400 flex items-center gap-1">
+                            <Lock className="w-3 h-3" />
+                            <span>Certificate classes only</span>
+                          </span>
+                        )}
+                        {classLevel === 'JSS 3' && (
+                          <span className="text-[10px] font-semibold text-[#84E000] bg-[#84E000]/10 px-1.5 py-0.5 rounded">
+                            Junior Cert
+                          </span>
+                        )}
+                        {classLevel === 'SS 3' && (
+                          <span className="text-[10px] font-semibold text-sky-400 bg-sky-500/10 px-1.5 py-0.5 rounded">
+                            Senior Cert
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Locked for Non-Certificate Classes (JSS 1, 2 and SS 1, 2) */}
+                      {!isCertificateClass(classLevel) ? (
+                        <div>
+                          <div className="w-full bg-[#060D17] border border-dashed border-[#1E304F] rounded-xl py-2.5 px-3 text-xs text-slate-400 flex items-center justify-between cursor-not-allowed select-none">
+                            <span className="truncate">Internal School Curriculum (Terminal Exams)</span>
+                            <Lock className="w-3.5 h-3.5 text-amber-400/80 shrink-0 ml-1.5" />
+                          </div>
+                          <p className="text-[10px] text-slate-500 mt-1 leading-tight">
+                            Locked for {classLevel}. External target exams unlock in graduating classes (<strong className="text-slate-400">JSS 3</strong> &amp; <strong className="text-slate-400">SS 3</strong>).
+                          </p>
+                        </div>
+                      ) : classLevel === 'JSS 3' ? (
+                        /* Unlocked for JSS 3: Limited to BECE */
+                        <div>
+                          <select
+                            value={targetExam === 'BECE' ? 'BECE' : 'BECE'}
+                            onChange={(e) => setTargetExam(e.target.value as any)}
+                            className="w-full bg-[#081220] border border-[#1E304F] focus:border-[#84E000] rounded-xl py-2.5 px-3 text-xs text-white focus:outline-none transition-colors"
+                          >
+                            <option value="BECE">BECE (Junior WAEC / Basic Education Certificate)</option>
+                          </select>
+                          <p className="text-[10px] text-[#84E000] mt-1">
+                            Junior WAEC curriculum &amp; past question mock series enabled.
+                          </p>
+                        </div>
+                      ) : (
+                        /* Unlocked for SS 3: Limited to WAEC, JAMB UTME, and NECO */
+                        <div>
+                          <select
+                            value={targetExam === 'BECE' || targetExam === 'INTERNAL' ? 'WAEC' : targetExam}
+                            onChange={(e) => setTargetExam(e.target.value as any)}
+                            className="w-full bg-[#081220] border border-[#1E304F] focus:border-[#84E000] rounded-xl py-2.5 px-3 text-xs text-white focus:outline-none transition-colors"
+                          >
+                            <option value="WAEC">WAEC SSCE (Senior School Certificate Exam)</option>
+                            <option value="JAMB_UTME">JAMB UTME (University Matriculation Exam)</option>
+                            <option value="NECO">NECO SSCE (National Senior School Certificate)</option>
+                          </select>
+                          <p className="text-[10px] text-sky-400 mt-1">
+                            Senior national examination question banks &amp; timed CBT modes enabled.
+                          </p>
+                        </div>
+                      )}
                     </div>
 
                     <div>
@@ -565,24 +788,174 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
                 </div>
               )}
 
+              {/* Email Delivery Error Banner */}
+              {emailDeliveryError && (
+                <div className="p-3.5 rounded-2xl bg-red-950/70 border border-red-500/50 flex items-start gap-3 text-xs text-red-200 shadow-md">
+                  <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <span className="font-bold text-white block">Email Delivery Required</span>
+                    <p className="text-[11px] leading-relaxed text-red-200/90">{emailDeliveryError}</p>
+                  </div>
+                </div>
+              )}
+
               {/* Navigation buttons */}
               <div className="flex items-center gap-3 pt-4">
                 <button
                   type="button"
                   onClick={() => setStep(1)}
-                  className="py-3 px-5 rounded-full bg-[#14233C] hover:bg-[#1E3355] text-slate-300 font-bold text-xs transition-colors cursor-pointer"
+                  disabled={isSendingCode}
+                  className="py-3 px-5 rounded-full bg-[#14233C] hover:bg-[#1E3355] text-slate-300 font-bold text-xs transition-colors cursor-pointer disabled:opacity-50"
                 >
                   Change Role
                 </button>
 
                 <button
                   type="submit"
-                  className="flex-1 py-3.5 px-6 rounded-full bg-[#84E000] hover:bg-[#75c900] active:scale-[0.98] text-[#0A1322] font-black text-xs sm:text-sm tracking-wider uppercase shadow-lg shadow-[#84E000]/25 transition-all text-center cursor-pointer"
+                  disabled={isSendingCode}
+                  className="flex-1 py-3.5 px-6 rounded-full bg-[#84E000] hover:bg-[#75c900] disabled:opacity-70 disabled:cursor-not-allowed active:scale-[0.98] text-[#0A1322] font-black text-xs sm:text-sm tracking-wider uppercase shadow-lg shadow-[#84E000]/25 transition-all text-center flex items-center justify-center gap-2 cursor-pointer"
                 >
-                  Create Account & Launch
+                  {isSendingCode ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 stroke-[3] animate-spin" />
+                      <span>Sending Code...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>Proceed to Email Verification</span>
+                      <ChevronRight className="w-4 h-4 stroke-[3]" />
+                    </>
+                  )}
                 </button>
               </div>
 
+            </form>
+          )}
+
+          {/* STEP 3: MANDATORY EMAIL VERIFICATION */}
+          {step === 3 && (
+            <form onSubmit={handleVerifyAndCreateAccount} className="space-y-4">
+              
+              {/* Active Role Indicator Banner with Change Role button */}
+              <div className="flex items-center justify-between p-3 rounded-2xl bg-[#091222] border border-[#1A2C49]">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-xl bg-[#14233C]">
+                    <Mail className="w-5 h-5 text-[#84E000]" />
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-400 uppercase tracking-wider block font-semibold">Account Activation</span>
+                    <span className="text-sm font-bold text-white">
+                      Mandatory Email Verification
+                    </span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setStep(2)}
+                  className="text-xs font-bold text-[#84E000] hover:underline px-2.5 py-1 rounded-lg bg-[#84E000]/10 hover:bg-[#84E000]/20 transition-all cursor-pointer"
+                >
+                  Edit Profile
+                </button>
+              </div>
+
+              {/* Dispatched Notification Banner */}
+              {codeNotification && (
+                <div className="p-3 rounded-2xl bg-[#091A23] border border-emerald-500/40 flex items-center gap-2.5 text-xs text-emerald-300 shadow-md">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span className="leading-relaxed">{codeNotification}</span>
+                </div>
+              )}
+
+              <div className="text-center space-y-2 py-3 bg-[#081220] border border-[#1E304F] rounded-2xl p-4">
+                <div className="w-12 h-12 mx-auto rounded-2xl bg-[#14233C] border border-[#1E304F] flex items-center justify-center text-[#84E000] shadow-inner">
+                  <KeyRound className="w-6 h-6" />
+                </div>
+                <h3 className="text-base font-bold text-white">
+                  Enter 6-Digit Verification Code
+                </h3>
+                <p className="text-xs text-slate-400 max-w-sm mx-auto leading-relaxed">
+                  We sent a 6-digit verification code to{' '}
+                  <strong className="text-white font-mono break-all">{email}</strong>.
+                  All accounts must verify their email address before access is granted.
+                </p>
+              </div>
+
+              {/* 6-Digit Code Input Box */}
+              <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1 text-center">
+                  Verification Code
+                </label>
+                <input
+                  type="text"
+                  maxLength={6}
+                  required
+                  value={inputCode}
+                  onChange={(e) => {
+                    const val = e.target.value.replace(/\D/g, '').slice(0, 6);
+                    setInputCode(val);
+                    if (verificationError) setVerificationError(null);
+                  }}
+                  placeholder="••••••"
+                  autoFocus
+                  className="w-full text-center text-3xl font-mono tracking-[0.5em] font-black bg-[#081220] border-2 border-[#1E304F] focus:border-[#84E000] rounded-2xl py-3.5 text-white placeholder-slate-600 focus:outline-none transition-colors"
+                />
+              </div>
+
+              {verificationError && (
+                <div className="text-xs text-amber-300 bg-amber-950/70 border border-amber-800/80 p-3 rounded-xl flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-amber-400" />
+                  <span>{verificationError}</span>
+                </div>
+              )}
+
+              {/* Resend and Change Email controls */}
+              <div className="flex items-center justify-between text-xs text-slate-400 px-1 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setStep(2)}
+                  className="hover:text-white transition-colors cursor-pointer text-xs underline"
+                >
+                  Change Email Address
+                </button>
+
+                <button
+                  type="button"
+                  disabled={resendTimer > 0 || isSendingCode}
+                  onClick={() => sendVerificationCode(email.trim())}
+                  className="text-[#84E000] hover:text-[#75c900] disabled:text-slate-500 font-semibold cursor-pointer disabled:cursor-not-allowed transition-colors text-xs flex items-center gap-1"
+                >
+                  {isSendingCode ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Sending...</span>
+                    </>
+                  ) : resendTimer > 0 ? (
+                    `Resend code in ${resendTimer}s`
+                  ) : (
+                    'Resend Code'
+                  )}
+                </button>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center gap-3 pt-3">
+                <button
+                  type="button"
+                  onClick={() => setStep(2)}
+                  className="py-3 px-5 rounded-full bg-[#14233C] hover:bg-[#1E3355] text-slate-300 font-bold text-xs transition-colors cursor-pointer"
+                >
+                  Back
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={inputCode.length !== 6}
+                  className="flex-1 py-3.5 px-6 rounded-full bg-[#84E000] hover:bg-[#75c900] disabled:opacity-50 active:scale-[0.98] text-[#0A1322] font-black text-xs sm:text-sm tracking-wider uppercase shadow-lg shadow-[#84E000]/25 transition-all text-center cursor-pointer disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Verify Email & Activate Account</span>
+                </button>
+              </div>
             </form>
           )}
 

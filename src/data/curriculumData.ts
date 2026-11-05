@@ -1,4 +1,9 @@
 import { CurriculumTopic, NigerianClassLevel, AcademicStream } from '../types';
+import { JSS1_SECOND_TERM_TOPICS } from './jss1SecondTermData';
+import { JSS1_REMAINING_SUBJECTS_TOPICS } from './jss1RemainingSubjectsData';
+import { JSS2_SECOND_TERM_TOPICS } from './jss2SecondTermData';
+import { JSS2_REMAINING_SUBJECTS_TOPICS } from './jss2RemainingSubjectsData';
+import { JSS3_ENGLISH_TOPICS } from './jss3EnglishData';
 
 export const OFFICIAL_SUBJECTS_BY_CLASS = {
   'JSS 1': [
@@ -133,6 +138,11 @@ export const OFFICIAL_SUBJECTS_BY_CLASS = {
 };
 
 export const NIGERIAN_CURRICULUM_TOPICS: CurriculumTopic[] = [
+  ...JSS1_SECOND_TERM_TOPICS,
+  ...JSS1_REMAINING_SUBJECTS_TOPICS,
+  ...JSS2_SECOND_TERM_TOPICS,
+  ...JSS2_REMAINING_SUBJECTS_TOPICS,
+  ...JSS3_ENGLISH_TOPICS,
   // ==========================================
   // JSS 1 SUBJECTS (15 SUBJECTS)
   // ==========================================
@@ -147,7 +157,21 @@ export const NIGERIAN_CURRICULUM_TOPICS: CurriculumTopic[] = [
     subtopics: ['Conversion between Base 10 and Base 2', 'Addition of Binary Numbers', 'Place Value of Large Numbers'],
     readingTimeMinutes: 6,
     summary: 'Master the decimal system and binary representation used by computer systems with Nigerian BECE past examples.',
-    contentMarkdown: `### 1. The Decimal (Denary) System\nThe counting system we use daily is Base 10 (Denary). The digits used are 0, 1, 2, 3, 4, 5, 6, 7, 8, 9.\n\n### 2. The Binary System (Base 2)\nBinary uses only two digits: 0 and 1. To convert $25_{10}$ to binary, divide repeatedly by 2 and write down remainders from bottom to top:\n$$25 \\div 2 = 12 \\text{ R } 1$$\n$$12 \\div 2 = 6 \\text{ R } 0$$\n$$6 \\div 2 = 3 \\text{ R } 0$$\n$$3 \\div 2 = 1 \\text{ R } 1$$\n$$1 \\div 2 = 0 \\text{ R } 1$$\nTherefore: $25_{10} = 11001_2$.`,
+    contentMarkdown: `### 1. The Decimal (Denary) System
+
+The counting system we use daily is Base 10 (Denary). The digits used are 0, 1, 2, 3, 4, 5, 6, 7, 8, 9.
+
+### 2. The Binary System (Base 2)
+
+Binary uses only two digits: 0 and 1. To convert $25_{10}$ to binary, divide repeatedly by 2 and write down remainders from bottom to top:
+
+$$25 \\div 2 = 12 \\text{ R } 1$$
+$$12 \\div 2 = 6 \\text{ R } 0$$
+$$6 \\div 2 = 3 \\text{ R } 0$$
+$$3 \\div 2 = 1 \\text{ R } 1$$
+$$1 \\div 2 = 0 \\text{ R } 1$$
+
+Therefore: $25_{10} = 11001_2$.`,
     keyTakeaways: ['Base 10 uses digits 0-9; Base 2 uses 0 and 1.', 'Remainders are recorded from the bottom upwards.'],
     associatedQuizId: 'bece-math-junior-2024'
   },
@@ -201,7 +225,7 @@ export const NIGERIAN_CURRICULUM_TOPICS: CurriculumTopic[] = [
     classLevel: 'JSS 1',
     stream: 'Junior',
     subject: 'Basic Technology',
-    term: '2nd Term',
+    term: '1st Term',
     weekNumber: 3,
     topicTitle: 'Hand Tools: Measuring, Marking Out & Cutting Tools',
     subtopics: ['Steel Rule, Try Square and Calipers', 'Saws (Rip Saw, Crosscut Saw, Tenon Saw)', 'Workshop Safety Rules'],
@@ -351,7 +375,7 @@ export const NIGERIAN_CURRICULUM_TOPICS: CurriculumTopic[] = [
     classLevel: 'JSS 1',
     stream: 'Junior',
     subject: 'Home Economics',
-    term: '2nd Term',
+    term: '1st Term',
     weekNumber: 2,
     topicTitle: 'Food Nutrients, Balanced Diet & Meal Planning',
     subtopics: ['Carbohydrates, Proteins, Fats, Vitamins, Minerals, Water', 'Nutritional Deficiency Diseases (Kwashiorkor, Scurvy, Rickets)', 'Kitchen Hygiene and Safe Food Storage'],
@@ -362,24 +386,7 @@ export const NIGERIAN_CURRICULUM_TOPICS: CurriculumTopic[] = [
     associatedQuizId: 'homecon-jss1-quiz'
   },
 
-  // ==========================================
-  // JSS 2 SUBJECTS (SAMPLE EXPANSIONS)
-  // ==========================================
-  {
-    id: 'math-jss2-algebra',
-    classLevel: 'JSS 2',
-    stream: 'Junior',
-    subject: 'Mathematics',
-    term: '2nd Term',
-    weekNumber: 4,
-    topicTitle: 'Linear Equations & Algebraic Expansion',
-    subtopics: ['Simplifying Algebraic Terms', 'Expansion of $(a + b)(c + d)$', 'Solving Equations with Fractions'],
-    readingTimeMinutes: 6,
-    summary: 'Master foundational algebraic manipulations, clearing brackets, balancing equations, and solving everyday word problems.',
-    contentMarkdown: `### 1. Expanding Binomial Brackets\n$$(x + 3)(x + 5) = x(x + 5) + 3(x + 5) = x^2 + 5x + 3x + 15 = x^2 + 8x + 15$$\n\n### 2. Solving Linear Equations\n$$3(2x - 4) = 4x + 8$$\n$$6x - 12 = 4x + 8$$\n$$2x = 20 \\implies x = 10$$`,
-    keyTakeaways: ['Always distribute coefficients to every term inside brackets.', 'Move variables to one side and constants to the other.'],
-    associatedQuizId: 'bece-math-junior-2024'
-  },
+
 
   // ==========================================
   // SENIOR SECONDARY SCIENCE (SS 1 - SS 3)

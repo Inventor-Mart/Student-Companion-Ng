@@ -54,14 +54,6 @@ export const SCHOOL_LEADERBOARD_DATA: SchoolLeaderboardEntry[] = [
 export const STUDENT_LEADERBOARD_DATA: StudentLeaderboardEntry[] = [
   {
     rank: 1,
-    name: 'Praise Adebayo',
-    school: "King's College Lagos",
-    classLevel: 'SS 3 (Science)',
-    xp: 14850,
-    streak: 28
-  },
-  {
-    rank: 2,
     name: 'Chioma Okafor',
     school: "Queen's College Yaba",
     classLevel: 'SS 2 (Science)',
@@ -69,7 +61,7 @@ export const STUDENT_LEADERBOARD_DATA: StudentLeaderboardEntry[] = [
     streak: 22
   },
   {
-    rank: 3,
+    rank: 2,
     name: 'Fatima Usman',
     school: 'FGGC Bwari Abuja',
     classLevel: 'SS 3 (Commercial)',
@@ -77,7 +69,7 @@ export const STUDENT_LEADERBOARD_DATA: StudentLeaderboardEntry[] = [
     streak: 19
   },
   {
-    rank: 4,
+    rank: 3,
     name: 'Oluwatobi Alabi',
     school: 'Corona Secondary School',
     classLevel: 'SS 1 (Science)',
@@ -85,7 +77,7 @@ export const STUDENT_LEADERBOARD_DATA: StudentLeaderboardEntry[] = [
     streak: 15
   },
   {
-    rank: 5,
+    rank: 4,
     name: 'Emeka Nnamani',
     school: 'Dennis Memorial Grammar School',
     classLevel: 'SS 2 (Science)',

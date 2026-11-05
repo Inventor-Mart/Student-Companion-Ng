@@ -13,6 +13,7 @@ import { ParentPortal } from './components/parent/ParentPortal';
 import { TutorPortal } from './components/tutor/TutorPortal';
 import { CompetitionsHub } from './components/student/CompetitionsHub';
 import { SchoolAdminPortal } from './components/admin/SchoolAdminPortal';
+import { SuperAdminPortal } from './components/admin/SuperAdminPortal';
 import { ScienceFormulasHub } from './components/student/ScienceFormulasHub';
 import { LandingPage } from './components/landing/LandingPage';
 import { KnowMorePage } from './components/landing/KnowMorePage';
@@ -41,7 +42,8 @@ const AppContent: React.FC = () => {
     activeExam,
     currentScreen,
     setCurrentScreen,
-    isAuthenticated
+    isAuthenticated,
+    isSuperAdmin
   } = useApp();
 
   // Screen 1: The New Concept Landing Page (Public Discovery)
@@ -206,7 +208,7 @@ const AppContent: React.FC = () => {
 
         {currentRole === 'tutor' && <TutorPortal />}
 
-        {currentRole === 'admin' && <SchoolAdminPortal />}
+        {currentRole === 'admin' && (isSuperAdmin ? <SuperAdminPortal /> : <SchoolAdminPortal />)}
       </AndroidDeviceFrame>
     </div>
   );
