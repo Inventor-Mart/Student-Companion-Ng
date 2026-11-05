@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { CBT_EXAMS_DATABASE } from '../../data/cbtExamData';
 import { CBTExam, CBTExamResult } from '../../types';
+import { renderFormattedSpan } from '../../utils/mathFormatter';
 import {
   Timer,
   Flag,
@@ -453,7 +454,7 @@ const ActiveCBTRunner: React.FC<ActiveCBTRunnerProps> = ({ exam, onExit, onSaveR
                   </div>
 
                   <p className="text-xs font-medium text-white leading-relaxed">
-                    {q.question}
+                    {renderFormattedSpan(q.question, `rev-q-${q.id}`)}
                   </p>
 
                   {/* Options */}
@@ -478,7 +479,7 @@ const ActiveCBTRunner: React.FC<ActiveCBTRunnerProps> = ({ exam, onExit, onSaveR
                             <span className="w-5 h-5 rounded-full bg-slate-800 flex items-center justify-center text-[10px] font-bold font-mono">
                               {String.fromCharCode(65 + oIdx)}
                             </span>
-                            <span>{opt}</span>
+                            <span>{renderFormattedSpan(opt, `rev-opt-${q.id}-${oIdx}`)}</span>
                           </div>
                           {isOptionCorrect && <Check className="w-4 h-4 text-emerald-400" />}
                         </div>
@@ -493,7 +494,7 @@ const ActiveCBTRunner: React.FC<ActiveCBTRunnerProps> = ({ exam, onExit, onSaveR
                       Official Marking Scheme & Explanation:
                     </span>
                     <p className="text-slate-400 text-[11px] leading-relaxed">
-                      {q.explanation}
+                      {renderFormattedSpan(q.explanation, `rev-exp-${q.id}`)}
                     </p>
                   </div>
                 </div>
@@ -575,7 +576,7 @@ const ActiveCBTRunner: React.FC<ActiveCBTRunnerProps> = ({ exam, onExit, onSaveR
           </div>
 
           <h3 className="text-xs sm:text-sm font-semibold text-white leading-relaxed">
-            {currentQuestion.question}
+            {renderFormattedSpan(currentQuestion.question, `q-${currentQuestion.id}`)}
           </h3>
         </div>
 
@@ -603,7 +604,9 @@ const ActiveCBTRunner: React.FC<ActiveCBTRunnerProps> = ({ exam, onExit, onSaveR
                 >
                   {String.fromCharCode(65 + oIdx)}
                 </div>
-                <span className="text-xs font-medium leading-snug">{opt}</span>
+                <span className="text-xs font-medium leading-snug">
+                  {renderFormattedSpan(opt, `opt-${currentQuestion.id}-${oIdx}`)}
+                </span>
               </button>
             );
           })}

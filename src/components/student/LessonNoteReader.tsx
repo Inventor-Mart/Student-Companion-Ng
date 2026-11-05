@@ -10,8 +10,14 @@ import {
   Clock,
   Lightbulb,
   ArrowUp,
-  Hash
+  Hash,
+  Binary
 } from 'lucide-react';
+import {
+  sanitizeCodeMath,
+  renderFormattedSpan,
+  cleanMathText
+} from '../../utils/mathFormatter';
 
 interface DivisionStep {
   dividend: string;
@@ -23,6 +29,8 @@ interface DivisionStep {
 type ContentBlock =
   | { type: 'heading'; level: number; text: string }
   | { type: 'division-steps'; steps: DivisionStep[]; finalResult?: string }
+  | { type: 'system-equations'; equations: { expr: string; note?: string }[] }
+  | { type: 'aligned-formula'; lines: string[] }
   | { type: 'table'; rows: string[][] }
   | { type: 'callout'; text: string }
   | { type: 'list'; items: string[] }
@@ -30,96 +38,7 @@ type ContentBlock =
   | { type: 'code'; text: string }
   | { type: 'paragraph'; text: string };
 
-// Helper to sanitize LaTeX mathematical symbols and clean notation
-const sanitizeMathSymbols = (raw: string): string => {
-  return raw
-    .replace(/\\div/g, '÷')
-    .replace(/\\times/g, '×')
-    .replace(/\\text\{\s*R\s*\}/gi, ' R ')
-    .replace(/\\text\{([^}]+)\}/g, '$1')
-    .replace(/\\implies/g, '⇒')
-    .replace(/\\approx/g, '≈')
-    .replace(/\\le/g, '≤')
-    .replace(/\\ge/g, '≥')
-    .replace(/\\pm/g, '±')
-    .replace(/\\theta/g, 'θ')
-    .replace(/\\alpha/g, 'α')
-    .replace(/\\beta/g, 'β')
-    .replace(/\\pi/g, 'π')
-    .replace(/\\circ/g, '°')
-    .replace(/\\sin/g, 'sin')
-    .replace(/\\cos/g, 'cos')
-    .replace(/\\tan/g, 'tan')
-    .replace(/\\frac\{([^}]+)\}\{([^}]+)\}/g, '($1 / $2)');
-};
-
-// Render inline text with support for bold, italics, subscripts and superscripts
-const renderFormattedSpan = (text: string, keyPrefix: string): React.ReactNode[] => {
-  const sanitized = sanitizeMathSymbols(text);
-
-  // Regex tokens: **bold**, *italics*, $math$, or expressions with subscripts (25_{10}, 11001_2) or exponents (x^2)
-  const regex = /(\*\*[^*]+\*\*|\*[^*]+\*|\$[^$]+\$|[a-zA-Z0-9]+(?:_\{[0-9a-zA-Z]+\}|_[0-9a-zA-Z]+|\^\{[0-9a-zA-Z]+\}|\^[0-9a-zA-Z]+))/g;
-  const parts = sanitized.split(regex);
-
-  return parts.map((part, i) => {
-    const k = `${keyPrefix}-${i}`;
-    if (!part) return null;
-
-    // Bold text
-    if (part.startsWith('**') && part.endsWith('**')) {
-      return (
-        <strong key={k} className="font-bold text-white">
-          {part.slice(2, -2)}
-        </strong>
-      );
-    }
-
-    // Italic text
-    if (part.startsWith('*') && part.endsWith('*')) {
-      return (
-        <em key={k} className="italic text-slate-200">
-          {part.slice(1, -1)}
-        </em>
-      );
-    }
-
-    // Inline math enclosed in $...$
-    if (part.startsWith('$') && part.endsWith('$')) {
-      const inner = part.slice(1, -1).trim();
-      return renderFormattedSpan(inner, `${k}-m`);
-    }
-
-    // Subscripts: e.g. 25_{10} or 11001_2
-    const subMatch = part.match(/^([a-zA-Z0-9]+)_(\{([0-9a-zA-Z]+)\}|([0-9a-zA-Z]+))$/);
-    if (subMatch) {
-      const base = subMatch[1];
-      const sub = subMatch[3] || subMatch[4];
-      return (
-        <span key={k} className="inline-flex items-baseline font-mono font-semibold text-amber-300">
-          <span>{base}</span>
-          <sub className="text-[10px] text-amber-400 font-bold ml-0.5">{sub}</sub>
-        </span>
-      );
-    }
-
-    // Superscripts: e.g. x^2 or x^{2}
-    const supMatch = part.match(/^([a-zA-Z0-9]+)\^(\{([0-9a-zA-Z]+)\}|([0-9a-zA-Z]+))$/);
-    if (supMatch) {
-      const base = supMatch[1];
-      const sup = supMatch[3] || supMatch[4];
-      return (
-        <span key={k} className="inline-flex items-baseline font-mono font-semibold text-emerald-300">
-          <span>{base}</span>
-          <sup className="text-[10px] text-emerald-400 font-bold ml-0.5">{sup}</sup>
-        </span>
-      );
-    }
-
-    return <span key={k}>{part}</span>;
-  });
-};
-
-// Parse raw markdown into distinct visual blocks
+// Parse raw markdown into rich, distinct visual blocks
 const parseMarkdownBlocks = (rawMarkdown: string): ContentBlock[] => {
   const normalized = rawMarkdown.replace(/\r\n/g, '\n');
   const lines = normalized.split('\n');
@@ -238,6 +157,81 @@ const parseMarkdownBlocks = (rawMarkdown: string): ContentBlock[] => {
       flushDivisionSteps();
     }
 
+    // Systems of equations environment: \begin{cases} ... \end{cases}
+    if (trimmed.includes('\\begin{cases}')) {
+      flushAll();
+      let casesText = trimmed;
+      if (!trimmed.includes('\\end{cases}')) {
+        while (i + 1 < lines.length && !lines[i + 1].includes('\\end{cases}')) {
+          i++;
+          casesText += ' ' + lines[i].trim();
+        }
+        if (i + 1 < lines.length && lines[i + 1].includes('\\end{cases}')) {
+          i++;
+          casesText += ' ' + lines[i].trim();
+        }
+      }
+
+      const match = casesText.match(/\\begin\{cases\}([\s\S]*?)\\end\{cases\}/i);
+      if (match) {
+        const rawEquations = match[1].split(/\\\\/);
+        const equations = rawEquations
+          .map(eq => eq.trim())
+          .filter(eq => eq.length > 0)
+          .map(eq => {
+            const parts = eq.split('&');
+            const expr = parts[0].trim();
+            const note = parts.length > 1 ? parts.slice(1).join('&').trim() : undefined;
+            return { expr, note };
+          });
+
+        if (equations.length > 0) {
+          blocks.push({ type: 'system-equations', equations });
+          continue;
+        }
+      }
+    }
+
+    // Multiline aligned derivations: \begin{aligned} ... \end{aligned}
+    if (trimmed.includes('\\begin{aligned}')) {
+      flushAll();
+      let alignedText = trimmed;
+      if (!trimmed.includes('\\end{aligned}')) {
+        while (i + 1 < lines.length && !lines[i + 1].includes('\\end{aligned}')) {
+          i++;
+          alignedText += ' ' + lines[i].trim();
+        }
+        if (i + 1 < lines.length && lines[i + 1].includes('\\end{aligned}')) {
+          i++;
+          alignedText += ' ' + lines[i].trim();
+        }
+      }
+
+      const match = alignedText.match(/\\begin\{aligned\}([\s\S]*?)\\end\{aligned\}/i);
+      if (match) {
+        const rawLines = match[1].split(/\\\\/);
+        const derivationLines = rawLines
+          .map(l => l.trim())
+          .filter(l => l.length > 0);
+
+        if (derivationLines.length > 0) {
+          blocks.push({ type: 'aligned-formula', lines: derivationLines });
+          continue;
+        }
+      }
+    }
+
+    // Standalone centered math formula block: $$...$$
+    if (trimmed.startsWith('$$') && trimmed.endsWith('$$') && trimmed.length > 4) {
+      flushAll();
+      const formulaInner = trimmed.replace(/^\$\$\s*/, '').replace(/\s*\$\$$/, '');
+      blocks.push({
+        type: 'formula',
+        text: formulaInner
+      });
+      continue;
+    }
+
     // Table rows
     if (trimmed.startsWith('|') && trimmed.endsWith('|')) {
       flushParagraph();
@@ -258,16 +252,6 @@ const parseMarkdownBlocks = (rawMarkdown: string): ContentBlock[] => {
       flushParagraph();
       flushTable();
       currentListItems.push(trimmed.replace(/^[-*]\s+/, '').replace(/^\d+\.\s+/, ''));
-      continue;
-    }
-
-    // Standalone centered math formula block: $$...$$
-    if (trimmed.startsWith('$$') && trimmed.endsWith('$$') && trimmed.length > 4) {
-      flushAll();
-      blocks.push({
-        type: 'formula',
-        text: trimmed.replace(/^\$\$\s*/, '').replace(/\s*\$\$$/, '')
-      });
       continue;
     }
 
@@ -355,7 +339,7 @@ export const LessonNoteReader: React.FC = () => {
               <span className="text-slate-400">{activeReadingNote.classLevel}</span>
             </div>
             <h2 className="text-xs font-bold text-white truncate">
-              {activeReadingNote.topicTitle}
+              {cleanMathText(activeReadingNote.topicTitle)}
             </h2>
           </div>
         </div>
@@ -392,10 +376,10 @@ export const LessonNoteReader: React.FC = () => {
             </span>
           </div>
           <h1 className="text-lg sm:text-xl font-bold text-white tracking-tight leading-tight">
-            {activeReadingNote.topicTitle}
+            {renderFormattedSpan(activeReadingNote.topicTitle, 'main-title')}
           </h1>
           <p className="text-xs text-slate-300 leading-relaxed bg-slate-900/60 p-3 rounded-xl border border-slate-800">
-            {activeReadingNote.summary}
+            {renderFormattedSpan(activeReadingNote.summary, 'summary')}
           </p>
         </div>
 
@@ -408,7 +392,7 @@ export const LessonNoteReader: React.FC = () => {
             {activeReadingNote.subtopics.map((sub, i) => (
               <div key={i} className="flex items-center gap-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
-                <span className="line-clamp-1">{sub}</span>
+                <span className="line-clamp-1">{renderFormattedSpan(sub, `sub-${i}`)}</span>
               </div>
             ))}
           </div>
@@ -438,6 +422,55 @@ export const LessonNoteReader: React.FC = () => {
               );
             }
 
+            // Dedicated Simultaneous System of Equations Card
+            if (block.type === 'system-equations') {
+              return (
+                <div key={idx} className="my-3 flex justify-center">
+                  <div className="bg-gradient-to-r from-slate-900 via-slate-850 to-slate-900 border border-emerald-500/40 rounded-2xl p-4 shadow-lg flex items-stretch gap-3 max-w-lg w-full">
+                    <div className="flex items-center text-4xl sm:text-5xl font-thin text-emerald-400 select-none px-1">
+                      {'{'}
+                    </div>
+                    <div className="flex flex-col justify-center gap-2 flex-1 font-mono text-xs sm:text-sm text-emerald-200 divide-y divide-slate-800/60">
+                      {block.equations.map((eq, eIdx) => (
+                        <div key={eIdx} className="flex items-center justify-between gap-3 pt-1.5 first:pt-0">
+                          <span className="font-semibold text-white tracking-wide">
+                            {renderFormattedSpan(eq.expr, `case-${idx}-${eIdx}-expr`)}
+                          </span>
+                          {eq.note && (
+                            <span className="text-[11px] text-amber-300 font-sans italic bg-amber-950/40 px-2 py-0.5 rounded border border-amber-800/40">
+                              {renderFormattedSpan(eq.note, `case-${idx}-${eIdx}-note`)}
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              );
+            }
+
+            // Aligned Derivation Steps
+            if (block.type === 'aligned-formula') {
+              return (
+                <div key={idx} className="my-3 p-3.5 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-inner space-y-2">
+                  <div className="flex items-center gap-2 text-[11px] font-bold text-emerald-400 uppercase tracking-wider pb-1 border-b border-slate-800/60">
+                    <Hash className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Mathematical Derivation Steps</span>
+                  </div>
+                  <div className="space-y-1.5 font-mono text-xs sm:text-sm text-emerald-300">
+                    {block.lines.map((line, lIdx) => (
+                      <div key={lIdx} className="flex items-center justify-between gap-3 bg-slate-950/60 px-3 py-2 rounded-xl border border-slate-800/50">
+                        <span className="text-slate-500 text-[10px] select-none font-sans">({lIdx + 1})</span>
+                        <span className="flex-1 text-center font-semibold text-white">
+                          {renderFormattedSpan(line, `align-${idx}-${lIdx}`)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            }
+
             // Dedicated Step-by-Step Division Calculation Card
             if (block.type === 'division-steps') {
               const reversedRemainders = block.steps.map(s => s.remainder).reverse().join('');
@@ -445,7 +478,7 @@ export const LessonNoteReader: React.FC = () => {
                 <div key={idx} className="my-3 bg-slate-900/90 border border-slate-800 rounded-2xl overflow-hidden shadow-sm">
                   <div className="bg-slate-850 px-3.5 py-2.5 border-b border-slate-800 flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <Hash className="w-3.5 h-3.5 text-emerald-400" />
+                      <Binary className="w-3.5 h-3.5 text-emerald-400" />
                       <span className="text-xs font-bold text-white tracking-wide">
                         Repeated Division by 2 Method
                       </span>
@@ -571,17 +604,18 @@ export const LessonNoteReader: React.FC = () => {
             // Standalone Centered Math Formula Block
             if (block.type === 'formula') {
               return (
-                <div key={idx} className="my-2 p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-center font-mono text-xs sm:text-sm text-emerald-300 font-semibold shadow-inner">
+                <div key={idx} className="my-2.5 p-3 rounded-2xl bg-gradient-to-r from-slate-900 via-slate-850 to-slate-900 border border-emerald-500/30 text-center font-mono text-xs sm:text-sm text-emerald-300 font-semibold shadow-inner">
                   {renderFormattedSpan(block.text, `formula-${idx}`)}
                 </div>
               );
             }
 
-            // Preformatted Model Composition / Letter / Poetry Block
+            // Preformatted Model Composition / Letter / ASCII Diagram Block
             if (block.type === 'code') {
+              const cleanCode = sanitizeCodeMath(block.text);
               return (
                 <div key={idx} className="my-3 p-4 rounded-xl bg-slate-900/95 border border-amber-500/30 border-l-4 border-l-amber-500 font-mono text-xs sm:text-[13px] text-amber-100 whitespace-pre-wrap leading-relaxed overflow-x-auto shadow-md">
-                  {block.text}
+                  {cleanCode}
                 </div>
               );
             }

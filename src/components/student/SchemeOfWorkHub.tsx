@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { NIGERIAN_CURRICULUM_TOPICS, OFFICIAL_SUBJECTS_BY_CLASS } from '../../data/curriculumData';
 import { NigerianClassLevel, CurriculumTopic, AcademicStream } from '../../types';
+import { cleanMathText } from '../../utils/mathFormatter';
 import {
   Search,
   BookOpen,
@@ -569,7 +570,7 @@ This digital module is aligned with the Nigerian Educational Research and Develo
                 key={sIdx}
                 className="text-[10px] text-slate-400 bg-slate-900 px-2 py-0.5 rounded border border-slate-800"
               >
-                {sub}
+                {cleanMathText(sub)}
               </span>
             ))}
           </div>
@@ -911,7 +912,7 @@ This digital module is aligned with the Nigerian Educational Research and Develo
                       <div className="text-[11px] text-slate-400 font-medium">Curriculum Subtopics:</div>
                       <ul className="text-xs text-slate-300 space-y-0.5 pl-3 list-disc marker:text-emerald-500">
                         {topic.subtopics.slice(0, 3).map((sub, idx) => (
-                          <li key={idx} className="line-clamp-1">{sub}</li>
+                          <li key={idx} className="line-clamp-1">{cleanMathText(sub)}</li>
                         ))}
                       </ul>
                     </div>
