@@ -19,6 +19,7 @@ import { JSS3_HOME_ECONOMICS_TOPICS } from './jss3HomeEconomicsData';
 import { JSS3_CCA_TOPICS } from './jss3CCAData';
 import { JSS3_PHE_TOPICS } from './jss3PHEData';
 import { SS1_ENGLISH_TOPICS } from './ss1EnglishData';
+import { SS1_MATH_TOPICS } from './ss1MathData';
 export { JSS1_ENGLISH_TOPICS } from './jss1EnglishData';
 export { JSS2_ENGLISH_TOPICS } from './jss2EnglishData';
 export { JSS3_MATH_TOPICS } from './jss3MathData';
@@ -36,6 +37,7 @@ export { JSS3_HOME_ECONOMICS_TOPICS } from './jss3HomeEconomicsData';
 export { JSS3_CCA_TOPICS } from './jss3CCAData';
 export { JSS3_PHE_TOPICS } from './jss3PHEData';
 export { SS1_ENGLISH_TOPICS } from './ss1EnglishData';
+export { SS1_MATH_TOPICS } from './ss1MathData';
 
 export const OFFICIAL_SUBJECTS_BY_CLASS = {
   'JSS 1': [
@@ -190,6 +192,7 @@ export const NIGERIAN_CURRICULUM_TOPICS: CurriculumTopic[] = [
   ...JSS3_CCA_TOPICS,
   ...JSS3_PHE_TOPICS,
   ...SS1_ENGLISH_TOPICS,
+  ...SS1_MATH_TOPICS,
   // ==========================================
   // JSS 1 SUBJECTS (15 SUBJECTS)
   // ==========================================
