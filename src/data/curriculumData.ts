@@ -21,6 +21,7 @@ import { JSS3_PHE_TOPICS } from './jss3PHEData';
 import { SS1_ENGLISH_TOPICS } from './ss1EnglishData';
 import { SS1_MATH_TOPICS } from './ss1MathData';
 import { SS1_BIOLOGY_TOPICS } from './ss1BiologyData';
+import { SS1_CHEMISTRY_TOPICS } from './ss1ChemistryData';
 export { JSS1_ENGLISH_TOPICS } from './jss1EnglishData';
 export { JSS2_ENGLISH_TOPICS } from './jss2EnglishData';
 export { JSS3_MATH_TOPICS } from './jss3MathData';
@@ -40,6 +41,7 @@ export { JSS3_PHE_TOPICS } from './jss3PHEData';
 export { SS1_ENGLISH_TOPICS } from './ss1EnglishData';
 export { SS1_MATH_TOPICS } from './ss1MathData';
 export { SS1_BIOLOGY_TOPICS } from './ss1BiologyData';
+export { SS1_CHEMISTRY_TOPICS } from './ss1ChemistryData';
 
 export const OFFICIAL_SUBJECTS_BY_CLASS = {
   'JSS 1': [
@@ -196,6 +198,7 @@ export const NIGERIAN_CURRICULUM_TOPICS: CurriculumTopic[] = [
   ...SS1_ENGLISH_TOPICS,
   ...SS1_MATH_TOPICS,
   ...SS1_BIOLOGY_TOPICS,
+  ...SS1_CHEMISTRY_TOPICS,
   // ==========================================
   // JSS 1 SUBJECTS (15 SUBJECTS)
   // ==========================================

@@ -18,7 +18,10 @@ import {
   renderFormattedSpan,
   cleanMathText
 } from '../../utils/mathFormatter';
-import { BiologicalDiagram, DiagramType } from './BiologicalDiagram';
+import { BiologicalDiagram, DiagramType as BiologicalDiagramType } from './BiologicalDiagram';
+import { ChemicalDiagram, ChemicalDiagramType } from './ChemicalDiagram';
+
+type AnyDiagramType = BiologicalDiagramType | ChemicalDiagramType;
 
 interface DivisionStep {
   dividend: string;
@@ -36,7 +39,7 @@ type ContentBlock =
   | { type: 'callout'; text: string }
   | { type: 'list'; items: string[] }
   | { type: 'formula'; text: string }
-  | { type: 'diagram'; diagramType: DiagramType }
+  | { type: 'diagram'; diagramType: AnyDiagramType }
   | { type: 'code'; text: string }
   | { type: 'paragraph'; text: string };
 
@@ -240,7 +243,7 @@ const parseMarkdownBlocks = (rawMarkdown: string): ContentBlock[] => {
       flushAll();
       blocks.push({
         type: 'diagram',
-        diagramType: diagramMatch[1] as DiagramType
+        diagramType: diagramMatch[1] as AnyDiagramType
       });
       continue;
     }
@@ -570,10 +573,23 @@ export const LessonNoteReader: React.FC = () => {
               );
             }
 
-            // Biological Diagrams
+            // Scientific & Biological Diagrams
             if (block.type === 'diagram') {
+              const chemicalDiagramTypes: ChemicalDiagramType[] = [
+                'distillation-apparatus',
+                'paper-chromatography',
+                'bohr-atomic-model',
+                'ionic-covalent-bonding',
+                'bunsen-burner-flame',
+                'periodic-table-trends'
+              ];
+              if (chemicalDiagramTypes.includes(block.diagramType as ChemicalDiagramType)) {
+                return (
+                  <ChemicalDiagram key={idx} type={block.diagramType as ChemicalDiagramType} />
+                );
+              }
               return (
-                <BiologicalDiagram key={idx} type={block.diagramType} />
+                <BiologicalDiagram key={idx} type={block.diagramType as BiologicalDiagramType} />
               );
             }
 
