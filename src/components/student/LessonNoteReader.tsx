@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import { CBT_EXAMS_DATABASE } from '../../data/cbtExamData';
+import { getTopicSpecificQuiz } from '../../utils/topicQuizGenerator';
 import {
   ArrowLeft,
   Download,
@@ -22,8 +23,9 @@ import { BiologicalDiagram, DiagramType as BiologicalDiagramType } from './Biolo
 import { ChemicalDiagram, ChemicalDiagramType } from './ChemicalDiagram';
 import { PhysicsDiagram, PhysicsDiagramType } from './PhysicsDiagram';
 import { AgricDiagram, AgricDiagramType } from './AgricDiagram';
+import { ComputingDiagram, ComputingDiagramType } from './ComputingDiagram';
 
-type AnyDiagramType = BiologicalDiagramType | ChemicalDiagramType | PhysicsDiagramType | AgricDiagramType;
+type AnyDiagramType = BiologicalDiagramType | ChemicalDiagramType | PhysicsDiagramType | AgricDiagramType | ComputingDiagramType;
 
 interface DivisionStep {
   dividend: string;
@@ -295,10 +297,10 @@ export const LessonNoteReader: React.FC = () => {
 
   const isDownloaded = student.downloadedSubjectIds.includes(activeReadingNote.id);
 
-  // Find associated quiz or fallback to matching subject
-  const matchingExam =
-    CBT_EXAMS_DATABASE.find(e => e.subject.toLowerCase() === activeReadingNote.subject.toLowerCase()) ||
-    CBT_EXAMS_DATABASE[0];
+  // Generate a guaranteed 10-question topic-specific quiz based on this exact topic
+  const matchingExam = useMemo(() => {
+    return getTopicSpecificQuiz(activeReadingNote);
+  }, [activeReadingNote]);
 
   const handleCompleteReading = () => {
     addStudentXP(50, `Completed ${activeReadingNote.topicTitle}`);
@@ -602,6 +604,13 @@ export const LessonNoteReader: React.FC = () => {
                 'drip-irrigation-system'
               ];
 
+              const computingDiagramTypes: ComputingDiagramType[] = [
+                'spreadsheet-grid-anatomy',
+                'relational-database-schema',
+                'storage-backup-hierarchy',
+                'data-flow-charts'
+              ];
+
               if (chemicalDiagramTypes.includes(block.diagramType as ChemicalDiagramType)) {
                 return (
                   <ChemicalDiagram key={idx} type={block.diagramType as ChemicalDiagramType} />
@@ -615,6 +624,11 @@ export const LessonNoteReader: React.FC = () => {
               if (agricDiagramTypes.includes(block.diagramType as AgricDiagramType)) {
                 return (
                   <AgricDiagram key={idx} type={block.diagramType as AgricDiagramType} />
+                );
+              }
+              if (computingDiagramTypes.includes(block.diagramType as ComputingDiagramType)) {
+                return (
+                  <ComputingDiagram key={idx} type={block.diagramType as ComputingDiagramType} />
                 );
               }
               return (
