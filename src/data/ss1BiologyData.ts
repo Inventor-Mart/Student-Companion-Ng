@@ -21,58 +21,30 @@ export const SS1_BIOLOGY_TOPICS: CurriculumTopic[] = [
     summary: 'Comprehensive analysis of biological organization from cellular units to complex organs, exploring plant histology (meristems, parenchyma, collenchyma, sclerenchyma, vascular bundles) and animal histology with WAEC specimen guidelines.',
     contentMarkdown: `### 1. Hierarchy of Biological Organization
 
-Living organisms exhibit structural complexity arranged in hierarchical levels:
+Living organisms exhibit structural complexity arranged in progressive hierarchical levels:
 
-\`\`\`
-+--------------------------------------------------------------------------+
-|                  LEVELS OF STRUCTURAL ORGANIZATION                        |
-|                                                                          |
-|   Level 1: CELL        Basic structural & functional unit of life.        |
-|                        Examples: Amoeba, Chlamydomonas, Red Blood Cell   |
-|                                                                          |
-|   Level 2: TISSUE      Group of similar cells performing a common task.  |
-|                        Examples: Mesophyll tissue, Blood, Parenchyma     |
-|                                                                          |
-|   Level 3: ORGAN       Collection of different tissues working together.  |
-|                        Examples: Heart, Kidney, Leaf, Flower, Stem       |
-|                                                                          |
-|   Level 4: SYSTEM      Group of organs cooperating to carry out life      |
-|                        functions. Examples: Digestive, Circulatory       |
-|                                                                          |
-|   Level 5: ORGANISM    Complete individual living entity capable of      |
-|                        independent survival (e.g., Human, Mango Tree)    |
-+--------------------------------------------------------------------------+
-\`\`\`
+| Organizational Level | Structural Definition & Characteristics | Biological Representatives & Examples |
+| --- | --- | --- |
+| **Level 1: Cell** | The fundamental microscopic structural and functional unit of all life. | Amoeba, Chlamydomonas, Paramecium, Red Blood Cell, Sperm Cell |
+| **Level 2: Tissue** | A collection of morphologically similar cells specialized to perform a common physiological task. | Mesophyll tissue, Blood, Parenchyma, Sclerenchyma, Ciliated Epithelium |
+| **Level 3: Organ** | Distinct anatomical structure composed of two or more different tissues cooperating to execute a major role. | Mammalian Heart, Kidney, Brain, Liver, Foliar Leaf, Stem, Root |
+| **Level 4: System** | Integrated group of interdependent organs coordinating complex life processes. | Circulatory System, Digestive System, Respiratory System, Nervous System |
+| **Level 5: Organism** | The complete autonomous individual entity capable of independent survival and reproduction. | Human (*Homo sapiens*), Mango Tree (*Mangifera indica*), Tilapia fish |
 
 ---
 
 ### 2. Plant Tissues: Classification & Specialization
 
-Plant tissues are divided into two primary categories: **Meristematic Tissues** (actively dividing, undifferentiated cells) and **Permanent Tissues** (specialized, mature cells).
+Plant tissues are broadly divided into **Meristematic Tissues** (actively dividing, undifferentiated cells) and **Permanent Tissues** (specialized, mature cells):
 
-\`\`\`
-+-----------------------+-----------------------------+-------------------------------+
-| PLANT TISSUE          | STRUCTURAL CHARACTERISTICS  | PRIMARY PHYSIOLOGICAL ROLE    |
-+-----------------------+-----------------------------+-------------------------------+
-| **Meristematic**      | Thin walls, dense cytoplasm,| Primary growth (apical buds) &|
-| (Apical & Lateral)    | prominent nuclei, no vacuole| secondary growth (cambium)    |
-+-----------------------+-----------------------------+-------------------------------+
-| **Parenchyma**        | Thin primary cellulose cell | Photosynthesis (chlorenchyma),|
-|                       | walls, large central vacuole| food storage (yam tuber starch)|
-+-----------------------+-----------------------------+-------------------------------+
-| **Collenchyma**       | Unevenly thickened cellulose| Flexible mechanical support in|
-|                       | corners, living protoplast  | young growing stems & petioles|
-+-----------------------+-----------------------------+-------------------------------+
-| **Sclerenchyma**      | Heavily lignified secondary | Rigid mechanical strength;    |
-| (Fibers & Sclereids)  | walls, dead at maturity     | protective shells of nuts     |
-+-----------------------+-----------------------------+-------------------------------+
-| **Xylem**             | Dead hollow vessels &       | Conducts water and mineral    |
-|                       | tracheids with lignin rings | salts; provides support       |
-+-----------------------+-----------------------------+-------------------------------+
-| **Phloem**            | Sieve tubes & companion     | Translocates manufactured     |
-|                       | cells with perforated plates| sucrose from leaves to sinks  |
-+-----------------------+-----------------------------+-------------------------------+
-\`\`\`
+| Plant Tissue Type | Histological & Structural Characteristics | Primary Physiological Role |
+| --- | --- | --- |
+| **Meristematic (Apical & Lateral)** | Thin primary cellulose walls, dense cytoplasm, prominent central nuclei, and no vacuole. | Primary axial growth at shoot/root tips; secondary thickening via vascular cambium. |
+| **Parenchyma** | Thin primary cellulose walls, living protoplasts, large central vacuoles, and intercellular spaces. | Photosynthetic assimilation (chlorenchyma in leaves) and starch food storage in tubers. |
+| **Collenchyma** | Elongated living cells with uneven cellulose and pectin thickenings localized at cell corners. | Flexible mechanical support in young growing stems, petioles, and climbing tendrils. |
+| **Sclerenchyma (Fibers & Sclereids)** | Uniformly thickened secondary cell walls heavily impregnated with lignin; dead at maturity. | Rigid mechanical strength resisting bending/compression; protective shells of coconut and walnut. |
+| **Xylem (Vessels & Tracheids)** | Hollow, non-living elongated tubes with perforated end-walls and spiraled lignified rings. | Unidirectional transport of water and dissolved mineral ions from roots to foliage; mechanical support. |
+| **Phloem (Sieve Tubes & Companion Cells)** | Living cylindrical cells with perforated sieve plates and nucleated companion metabolic cells. | Bidirectional translocation of manufactured sucrose and amino acids from photosynthetic leaves to sinks. |
 
 ---
 
@@ -81,27 +53,25 @@ Plant tissues are divided into two primary categories: **Meristematic Tissues** 
 Animal tissues are classified into four primary functional groups:
 
 1. **Epithelial Tissue:**
-   - Covers body surfaces, lines hollow cavities (blood vessels, lungs, gut), and forms glands.
-   - Types:
-     - *Simple Squamous:* Single layer of flattened tiles facilitating rapid diffusion (lung alveoli, capillary walls).
-     - *Ciliated Columnar:* Columnar cells with surface hair-like cilia propelling mucus (trachea, oviduct/fallopian tube).
-     - *Stratified Squamous:* Multiple layers providing resistance against friction and mechanical abrasion (human skin epidermis).
+   - Covers external body surfaces, lines hollow internal viscera (blood vessels, lungs, gut), and synthesizes glandular secretions.
+   - *Simple Squamous:* Single layer of flattened tiles facilitating rapid diffusion (lung alveoli, capillary endothelium).
+   - *Ciliated Columnar:* Columnar cells bearing hair-like surface cilia propelling mucus or gametes (trachea, fallopian tube).
+   - *Stratified Squamous:* Multiple protective layers resisting mechanical abrasion and microbial invasion (human skin epidermis).
 
 2. **Connective Tissue:**
-   - Binds, supports, and protects other bodily structures.
-   - Consists of living cells suspended in an extracellular matrix.
-   - *Areolar & Adipose:* Packaging tissue cushioning organs and storing subcutaneous neutral fats.
-   - *Cartilage & Bone:* Chondrocytes in chondrin matrix (flexible) vs osteocytes in calcium phosphate matrix (rigid skeleton).
-   - *Vascular / Blood:* Liquid matrix (plasma) carrying erythrocytes, leucocytes, and platelets.
+   - Binds, cushions, supports, and integrates other bodily tissues. Consists of living cells suspended in an extracellular matrix:
+   - *Areolar & Adipose:* Packaging tissue cushioning organs and storing subcutaneous neutral lipids.
+   - *Cartilage & Bone:* Chondrocytes in flexible chondrin matrix vs osteocytes in rigid calcium phosphate matrix.
+   - *Vascular / Blood:* Specialized fluid connective tissue (plasma matrix) carrying erythrocytes, leucocytes, and thrombocytes.
 
 3. **Muscular Tissue:**
-   - Contractile tissue responsible for mechanical movement.
-   - *Skeletal (Striated / Voluntary):* Cylindrical multinucleate fibers attached to bones for conscious locomotion.
+   - Contractile tissue responsible for mechanical force and locomotion:
+   - *Skeletal (Striated / Voluntary):* Multinucleate cylindrical fibers attached to bones for conscious locomotion.
    - *Smooth (Non-striated / Involuntary):* Spindle-shaped mononucleate cells in hollow organ walls (stomach, intestines, bladder).
    - *Cardiac:* Branching striated fibers with intercalated discs found exclusively in the heart wall (myocardium).
 
 4. **Nervous Tissue:**
-   - Specialized for irritability and conductivity. Composed of **Neurons** (sensory, relay, motor) and supporting neuroglial cells.
+   - Specialized for irritability and electro-chemical conductivity. Composed of **Neurons** (sensory, relay, motor) and supporting neuroglial cells.
 
 ---
 
@@ -145,78 +115,58 @@ Animal tissues are classified into four primary functional groups:
     summary: 'A comparative study of supporting mechanisms in living organisms: hydrostatic skeletons in earthworms, arthropod chitinous exoskeletons and ecdysis growth curves, the human axial and appendicular skeletal framework, and turgor/lignin support in botany.',
     contentMarkdown: `### 1. Types of Skeletal Systems in Living Organisms
 
-A skeletal framework is vital for overcoming gravity, maintaining posture, defending internal visceral organs, and furnishing anchor points for muscular contraction.
+A rigid or turgid skeletal framework is vital for overcoming gravitational pull, preserving anatomical shape, shielding delicate internal viscera, and anchoring muscles for effective locomotion:
 
-\`\`\`
-+-----------------------+-----------------------------+-------------------------------+
-| SKELETAL TYPE         | COMPOSITION & MECHANISM     | ANIMAL REPRESENTATIVES        |
-+-----------------------+-----------------------------+-------------------------------+
-| **Hydrostatic**       | Incompressible coelomic     | Earthworm (*Lumbricus*),      |
-|                       | fluid under pressure        | Hydra, Sea anemone            |
-+-----------------------+-----------------------------+-------------------------------+
-| **Exoskeleton**       | External rigid cuticle of   | Insects (Cockroach), Crabs,   |
-|                       | chitin hardened with protein| Millipedes, Spiders           |
-+-----------------------+-----------------------------+-------------------------------+
-| **Endoskeleton**      | Internal framework of bone  | Vertebrates: Fish, Amphibians,|
-|                       | (calcium phosphate) & cart. | Reptiles, Birds, Mammals      |
-+-----------------------+-----------------------------+-------------------------------+
-\`\`\`
+| Skeletal Framework Type | Structural Composition & Physical Mechanism | Animal Representatives |
+| --- | --- | --- |
+| **Hydrostatic Skeleton** | Incompressible coelomic body fluid enclosed under hydrostatic turgor pressure within muscular body walls. | Earthworm (*Lumbricus*), Hydra, Sea Anemone, Nematodes |
+| **Exoskeleton** | Non-living external cuticle of tough **chitin** hardened with sclerotin protein and calcium salts. | Insects (Cockroach, Locust), Crabs, Crayfish, Millipedes, Spiders |
+| **Endoskeleton** | Internal living framework of rigid bone (calcium phosphate hydroxyapatite) and flexible cartilage. | Vertebrates: Bony/Cartilaginous Fish, Amphibians, Reptiles, Birds, Mammals |
 
 ---
 
 ### 2. The Arthropod Exoskeleton & Ecdysis Growth Step-Graph
 
-Because chitin cannot expand once hardened, arthropods exhibit discontinuous, stepped growth through periodic shedding called **Ecdysis (Moulting)**:
+Because the rigid chitinous cuticle cannot stretch once fully sclerotized (hardened), arthropods cannot grow continuously. Instead, they exhibit a discontinuous, stepped growth curve governed by periodic shedding known as **Ecdysis (Moulting)**:
 
-\`\`\`
-     Body Size
-         ^
-         |                    ----------------- (Adult Imago)
-         |                   /
-         |                  |  <-- Rapid growth period while new cuticle is soft
-         |         ---------- (Instar 2)
-         |        /
-         |       |  <-- Ecdysis occurs (Controlled by ecdysone hormone)
-         |  ------ (Instar 1)
-         | /
-         +---------------------------------------------> Time
-\`\`\`
+[Diagram: ecdysis-graph]
 
-- **Advantage:** Prevents water loss (desiccation) in terrestrial insects; protects against predators.
-- **Limitation:** Limits maximum body size due to weight and restricts continuous gradual growth.
+- **Biological Significance of Ecdysis:**
+  1. Under the control of the hormone **Ecdysone**, the old exoskeleton splits along the dorsal midline.
+  2. The insect swallows air or water to inflate its body volume while the newly secreted cuticle remains soft and flexible.
+  3. Once the new cuticle hardens, linear body growth stops, and the insect enters an instar feeding stage until the next moult.
+- **Ecological Trade-Off:** The exoskeleton provides superb defense against desiccation (water loss) on dry land, but restricts maximum body size and leaves the organism highly vulnerable to predators during moulting.
 
 ---
 
 ### 3. The Mammalian Skeletal Framework
 
-The human adult skeleton contains **206 bones** grouped into two anatomical divisions:
+The human adult skeleton contains **206 distinct bones** organized into two major divisions:
 
 1. **Axial Skeleton (80 bones):**
    - **Skull:** Cranium (8 bones protecting the brain) and facial skeleton (14 bones).
-   - **Vertebral Column (Spine):** 33 vertebrae arranged in five distinct anatomical zones:
-     - *Cervical Vertebrae (7):* Neck region. Includes the **Atlas** (nodding) and **Axis** (rotational shaking of head). Possesses vertebrarterial canals for blood vessels.
-     - *Thoracic Vertebrae (12):* Articulate with the 12 pairs of ribs via costal facets. Possess long, prominent neural spines sloping backwards.
-     - *Lumbar Vertebrae (5):* Lower back. Massive centra and broad transverse processes for supporting upper body weight.
-     - *Sacral Vertebrae (5 fused -> Sacrum):* Anchors the pelvic girdle.
-     - *Caudal Vertebrae (4 fused -> Coccyx):* Remnant tail bones.
-   - **Ribs (12 pairs):** True ribs (pairs 1–7 attached directly to sternum), False ribs (pairs 8–10 attached via costal cartilage), Floating ribs (pairs 11–12 unattached anteriorly).
+   - **Vertebral Column (33 vertebrae):**
+     - *Cervical Vertebrae (7):* Neck region. Features **Atlas (C1)** for nodding and **Axis (C2)** for rotating the head. Possesses vertebrarterial canals for vertebral arteries.
+     - *Thoracic Vertebrae (12):* Articulate with the 12 pairs of ribs via costal facets. Possesses long, prominent neural spines directed backwards.
+     - *Lumbar Vertebrae (5):* Lower back region. Massive kidney-shaped centra and broad transverse processes built to bear upper body weight.
+     - *Sacral Vertebrae (5 fused -> Sacrum):* Forms a solid triangular bone anchoring the pelvic girdle.
+     - *Caudal Vertebrae (4 fused -> Coccyx):* Vestigial human tailbone.
+   - **Thoracic Rib Cage (12 pairs):** True ribs (pairs 1–7 attached directly to the sternum), False ribs (pairs 8–10 attached via costal cartilages), and Floating ribs (pairs 11–12 unattached anteriorly).
 
 2. **Appendicular Skeleton (126 bones):**
-   - **Pectoral Girdle & Forelimbs:** Scapula (shoulder blade), Clavicle (collar bone), Humerus, Radius, Ulna, Carpals, Metacarpals, Phalanges.
-   - **Pelvic Girdle & Hindlimbs:** Innominate bone (Ilium, Ischium, Pubis), Femur (thigh bone - longest in body), Patella, Tibia, Fibula, Tarsals, Metatarsals, Phalanges.
+   - **Pectoral Girdle & Forelimbs:** Scapula (shoulder blade), Clavicle (collar bone), Humerus, Radius, Ulna, Carpals (wrist), Metacarpals, Phalanges.
+   - **Pelvic Girdle & Hindlimbs:** Innominate hip bone (Ilium, Ischium, Pubis), Femur (thigh bone - longest and strongest bone in the human body), Patella (kneecap), Tibia, Fibula, Tarsals (ankle), Metatarsals, Phalanges.
 
 ---
 
 ### 4. Supporting Mechanisms in Plants
 
-Plants lack an internal bony skeleton. Support is achieved via two distinct biological strategies:
+Plants maintain posture through two distinct adaptations:
 
-1. **Turgor Pressure in Herbaceous Plants:**
-   - Water entering parenchyma and collenchyma cells by osmosis exerts hydrostatic pressure outward against the cell wall (**Turgor Pressure**).
-   - Keeps non-woody plants erect. When water is deficient, cells undergo plasmolysis and the plant **wilts**.
-
-2. **Lignified Tissues in Woody Plants:**
-   - Secondary thickening with **lignin** transforms xylem vessels, tracheids, and sclerenchyma fibers into rigid timber that resists severe bending and compressive winds.
+| Plant Category | Primary Supporting Mechanism | Physiological Characteristics |
+| --- | --- | --- |
+| **Herbaceous Plants** | **Cellular Turgor Pressure** | Osmotic water influx into cortical parenchyma and collenchyma exerts hydrostatic pressure against rigid cellulose cell walls. When dehydrated, water leaves cells $\\implies$ the plant **wilts**. |
+| **Woody Plants** | **Lignified Secondary Tissues** | Extensive secondary thickening with **lignin** transforms xylem vessels, tracheids, and sclerenchyma fibers into rigid timber that resists massive bending and wind shears. |
 
 ---
 
@@ -260,7 +210,7 @@ Plants lack an internal bony skeleton. Support is achieved via two distinct biol
     summary: 'Detailed examination of autotrophic plant nutrition, structural leaf adaptations, photochemical photolysis of water in thylakoids, the Calvin cycle in the stroma, and the vital role of macro/micronutrients in crop physiology.',
     contentMarkdown: `### 1. The Chemical Process of Photosynthesis
 
-Photosynthesis is the endothermic biochemical process by which green plants manufacture glucose from inorganic carbon dioxide and water using light energy absorbed by chlorophyll:
+Photosynthesis is the fundamental anabolic process by which green autotrophic plants synthesize energy-rich glucose from inorganic carbon dioxide and water using light energy captured by chlorophyll:
 
 $$6\\text{CO}_2 + 6\\text{H}_2\\text{O} \\xrightarrow{\\text{Light energy, Chlorophyll}} \\text{C}_6\\text{H}_{12}\\text{O}_6 + 6\\text{O}_2$$
 
@@ -268,64 +218,43 @@ $$6\\text{CO}_2 + 6\\text{H}_2\\text{O} \\xrightarrow{\\text{Light energy, Chlor
 
 ### 2. Anatomical Cross-Section of a Dicot Leaf
 
-\`\`\`
-+--------------------------------------------------------------------------+
-|                  MICROSCOPIC CROSS-SECTION OF A FOLIAR LEAF              |
-|                                                                          |
-|   [ Waxy Cuticle ]       Impermeable transparent lipid layer (stops H2O)  |
-|   [ Upper Epidermis ]    Single layer of transparent cells, no chloroplast|
-|   [ Palisade Mesophyll ] Columnar cells, packed with 80% of chloroplasts, |
-|                          arranged vertically to maximize light absorption |
-|   [ Spongy Mesophyll ]   Loosely arranged irregular cells with large air  |
-|                          spaces facilitating CO2 & O2 gas diffusion       |
-|   [ Vascular Bundle ]    Xylem (top: water delivery) + Phloem (bottom:    |
-|                          sucrose translocation)                           |
-|   [ Lower Epidermis ]    Contains stomatal pores bounded by Guard Cells   |
-|   [ Guard Cells ]        Only epidermal cells containing chloroplasts;    |
-|                          regulate stomatal opening and transpiration      |
-+--------------------------------------------------------------------------+
-\`\`\`
+The foliar leaf is an exquisitely adapted solar harvesting organ:
+
+[Diagram: leaf-anatomy]
+
+- **Key Adaptations of Leaf Layers:**
+  - *Waxy Cuticle:* Transparent lipid layer secreted by epidermis; prevents desiccation while transmitting sunlight.
+  - *Palisade Mesophyll:* Columnar cells oriented perpendicular to upper surface, packed with over 80% of chloroplasts to maximize photon capture.
+  - *Spongy Mesophyll:* Loosely packed irregular cells with large intercellular air spaces facilitating rapid diffusion of $\\text{CO}_2$ and $\\text{O}_2$.
+  - *Vascular Bundle (Vein):* Upper xylem delivers water and inorganic ions; lower phloem translocates manufactured sucrose away.
+  - *Stomata & Guard Cells:* Controlled epidermal pores regulating gaseous exchange and transpirational water vapor loss.
 
 ---
 
 ### 3. The Two Biochemical Phases of Photosynthesis
 
-\`\`\`
-+-----------------------+-----------------------------+-------------------------------+
-| FEATURE               | LIGHT STAGE (Photochemical) | DARK STAGE (Calvin Cycle)     |
-+-----------------------+-----------------------------+-------------------------------+
-| **Site of Reaction**  | Grana / Thylakoid membranes | Stroma (fluid matrix of       |
-|                       | of the chloroplast          | the chloroplast)              |
-+-----------------------+-----------------------------+-------------------------------+
-| **Light Requirement** | Strictly light-dependent    | Light-independent (can occur  |
-|                       |                             | in light or darkness)         |
-+-----------------------+-----------------------------+-------------------------------+
-| **Key Process**       | **Photolysis of Water:**    | **Carbon Dioxide Fixation:**  |
-|                       | $4\\text{H}_2\\text{O} \\to 4\\text{H}^+ + 4e^- + 2\\text{H}_2\\text{O} + \\text{O}_2$ | $\\text{CO}_2$ combines with RuBP to   |
-|                       | Water is split into protons,| form phosphoglycerate (PGA)   |
-|                       | electrons, and oxygen gas   | and ultimately glucose        |
-+-----------------------+-----------------------------+-------------------------------+
-| **End Products**      | ATP, NADPH, and Oxygen gas  | Glucose ($\\text{C}_6\\text{H}_{12}\\text{O}_6$),      |
-|                       | (released as a byproduct)   | ADP, and NADP+ (recycled)     |
-+-----------------------+-----------------------------+-------------------------------+
-\`\`\`
+| Biochemical Parameter | Light-Dependent Phase (Photochemical) | Light-Independent Phase (Calvin Cycle) |
+| --- | --- | --- |
+| **Site of Reaction** | Grana / Thylakoid membranes of chloroplast | Stroma (fluid-filled matrix of chloroplast) |
+| **Light Dependency** | Strictly light-dependent (requires photons) | Light-independent (can occur in light or darkness) |
+| **Primary Process** | **Photolysis of Water:** Light splits water molecules: $4\\text{H}_2\\text{O} \\to 4\\text{H}^+ + 4e^- + 2\\text{H}_2\\text{O} + \\text{O}_2$ | **Carbon Dioxide Fixation:** $\\text{CO}_2$ combines with Ribulose bisphosphate (RuBP) to form glucose |
+| **Energy Conversion** | Photons converted into chemical energy: ATP & NADPH | Chemical energy of ATP & NADPH utilized to reduce $\\text{CO}_2$ |
+| **End Products** | Oxygen gas (byproduct), ATP, and NADPH | Glucose ($\\text{C}_6\\text{H}_{12}\\text{O}_6$), ADP, and NADP+ |
 
 ---
 
-### 4. Mineral Nutrition in Plants
+### 4. Essential Mineral Elements for Plant Growth
 
-Plants absorb dissolved inorganic ions through root hair cells. These minerals are categorized based on the quantitative requirements of the plant:
+Plants absorb inorganic mineral ions from soil solution through active transport in root hairs:
 
-1. **Macronutrients (Required in large quantities):**
-   - **Nitrogen (N):** Absorbed as nitrates ($\\text{NO}_3^-$) or ammonium ($\\text{NH}_4^+$). Component of proteins, nucleic acids, and chlorophyll. *Deficiency:* General chlorosis (yellowing of older leaves) and stunted vegetative growth.
-   - **Phosphorus (P):** Absorbed as phosphates ($\\text{H}_2\\text{PO}_4^-$). Essential for nucleic acids, ATP, and root development. *Deficiency:* Poor root growth and purple/reddish pigmentation on leaf margins.
-   - **Potassium (K):** Absorbed as $\\text{K}^+$. Enzyme activator, osmotic regulation of guard cells. *Deficiency:* Premature death of leaf tips and margins (scorched leaf margins).
-   - **Magnesium (Mg):** Absorbed as $\\text{Mg}^{2+}$. Central metallic atom of the chlorophyll porphyrin ring. *Deficiency:* Severe interveinal chlorosis.
-   - **Calcium (Ca):** Absorbed as $\\text{Ca}^{2+}$. Forms calcium pectate in the middle lamella of cell walls. *Deficiency:* Death of apical meristems and growing tips.
-
-2. **Micronutrients / Trace Elements (Required in minute quantities):**
-   - **Iron (Fe):** Catalyst for chlorophyll synthesis and electron transport.
-   - **Zinc (Zn), Copper (Cu), Manganese (Mn), Boron (B), Molybdenum (Mo):** Function as essential enzyme cofactors.
+| Mineral Element | Uptake Form | Physiological Function | Deficiency Symptom |
+| --- | --- | --- | --- |
+| **Nitrogen (N)** | $\\text{NO}_3^-$ (Nitrate), $\\text{NH}_4^+$ | Synthesis of amino acids, proteins, nucleic acids, and chlorophyll. | General chlorosis (yellowing of older leaves); stunted vegetative growth. |
+| **Phosphorus (P)** | $\\text{H}_2\\text{PO}_4^-$ (Phosphate) | Nucleic acid backbone, ATP energy transfer, and early root growth. | Stunted root development; leaves turn dark green with purple margins. |
+| **Potassium (K)** | $\\text{K}^+$ | Enzyme activator, stomatal opening/closing, protein synthesis. | Premature necrosis of leaf margins and tips (leaf burn symptom). |
+| **Magnesium (Mg)** | $\\text{Mg}^{2+}$ | Central metallic atom of the chlorophyll porphyrin ring. | Severe interveinal chlorosis (veins stay green while lamina yellows). |
+| **Calcium (Ca)** | $\\text{Ca}^{2+}$ | Calcium pectate in middle lamella of cell walls; membrane permeability. | Death of apical shoot meristems; stunted curling growing tips. |
+| **Iron (Fe)** | $\\text{Fe}^{2+}, \\text{Fe}^{3+}$ | Essential catalyst for chlorophyll synthesis and electron transport. | Chlorosis in young apical leaves. |
 
 ---
 
@@ -386,36 +315,20 @@ Animals are **heterotrophs** that must ingest organic matter synthesized by othe
 
 ### 2. Standard Laboratory Food Test Protocols (WAEC SSCE Practical)
 
-\`\`\`
-+------------------+-----------------------------+-----------------------------+-------------------------------+
-| FOOD SUBSTANCE   | REAGENTS & PROCEDURE        | POSITIVE OBSERVATION        | INFERENCE                     |
-+------------------+-----------------------------+-----------------------------+-------------------------------+
-| **Starch**       | Add 2–3 drops of            | Blue-black coloration       | Starch present                |
-|                  | Iodine solution to sample   |                             |                               |
-+------------------+-----------------------------+-----------------------------+-------------------------------+
-| **Reducing Sugar**| Add equal volume of         | Brick-red precipitate       | Reducing sugar present        |
-| (e.g. Glucose)   | Benedict's/Fehling's (A+B); | (Green -> Yellow -> Red)   | (e.g., Maltose, Glucose)      |
-|                  | boil in water bath          |                             |                               |
-+------------------+-----------------------------+-----------------------------+-------------------------------+
-| **Complex Protein**| Biuret Test: Add dilute     | Violet / Purple coloration  | Protein present               |
-|                  | NaOH, then 1% CuSO4 drops   |                             |                               |
-+------------------+-----------------------------+-----------------------------+-------------------------------+
-| **Protein**      | Millon's Reagent;           | White precipitate turns     | Protein present               |
-|                  | warm gently in water bath   | brick-red upon heating      |                               |
-+------------------+-----------------------------+-----------------------------+-------------------------------+
-| **Lipids (Fats)**| Emulsion Test: Dissolve in  | Turbid white emulsion       | Lipid present                 |
-|                  | ethanol; add cold water     |                             |                               |
-+------------------+-----------------------------+-----------------------------+-------------------------------+
-| **Lipids**       | Sudan III solution          | Red staining of fat globules| Lipid present                 |
-|                  |                             | or greasy translucent spot  |                               |
-+------------------+-----------------------------+-----------------------------+-------------------------------+
-\`\`\`
+| Food Substance Tested | Laboratory Reagents & Procedure | Positive Visual Observation | Final Biochemical Inference |
+| --- | --- | --- | --- |
+| **Starch** | Add 2–3 drops of dilute **Iodine solution** to food sample. | Immediate **Blue-black coloration** | Starch confirmed present |
+| **Reducing Sugar (e.g. Glucose)** | Add equal volume of **Benedict's solution** (or Fehling's A+B); heat in boiling water bath. | Color shifts: Blue $\\to$ Green $\\to$ Yellow $\\to$ **Brick-red precipitate** | Reducing sugar confirmed present |
+| **Complex Protein** | **Biuret Test:** Add dilute NaOH, then add 1% copper (II) sulphate dropwise. | Distinct **Violet / Purple coloration** | Protein confirmed present |
+| **Protein (Tyrosine)** | Add **Millon's Reagent**; warm gently in water bath. | White precipitate turns **Brick-red on heating** | Protein confirmed present |
+| **Lipids (Fats & Oils)** | **Emulsion Test:** Dissolve sample in absolute ethanol; decant into cold distilled water. | Cloudy, milky-white **Turbid emulsion** | Lipid confirmed present |
+| **Lipids (Fats & Oils)** | **Sudan III Reagent:** Add drops of Sudan III solution to sample. | **Red staining** of floating lipid globules; permanent translucent grease spot | Lipid confirmed present |
 
 ---
 
 ### 3. Enzymes: Biological Catalysts & Kinetics
 
-Enzymes are protein catalysts that accelerate biochemical reactions without being consumed:
+Enzymes are globular protein biocatalysts that accelerate metabolic reactions without being consumed:
 
 - **Key Properties:**
   1. *Substrate Specificity:* An enzyme acts on only one specific substrate or bond type (**Lock-and-Key Hypothesis**).
@@ -470,72 +383,36 @@ Mammals exhibit **heterodont dentition** (bearing different types of specialized
 - **Canines (C):** Pointed, dagger-like teeth for seizing, puncturing, and tearing flesh (greatly enlarged in carnivores; absent in herbivores leaving a gap called the **diastema**).
 - **Premolars (PM) & Molars (M):** Broad cusped grinding surfaces with multiple roots for crushing and masticating food.
 
-\`\`\`
-+-----------------------+-----------------------------+-------------------------------+
-| MAMMAL                | DENTAL FORMULA (Half Jaw)   | TOTAL TEETH & SPECIALIZATION  |
-+-----------------------+-----------------------------+-------------------------------+
-| **Human Adult**       | $I \\frac{2}{2}, C \\frac{1}{1}, PM \\frac{2}{2}, M \\frac{3}{3}$ | $32$ teeth (Omnivorous diet)  |
-+-----------------------+-----------------------------+-------------------------------+
-| **Dog (Carnivore)**   | $I \\frac{3}{3}, C \\frac{1}{1}, PM \\frac{4}{4}, M \\frac{2}{3}$ | $42$ teeth (Carnassial teeth  |
-|                       |                             | for bone shearing)            |
-+-----------------------+-----------------------------+-------------------------------+
-| **Sheep (Herbivore)** | $I \\frac{0}{3}, C \\frac{0}{1}, PM \\frac{3}{3}, M \\frac{3}{3}$ | $32$ teeth (Upper horny pad   |
-|                       |                             | & diastema for cud chewing)   |
-+-----------------------+-----------------------------+-------------------------------+
-\`\`\`
+| Mammal Specimen | Dental Formula (Upper / Lower Jaw) | Total Number of Teeth | Dietary Specialization |
+| --- | --- | --- | --- |
+| **Human Adult** | $I \\frac{2}{2}, C \\frac{1}{1}, PM \\frac{2}{2}, M \\frac{3}{3}$ | **32 teeth** | Omnivorous diet; generalized dentition with unspecialized cusps. |
+| **Dog (Carnivore)** | $I \\frac{3}{3}, C \\frac{1}{1}, PM \\frac{4}{4}, M \\frac{2}{3}$ | **42 teeth** | Carnassial teeth (upper PM4 & lower M1) shear flesh and crack bones. |
+| **Sheep (Herbivore)** | $I \\frac{0}{3}, C \\frac{0}{1}, PM \\frac{3}{3}, M \\frac{3}{3}$ | **32 teeth** | Upper horny pad against lower incisors; wide diastema for food sorting. |
 
 ---
 
 ### 2. Anatomical Cross-Section of a Mammalian Tooth
 
-\`\`\`
-+--------------------------------------------------------------------------+
-|                  LONGITUDINAL SECTION OF A CANINE TOOTH                  |
-|                                                                          |
-|       [ Crown ]     ENAMEL: Hardest non-living substance in body;        |
-|                     covers and protects the exposed tooth crown          |
-|                     --------------------------------------------         |
-|       [ Neck ]      DENTINE: Bone-like living tissue beneath enamel;     |
-|                     traversed by fine microscopic cytoplasmic strands    |
-|                     --------------------------------------------         |
-|       [ Root ]      PULP CAVITY: Central chamber containing living       |
-|                     connective tissue, blood vessels (nutrients), and    |
-|                     nerve fibers (pain reception)                        |
-|                     --------------------------------------------         |
-|                     CEMENTUM & PERIODONTAL LIGAMENT: Anchors the tooth   |
-|                     firmly into the jawbone socket                       |
-+--------------------------------------------------------------------------+
-\`\`\`
+The mammalian tooth consists of three anatomical regions: the **Crown** (exposed above gum), **Neck** (encircled by gum), and **Root** (anchored in socket):
+
+[Diagram: tooth-structure]
+
+- **Histological Layers of a Tooth:**
+  - *Enamel:* Hardest non-living substance in the animal body ($97\\%$ calcium hydroxyapatite); protects the crown from masticatory wear.
+  - *Dentine:* Living bone-like substance traversed by fine microscopic cytoplasmic strands; forms the bulk of the tooth.
+  - *Pulp Cavity:* Central chamber containing living connective tissue, blood capillaries (nutrient supply), and sensory nerve fibers (pain reception).
+  - *Cementum & Periodontal Ligament:* Fibrous collagenous connective tissue anchoring the root into the alveolar bone of the jaw, acting as a mechanical shock absorber.
 
 ---
 
 ### 3. Sequential Enzymatic Digestion Along the Alimentary Canal
 
-\`\`\`
-+------------------+-------------------+--------------------+----------------------------------------+
-| REGION           | JUICE / SECRETION | ENZYMES            | BIOCHEMICAL REACTION                   |
-+------------------+-------------------+--------------------+----------------------------------------+
-| **Mouth**        | Saliva (pH 6.8)   | Salivary Amylase   | Starch $\\to$ Maltose (disaccharide)   |
-|                  | (from salivary gl)| (Ptyalin)          |                                        |
-+------------------+-------------------+--------------------+----------------------------------------+
-| **Stomach**      | Gastric Juice     | Pepsin (active in  | Proteins $\\to$ Peptones & Polypeptides|
-|                  | (HCl, pH 1.5–2.0) | presence of HCl)   |                                        |
-|                  |                   | Rennin (in infants)| Coagulates soluble caseinogen into     |
-|                  |                   |                    | insoluble milk curd (casein)           |
-+------------------+-------------------+--------------------+----------------------------------------+
-| **Duodenum**     | Bile (from liver, | *No enzymes*       | **Emulsifies fats** (breaks big fat    |
-|                  | alkaline, no enz) | (Bile salts)       | globules into tiny droplets)           |
-|                  | Pancreatic Juice  | Pancreatic Amylase | Starch $\\to$ Maltose                  |
-|                  | (pH 8.0)          | Trypsin            | Proteins/Peptones $\\to$ Polypeptides  |
-|                  |                   | Pancreatic Lipase  | Emulsified Lipids $\\to$ Fatty acids + |
-|                  |                   |                    | Glycerol                               |
-+------------------+-------------------+--------------------+----------------------------------------+
-| **Ileum**        | Intestinal Juice  | Erepsin (Peptidase)| Polypeptides $\\to$ Amino acids        |
-| (Small Intestine)| (*Succus          | Maltase            | Maltose $\\to$ Glucose + Glucose       |
-|                  |  entericus*)      | Sucrase            | Sucrose $\\to$ Glucose + Fructose      |
-|                  |                   | Lactase            | Lactose $\\to$ Glucose + Galactose     |
-+------------------+-------------------+--------------------+----------------------------------------+
-\`\`\`
+| Digestive Region | Secretion & Juices | Active Enzyme Catalysts | Biochemical Substrate & Products Formed |
+| --- | --- | --- | --- |
+| **Mouth Cavity** | Saliva (pH 6.8, from salivary glands) | **Salivary Amylase (Ptyalin)** | Starch $\\to$ Maltose (disaccharide) |
+| **Stomach** | Gastric Juice (Contains 0.5% HCl, pH 1.5–2.0) | **Pepsin**<br>**Rennin (in young infants)** | Proteins $\\to$ Peptones & Soluble Polypeptides<br>Coagulates soluble caseinogen into insoluble milk curd (casein) |
+| **Duodenum** | **Bile** (from liver via gall bladder; alkaline, no enzymes)<br>**Pancreatic Juice** (from pancreas, pH 8.0) | *No enzymes in bile*<br><br>**Pancreatic Amylase**<br>**Trypsin**<br>**Pancreatic Lipase** | **Bile salts emulsify fats** into tiny droplets<br><br>Remaining Starch $\\to$ Maltose<br>Peptones/Proteins $\\to$ Polypeptides<br>Emulsified Lipids $\\to$ Fatty acids + Glycerol |
+| **Ileum (Small Intestine)** | Intestinal Juice (*Succus entericus*, pH 8.0–8.5) | **Erepsin (Peptidase)**<br>**Maltase**<br>**Sucrase**<br>**Lactase** | Polypeptides $\\to$ Amino acids<br>Maltose $\\to$ Glucose + Glucose<br>Sucrose $\\to$ Glucose + Fructose<br>Lactose $\\to$ Glucose + Galactose |
 
 ---
 
@@ -543,21 +420,11 @@ Mammals exhibit **heterodont dentition** (bearing different types of specialized
 
 The inner mucosal surface of the ileum is folded into millions of microscopic finger-like projections called **Villi** (singular: Villus) which increase the absorption surface area by over 600 times:
 
-\`\`\`
-                 Epithelium (One cell thick with microvilli)
-                  |     |
-              +---+-----+---+
-              |   |     |   |
-              |   |     |   |
-              |   | (L) |   |  <-- Lacteal (Central lymph vessel)
-              |   |     |   |      Absorbs fatty acids and glycerol
-              |  /|     |\  |
-              | | |     | | |  <-- Capillary Network (Surrounds lacteal)
-              | | |     | | |      Absorbs glucose, amino acids, vitamins,
-              +-+-+-----+-+-+      water-soluble ions into bloodstream
-                    | |
-           Hepatic Portal Vein -> Direct to Liver
-\`\`\`
+[Diagram: villus-structure]
+
+- **Pathways of Absorbed Nutrients:**
+  - *Blood Capillaries:* Glucose, amino acids, mineral ions, and water-soluble vitamins are absorbed directly into capillary blood and transported via the **Hepatic Portal Vein** directly to the **Liver** for regulation and detoxification.
+  - *Central Lacteal:* Fatty acids and glycerol diffuse into the central lymph vessel, form triglycerides coated with protein (chylomicrons), and travel through the thoracic lymph duct into the bloodstream.
 
 ---
 
@@ -600,17 +467,13 @@ The inner mucosal surface of the ileum is folded into millions of microscopic fi
 
 This paper tests analytical mastery across Weeks 1 to 5:
 
-\`\`\`
-+--------------------------------------------------------------------------+
-|                  MID-TERM CURRICULUM MASTERY MATRIX                      |
-|                                                                          |
-|   1. HISTOLOGY       : Parenchyma, collenchyma, sclerenchyma, epithelia. |
-|   2. SKELETONS       : Chitinous exoskeleton, ecdysis, axial/appendicular.|
-|   3. PHOTOSYNTHESIS  : Photolysis in grana, Calvin cycle in stroma.      |
-|   4. BIOCHEMISTRY    : Food test reagents, enzyme kinetics & denaturation.|
-|   5. DIGESTION       : Dental formulas, tooth anatomy, villus absorption. |
-+--------------------------------------------------------------------------+
-\`\`\`
+| Core Curriculum Domain | Key Examination Themes Tested | Typical WAEC Question Formats |
+| --- | --- | --- |
+| **1. Histology** | Parenchyma, collenchyma, sclerenchyma, ciliated epithelia | Identification of tissue cross-sections and mechanical roles |
+| **2. Skeletal Systems** | Chitinous exoskeleton, ecdysis step-graphs, axial vs appendicular | Vertebral formulas (C7, T12, L5), ecdysone hormonal control |
+| **3. Plant Photosynthesis** | Photolysis in grana, Calvin cycle in stroma, leaf anatomy | Leaf layer identification, macronutrient chlorosis symptoms |
+| **4. Food Biochemistry** | Food test reagents (Iodine, Biuret, Benedict's, Sudan III) | Step-by-step laboratory procedures and observation tables |
+| **5. Digestive Physiology** | Dental formulas, tooth anatomy, enzyme cascade, villus absorption | Structural diagrams of tooth and villus; enzyme pH profiles |
 
 ---
 
@@ -649,24 +512,13 @@ This paper tests analytical mastery across Weeks 1 to 5:
 
 Why do large multicellular organisms require complex circulatory and vascular transport systems, whereas an Amoeba needs none?
 
-\`\`\`
-+-----------------------+-----------------------------+-------------------------------+
-| PARAMETER             | SMALL ORGANISM (Amoeba)     | LARGE ORGANISM (Mammal/Tree)  |
-+-----------------------+-----------------------------+-------------------------------+
-| **Linear Dimension**  | $1\\text{ unit}$             | $10\\text{ units}$            |
-+-----------------------+-----------------------------+-------------------------------+
-| **Surface Area (SA)** | $6 \\times 1^2 = 6\\text{ units}^2$ | $6 \\times 10^2 = 600\\text{ units}^2$|
-+-----------------------+-----------------------------+-------------------------------+
-| **Volume (V)**        | $1^3 = 1\\text{ unit}^3$    | $10^3 = 1,000\\text{ units}^3$|
-+-----------------------+-----------------------------+-------------------------------+
-| **$SA:V$ Ratio**      | $6 : 1$ (**Very Large**)    | $0.6 : 1$ (**Very Small**)    |
-+-----------------------+-----------------------------+-------------------------------+
-| **Diffusion Pathway** | Ultra-short ($< 0.05\\text{ mm}$)  | Extremely long ($> 1,000\\text{ mm}$) |
-|                       | Diffusion across surface    | Diffusion is far too slow;    |
-|                       | satisfies all gas/nutrient  | requires specialized bulk-flow|
-|                       | demands completely          | circulatory pumping systems   |
-+-----------------------+-----------------------------+-------------------------------+
-\`\`\`
+| Scaling Parameter | Microscopic Unicellular (Amoeba) | Large Multicellular (Human / Tree) |
+| --- | --- | --- |
+| **Linear Dimension ($l$)** | $1\\text{ arbitrary unit}$ | $10\\text{ arbitrary units}$ |
+| **Surface Area ($6l^2$)** | $6 \\times 1^2 = 6\\text{ units}^2$ | $6 \\times 10^2 = 600\\text{ units}^2$ |
+| **Volume ($l^3$)** | $1^3 = 1\\text{ unit}^3$ | $10^3 = 1,000\\text{ units}^3$ |
+| **$SA:V$ Ratio** | **$6 : 1$ (Very Large)** | **$0.6 : 1$ (Very Small)** |
+| **Internal Diffusion Distance** | Extremely short ($< 0.05\\text{ mm}$); diffusion across plasma membrane satisfies all cellular metabolic demands. | Extremely long ($> 1,000\\text{ mm}$); simple diffusion is far too slow; requires bulk-flow circulatory vascular systems. |
 
 ---
 
@@ -743,30 +595,7 @@ Why do large multicellular organisms require complex circulatory and vascular tr
 
 The mammalian heart is a muscular pump enclosed within a double-layered protective membrane called the **Pericardium** (containing lubricating pericardial fluid):
 
-\`\`\`
-+--------------------------------------------------------------------------+
-|                  DIAGRAMMATIC SECTION OF THE HUMAN HEART                 |
-|                                                                          |
-|                  Vena Cava             Aorta (To body tissues)           |
-|                  (From body)           Pulmonary Artery (To lungs)       |
-|                       \                     /                            |
-|                 +------\-------------------/------+                      |
-|                 |       v                 v       |                      |
-|                 |  RIGHT ATRIUM      LEFT ATRIUM  |                      |
-|                 |  (Deox. blood)     (Ox. blood)  |                      |
-|                 |                                 |                      |
-|                 |   Tricuspid         Bicuspid    |                      |
-|                 |     Valve            (Mitral)   |                      |
-|                 |       v                 v       |                      |
-|                 |  RIGHT VENTRICLE   LEFT VENTRICLE|                     |
-|                 |  (Pumps to lungs)  (Pumps to all|                      |
-|                 |                    body organs) |                      |
-|                 +--------\--------------/---------+                      |
-|                           \   Septum   /                                 |
-|                            (Thick Wall)|                                 |
-|                     [ Ventricle Wall: Left is 3x Thicker! ]              |
-+--------------------------------------------------------------------------+
-\`\`\`
+[Diagram: heart-anatomy]
 
 - **Why is the Left Ventricle Wall thicker than the Right?**
   - The right ventricle pumps deoxygenated blood a short distance to the nearby lungs under low pressure (**Pulmonary Circuit**).
@@ -776,28 +605,14 @@ The mammalian heart is a muscular pump enclosed within a double-layered protecti
 
 ### 2. Blood Vessel Histological Matrix
 
-\`\`\`
-+------------------+-----------------------------+-----------------------------+-------------------------------+
-| CHARACTERISTIC   | ARTERY                      | VEIN                        | CAPILLARY                     |
-+------------------+-----------------------------+-----------------------------+-------------------------------+
-| **Direction**    | Carries blood AWAY from     | Carries blood TOWARDS       | Connects arterioles to        |
-|                  | the heart                   | the heart                   | venules in tissues            |
-+------------------+-----------------------------+-----------------------------+-------------------------------+
-| **Blood Carried**| Oxygenated (Except          | Deoxygenated (Except        | Mixed gas exchange            |
-|                  | **Pulmonary Artery**)       | **Pulmonary Vein**)         | across tissue cells           |
-+------------------+-----------------------------+-----------------------------+-------------------------------+
-| **Wall Structure**| Thick, highly muscular,    | Thin, slightly muscular,    | Microscopic, single-cell      |
-|                  | rich in elastic fibers      | few elastic fibers          | endothelial layer             |
-+------------------+-----------------------------+-----------------------------+-------------------------------+
-| **Lumen Size**   | Narrow (maintains high P)   | Wide (reduces resistance)   | Extremely narrow (RBCs pass   |
-|                  |                             |                             | in single file)               |
-+------------------+-----------------------------+-----------------------------+-------------------------------+
-| **Internal P**   | Very high & pulsatile       | Low, constant pressure      | Low pressure                  |
-+------------------+-----------------------------+-----------------------------+-------------------------------+
-| **Valves**       | Absent (Except semilunars   | Present (Semi-lunar pocket  | Absent                        |
-|                  | at aorta & pulmonary exits) | valves prevent backflow)    |                               |
-+------------------+-----------------------------+-----------------------------+-------------------------------+
-\`\`\`
+| Histological Characteristic | Artery | Vein | Blood Capillary |
+| --- | --- | --- | --- |
+| **Direction of Flow** | Transports blood **away from the heart** towards organs. | Transports blood **towards the heart** from organs. | Connects arterioles to venules inside tissues. |
+| **Oxygenation Status** | Carries oxygenated blood (Except **Pulmonary Artery**). | Carries deoxygenated blood (Except **Pulmonary Vein**). | Microscopic gas and nutrient exchange bed. |
+| **Vessel Wall Structure** | Thick, highly muscular, and rich in elastic fibers. | Thin, slightly muscular, with few elastic fibers. | Extremely thin, composed of a single endothelial cell layer. |
+| **Lumen Diameter** | Narrow lumen to sustain high hydraulic pressure. | Wide lumen to minimize resistance to low-pressure flow. | Microscopic lumen; red blood cells squeeze through in single file. |
+| **Internal Pressure** | Very high, pulsatile, and surging with heartbeats. | Low, steady, and non-pulsatile. | Low and gradually decreasing. |
+| **Presence of Valves** | Absent (Except semilunar valves at exits of aorta and pulmonary artery). | **Present** (Semi-lunar pocket valves prevent venous backflow). | Entirely absent. |
 
 ---
 
@@ -820,21 +635,12 @@ The mammalian heart is a muscular pump enclosed within a double-layered protecti
 
 ### 4. The ABO Blood Group System & Transfusion Rules
 
-\`\`\`
-+--------------+-------------------+--------------------+------------------------+----------------------+
-| BLOOD GROUP  | ANTIGEN ON RBC    | ANTIBODIES IN SERUM| CAN DONATE BLOOD TO    | CAN RECEIVE FROM     |
-+--------------+-------------------+--------------------+------------------------+----------------------+
-| **A**        | Antigen A         | Anti-B (b)         | A, AB                  | A, O                 |
-+--------------+-------------------+--------------------+------------------------+----------------------+
-| **B**        | Antigen B         | Anti-A (a)         | B, AB                  | B, O                 |
-+--------------+-------------------+--------------------+------------------------+----------------------+
-| **AB**       | Antigens A and B  | *None*             | AB only                | A, B, AB, O          |
-|              |                   |                    |                        | (**Universal Recipient**) |
-+--------------+-------------------+--------------------+------------------------+----------------------+
-| **O**        | *Neither A nor B* | Anti-A and Anti-B  | A, B, AB, O            | O only               |
-|              |                   | (a and b)          | (**Universal Donor**)  |                      |
-+--------------+-------------------+--------------------+------------------------+----------------------+
-\`\`\`
+| Blood Group | Antigens on Red Blood Cell Surface | Antibodies Present in Blood Plasma | Compatible Donors (Can Receive From) | Compatible Recipients (Can Donate To) |
+| --- | --- | --- | --- | --- |
+| **Group A** | Antigen A | Anti-B (b antibodies) | A, O | A, AB |
+| **Group B** | Antigen B | Anti-A (a antibodies) | B, O | B, AB |
+| **Group AB** | Both Antigen A and Antigen B | *Neither Anti-A nor Anti-B* | A, B, AB, O (**Universal Recipient**) | AB only |
+| **Group O** | *Neither Antigen A nor B* | Both Anti-A and Anti-B (a and b) | O only | A, B, AB, O (**Universal Donor**) |
 
 - **Rhesus Factor ($Rh^+$ and $Rh^-$):**
   - If a Rhesus-negative mother carries a Rhesus-positive fetus, fetal RBCs crossing the placenta during birth sensitize the mother to produce anti-Rh antibodies.
@@ -884,16 +690,6 @@ The mammalian heart is a muscular pump enclosed within a double-layered protecti
 
 Plants absorb soil water through specialized unicellular extensions of the epidermal cells called **Root Hairs**:
 
-\`\`\`
-Soil Water (High Water Potential)
-    |
-    v (Osmosis across selectively permeable membrane)
-Root Hair Cell Sap (Low Water Potential)
-    |
-    v (Osmotic gradient across cortical parenchyma)
-Cortex -> Endodermis (Casparian strip) -> Pericycle -> Root Xylem Vessels
-\`\`\`
-
 - **Pathways of Water Movement:**
   1. **Apoplast Pathway:** Water travels purely through non-living cellulose cell walls and intercellular spaces (blocked at the endodermis by the suberized **Casparian strip**).
   2. **Symplast Pathway:** Water moves through living cytoplasm interconnected by microscopic cytoplasmic channels called **Plasmodesmata**.
@@ -904,21 +700,11 @@ Cortex -> Endodermis (Casparian strip) -> Pericycle -> Root Xylem Vessels
 
 How does water reach the canopy of a 60-meter Iroko tree against gravity?
 
-\`\`\`
-+-----------------------+-----------------------------+-------------------------------+
-| PHYSICAL FORCE        | MECHANISM OF ACTION         | EFFECTIVE HEIGHT CONTRIBUTION |
-+-----------------------+-----------------------------+-------------------------------+
-| **Root Pressure**     | Active pumping of ions into | Pushes water 1–2 meters up;   |
-|                       | xylem creates osmotic influx| causes **Guttation** at night |
-+-----------------------+-----------------------------+-------------------------------+
-| **Capillarity**       | Adhesive forces between H2O | Rises only a few centimeters  |
-|                       | and narrow xylem walls      | in fine xylem tubes           |
-+-----------------------+-----------------------------+-------------------------------+
-| **Transpiration Pull**| Evaporation of water at the | **Primary Force!** Pulls continuous|
-| (Cohesion-Tension)    | leaves creates negative     | unbroken water columns to the |
-|                       | tension; cohesive H-bonds   | highest treetops without breaking|
-+-----------------------+-----------------------------+-------------------------------+
-\`\`\`
+| Physical / Biological Force | Mechanism of Upward Fluid Motion | Relative Contribution to Sap Ascent |
+| --- | --- | --- |
+| **Root Pressure** | Active transport of mineral ions into xylem creates osmotic water influx, creating positive hydrostatic pressure. | Pushes water 1–2 meters up; causes **guttation** through hydathodes at night. |
+| **Capillarity** | Adhesive forces between polar water molecules and hydrophilic xylem walls. | Rises only a few centimeters in fine capillary xylem tubes. |
+| **Transpiration Pull (Cohesion-Tension)** | Evaporation of water vapor from leaf mesophyll creates negative tension; hydrogen-bonded water molecules exhibit strong **cohesion** and **adhesion**. | **Primary Force!** Pulls continuous unbroken hydrostatic columns of water to the highest treetops. |
 
 ---
 
@@ -984,7 +770,7 @@ How does water reach the canopy of a 60-meter Iroko tree against gravity?
       'Gas Exchange Across Alveoli and Transport of Oxygen/Carbon Dioxide'
     ],
     readingTimeMinutes: 17,
-    summary: 'A detailed study of cellular catabolic oxidation: aerobic breakdown vs anaerobic fermentation, evolutionary adaptations of respiratory structures (spiracles, gills, alveoli), and human pulmonary ventilation mechanisms.',
+    summary: 'A detailed study of cellular catabolic oxidation: aerobic breakdown vs anaerobic fermentation, evolutionary adaptations of respiratory structures (spiracles, gills, alveoli), and human pulmonary ventilation mechanics.',
     contentMarkdown: `### 1. Cellular Respiration: Catabolic Energy Release
 
 Cellular respiration is the biochemical oxidation of glucose inside living cells to liberate chemical energy stored as **Adenosine Triphosphate (ATP)**:
@@ -1003,68 +789,28 @@ Cellular respiration is the biochemical oxidation of glucose inside living cells
 
 ---
 
-### 2. Characteristics of Respiratory Surfaces
+### 2. Comparative Respiratory Structures Across Animal Phyla
 
-All efficient respiratory surfaces across the animal kingdom share four vital physical features:
-1. **Large Surface Area:** To maximize the rate of gas diffusion (e.g. millions of alveoli in lungs, filament lamellae in fish gills).
-2. **Extremely Thin Epithelium:** Minimizes diffusion distance (e.g. one-cell-thick alveolar wall).
-3. **Moist Environment:** Oxygen and carbon dioxide must dissolve in water before diffusing across cell membranes.
-4. **Rich Vascular Supply:** Dense capillary network rapidly transports oxygen away, maintaining a steep concentration gradient.
-
----
-
-### 3. Comparative Respiratory Structures Across Animal Phyla
-
-\`\`\`
-+-----------------------+-----------------------------+-------------------------------+
-| ANIMAL GROUP          | RESPIRATORY ORGAN           | ADAPTIVE MECHANISM            |
-+-----------------------+-----------------------------+-------------------------------+
-| **Protozoa** (Amoeba) | General body surface        | Direct diffusion across cell  |
-|                       |                             | membrane (high $SA:V$ ratio)  |
-+-----------------------+-----------------------------+-------------------------------+
-| **Insects**           | Tracheal System             | Air enters via **Spiracles**, |
-| (Grasshopper)         |                             | travels through tracheae and  |
-|                       |                             | fluid-filled tracheoles directly|
-|                       |                             | to tissue cells (No blood!)   |
-+-----------------------+-----------------------------+-------------------------------+
-| **Bony Fish**         | Gills                       | Water passes over gill        |
-| (Tilapia)             | (Gill rakers, arch, lamellae)| filaments; **counter-current  |
-|                       |                             | flow** ensures 80% O2 uptake  |
-+-----------------------+-----------------------------+-------------------------------+
-| **Toad / Frog**       | 1. Skin (Cutaneous)         | Skin is thin, vascular, moist;|
-| (Amphibian)           | 2. Mouth (Buccopharyngeal)  | buccopharyngeal pump; simple  |
-|                       | 3. Lungs (Pulmonary)        | sac-like lungs during activity|
-+-----------------------+-----------------------------+-------------------------------+
-| **Mammals**           | Lungs (Alveoli)             | Negative pressure breathing   |
-| (Human)               |                             | via diaphragm & ribcage       |
-+-----------------------+-----------------------------+-------------------------------+
-\`\`\`
+| Animal Phylum & Specimen | Respiratory Organ | Adaptive Anatomical Mechanism |
+| --- | --- | --- |
+| **Protozoa (*Amoeba*)** | General plasma membrane surface | Direct diffusion across moist cell membrane enabled by extremely large $SA:V$ ratio. |
+| **Insects (Grasshopper, Cockroach)** | Tracheal System (Spiracles, Tracheae, Tracheoles) | Atmospheric air enters spiracles; fluid-filled tracheoles deliver oxygen directly to tissues without utilizing blood. |
+| **Bony Fish (*Tilapia*)** | Gills (Gill rakers, Gill arch, Lamellae) | Water pumped across vascular gill filaments; **counter-current exchange** extracts up to 80% of dissolved oxygen. |
+| **Amphibians (Toad / Frog)** | 1. Cutaneous (Skin)<br>2. Buccopharyngeal (Mouth)<br>3. Pulmonary (Lungs) | Skin is thin, moist, and vascular for resting respiration; buccopharyngeal pump forces air into simple sac-like lungs during activity. |
+| **Mammals (Human)** | Lungs (Millions of microscopic alveoli) | Negative-pressure ventilation powered by diaphragm and intercostal muscles; immense surface area for gas diffusion into capillaries. |
 
 ---
 
-### 4. Ventilation Mechanics in Humans
+### 3. Ventilation Mechanics in Humans
 
-\`\`\`
-+-----------------------+-----------------------------+-------------------------------+
-| PHASE                 | INHALATION (Inspiration)    | EXHALATION (Expiration)       |
-+-----------------------+-----------------------------+-------------------------------+
-| **Diaphragm**         | Contracts & flattens        | Relaxes & curves upward into  |
-|                       | downwards                   | dome shape                    |
-+-----------------------+-----------------------------+-------------------------------+
-| **External Intercostals**| Contract (Pulls ribs upwards | Relax (Ribs swing downwards   |
-|                       | and outwards)               | and inwards)                  |
-+-----------------------+-----------------------------+-------------------------------+
-| **Thoracic Volume**   | Increases markedly          | Decreases markedly            |
-+-----------------------+-----------------------------+-------------------------------+
-| **Intrapulmonary P**  | Drops below atmospheric P   | Rises above atmospheric P     |
-+-----------------------+-----------------------------+-------------------------------+
-| **Air Movement**      | Air rushes into lungs       | Air forced out of lungs       |
-+-----------------------+-----------------------------+-------------------------------+
-\`\`\`
+| Ventilation Phase | Movement of Diaphragm | External Intercostal Action | Thoracic Cavity Volume | Intrapulmonary Pressure | Resulting Air Movement |
+| --- | --- | --- | --- | --- | --- |
+| **Inhalation (Inspiration)** | Contracts and **flattens downwards** | Contract, swinging ribs **upwards and outwards** | Increases markedly in all dimensions | Drops below ambient atmospheric pressure | Atmospheric air rushes **into** the expanding lungs |
+| **Exhalation (Expiration)** | Relaxes and **curves upward into dome shape** | Relax, allowing ribs to swing **downwards and inwards** | Decreases to resting baseline volume | Rises above ambient atmospheric pressure | Pulmonary air is forced **out of** the lungs |
 
 ---
 
-### 5. WAEC Checkpoint Practice Questions
+### 4. WAEC Checkpoint Practice Questions
 
 1. **During vigorous sprinting, the accumulation of which chemical substance in human skeletal muscles results in fatigue and oxygen debt?**
    - A) Ethanol
@@ -1109,24 +855,15 @@ All efficient respiratory surfaces across the animal kingdom share four vital ph
 
 ---
 
-### 2. Comparative Excretory Organs in the Animal Kingdom
+### 2. Comparative Excretory Organs Across Animal Phyla
 
-\`\`\`
-+-----------------------+-----------------------------+-------------------------------+
-| ANIMAL GROUP          | EXCRETORY STRUCTURE         | PRIMARY EXCRETORY PRODUCT     |
-+-----------------------+-----------------------------+-------------------------------+
-| **Protozoa** (Amoeba) | Contractile vacuole         | Water (Osmoregulation), CO2   |
-+-----------------------+-----------------------------+-------------------------------+
-| **Flatworms** (Planaria)| Flame cells (Protonephridia)| Water, ammonia, urea          |
-+-----------------------+-----------------------------+-------------------------------+
-| **Annelids** (Earthworm)| Nephridia                   | Urea, ammonia, excess salts   |
-+-----------------------+-----------------------------+-------------------------------+
-| **Insects**           | Malpighian tubules          | Insoluble Uric acid crystals  |
-|                       |                             | (conserves vital water!)      |
-+-----------------------+-----------------------------+-------------------------------+
-| **Vertebrates** (Human)| Kidneys, Skin, Lungs, Liver| Urea, uric acid, water, salts |
-+-----------------------+-----------------------------+-------------------------------+
-\`\`\`
+| Animal Phylum & Specimen | Specialized Excretory Organ | Major Excretory Product | Biological Significance |
+| --- | --- | --- | --- |
+| **Protozoa (*Amoeba*)** | Contractile vacuole | Excess Water, dissolved $\\text{CO}_2$ | Osmoregulation; prevents freshwater protozoan from swelling and bursting. |
+| **Flatworms (*Planaria*)** | Flame cells (Protonephridia) | Water, ammonia, dilute urea | Ciliated flame cells maintain osmotic fluid balance. |
+| **Annelids (*Lumbricus*)** | Nephridia (segmental pairs) | Urea, ammonia, excess salts | Ciliated nephrostome drains coelomic fluid into excretory duct. |
+| **Insects (Grasshopper, Cockroach)** | Malpighian tubules | **Insoluble Uric acid crystals** | Extracts uric acid from haemolymph; conserves precious water in terrestrial habitats. |
+| **Vertebrates (Humans)** | Kidneys, Skin, Lungs, Liver | Urea, uric acid, mineral salts, water | Nephrons maintain precise osmotic water potential and nitrogen excretion. |
 
 ---
 
@@ -1134,28 +871,7 @@ All efficient respiratory surfaces across the animal kingdom share four vital ph
 
 Each human kidney contains approximately **1 to 1.2 million functional microscopic filtering units called Nephrons**:
 
-\`\`\`
-Afferent Arteriole (Wide) -> GLOMERULUS (Knot of capillaries)
-                                   |
-                             (Ultrafiltration under high pressure)
-                                   v
-                             BOWMAN'S CAPSULE
-                                   |
-                             PROXIMAL CONVOLUTED TUBULE
-                             (100% glucose, 100% amino acids, 80% water reabsorbed)
-                                   |
-                             LOOP OF HENLE (Hairpin countercurrent multiplier)
-                             - Descending limb: Water permeable
-                             - Ascending limb: Active Na+ pump (creates salty medulla)
-                                   |
-                             DISTAL CONVOLUTED TUBULE
-                             (Hormonal mineral regulation: Aldosterone)
-                                   |
-                             COLLECTING DUCT
-                             (Regulated water reabsorption via ADH)
-                                   v
-                        Urine to Renal Pelvis -> Ureter -> Bladder
-\`\`\`
+[Diagram: nephron-structure]
 
 ---
 
@@ -1221,22 +937,14 @@ Afferent Arteriole (Wide) -> GLOMERULUS (Knot of capillaries)
 
 This examination evaluates full term mastery across physiological systems:
 
-\`\`\`
-+--------------------------------------------------------------------------+
-|                  TERMINAL EXAMINATION TOPIC BLUEPRINT                    |
-|                                                                          |
-|   Week 1: Organization of Life & Histological Tissues                    |
-|   Week 2: Supporting Systems & Arthropod Moulting                        |
-|   Week 3: Plant Photosynthesis & Mineral Deficiencies                    |
-|   Week 4: Animal Food Substances & Enzyme Kinetics                       |
-|   Week 5: Mammalian Dentition & Digestive Physiology                     |
-|   Week 7: Transport Principles ($SA:V$, Osmosis, Active Transport)       |
-|   Week 8: Mammalian Heart & ABO Blood Grouping                           |
-|   Week 9: Plant Water Ascent & Phloem Translocation                      |
-|   Week 10: Aerobic/Anaerobic Respiration & Ventilation Mechanics         |
-|   Week 11: Renal Excretion, Nephron Anatomy & Osmoregulation             |
-+--------------------------------------------------------------------------+
-\`\`\`
+| Curriculum Section | Topic Modules Covered | Examination Weighting |
+| --- | --- | --- |
+| **Module 1: Cellular & Tissues** | Levels of organization, plant tissues (parenchyma, collenchyma, sclerenchyma), animal epithelia | 15% |
+| **Module 2: Skeletal Systems** | Hydrostatic, exoskeleton & ecdysis curves, mammalian axial/appendicular skeleton | 15% |
+| **Module 3: Plant & Animal Nutrition** | Photolysis in grana, Calvin cycle, food test protocols, dentition, and enzyme kinetics | 20% |
+| **Module 4: Transport Systems** | Surface area to volume ratio, mammalian heart & double circulation, xylem/phloem transport | 20% |
+| **Module 5: Respiration & Gas Exchange** | Aerobic vs anaerobic respiration, insect tracheae, fish gills, mammalian pulmonary ventilation | 15% |
+| **Module 6: Excretion & Osmoregulation** | Nephron filtration, proximal reabsorption, Loop of Henle, ADH hormonal regulation | 15% |
 
 ---
 

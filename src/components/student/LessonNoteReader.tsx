@@ -18,6 +18,7 @@ import {
   renderFormattedSpan,
   cleanMathText
 } from '../../utils/mathFormatter';
+import { BiologicalDiagram, DiagramType } from './BiologicalDiagram';
 
 interface DivisionStep {
   dividend: string;
@@ -35,6 +36,7 @@ type ContentBlock =
   | { type: 'callout'; text: string }
   | { type: 'list'; items: string[] }
   | { type: 'formula'; text: string }
+  | { type: 'diagram'; diagramType: DiagramType }
   | { type: 'code'; text: string }
   | { type: 'paragraph'; text: string };
 
@@ -228,6 +230,17 @@ const parseMarkdownBlocks = (rawMarkdown: string): ContentBlock[] => {
       blocks.push({
         type: 'formula',
         text: formulaInner
+      });
+      continue;
+    }
+
+    // Biological or Scientific SVG Diagram: [Diagram: ecdysis-graph]
+    const diagramMatch = trimmed.match(/^\[(?:Diagram|DIAGRAM):\s*([a-zA-Z0-9_-]+)\]$/i);
+    if (diagramMatch) {
+      flushAll();
+      blocks.push({
+        type: 'diagram',
+        diagramType: diagramMatch[1] as DiagramType
       });
       continue;
     }
@@ -557,18 +570,32 @@ export const LessonNoteReader: React.FC = () => {
               );
             }
 
+            // Biological Diagrams
+            if (block.type === 'diagram') {
+              return (
+                <BiologicalDiagram key={idx} type={block.diagramType} />
+              );
+            }
+
             // Tables
             if (block.type === 'table') {
               return (
-                <div key={idx} className="overflow-x-auto my-3 rounded-xl border border-slate-800 bg-slate-900/60 p-1">
-                  <table className="w-full text-left text-xs text-slate-300">
+                <div key={idx} className="overflow-x-auto my-3 rounded-2xl border border-slate-800 bg-slate-900/90 shadow-md">
+                  <table className="w-full text-left text-xs text-slate-300 min-w-[480px]">
                     <tbody>
                       {block.rows.map((cells, rIdx) => {
                         const isHeader = rIdx === 0;
                         return (
-                          <tr key={rIdx} className={isHeader ? 'bg-slate-800/80 font-bold text-white' : 'border-t border-slate-800/50'}>
+                          <tr
+                            key={rIdx}
+                            className={
+                              isHeader
+                                ? 'bg-slate-800 font-bold text-white border-b border-slate-700/80'
+                                : 'border-t border-slate-800/50 hover:bg-slate-850/50'
+                            }
+                          >
                             {cells.map((cell, cIdx) => (
-                              <td key={cIdx} className="px-3 py-2 text-xs">
+                              <td key={cIdx} className="px-3.5 py-2.5 text-xs">
                                 {renderFormattedSpan(cell, `tbl-${idx}-${rIdx}-${cIdx}`)}
                               </td>
                             ))}
