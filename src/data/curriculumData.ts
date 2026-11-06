@@ -27,6 +27,7 @@ import { SS1_AGRIC_TOPICS } from './ss1AgricData';
 import { SS1_DATA_PROCESSING_TOPICS } from './ss1DataProcessingData';
 import { SS1_FURTHER_MATH_TOPICS } from './ss1FurtherMathData';
 import { SS1_ECONOMICS_TOPICS } from './ss1EconomicsData';
+import { SS1_COMMERCE_TOPICS } from './ss1CommerceData';
 export { JSS1_ENGLISH_TOPICS } from './jss1EnglishData';
 export { JSS2_ENGLISH_TOPICS } from './jss2EnglishData';
 export { JSS3_MATH_TOPICS } from './jss3MathData';
@@ -52,6 +53,7 @@ export { SS1_AGRIC_TOPICS } from './ss1AgricData';
 export { SS1_DATA_PROCESSING_TOPICS } from './ss1DataProcessingData';
 export { SS1_FURTHER_MATH_TOPICS } from './ss1FurtherMathData';
 export { SS1_ECONOMICS_TOPICS } from './ss1EconomicsData';
+export { SS1_COMMERCE_TOPICS } from './ss1CommerceData';
 
 export const OFFICIAL_SUBJECTS_BY_CLASS = {
   'JSS 1': [
@@ -215,6 +217,7 @@ export const NIGERIAN_CURRICULUM_TOPICS: CurriculumTopic[] = [
   ...SS1_DATA_PROCESSING_TOPICS,
   ...SS1_FURTHER_MATH_TOPICS,
   ...SS1_ECONOMICS_TOPICS,
+  ...SS1_COMMERCE_TOPICS,
   // ==========================================
   // JSS 1 SUBJECTS (15 SUBJECTS)
   // ==========================================

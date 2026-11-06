@@ -26,8 +26,9 @@ import { AgricDiagram, AgricDiagramType } from './AgricDiagram';
 import { ComputingDiagram, ComputingDiagramType } from './ComputingDiagram';
 import { FurtherMathDiagram, FurtherMathDiagramType } from './FurtherMathDiagram';
 import { EconomicsDiagram, EconomicsDiagramType } from './EconomicsDiagram';
+import { CommerceDiagram, CommerceDiagramType } from './CommerceDiagram';
 
-type AnyDiagramType = BiologicalDiagramType | ChemicalDiagramType | PhysicsDiagramType | AgricDiagramType | ComputingDiagramType | FurtherMathDiagramType | EconomicsDiagramType;
+type AnyDiagramType = BiologicalDiagramType | ChemicalDiagramType | PhysicsDiagramType | AgricDiagramType | ComputingDiagramType | FurtherMathDiagramType | EconomicsDiagramType | CommerceDiagramType;
 
 interface DivisionStep {
   dividend: string;
@@ -627,6 +628,12 @@ export const LessonNoteReader: React.FC = () => {
                 'economics-utility-diminishing-marginal'
               ];
 
+              const commerceDiagramTypes: CommerceDiagramType[] = [
+                'commerce-channels-of-distribution',
+                'commerce-trade-documents-flow',
+                'commerce-balance-of-trade-payments'
+              ];
+
               if (chemicalDiagramTypes.includes(block.diagramType as ChemicalDiagramType)) {
                 return (
                   <ChemicalDiagram key={idx} type={block.diagramType as ChemicalDiagramType} />
@@ -655,6 +662,11 @@ export const LessonNoteReader: React.FC = () => {
               if (economicsDiagramTypes.includes(block.diagramType as EconomicsDiagramType)) {
                 return (
                   <EconomicsDiagram key={idx} type={block.diagramType as EconomicsDiagramType} />
+                );
+              }
+              if (commerceDiagramTypes.includes(block.diagramType as CommerceDiagramType)) {
+                return (
+                  <CommerceDiagram key={idx} type={block.diagramType as CommerceDiagramType} />
                 );
               }
               return (
