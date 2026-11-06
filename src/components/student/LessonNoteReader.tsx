@@ -21,8 +21,9 @@ import {
 import { BiologicalDiagram, DiagramType as BiologicalDiagramType } from './BiologicalDiagram';
 import { ChemicalDiagram, ChemicalDiagramType } from './ChemicalDiagram';
 import { PhysicsDiagram, PhysicsDiagramType } from './PhysicsDiagram';
+import { AgricDiagram, AgricDiagramType } from './AgricDiagram';
 
-type AnyDiagramType = BiologicalDiagramType | ChemicalDiagramType | PhysicsDiagramType;
+type AnyDiagramType = BiologicalDiagramType | ChemicalDiagramType | PhysicsDiagramType | AgricDiagramType;
 
 interface DivisionStep {
   dividend: string;
@@ -593,6 +594,14 @@ export const LessonNoteReader: React.FC = () => {
                 'block-and-tackle-pulley'
               ];
 
+              const agricDiagramTypes: AgricDiagramType[] = [
+                'soil-profile-horizons',
+                'nitrogen-cycle-diagram',
+                'disc-plough-anatomy',
+                'farm-surveying-instruments',
+                'drip-irrigation-system'
+              ];
+
               if (chemicalDiagramTypes.includes(block.diagramType as ChemicalDiagramType)) {
                 return (
                   <ChemicalDiagram key={idx} type={block.diagramType as ChemicalDiagramType} />
@@ -601,6 +610,11 @@ export const LessonNoteReader: React.FC = () => {
               if (physicsDiagramTypes.includes(block.diagramType as PhysicsDiagramType)) {
                 return (
                   <PhysicsDiagram key={idx} type={block.diagramType as PhysicsDiagramType} />
+                );
+              }
+              if (agricDiagramTypes.includes(block.diagramType as AgricDiagramType)) {
+                return (
+                  <AgricDiagram key={idx} type={block.diagramType as AgricDiagramType} />
                 );
               }
               return (
