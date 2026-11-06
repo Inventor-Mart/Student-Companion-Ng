@@ -28,8 +28,9 @@ import { FurtherMathDiagram, FurtherMathDiagramType } from './FurtherMathDiagram
 import { EconomicsDiagram, EconomicsDiagramType } from './EconomicsDiagram';
 import { CommerceDiagram, CommerceDiagramType } from './CommerceDiagram';
 import { CivicDiagram, CivicDiagramType } from './CivicDiagram';
+import { GovernmentDiagram, GovernmentDiagramType } from './GovernmentDiagram';
 
-type AnyDiagramType = BiologicalDiagramType | ChemicalDiagramType | PhysicsDiagramType | AgricDiagramType | ComputingDiagramType | FurtherMathDiagramType | EconomicsDiagramType | CommerceDiagramType | CivicDiagramType;
+type AnyDiagramType = BiologicalDiagramType | ChemicalDiagramType | PhysicsDiagramType | AgricDiagramType | ComputingDiagramType | FurtherMathDiagramType | EconomicsDiagramType | CommerceDiagramType | CivicDiagramType | GovernmentDiagramType;
 
 interface DivisionStep {
   dividend: string;
@@ -641,6 +642,12 @@ export const LessonNoteReader: React.FC = () => {
                 'civic-electoral-process-cycle'
               ];
 
+              const governmentDiagramTypes: GovernmentDiagramType[] = [
+                'government-federal-vs-unitary-tiers',
+                'government-presidential-vs-parliamentary',
+                'government-public-opinion-pressure-flow'
+              ];
+
               if (chemicalDiagramTypes.includes(block.diagramType as ChemicalDiagramType)) {
                 return (
                   <ChemicalDiagram key={idx} type={block.diagramType as ChemicalDiagramType} />
@@ -679,6 +686,11 @@ export const LessonNoteReader: React.FC = () => {
               if (civicDiagramTypes.includes(block.diagramType as CivicDiagramType)) {
                 return (
                   <CivicDiagram key={idx} type={block.diagramType as CivicDiagramType} />
+                );
+              }
+              if (governmentDiagramTypes.includes(block.diagramType as GovernmentDiagramType)) {
+                return (
+                  <GovernmentDiagram key={idx} type={block.diagramType as GovernmentDiagramType} />
                 );
               }
               return (
