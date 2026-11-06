@@ -30,8 +30,9 @@ import { CommerceDiagram, CommerceDiagramType } from './CommerceDiagram';
 import { CivicDiagram, CivicDiagramType } from './CivicDiagram';
 import { GovernmentDiagram, GovernmentDiagramType } from './GovernmentDiagram';
 import { GeographyDiagram, GeographyDiagramType } from './GeographyDiagram';
+import { LiteratureDiagram, LiteratureDiagramType } from './LiteratureDiagram';
 
-type AnyDiagramType = BiologicalDiagramType | ChemicalDiagramType | PhysicsDiagramType | AgricDiagramType | ComputingDiagramType | FurtherMathDiagramType | EconomicsDiagramType | CommerceDiagramType | CivicDiagramType | GovernmentDiagramType | GeographyDiagramType;
+type AnyDiagramType = BiologicalDiagramType | ChemicalDiagramType | PhysicsDiagramType | AgricDiagramType | ComputingDiagramType | FurtherMathDiagramType | EconomicsDiagramType | CommerceDiagramType | CivicDiagramType | GovernmentDiagramType | GeographyDiagramType | LiteratureDiagramType;
 
 interface DivisionStep {
   dividend: string;
@@ -656,6 +657,13 @@ export const LessonNoteReader: React.FC = () => {
                 'geography-river-profile-features'
               ];
 
+              const literatureDiagramTypes: LiteratureDiagramType[] = [
+                'literature-dramatic-structure-freytag-pyramid',
+                'literature-genres-and-subgenres-tree',
+                'literature-poetic-meter-and-sonnet-anatomy',
+                'literature-figures-of-speech-wheel'
+              ];
+
               if (chemicalDiagramTypes.includes(block.diagramType as ChemicalDiagramType)) {
                 return (
                   <ChemicalDiagram key={idx} type={block.diagramType as ChemicalDiagramType} />
@@ -704,6 +712,11 @@ export const LessonNoteReader: React.FC = () => {
               if (geographyDiagramTypes.includes(block.diagramType as GeographyDiagramType)) {
                 return (
                   <GeographyDiagram key={idx} type={block.diagramType as GeographyDiagramType} />
+                );
+              }
+              if (literatureDiagramTypes.includes(block.diagramType as LiteratureDiagramType)) {
+                return (
+                  <LiteratureDiagram key={idx} type={block.diagramType as LiteratureDiagramType} />
                 );
               }
               return (
