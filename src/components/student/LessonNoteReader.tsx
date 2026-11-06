@@ -31,8 +31,9 @@ import { CivicDiagram, CivicDiagramType } from './CivicDiagram';
 import { GovernmentDiagram, GovernmentDiagramType } from './GovernmentDiagram';
 import { GeographyDiagram, GeographyDiagramType } from './GeographyDiagram';
 import { LiteratureDiagram, LiteratureDiagramType } from './LiteratureDiagram';
+import { CRSDiagram, CRSDiagramType } from './CRSDiagram';
 
-type AnyDiagramType = BiologicalDiagramType | ChemicalDiagramType | PhysicsDiagramType | AgricDiagramType | ComputingDiagramType | FurtherMathDiagramType | EconomicsDiagramType | CommerceDiagramType | CivicDiagramType | GovernmentDiagramType | GeographyDiagramType | LiteratureDiagramType;
+type AnyDiagramType = BiologicalDiagramType | ChemicalDiagramType | PhysicsDiagramType | AgricDiagramType | ComputingDiagramType | FurtherMathDiagramType | EconomicsDiagramType | CommerceDiagramType | CivicDiagramType | GovernmentDiagramType | GeographyDiagramType | LiteratureDiagramType | CRSDiagramType;
 
 interface DivisionStep {
   dividend: string;
@@ -664,6 +665,13 @@ export const LessonNoteReader: React.FC = () => {
                 'literature-figures-of-speech-wheel'
               ];
 
+              const crsDiagramTypes: CRSDiagramType[] = [
+                'crs-creation-and-sovereignty-timeline',
+                'crs-covenant-history-and-promises-map',
+                'crs-exodus-tabernacle-and-route-diagram',
+                'crs-ten-commandments-tablets'
+              ];
+
               if (chemicalDiagramTypes.includes(block.diagramType as ChemicalDiagramType)) {
                 return (
                   <ChemicalDiagram key={idx} type={block.diagramType as ChemicalDiagramType} />
@@ -717,6 +725,11 @@ export const LessonNoteReader: React.FC = () => {
               if (literatureDiagramTypes.includes(block.diagramType as LiteratureDiagramType)) {
                 return (
                   <LiteratureDiagram key={idx} type={block.diagramType as LiteratureDiagramType} />
+                );
+              }
+              if (crsDiagramTypes.includes(block.diagramType as CRSDiagramType)) {
+                return (
+                  <CRSDiagram key={idx} type={block.diagramType as CRSDiagramType} />
                 );
               }
               return (
