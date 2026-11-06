@@ -34,6 +34,8 @@ import { LiteratureDiagram, LiteratureDiagramType } from './LiteratureDiagram';
 import { CRSDiagram, CRSDiagramType } from './CRSDiagram';
 import { SS2MathDiagram, SS2MathDiagramType } from './SS2MathDiagram';
 import { SS2EnglishDiagram, SS2EnglishDiagramType } from './SS2EnglishDiagram';
+import { SS3MathDiagram, SS3MathDiagramType } from './SS3MathDiagram';
+import { SS3EnglishDiagram, SS3EnglishDiagramType } from './SS3EnglishDiagram';
 
 type AnyDiagramType =
   | BiologicalDiagramType
@@ -49,8 +51,11 @@ type AnyDiagramType =
   | GeographyDiagramType
   | LiteratureDiagramType
   | CRSDiagramType
+  | 'crs-passion-and-resurrection-timeline'
   | SS2MathDiagramType
-  | SS2EnglishDiagramType;
+  | SS2EnglishDiagramType
+  | SS3MathDiagramType
+  | SS3EnglishDiagramType;
 
 interface DivisionStep {
   dividend: string;
@@ -721,6 +726,17 @@ export const LessonNoteReader: React.FC = () => {
                 'english-formal-letter-layout'
               ];
 
+              const ss3MathDiagramTypes: SS3MathDiagramType[] = [
+                'math-surds-and-conjugates',
+                'math-coordinate-geometry-calculus',
+                'math-linear-programming-feasible-region'
+              ];
+
+              const ss3EnglishDiagramTypes: SS3EnglishDiagramType[] = [
+                'english-phonemic-vowel-matrix',
+                'english-advanced-sentence-synthesis'
+              ];
+
               if (chemicalDiagramTypes.includes(block.diagramType as ChemicalDiagramType)) {
                 return (
                   <ChemicalDiagram key={idx} type={block.diagramType as ChemicalDiagramType} />
@@ -789,6 +805,16 @@ export const LessonNoteReader: React.FC = () => {
               if (ss2EnglishDiagramTypes.includes(block.diagramType as SS2EnglishDiagramType)) {
                 return (
                   <SS2EnglishDiagram key={idx} type={block.diagramType as SS2EnglishDiagramType} />
+                );
+              }
+              if (ss3MathDiagramTypes.includes(block.diagramType as SS3MathDiagramType)) {
+                return (
+                  <SS3MathDiagram key={idx} type={block.diagramType as SS3MathDiagramType} />
+                );
+              }
+              if (ss3EnglishDiagramTypes.includes(block.diagramType as SS3EnglishDiagramType)) {
+                return (
+                  <SS3EnglishDiagram key={idx} type={block.diagramType as SS3EnglishDiagramType} />
                 );
               }
               return (

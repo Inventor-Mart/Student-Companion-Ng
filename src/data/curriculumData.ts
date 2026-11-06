@@ -48,6 +48,12 @@ import { SS2_GOVERNMENT_TOPICS } from './ss2GovernmentData';
 import { SS2_LITERATURE_TOPICS } from './ss2LiteratureData';
 import { SS2_GEOGRAPHY_TOPICS } from './ss2GeographyData';
 import { SS2_CRS_TOPICS } from './ss2CRSData';
+import { SS3_MATH_TOPICS } from './ss3MathData';
+import { SS3_ENGLISH_TOPICS } from './ss3EnglishData';
+import { SS3_BIOLOGY_TOPICS } from './ss3BiologyData';
+import { SS3_CHEMISTRY_TOPICS } from './ss3ChemistryData';
+import { SS3_PHYSICS_TOPICS } from './ss3PhysicsData';
+import { SS3_AGRIC_TOPICS } from './ss3AgricData';
 export { JSS1_ENGLISH_TOPICS } from './jss1EnglishData';
 export { JSS2_ENGLISH_TOPICS } from './jss2EnglishData';
 export { JSS3_MATH_TOPICS } from './jss3MathData';
@@ -94,6 +100,12 @@ export { SS2_GOVERNMENT_TOPICS } from './ss2GovernmentData';
 export { SS2_LITERATURE_TOPICS } from './ss2LiteratureData';
 export { SS2_GEOGRAPHY_TOPICS } from './ss2GeographyData';
 export { SS2_CRS_TOPICS } from './ss2CRSData';
+export { SS3_MATH_TOPICS } from './ss3MathData';
+export { SS3_ENGLISH_TOPICS } from './ss3EnglishData';
+export { SS3_BIOLOGY_TOPICS } from './ss3BiologyData';
+export { SS3_CHEMISTRY_TOPICS } from './ss3ChemistryData';
+export { SS3_PHYSICS_TOPICS } from './ss3PhysicsData';
+export { SS3_AGRIC_TOPICS } from './ss3AgricData';
 
 export const OFFICIAL_SUBJECTS_BY_CLASS = {
   'JSS 1': [
@@ -278,6 +290,12 @@ export const NIGERIAN_CURRICULUM_TOPICS: CurriculumTopic[] = [
   ...SS2_LITERATURE_TOPICS,
   ...SS2_GEOGRAPHY_TOPICS,
   ...SS2_CRS_TOPICS,
+  ...SS3_MATH_TOPICS,
+  ...SS3_ENGLISH_TOPICS,
+  ...SS3_BIOLOGY_TOPICS,
+  ...SS3_CHEMISTRY_TOPICS,
+  ...SS3_PHYSICS_TOPICS,
+  ...SS3_AGRIC_TOPICS,
   // ==========================================
   // JSS 1 SUBJECTS (15 SUBJECTS)
   // ==========================================

@@ -9,7 +9,9 @@ export type ChemicalDiagramType =
   | 'bunsen-burner-flame'
   | 'periodic-table-trends'
   | 'reaction-energy-profile'
-  | 'daniell-electrochemical-cell';
+  | 'daniell-electrochemical-cell'
+  | 'chemical-nuclear-decay-series'
+  | 'chemical-electrolytic-downs-cell';
 
 interface ChemicalDiagramProps {
   type: ChemicalDiagramType;
@@ -785,6 +787,203 @@ export const ChemicalDiagram: React.FC<ChemicalDiagramProps> = ({ type }) => {
             <Info className="w-4 h-4 text-cyan-400 shrink-0" />
             <span>
               <strong>Crucial Functions of the Salt Bridge:</strong> 1. Completes the internal electrical circuit by allowing ion migration; 2. Maintains electrical neutrality in both half-cells (anions migrate to the anode, cations migrate to the cathode), preventing voltage shutdown.
+            </span>
+          </div>
+        </div>
+      );
+
+    // ----------------------------------------------------
+    // 9. NUCLEAR CHEMISTRY & RADIOACTIVE DECAY SERIES
+    // ----------------------------------------------------
+    case 'chemical-nuclear-decay-series':
+      return (
+        <div className="my-4 p-4 rounded-2xl bg-slate-900 border border-slate-800 shadow-lg space-y-3">
+          <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+            <div className="flex items-center gap-2 text-xs font-bold text-white">
+              <Atom className="w-4 h-4 text-emerald-400" />
+              <span>Nuclear Chemistry: Radioactive Radiation Modes &amp; Half-Life Decay</span>
+            </div>
+            <span className="text-[10px] text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-800/60 font-medium">
+              WAEC Nuclear Chemistry · Weeks 1 &amp; 2
+            </span>
+          </div>
+
+          <div className="w-full overflow-x-auto py-2">
+            <svg viewBox="0 0 620 310" className="w-full max-w-2xl mx-auto min-w-[480px] text-xs font-sans">
+              <rect x="10" y="10" width="600" height="290" fill="#0b1120" stroke="#1e293b" rx="10" />
+
+              {/* Left Panel: Alpha, Beta, Gamma Emissions */}
+              <g transform="translate(25, 25)">
+                <rect x="0" y="0" width="270" height="255" fill="#1e293b" stroke="#334155" rx="8" />
+                <text x="135" y="22" fill="#38bdf8" textAnchor="middle" className="text-[11px] font-bold">Radiation Emission Modes</text>
+
+                {/* 1. Alpha Decay */}
+                <g transform="translate(15, 38)">
+                  <rect x="0" y="0" width="240" height="58" fill="#0f172a" stroke="#10b981" strokeWidth="1.2" rx="6" />
+                  <text x="12" y="18" fill="#10b981" className="text-[10px] font-bold">1. Alpha Particle (α): Helium Nucleus (⁴₂He)</text>
+                  <text x="12" y="34" fill="#f8fafc" className="text-[10px]">Mass drops by 4, Atomic number drops by 2</text>
+                  <text x="12" y="48" fill="#a7f3d0" className="text-[9px] font-mono">²³⁸₉₂U → ²³⁴₉₀Th + ⁴₂He · Low penetration (paper)</text>
+                </g>
+
+                {/* 2. Beta Decay */}
+                <g transform="translate(15, 106)">
+                  <rect x="0" y="0" width="240" height="58" fill="#0f172a" stroke="#38bdf8" strokeWidth="1.2" rx="6" />
+                  <text x="12" y="18" fill="#38bdf8" className="text-[10px] font-bold">2. Beta Particle (β⁻): Fast Electron (⁰₋₁e)</text>
+                  <text x="12" y="34" fill="#f8fafc" className="text-[10px]">Neutron converts to proton; Z increases by 1</text>
+                  <text x="12" y="48" fill="#bae6fd" className="text-[9px] font-mono">¹⁴₆C → ¹⁴₇N + ⁰₋₁e · Moderate (5mm aluminium)</text>
+                </g>
+
+                {/* 3. Gamma Ray */}
+                <g transform="translate(15, 174)">
+                  <rect x="0" y="0" width="240" height="68" fill="#0f172a" stroke="#f59e0b" strokeWidth="1.2" rx="6" />
+                  <text x="12" y="18" fill="#f59e0b" className="text-[10px] font-bold">3. Gamma Ray (γ): High Energy Photon</text>
+                  <text x="12" y="34" fill="#f8fafc" className="text-[10px]">No change in Mass or Atomic Number</text>
+                  <text x="12" y="48" fill="#fef08a" className="text-[9px] font-mono">De-excitation of nucleus · High (lead/concrete)</text>
+                  <text x="12" y="60" fill="#94a3b8" className="text-[8px]">Speed of light (3 × 10⁸ m/s)</text>
+                </g>
+              </g>
+
+              {/* Right Panel: Exponential Half-Life Decay Curve */}
+              <g transform="translate(325, 25)">
+                <rect x="0" y="0" width="270" height="255" fill="#1e293b" stroke="#334155" rx="8" />
+                <text x="135" y="22" fill="#fbbf24" textAnchor="middle" className="text-[11px] font-bold">Exponential Half-Life Decay Curve</text>
+
+                {/* Axes */}
+                <line x1="45" y1="210" x2="250" y2="210" stroke="#64748b" strokeWidth="1.5" />
+                <line x1="45" y1="210" x2="45" y2="40" stroke="#64748b" strokeWidth="1.5" />
+                <text x="150" y="228" fill="#94a3b8" textAnchor="middle" className="text-[9px]">Time (Half-Lives: T½)</text>
+                <text x="15" y="115" fill="#94a3b8" textAnchor="middle" transform="rotate(-90 15 115)" className="text-[9px]">Remaining Activity (%)</text>
+
+                {/* Exponential Decay Path */}
+                <path
+                  d="M 45 50 Q 80 130, 100 130 T 155 170 T 210 190 T 245 200"
+                  fill="none"
+                  stroke="#10b981"
+                  strokeWidth="2.5"
+                />
+
+                {/* T0: 100% */}
+                <circle cx="45" cy="50" r="3.5" fill="#f59e0b" />
+                <text x="40" y="54" fill="#f59e0b" textAnchor="end" className="text-[9px] font-bold">100% (N₀)</text>
+
+                {/* T1: 50% */}
+                <line x1="45" y1="130" x2="100" y2="130" stroke="#475569" strokeWidth="1" strokeDasharray="2 2" />
+                <line x1="100" y1="130" x2="100" y2="210" stroke="#475569" strokeWidth="1" strokeDasharray="2 2" />
+                <circle cx="100" cy="130" r="3.5" fill="#38bdf8" />
+                <text x="40" y="133" fill="#38bdf8" textAnchor="end" className="text-[9px]">50%</text>
+                <text x="100" y="222" fill="#38bdf8" textAnchor="middle" className="text-[9px] font-bold">1 T½</text>
+
+                {/* T2: 25% */}
+                <line x1="45" y1="170" x2="155" y2="170" stroke="#475569" strokeWidth="1" strokeDasharray="2 2" />
+                <line x1="155" y1="170" x2="155" y2="210" stroke="#475569" strokeWidth="1" strokeDasharray="2 2" />
+                <circle cx="155" cy="170" r="3" fill="#10b981" />
+                <text x="40" y="173" fill="#10b981" textAnchor="end" className="text-[9px]">25%</text>
+                <text x="155" y="222" fill="#10b981" textAnchor="middle" className="text-[9px] font-bold">2 T½</text>
+
+                {/* T3: 12.5% */}
+                <line x1="45" y1="190" x2="210" y2="190" stroke="#475569" strokeWidth="1" strokeDasharray="2 2" />
+                <line x1="210" y1="190" x2="210" y2="210" stroke="#475569" strokeWidth="1" strokeDasharray="2 2" />
+                <circle cx="210" cy="190" r="3" fill="#ec4899" />
+                <text x="40" y="193" fill="#ec4899" textAnchor="end" className="text-[8px]">12.5%</text>
+                <text x="210" y="222" fill="#ec4899" textAnchor="middle" className="text-[9px] font-bold">3 T½</text>
+
+                {/* Decay Law Badge */}
+                <g transform="translate(120, 50)">
+                  <rect x="0" y="0" width="135" height="42" fill="#0f172a" stroke="#334155" rx="6" />
+                  <text x="67" y="16" fill="#f59e0b" textAnchor="middle" className="text-[9px] font-bold uppercase">Decay Law:</text>
+                  <text x="67" y="32" fill="#f8fafc" textAnchor="middle" className="text-[10px] font-bold">N = N₀ · (½)^(t / T½)</text>
+                </g>
+              </g>
+            </svg>
+          </div>
+
+          <div className="flex items-center gap-2 text-[11px] text-slate-300 bg-slate-950/70 p-2.5 rounded-xl border border-slate-800">
+            <Info className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span>
+              <strong>Nuclear Decay Rule:</strong> Half-life (T½ = 0.693 / λ) is completely independent of external physical temperature, pressure, or chemical combination; it is an intrinsic constant for each specific radioisotope.
+            </span>
+          </div>
+        </div>
+      );
+
+    // ----------------------------------------------------
+    // 10. INDUSTRIAL EXTRACTION OF SODIUM: THE DOWNS CELL
+    // ----------------------------------------------------
+    case 'chemical-electrolytic-downs-cell':
+      return (
+        <div className="my-4 p-4 rounded-2xl bg-slate-900 border border-slate-800 shadow-lg space-y-3">
+          <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+            <div className="flex items-center gap-2 text-xs font-bold text-white">
+              <FlaskConical className="w-4 h-4 text-cyan-400" />
+              <span>Industrial Metallurgy: The Downs Electrolytic Cell for Sodium</span>
+            </div>
+            <span className="text-[10px] text-cyan-400 bg-cyan-950/60 px-2 py-0.5 rounded border border-cyan-800/60 font-medium">
+              WAEC Applied Chemistry · Week 4
+            </span>
+          </div>
+
+          <div className="w-full overflow-x-auto py-2">
+            <svg viewBox="0 0 620 300" className="w-full max-w-2xl mx-auto min-w-[480px] text-xs font-sans">
+              <rect x="10" y="10" width="600" height="280" fill="#0b1120" stroke="#1e293b" rx="10" />
+
+              {/* Main Outer Steel Tank with Firebrick Lining */}
+              <rect x="120" y="50" width="380" height="210" fill="#1e293b" stroke="#64748b" strokeWidth="2" rx="10" />
+              <text x="310" y="38" fill="#94a3b8" textAnchor="middle" className="text-[10px] font-bold uppercase tracking-wider">Downs Cell Outer Steel Tank (Firebrick Lined)</text>
+
+              {/* Molten Electrolyte (NaCl + CaCl2 at 600°C) */}
+              <rect x="135" y="70" width="350" height="175" fill="#f59e0b" fillOpacity="0.12" />
+              <text x="310" y="240" fill="#fef08a" textAnchor="middle" className="text-[10px] font-bold">
+                Molten Electrolyte: NaCl (40%) + CaCl₂ (60%) at ~600°C
+              </text>
+
+              {/* Central Graphite Anode (+) */}
+              <rect x="290" y="100" width="40" height="150" fill="#0f172a" stroke="#38bdf8" strokeWidth="2" />
+              <text x="310" y="180" fill="#38bdf8" textAnchor="middle" className="text-[11px] font-bold" transform="rotate(-90 310 180)">GRAPHITE ANODE (+)</text>
+              <text x="310" y="260" fill="#38bdf8" textAnchor="middle" className="text-[9px] font-bold">+ Pole</text>
+
+              {/* Circular Iron Cathode (-) on Both Sides */}
+              <rect x="170" y="90" width="25" height="120" fill="#334155" stroke="#f43f5e" strokeWidth="1.5" />
+              <text x="182" y="150" fill="#fca5a5" textAnchor="middle" className="text-[9px] font-bold" transform="rotate(-90 182 150)">IRON CATHODE (-)</text>
+
+              <rect x="425" y="90" width="25" height="120" fill="#334155" stroke="#f43f5e" strokeWidth="1.5" />
+              <text x="437" y="150" fill="#fca5a5" textAnchor="middle" className="text-[9px] font-bold" transform="rotate(-90 437 150)">IRON CATHODE (-)</text>
+
+              {/* Wire Gauze Diaphragm Separator */}
+              <line x1="240" y1="80" x2="240" y2="210" stroke="#94a3b8" strokeWidth="1.5" strokeDasharray="4 2" />
+              <line x1="380" y1="80" x2="380" y2="210" stroke="#94a3b8" strokeWidth="1.5" strokeDasharray="4 2" />
+              <text x="240" y="74" fill="#94a3b8" textAnchor="middle" className="text-[8px]">Wire Gauze</text>
+              <text x="380" y="74" fill="#94a3b8" textAnchor="middle" className="text-[8px]">Wire Gauze</text>
+
+              {/* Chlorine Gas Hood (Inverted Dome over Anode) */}
+              <path d="M 270 90 Q 310 50, 350 90 Z" fill="#065f46" stroke="#10b981" strokeWidth="1.5" />
+              <line x1="310" y1="50" x2="310" y2="25" stroke="#10b981" strokeWidth="2" />
+              <text x="310" y="20" fill="#4ade80" textAnchor="middle" className="text-[10px] font-bold">Cl₂ Gas Outlet (2Cl⁻ - 2e⁻ → Cl₂)</text>
+
+              {/* Molten Sodium Collection Pipes over Cathodes */}
+              <path d="M 160 85 L 205 85 L 205 60 L 160 60 Z" fill="#713f12" stroke="#f59e0b" strokeWidth="1.5" />
+              <text x="182" y="52" fill="#fbbf24" textAnchor="middle" className="text-[9px] font-bold">Molten Na (Rises)</text>
+              <text x="182" y="76" fill="#fef08a" textAnchor="middle" className="text-[8px]">Na⁺ + e⁻ → Na(l)</text>
+
+              <path d="M 415 85 L 460 85 L 460 60 L 415 60 Z" fill="#713f12" stroke="#f59e0b" strokeWidth="1.5" />
+              <text x="437" y="52" fill="#fbbf24" textAnchor="middle" className="text-[9px] font-bold">Molten Na (Rises)</text>
+              <text x="437" y="76" fill="#fef08a" textAnchor="middle" className="text-[8px]">Na⁺ + e⁻ → Na(l)</text>
+
+              {/* Reaction Badges */}
+              <g transform="translate(20, 100)">
+                <rect x="0" y="0" width="90" height="90" fill="#1e293b" stroke="#334155" rx="6" />
+                <text x="45" y="18" fill="#f59e0b" textAnchor="middle" className="text-[9px] font-bold uppercase">Role of CaCl₂:</text>
+                <text x="45" y="36" fill="#e2e8f0" textAnchor="middle" className="text-[8px]">Lowers melting</text>
+                <text x="45" y="48" fill="#e2e8f0" textAnchor="middle" className="text-[8px]">point of NaCl</text>
+                <text x="45" y="60" fill="#38bdf8" textAnchor="middle" className="text-[8px] font-bold">from 801°C</text>
+                <text x="45" y="72" fill="#10b981" textAnchor="middle" className="text-[8px] font-bold">down to 600°C</text>
+              </g>
+            </svg>
+          </div>
+
+          <div className="flex items-center gap-2 text-[11px] text-slate-300 bg-slate-950/70 p-2.5 rounded-xl border border-slate-800">
+            <Info className="w-4 h-4 text-cyan-400 shrink-0" />
+            <span>
+              <strong>Crucial Functions of Wire Gauze Diaphragm:</strong> Prevents explosive recombination of molten sodium metal (which is less dense than the electrolyte and floats to the surface) with hot chlorine gas escaping from the graphite anode.
             </span>
           </div>
         </div>

@@ -9,7 +9,9 @@ export type PhysicsDiagramType =
   | 'refraction-total-internal-reflection'
   | 'block-and-tackle-pulley'
   | 'transverse-wave-properties'
-  | 'convex-lens-ray-diagram';
+  | 'convex-lens-ray-diagram'
+  | 'physics-ac-rlc-resonance'
+  | 'physics-photoelectric-work-function';
 
 interface PhysicsDiagramProps {
   type: PhysicsDiagramType;
@@ -655,6 +657,217 @@ export const PhysicsDiagram: React.FC<PhysicsDiagramProps> = ({ type }) => {
             <Info className="w-4 h-4 text-sky-400 shrink-0" />
             <span>
               <strong>Lens Formula & Sign Convention (Real-is-Positive):</strong> 1/f = 1/u + 1/v, where f is positive for convex lenses and negative for concave lenses. When u &gt; 2f, the image formed is real, inverted, diminished, and situated between f and 2f on the opposite side.
+            </span>
+          </div>
+        </div>
+      );
+
+    // ----------------------------------------------------
+    // 9. ALTERNATING CURRENT (AC) RLC CIRCUIT & RESONANCE
+    // ----------------------------------------------------
+    case 'physics-ac-rlc-resonance':
+      return (
+        <div className="my-4 p-4 rounded-2xl bg-slate-900 border border-slate-800 shadow-lg space-y-3">
+          <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+            <div className="flex items-center gap-2 text-xs font-bold text-white">
+              <Sliders className="w-4 h-4 text-emerald-400" />
+              <span>Alternating Current: Series RLC Impedance &amp; Electrical Resonance</span>
+            </div>
+            <span className="text-[10px] text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-800/60 font-medium">
+              WAEC Electrodynamics · Weeks 1 &amp; 2
+            </span>
+          </div>
+
+          <div className="w-full overflow-x-auto py-2">
+            <svg viewBox="0 0 620 310" className="w-full max-w-2xl mx-auto min-w-[480px] text-xs font-sans">
+              <rect x="10" y="10" width="600" height="290" fill="#0b1120" stroke="#1e293b" rx="10" />
+
+              {/* Left Panel: Circuit & Impedance Phasor Triangle */}
+              <g transform="translate(25, 25)">
+                <rect x="0" y="0" width="270" height="255" fill="#1e293b" stroke="#334155" rx="8" />
+                <text x="135" y="20" fill="#38bdf8" textAnchor="middle" className="text-[11px] font-bold">Impedance Phasor Triangle</text>
+
+                {/* Phasor Right Triangle */}
+                <g transform="translate(40, 50)">
+                  {/* Base: Resistance R */}
+                  <line x1="20" y1="120" x2="160" y2="120" stroke="#38bdf8" strokeWidth="3" />
+                  <text x="90" y="138" fill="#38bdf8" textAnchor="middle" className="text-[11px] font-bold">Resistance (R)</text>
+
+                  {/* Vertical: Net Reactance (XL - XC) */}
+                  <line x1="160" y1="120" x2="160" y2="30" stroke="#f43f5e" strokeWidth="3" />
+                  <text x="170" y="75" fill="#f43f5e" className="text-[10px] font-bold">X_L - X_C</text>
+
+                  {/* Hypotenuse: Total Impedance Z */}
+                  <line x1="20" y1="120" x2="160" y2="30" stroke="#10b981" strokeWidth="3.5" />
+                  <text x="75" y="65" fill="#10b981" className="text-[11px] font-bold">Impedance (Z)</text>
+
+                  {/* Phase Angle phi */}
+                  <path d="M 50 120 A 30 30 0 0 0 45 105" fill="none" stroke="#f59e0b" strokeWidth="2" />
+                  <text x="56" y="112" fill="#f59e0b" className="text-[10px] font-bold">φ</text>
+
+                  {/* Right Angle Symbol */}
+                  <polyline points="150,120 150,110 160,110" fill="none" stroke="#94a3b8" strokeWidth="1.5" />
+                </g>
+
+                {/* Impedance Formula Badge */}
+                <g transform="translate(15, 190)">
+                  <rect x="0" y="0" width="240" height="50" fill="#0f172a" stroke="#10b981" strokeWidth="1.2" rx="6" />
+                  <text x="120" y="18" fill="#10b981" textAnchor="middle" className="text-[10px] font-bold">Z = √[R² + (X_L - X_C)²]</text>
+                  <text x="120" y="36" fill="#fef08a" textAnchor="middle" className="text-[9px]">X_L = 2πfL (Inductive) · X_C = 1/(2πfC) (Capacitive)</text>
+                </g>
+              </g>
+
+              {/* Right Panel: Sharp Electrical Resonance Curve */}
+              <g transform="translate(325, 25)">
+                <rect x="0" y="0" width="270" height="255" fill="#1e293b" stroke="#334155" rx="8" />
+                <text x="135" y="20" fill="#fbbf24" textAnchor="middle" className="text-[11px] font-bold">Electrical Resonance Peak</text>
+
+                {/* Axes */}
+                <line x1="40" y1="200" x2="250" y2="200" stroke="#64748b" strokeWidth="1.5" />
+                <line x1="40" y1="200" x2="40" y2="40" stroke="#64748b" strokeWidth="1.5" />
+                <text x="145" y="218" fill="#94a3b8" textAnchor="middle" className="text-[9px]">Frequency (f in Hz)</text>
+                <text x="15" y="120" fill="#94a3b8" textAnchor="middle" transform="rotate(-90 15 120)" className="text-[9px]">Current I_rms (Amperes)</text>
+
+                {/* Bell-shaped Resonance Curve */}
+                <path
+                  d="M 50 190 Q 110 185, 130 130 Q 145 50, 150 48 Q 155 50, 170 130 Q 190 185, 250 190"
+                  fill="none"
+                  stroke="#10b981"
+                  strokeWidth="3"
+                />
+
+                {/* Peak Point: Resonance Frequency f0 */}
+                <circle cx="150" cy="48" r="4.5" fill="#f59e0b" />
+                <line x1="150" y1="48" x2="150" y2="200" stroke="#f59e0b" strokeWidth="1.5" strokeDasharray="3 3" />
+                <text x="150" y="38" fill="#f59e0b" textAnchor="middle" className="text-[10px] font-bold">I_max = V / R</text>
+                <text x="150" y="232" fill="#f59e0b" textAnchor="middle" className="text-[10px] font-bold">f₀ (Resonant Frequency)</text>
+
+                {/* Resonance Conditions Callout */}
+                <g transform="translate(15, 75)">
+                  <rect x="0" y="0" width="120" height="70" fill="#0f172a" stroke="#334155" rx="6" />
+                  <text x="60" y="16" fill="#38bdf8" textAnchor="middle" className="text-[9px] font-bold uppercase">At Resonance:</text>
+                  <text x="60" y="30" fill="#e2e8f0" textAnchor="middle" className="text-[8px]">1. X_L = X_C</text>
+                  <text x="60" y="44" fill="#a7f3d0" textAnchor="middle" className="text-[8px] font-bold">2. Z_min = R</text>
+                  <text x="60" y="58" fill="#fef08a" textAnchor="middle" className="text-[8px] font-bold">3. Current I is MAX</text>
+                </g>
+
+                {/* Formula */}
+                <rect x="30" y="155" width="95" height="35" fill="#1e293b" rx="4" />
+                <text x="77" y="170" fill="#cbd5e1" textAnchor="middle" className="text-[8px]">Resonant Eq:</text>
+                <text x="77" y="184" fill="#38bdf8" textAnchor="middle" className="text-[9px] font-bold">f₀ = 1 / (2π√LC)</text>
+              </g>
+            </svg>
+          </div>
+
+          <div className="flex items-center gap-2 text-[11px] text-slate-300 bg-slate-950/70 p-2.5 rounded-xl border border-slate-800">
+            <Info className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span>
+              <strong>Radio Tuning Principle:</strong> When tuning a radio receiver, adjusting the variable capacitor aligns the circuit&apos;s natural resonant frequency (f₀ = 1 / [2π√(LC)]) with the carrier frequency of the broadcast station, maximizing received signal current.
+            </span>
+          </div>
+        </div>
+      );
+
+    // ----------------------------------------------------
+    // 10. PHOTOELECTRIC EFFECT & WORK FUNCTION
+    // ----------------------------------------------------
+    case 'physics-photoelectric-work-function':
+      return (
+        <div className="my-4 p-4 rounded-2xl bg-slate-900 border border-slate-800 shadow-lg space-y-3">
+          <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+            <div className="flex items-center gap-2 text-xs font-bold text-white">
+              <Sun className="w-4 h-4 text-amber-400" />
+              <span>Quantum Physics: The Photoelectric Effect &amp; Einstein&apos;s Equation</span>
+            </div>
+            <span className="text-[10px] text-amber-400 bg-amber-950/60 px-2 py-0.5 rounded border border-amber-800/60 font-medium">
+              WAEC Quantum Physics · Weeks 4 &amp; 5
+            </span>
+          </div>
+
+          <div className="w-full overflow-x-auto py-2">
+            <svg viewBox="0 0 620 300" className="w-full max-w-2xl mx-auto min-w-[480px] text-xs font-sans">
+              <rect x="10" y="10" width="600" height="280" fill="#0b1120" stroke="#1e293b" rx="10" />
+
+              {/* Quartz Evacuated Glass Envelope */}
+              <ellipse cx="280" cy="110" rx="190" ry="75" fill="#0f172a" stroke="#475569" strokeWidth="2" strokeDasharray="8 2" />
+              <text x="280" y="48" fill="#94a3b8" textAnchor="middle" className="text-[10px] font-bold uppercase tracking-wider">Evacuated Quartz Glass Tube</text>
+
+              {/* Photosensitive Metal Cathode (-) */}
+              <rect x="140" y="65" width="16" height="90" fill="#0284c7" stroke="#38bdf8" strokeWidth="2" rx="3" />
+              <text x="125" y="115" fill="#38bdf8" textAnchor="middle" className="text-[10px] font-bold" transform="rotate(-90 125 115)">Photosensitive Emitter (Cathode)</text>
+
+              {/* Anode Collector (+) */}
+              <rect x="400" y="65" width="16" height="90" fill="#10b981" stroke="#34d399" strokeWidth="2" rx="3" />
+              <text x="425" y="115" fill="#34d399" textAnchor="middle" className="text-[10px] font-bold" transform="rotate(-90 425 115)">Collector (Anode)</text>
+
+              {/* Incident Light Photons (hf) */}
+              <g stroke="#f59e0b" strokeWidth="2" fill="none">
+                <path d="M 60 70 Q 80 60, 100 70 T 140 70" />
+                <path d="M 60 95 Q 80 85, 100 95 T 140 95" />
+                <path d="M 60 120 Q 80 110, 100 120 T 140 120" />
+              </g>
+              <polygon points="140,70 132,66 132,74" fill="#f59e0b" />
+              <polygon points="140,95 132,91 132,99" fill="#f59e0b" />
+              <polygon points="140,120 132,116 132,124" fill="#f59e0b" />
+              <text x="80" y="55" fill="#f59e0b" className="text-[11px] font-bold">Incident Photons (E = hf)</text>
+
+              {/* Emitted Photoelectrons (e-) fleeing toward collector */}
+              <g transform="translate(165, 80)">
+                <circle cx="20" cy="10" r="5" fill="#f43f5e" />
+                <text x="20" y="13" fill="#ffffff" textAnchor="middle" className="text-[8px] font-bold">-</text>
+                <line x1="26" y1="10" x2="65" y2="10" stroke="#f43f5e" strokeWidth="1.5" strokeDasharray="3 2" />
+                <polygon points="70,10 63,7 63,13" fill="#f43f5e" />
+
+                <circle cx="45" cy="35" r="5" fill="#f43f5e" />
+                <text x="45" y="38" fill="#ffffff" textAnchor="middle" className="text-[8px] font-bold">-</text>
+                <line x1="51" y1="35" x2="90" y2="35" stroke="#f43f5e" strokeWidth="1.5" strokeDasharray="3 2" />
+                <polygon points="95,35 88,32 88,38" fill="#f43f5e" />
+
+                <circle cx="80" cy="18" r="5" fill="#f43f5e" />
+                <text x="80" y="21" fill="#ffffff" textAnchor="middle" className="text-[8px] font-bold">-</text>
+                <line x1="86" y1="18" x2="135" y2="18" stroke="#f43f5e" strokeWidth="1.5" strokeDasharray="3 2" />
+                <polygon points="140,18 133,15 133,21" fill="#f43f5e" />
+              </g>
+              <text x="280" y="125" fill="#fca5a5" textAnchor="middle" className="text-[10px] font-bold">
+                Photoelectrons: Ek = ½mv²_max
+              </text>
+
+              {/* External Circuit with Microammeter and Variable Voltage */}
+              <line x1="148" y1="155" x2="148" y2="230" stroke="#64748b" strokeWidth="2" />
+              <line x1="148" y1="230" x2="230" y2="230" stroke="#64748b" strokeWidth="2" />
+
+              {/* Microammeter */}
+              <circle cx="250" cy="230" r="16" fill="#1e293b" stroke="#38bdf8" strokeWidth="1.5" />
+              <text x="250" y="234" fill="#38bdf8" textAnchor="middle" className="text-[10px] font-bold">μA</text>
+
+              <line x1="266" y1="230" x2="330" y2="230" stroke="#64748b" strokeWidth="2" />
+
+              {/* Variable Voltage Source / Stopping Potential */}
+              <line x1="330" y1="220" x2="330" y2="240" stroke="#f59e0b" strokeWidth="2" />
+              <line x1="338" y1="212" x2="338" y2="248" stroke="#f59e0b" strokeWidth="3" />
+              <text x="334" y="262" fill="#f59e0b" textAnchor="middle" className="text-[9px]">Stopping Potential (Vs)</text>
+
+              <line x1="338" y1="230" x2="408" y2="230" stroke="#64748b" strokeWidth="2" />
+              <line x1="408" y1="230" x2="408" y2="155" stroke="#64748b" strokeWidth="2" />
+
+              {/* Einstein's Photoelectric Equation Box */}
+              <g transform="translate(450, 40)">
+                <rect x="0" y="0" width="145" height="110" fill="#1e293b" stroke="#334155" rx="6" />
+                <text x="72" y="18" fill="#fbbf24" textAnchor="middle" className="text-[9px] font-bold uppercase">Einstein&apos;s Law:</text>
+                <text x="72" y="36" fill="#10b981" textAnchor="middle" className="text-[10px] font-bold">E = W₀ + Ek</text>
+                <text x="72" y="52" fill="#f8fafc" textAnchor="middle" className="text-[9px]">hf = hf₀ + ½mv²</text>
+                <line x1="10" y1="60" x2="135" y2="60" stroke="#475569" strokeWidth="1" />
+                <text x="12" y="74" fill="#cbd5e1" className="text-[8px]">W₀: Work Function</text>
+                <text x="12" y="86" fill="#cbd5e1" className="text-[8px]">f₀: Threshold Freq</text>
+                <text x="12" y="98" fill="#38bdf8" className="text-[8px] font-bold">Ek_max = e · Vs</text>
+              </g>
+            </svg>
+          </div>
+
+          <div className="flex items-center gap-2 text-[11px] text-slate-300 bg-slate-950/70 p-2.5 rounded-xl border border-slate-800">
+            <Info className="w-4 h-4 text-amber-400 shrink-0" />
+            <span>
+              <strong>Quantum Law of Photoelectricity:</strong> Photoelectrons are emitted <em>instantaneously</em> only when the incident radiation frequency exceeds the threshold frequency ($f &gt; f_0$). Light intensity dictates the <em>number</em> of photoelectrons emitted per second, but does NOT affect their maximum kinetic energy.
             </span>
           </div>
         </div>

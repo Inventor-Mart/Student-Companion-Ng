@@ -6,7 +6,8 @@ export type AgricDiagramType =
   | 'nitrogen-cycle-diagram'
   | 'disc-plough-anatomy'
   | 'farm-surveying-instruments'
-  | 'drip-irrigation-system';
+  | 'drip-irrigation-system'
+  | 'agric-tractor-implement-coupling';
 
 interface AgricDiagramProps {
   type: AgricDiagramType;
@@ -461,6 +462,115 @@ export const AgricDiagram: React.FC<AgricDiagramProps> = ({ type }) => {
             <Info className="w-4 h-4 text-cyan-400 shrink-0" />
             <span>
               <strong>Water Conservation Benchmark:</strong> While surface flooding wastes over 50% of water through seepage and evaporation, drip irrigation applies calibrated water droplets strictly at the crop root zone, making it the most water-conservative system for commercial farms.
+            </span>
+          </div>
+        </div>
+      );
+
+    // ----------------------------------------------------
+    // 6. TRACTOR THREE-POINT LINKAGE & IMPLEMENT COUPLING
+    // ----------------------------------------------------
+    case 'agric-tractor-implement-coupling':
+      return (
+        <div className="my-4 p-4 rounded-2xl bg-slate-900 border border-slate-800 shadow-lg space-y-3">
+          <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+            <div className="flex items-center gap-2 text-xs font-bold text-white">
+              <Tractor className="w-4 h-4 text-emerald-400" />
+              <span>Farm Mechanization: Tractor Three-Point Linkage &amp; Hydraulic Hitch</span>
+            </div>
+            <span className="text-[10px] text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-800/60 font-medium">
+              WAEC Farm Machinery · Weeks 1 &amp; 2
+            </span>
+          </div>
+
+          <div className="w-full overflow-x-auto py-2">
+            <svg viewBox="0 0 620 310" className="w-full max-w-2xl mx-auto min-w-[480px] text-xs font-sans">
+              <rect x="10" y="10" width="600" height="290" fill="#0b1120" stroke="#1e293b" rx="10" />
+
+              {/* Left Zone: Rear of Tractor */}
+              <g transform="translate(30, 40)">
+                <rect x="0" y="0" width="160" height="220" fill="#1e293b" stroke="#334155" rx="10" />
+                <text x="80" y="24" fill="#38bdf8" textAnchor="middle" className="text-[11px] font-bold">Tractor Rear Chassis</text>
+
+                {/* Massive Rear Drive Wheel */}
+                <ellipse cx="60" cy="130" rx="45" ry="75" fill="#0f172a" stroke="#475569" strokeWidth="4" />
+                <text x="60" y="134" fill="#64748b" textAnchor="middle" className="text-[9px] font-bold">Drive Tire</text>
+
+                {/* Power Take-Off (PTO) Shaft Stub */}
+                <circle cx="150" cy="150" r="10" fill="#f59e0b" stroke="#ffffff" strokeWidth="1.5" />
+                <text x="145" y="175" fill="#fbbf24" textAnchor="middle" className="text-[8px] font-bold">PTO Shaft (540 rpm)</text>
+
+                {/* Top Link Anchor Point */}
+                <circle cx="140" cy="70" r="6" fill="#10b981" />
+                <text x="130" y="62" fill="#10b981" textAnchor="end" className="text-[9px] font-bold">Top Hitch Point</text>
+
+                {/* Lower Link Anchor Points */}
+                <circle cx="140" cy="190" r="6" fill="#38bdf8" />
+                <text x="130" y="205" fill="#38bdf8" textAnchor="end" className="text-[9px] font-bold">Lower Hitch Point</text>
+              </g>
+
+              {/* Middle Zone: 3-Point Linkage Connections */}
+              <g transform="translate(190, 40)">
+                {/* 1. Top Link (Adjustable Turnbuckle) */}
+                <line x1="0" y1="70" x2="160" y2="70" stroke="#10b981" strokeWidth="4" />
+                <rect x="65" y="62" width="30" height="16" fill="#047857" rx="3" />
+                <text x="80" y="55" fill="#10b981" textAnchor="middle" className="text-[10px] font-bold">1. Top Link (Pitch &amp; Depth Control)</text>
+
+                {/* 2. PTO Drive Shaft */}
+                <line x1="0" y1="150" x2="160" y2="150" stroke="#f59e0b" strokeWidth="5" strokeDasharray="6 3" />
+                <text x="80" y="142" fill="#f59e0b" textAnchor="middle" className="text-[10px] font-bold">2. PTO Drive Shaft (Rotary Power)</text>
+
+                {/* 3. Lower Lift Links (Controlled by Hydraulic Lift Arms) */}
+                <line x1="0" y1="190" x2="160" y2="190" stroke="#38bdf8" strokeWidth="4" />
+                {/* Hydraulic Lift Rod */}
+                <line x1="80" y1="110" x2="80" y2="190" stroke="#93c5fd" strokeWidth="2.5" />
+                <polygon points="80,190 76,182 84,182" fill="#93c5fd" />
+                <text x="80" y="105" fill="#93c5fd" textAnchor="middle" className="text-[8px]">Hydraulic Lift Rod</text>
+                <text x="80" y="210" fill="#38bdf8" textAnchor="middle" className="text-[10px] font-bold">3. Lower Lift Arms (Draft &amp; Load)</text>
+              </g>
+
+              {/* Right Zone: Trailed / Mounted Implement (Disc Plough Frame) */}
+              <g transform="translate(370, 40)">
+                <rect x="0" y="0" width="220" height="220" fill="#1e293b" stroke="#334155" rx="10" />
+                <text x="110" y="24" fill="#a7f3d0" textAnchor="middle" className="text-[11px] font-bold">Mounted Implement (Disc Plough)</text>
+
+                {/* Implement Mast */}
+                <line x1="20" y1="70" x2="20" y2="190" stroke="#64748b" strokeWidth="4" />
+                <circle cx="20" cy="70" r="6" fill="#10b981" />
+                <circle cx="20" cy="190" r="6" fill="#38bdf8" />
+
+                {/* Main Beam */}
+                <line x1="20" y1="140" x2="190" y2="140" stroke="#cbd5e1" strokeWidth="5" />
+
+                {/* Disc Standard 1 */}
+                <line x1="70" y1="140" x2="60" y2="195" stroke="#94a3b8" strokeWidth="3" />
+                <ellipse cx="60" cy="195" rx="18" ry="10" fill="#475569" stroke="#f8fafc" strokeWidth="1.5" />
+
+                {/* Disc Standard 2 */}
+                <line x1="120" y1="140" x2="110" y2="195" stroke="#94a3b8" strokeWidth="3" />
+                <ellipse cx="110" cy="195" rx="18" ry="10" fill="#475569" stroke="#f8fafc" strokeWidth="1.5" />
+
+                {/* Furrow Wheel at Rear */}
+                <circle cx="180" cy="195" r="14" fill="#0f172a" stroke="#f59e0b" strokeWidth="2" />
+                <text x="180" y="198" fill="#f59e0b" textAnchor="middle" className="text-[7px]">Furrow</text>
+
+                {/* Implement Label */}
+                <text x="110" y="85" fill="#f8fafc" textAnchor="middle" className="text-[10px] font-semibold">Tillage Depth Adjusted via Top Link</text>
+              </g>
+
+              {/* Bottom Summary Bar */}
+              <g transform="translate(30, 275)">
+                <text x="280" y="10" fill="#94a3b8" textAnchor="middle" className="text-[10px]">
+                  Three-Point System: 1 Top Link (Adjusts rake/pitch) + 2 Lower Links (Hydraulic lift) + PTO (Transmits rotary power to mowers/balers)
+                </text>
+              </g>
+            </svg>
+          </div>
+
+          <div className="flex items-center gap-2 text-[11px] text-slate-300 bg-slate-950/70 p-2.5 rounded-xl border border-slate-800">
+            <Info className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span>
+              <strong>Agricultural Engineering Standard:</strong> The three-point linkage invented by Harry Ferguson standardizes implement attachment worldwide. By turning the threaded top-link turnbuckle, the operator precisely controls the cutting suction and penetration depth of plough discs.
             </span>
           </div>
         </div>

@@ -9,7 +9,10 @@ export type DiagramType =
   | 'villus-structure'
   | 'nephron-structure'
   | 'bio-respiratory-alveoli'
-  | 'bio-ecological-pyramids';
+  | 'bio-ecological-pyramids'
+  | 'bio-reflex-arc-neural-pathway'
+  | 'bio-genetics-punnett-square'
+  | 'bio-human-eye-optics';
 
 interface BiologicalDiagramProps {
   type: DiagramType;
@@ -655,6 +658,342 @@ export const BiologicalDiagram: React.FC<BiologicalDiagramProps> = ({ type, capt
             <Info className="w-4 h-4 text-amber-400 shrink-0" />
             <span>
               <strong>Ecological Law:</strong> Unlike pyramids of numbers or biomass which can sometimes be inverted (e.g., millions of parasites feeding on one single tree), the <em>Pyramid of Energy can NEVER be inverted</em> because energy is dissipated irreversibly as heat according to the Second Law of Thermodynamics.
+            </span>
+          </div>
+        </div>
+      );
+
+    // ----------------------------------------------------
+    // 9. THE REFLEX ARC NEURAL PATHWAY
+    // ----------------------------------------------------
+    case 'bio-reflex-arc-neural-pathway':
+      return (
+        <div className="my-4 p-4 rounded-2xl bg-slate-900 border border-slate-800 shadow-lg space-y-3">
+          <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+            <div className="flex items-center gap-2 text-xs font-bold text-white">
+              <Eye className="w-4 h-4 text-emerald-400" />
+              <span>The Reflex Arc: Spinal Reflex Neural Transmission Pathway</span>
+            </div>
+            <span className="text-[10px] text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-800/60 font-medium">
+              WAEC Nervous System · Week 2
+            </span>
+          </div>
+
+          <div className="w-full overflow-x-auto py-2">
+            <svg viewBox="0 0 620 310" className="w-full max-w-2xl mx-auto min-w-[480px] text-xs font-sans">
+              <rect x="10" y="10" width="600" height="290" fill="#0b1120" stroke="#1e293b" rx="10" />
+
+              {/* Central Spinal Cord Cross-Section */}
+              <g transform="translate(240, 25)">
+                {/* White Matter Outline */}
+                <ellipse cx="140" cy="130" rx="130" ry="90" fill="#1e293b" stroke="#475569" strokeWidth="2" />
+                <text x="140" y="25" fill="#94a3b8" textAnchor="middle" className="text-[10px] font-bold uppercase tracking-wider">Spinal Cord (White Matter)</text>
+
+                {/* Butterfly Grey Matter */}
+                <path
+                  d="M 140 120 C 120 70, 70 80, 80 120 C 70 160, 110 180, 140 140 C 170 180, 210 160, 200 120 C 210 80, 160 70, 140 120 Z"
+                  fill="#334155"
+                  stroke="#64748b"
+                  strokeWidth="1.5"
+                />
+                <text x="140" y="132" fill="#cbd5e1" textAnchor="middle" className="text-[9px] font-bold">Grey Matter</text>
+                <circle cx="140" cy="130" r="3.5" fill="#0f172a" />
+                <text x="140" y="148" fill="#64748b" textAnchor="middle" className="text-[8px]">Central Canal</text>
+
+                {/* Relay Neuron / Interneuron inside Grey Matter */}
+                <path d="M 105 110 Q 140 100, 175 145" fill="none" stroke="#f59e0b" strokeWidth="2.5" />
+                <circle cx="105" cy="110" r="3" fill="#f59e0b" />
+                <circle cx="175" cy="145" r="3" fill="#f59e0b" />
+                <text x="140" y="95" fill="#fbbf24" textAnchor="middle" className="text-[9px] font-bold">Relay Neuron (Interneuron)</text>
+              </g>
+
+              {/* 1. Sensory Receptor in Skin */}
+              <g transform="translate(30, 45)">
+                <rect x="0" y="0" width="130" height="60" fill="#1e293b" stroke="#f43f5e" strokeWidth="1.5" rx="8" />
+                <text x="65" y="18" fill="#f43f5e" textAnchor="middle" className="text-[10px] font-bold uppercase">1. Pain Stimulus</text>
+                <text x="65" y="34" fill="#f8fafc" textAnchor="middle" className="text-[11px] font-semibold">Skin Receptor</text>
+                <text x="65" y="48" fill="#94a3b8" textAnchor="middle" className="text-[9px]">(Sharp pin / hot object)</text>
+              </g>
+
+              {/* 2. Sensory Neuron Pathway (Afferent) through Dorsal Root */}
+              <path d="M 160 75 Q 230 75, 345 135" fill="none" stroke="#38bdf8" strokeWidth="2.5" />
+              {/* Dorsal Root Ganglion */}
+              <circle cx="265" cy="88" r="8" fill="#0284c7" stroke="#38bdf8" strokeWidth="1.5" />
+              <text x="265" y="75" fill="#38bdf8" textAnchor="middle" className="text-[9px] font-bold">Dorsal Ganglion</text>
+              <text x="210" y="105" fill="#38bdf8" className="text-[10px] font-bold">2. Sensory Neuron</text>
+
+              {/* 3. Motor Neuron Pathway (Efferent) through Ventral Root */}
+              <path d="M 415 170 Q 300 240, 160 230" fill="none" stroke="#10b981" strokeWidth="2.5" />
+              <text x="260" y="240" fill="#10b981" className="text-[10px] font-bold">3. Motor Neuron</text>
+
+              {/* 4. Effector Organ (Biceps Muscle) */}
+              <g transform="translate(30, 195)">
+                <rect x="0" y="0" width="130" height="65" fill="#1e293b" stroke="#10b981" strokeWidth="1.5" rx="8" />
+                <text x="65" y="18" fill="#10b981" textAnchor="middle" className="text-[10px] font-bold uppercase">4. Effector</text>
+                <text x="65" y="34" fill="#f8fafc" textAnchor="middle" className="text-[11px] font-semibold">Biceps Muscle</text>
+                <text x="65" y="48" fill="#a7f3d0" textAnchor="middle" className="text-[9px] font-bold">Contracts (Withdraws)</text>
+              </g>
+
+              {/* Sequence Flow Banner */}
+              <g transform="translate(30, 275)">
+                <text x="280" y="12" fill="#94a3b8" textAnchor="middle" className="text-[10px]">
+                  Flow: Stimulus → Receptor → Sensory Neuron (Dorsal Root) → Synapse/Relay → Motor Neuron (Ventral Root) → Effector
+                </text>
+              </g>
+            </svg>
+          </div>
+
+          <div className="flex items-center gap-2 text-[11px] text-slate-300 bg-slate-950/70 p-2.5 rounded-xl border border-slate-800">
+            <Info className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span>
+              <strong>Biological Significance:</strong> A spinal reflex is automatic, involuntary, and instantaneous because nerve impulses bypass conscious brain processing, protecting tissues from physical injury.
+            </span>
+          </div>
+        </div>
+      );
+
+    // ----------------------------------------------------
+    // 10. MENDELIAN GENETICS DIHYBRID PUNNETT SQUARE
+    // ----------------------------------------------------
+    case 'bio-genetics-punnett-square':
+      return (
+        <div className="my-4 p-4 rounded-2xl bg-slate-900 border border-slate-800 shadow-lg space-y-3">
+          <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+            <div className="flex items-center gap-2 text-xs font-bold text-white">
+              <Eye className="w-4 h-4 text-amber-400" />
+              <span>Mendelian Dihybrid Cross: 9:3:3:1 Phenotypic Ratio Punnett Square</span>
+            </div>
+            <span className="text-[10px] text-amber-400 bg-amber-950/60 px-2 py-0.5 rounded border border-amber-800/60 font-medium">
+              WAEC Genetics · Weeks 7 &amp; 8
+            </span>
+          </div>
+
+          <div className="w-full overflow-x-auto py-2">
+            <svg viewBox="0 0 620 310" className="w-full max-w-2xl mx-auto min-w-[480px] text-xs font-sans">
+              <rect x="10" y="10" width="600" height="290" fill="#0b1120" stroke="#1e293b" rx="10" />
+
+              {/* Punnett Square Table: 4x4 Grid (Parent: RrYy × RrYy) */}
+              <g transform="translate(60, 40)">
+                <text x="140" y="-12" fill="#38bdf8" textAnchor="middle" className="text-[11px] font-bold">Female Gametes: RY, Ry, rY, ry</text>
+
+                {/* Column Headers (Female Gametes) */}
+                <rect x="40" y="0" width="55" height="25" fill="#1e293b" stroke="#334155" />
+                <text x="67" y="16" fill="#38bdf8" textAnchor="middle" className="text-[11px] font-bold">RY</text>
+                <rect x="95" y="0" width="55" height="25" fill="#1e293b" stroke="#334155" />
+                <text x="122" y="16" fill="#38bdf8" textAnchor="middle" className="text-[11px] font-bold">Ry</text>
+                <rect x="150" y="0" width="55" height="25" fill="#1e293b" stroke="#334155" />
+                <text x="177" y="16" fill="#38bdf8" textAnchor="middle" className="text-[11px] font-bold">rY</text>
+                <rect x="205" y="0" width="55" height="25" fill="#1e293b" stroke="#334155" />
+                <text x="232" y="16" fill="#38bdf8" textAnchor="middle" className="text-[11px] font-bold">ry</text>
+
+                {/* Row 1 (RY) */}
+                <rect x="0" y="25" width="40" height="45" fill="#1e293b" stroke="#334155" />
+                <text x="20" y="52" fill="#f59e0b" textAnchor="middle" className="text-[11px] font-bold">RY</text>
+
+                <rect x="40" y="25" width="55" height="45" fill="#065f46" stroke="#334155" />
+                <text x="67" y="52" fill="#ecfdf5" textAnchor="middle" className="text-[10px] font-bold">RRYY</text>
+
+                <rect x="95" y="25" width="55" height="45" fill="#065f46" stroke="#334155" />
+                <text x="122" y="52" fill="#ecfdf5" textAnchor="middle" className="text-[10px] font-bold">RRYy</text>
+
+                <rect x="150" y="25" width="55" height="45" fill="#065f46" stroke="#334155" />
+                <text x="177" y="52" fill="#ecfdf5" textAnchor="middle" className="text-[10px] font-bold">RrYY</text>
+
+                <rect x="205" y="25" width="55" height="45" fill="#065f46" stroke="#334155" />
+                <text x="232" y="52" fill="#ecfdf5" textAnchor="middle" className="text-[10px] font-bold">RrYy</text>
+
+                {/* Row 2 (Ry) */}
+                <rect x="0" y="70" width="40" height="45" fill="#1e293b" stroke="#334155" />
+                <text x="20" y="97" fill="#f59e0b" textAnchor="middle" className="text-[11px] font-bold">Ry</text>
+
+                <rect x="40" y="70" width="55" height="45" fill="#065f46" stroke="#334155" />
+                <text x="67" y="97" fill="#ecfdf5" textAnchor="middle" className="text-[10px] font-bold">RRYy</text>
+
+                <rect x="95" y="70" width="55" height="45" fill="#075985" stroke="#334155" />
+                <text x="122" y="97" fill="#f0f9ff" textAnchor="middle" className="text-[10px] font-bold">RRyy</text>
+
+                <rect x="150" y="70" width="55" height="45" fill="#065f46" stroke="#334155" />
+                <text x="177" y="97" fill="#ecfdf5" textAnchor="middle" className="text-[10px] font-bold">RrYy</text>
+
+                <rect x="205" y="70" width="55" height="45" fill="#075985" stroke="#334155" />
+                <text x="232" y="97" fill="#f0f9ff" textAnchor="middle" className="text-[10px] font-bold">Rryy</text>
+
+                {/* Row 3 (rY) */}
+                <rect x="0" y="115" width="40" height="45" fill="#1e293b" stroke="#334155" />
+                <text x="20" y="142" fill="#f59e0b" textAnchor="middle" className="text-[11px] font-bold">rY</text>
+
+                <rect x="40" y="115" width="55" height="45" fill="#065f46" stroke="#334155" />
+                <text x="67" y="142" fill="#ecfdf5" textAnchor="middle" className="text-[10px] font-bold">RrYY</text>
+
+                <rect x="95" y="115" width="55" height="45" fill="#065f46" stroke="#334155" />
+                <text x="122" y="142" fill="#ecfdf5" textAnchor="middle" className="text-[10px] font-bold">RrYy</text>
+
+                <rect x="150" y="115" width="55" height="45" fill="#854d0e" stroke="#334155" />
+                <text x="177" y="142" fill="#fefce8" textAnchor="middle" className="text-[10px] font-bold">rrYY</text>
+
+                <rect x="205" y="115" width="55" height="45" fill="#854d0e" stroke="#334155" />
+                <text x="232" y="142" fill="#fefce8" textAnchor="middle" className="text-[10px] font-bold">rrYy</text>
+
+                {/* Row 4 (ry) */}
+                <rect x="0" y="160" width="40" height="45" fill="#1e293b" stroke="#334155" />
+                <text x="20" y="187" fill="#f59e0b" textAnchor="middle" className="text-[11px] font-bold">ry</text>
+
+                <rect x="40" y="160" width="55" height="45" fill="#065f46" stroke="#334155" />
+                <text x="67" y="187" fill="#ecfdf5" textAnchor="middle" className="text-[10px] font-bold">RrYy</text>
+
+                <rect x="95" y="160" width="55" height="45" fill="#075985" stroke="#334155" />
+                <text x="122" y="187" fill="#f0f9ff" textAnchor="middle" className="text-[10px] font-bold">Rryy</text>
+
+                <rect x="150" y="160" width="55" height="45" fill="#854d0e" stroke="#334155" />
+                <text x="177" y="187" fill="#fefce8" textAnchor="middle" className="text-[10px] font-bold">rrYy</text>
+
+                <rect x="205" y="160" width="55" height="45" fill="#9f1239" stroke="#334155" />
+                <text x="232" y="187" fill="#fff1f2" textAnchor="middle" className="text-[10px] font-bold">rryy</text>
+              </g>
+
+              {/* Right Panel: Phenotypic Ratio Summary */}
+              <g transform="translate(365, 30)">
+                <rect x="0" y="0" width="230" height="240" fill="#1e293b" stroke="#334155" rx="8" />
+                <text x="115" y="22" fill="#f59e0b" textAnchor="middle" className="text-[11px] font-bold uppercase tracking-wider">Mendelian F₂ Phenotypic Ratio</text>
+
+                {/* Class 1: Round Yellow (9/16) */}
+                <g transform="translate(15, 38)">
+                  <rect x="0" y="0" width="16" height="16" fill="#065f46" rx="3" />
+                  <text x="26" y="12" fill="#ecfdf5" className="text-[10px] font-bold">Round Yellow (R_Y_): 9/16</text>
+                  <text x="26" y="26" fill="#94a3b8" className="text-[9px]">Dominant for both traits</text>
+                </g>
+
+                {/* Class 2: Round Green (3/16) */}
+                <g transform="translate(15, 82)">
+                  <rect x="0" y="0" width="16" height="16" fill="#075985" rx="3" />
+                  <text x="26" y="12" fill="#f0f9ff" className="text-[10px] font-bold">Round Green (R_yy): 3/16</text>
+                  <text x="26" y="26" fill="#94a3b8" className="text-[9px]">Recombinant phenotype 1</text>
+                </g>
+
+                {/* Class 3: Wrinkled Yellow (3/16) */}
+                <g transform="translate(15, 126)">
+                  <rect x="0" y="0" width="16" height="16" fill="#854d0e" rx="3" />
+                  <text x="26" y="12" fill="#fefce8" className="text-[10px] font-bold">Wrinkled Yellow (rrY_): 3/16</text>
+                  <text x="26" y="26" fill="#94a3b8" className="text-[9px]">Recombinant phenotype 2</text>
+                </g>
+
+                {/* Class 4: Wrinkled Green (1/16) */}
+                <g transform="translate(15, 170)">
+                  <rect x="0" y="0" width="16" height="16" fill="#9f1239" rx="3" />
+                  <text x="26" y="12" fill="#fff1f2" className="text-[10px] font-bold">Wrinkled Green (rryy): 1/16</text>
+                  <text x="26" y="26" fill="#94a3b8" className="text-[9px]">Double recessive parent type</text>
+                </g>
+
+                {/* Total Ratio Badge */}
+                <rect x="15" y="200" width="200" height="26" fill="#0f172a" rx="4" />
+                <text x="115" y="217" fill="#38bdf8" textAnchor="middle" className="text-[11px] font-extrabold tracking-wider">RATIO = 9 : 3 : 3 : 1</text>
+              </g>
+            </svg>
+          </div>
+
+          <div className="flex items-center gap-2 text-[11px] text-slate-300 bg-slate-950/70 p-2.5 rounded-xl border border-slate-800">
+            <Info className="w-4 h-4 text-amber-400 shrink-0" />
+            <span>
+              <strong>Mendel&apos;s Second Law:</strong> The Law of Independent Assortment states that alleles of two or more different genes sort into gametes independently of one another, generating the classic 9:3:3:1 ratio.
+            </span>
+          </div>
+        </div>
+      );
+
+    // ----------------------------------------------------
+    // 11. MAMMALIAN EYE OPTICS & VISION DEFECTS
+    // ----------------------------------------------------
+    case 'bio-human-eye-optics':
+      return (
+        <div className="my-4 p-4 rounded-2xl bg-slate-900 border border-slate-800 shadow-lg space-y-3">
+          <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+            <div className="flex items-center gap-2 text-xs font-bold text-white">
+              <Eye className="w-4 h-4 text-sky-400" />
+              <span>Sense Organs: Mammalian Eye Optics, Myopia &amp; Corrective Lenses</span>
+            </div>
+            <span className="text-[10px] text-sky-400 bg-sky-950/60 px-2 py-0.5 rounded border border-sky-800/60 font-medium">
+              WAEC Sense Organs · Week 3
+            </span>
+          </div>
+
+          <div className="w-full overflow-x-auto py-2">
+            <svg viewBox="0 0 620 300" className="w-full max-w-2xl mx-auto min-w-[480px] text-xs font-sans">
+              <rect x="10" y="10" width="600" height="280" fill="#0b1120" stroke="#1e293b" rx="10" />
+
+              {/* Panel 1: Normal Eye (Emmetropia) */}
+              <g transform="translate(25, 25)">
+                <rect x="0" y="0" width="270" height="120" fill="#1e293b" stroke="#334155" rx="8" />
+                <text x="135" y="18" fill="#10b981" textAnchor="middle" className="text-[10px] font-bold uppercase">1. Normal Vision (Sharp Focus on Retina)</text>
+
+                {/* Eyeball profile */}
+                <ellipse cx="140" cy="65" rx="60" ry="40" fill="#0f172a" stroke="#64748b" strokeWidth="1.5" />
+                {/* Cornea bulge */}
+                <path d="M 80 50 Q 70 65, 80 80" fill="none" stroke="#38bdf8" strokeWidth="2" />
+                {/* Biconvex Lens */}
+                <ellipse cx="95" cy="65" rx="4" ry="16" fill="#38bdf8" />
+                {/* Retina layer at back */}
+                <path d="M 180 40 Q 205 65, 180 90" fill="none" stroke="#f59e0b" strokeWidth="3" />
+
+                {/* Light rays focusing exactly on Retina */}
+                <line x1="20" y1="55" x2="95" y2="55" stroke="#fef08a" strokeWidth="1.2" />
+                <line x1="20" y1="75" x2="95" y2="75" stroke="#fef08a" strokeWidth="1.2" />
+                <line x1="95" y1="55" x2="198" y2="65" stroke="#fef08a" strokeWidth="1.2" />
+                <line x1="95" y1="75" x2="198" y2="65" stroke="#fef08a" strokeWidth="1.2" />
+                <circle cx="198" cy="65" r="3.5" fill="#10b981" />
+                <text x="135" y="112" fill="#94a3b8" textAnchor="middle" className="text-[9px]">Focal Point falls directly on Yellow Spot (Fovea)</text>
+              </g>
+
+              {/* Panel 2: Short-Sightedness (Myopia) */}
+              <g transform="translate(325, 25)">
+                <rect x="0" y="0" width="270" height="120" fill="#1e293b" stroke="#334155" rx="8" />
+                <text x="135" y="18" fill="#f43f5e" textAnchor="middle" className="text-[10px] font-bold uppercase">2. Myopia (Focus in Front of Retina)</text>
+
+                {/* Elongated eyeball */}
+                <ellipse cx="145" cy="65" rx="68" ry="40" fill="#0f172a" stroke="#64748b" strokeWidth="1.5" />
+                <path d="M 80 50 Q 70 65, 80 80" fill="none" stroke="#38bdf8" strokeWidth="2" />
+                <ellipse cx="95" cy="65" rx="4" ry="16" fill="#38bdf8" />
+                <path d="M 190 40 Q 215 65, 190 90" fill="none" stroke="#f59e0b" strokeWidth="3" />
+
+                {/* Premature focus before retina */}
+                <line x1="20" y1="55" x2="95" y2="55" stroke="#fef08a" strokeWidth="1.2" />
+                <line x1="20" y1="75" x2="95" y2="75" stroke="#fef08a" strokeWidth="1.2" />
+                <line x1="95" y1="55" x2="170" y2="65" stroke="#fef08a" strokeWidth="1.2" />
+                <line x1="95" y1="75" x2="170" y2="65" stroke="#fef08a" strokeWidth="1.2" />
+                <circle cx="170" cy="65" r="3.5" fill="#f43f5e" />
+                <text x="135" y="112" fill="#fca5a5" textAnchor="middle" className="text-[9px]">Eyeball too long / lens too curved → Blurred distant vision</text>
+              </g>
+
+              {/* Panel 3: Corrected Myopia with Concave (Diverging) Lens */}
+              <g transform="translate(170, 160)">
+                <rect x="0" y="0" width="300" height="120" fill="#1e293b" stroke="#10b981" strokeWidth="1.5" rx="8" />
+                <text x="150" y="18" fill="#a7f3d0" textAnchor="middle" className="text-[10px] font-bold uppercase">3. Corrected Myopia: Concave Lens</text>
+
+                {/* Eyeball profile */}
+                <ellipse cx="170" cy="65" rx="68" ry="40" fill="#0f172a" stroke="#64748b" strokeWidth="1.5" />
+                {/* Concave spectacles lens */}
+                <path d="M 40 45 C 45 65, 45 65, 40 85 L 48 85 C 43 65, 43 65, 48 45 Z" fill="#38bdf8" />
+                <text x="44" y="38" fill="#38bdf8" textAnchor="middle" className="text-[8px] font-bold">Concave</text>
+
+                <ellipse cx="120" cy="65" rx="4" ry="16" fill="#38bdf8" />
+                <path d="M 215 40 Q 240 65, 215 90" fill="none" stroke="#f59e0b" strokeWidth="3" />
+
+                {/* Diverged and refocused rays */}
+                <line x1="10" y1="58" x2="40" y2="58" stroke="#fef08a" strokeWidth="1.2" />
+                <line x1="10" y1="72" x2="40" y2="72" stroke="#fef08a" strokeWidth="1.2" />
+                <line x1="48" y1="56" x2="120" y2="52" stroke="#fef08a" strokeWidth="1.2" />
+                <line x1="48" y1="74" x2="120" y2="78" stroke="#fef08a" strokeWidth="1.2" />
+                <line x1="120" y1="52" x2="235" y2="65" stroke="#fef08a" strokeWidth="1.2" />
+                <line x1="120" y1="78" x2="235" y2="65" stroke="#fef08a" strokeWidth="1.2" />
+                <circle cx="235" cy="65" r="3.5" fill="#10b981" />
+                <text x="150" y="112" fill="#a7f3d0" textAnchor="middle" className="text-[9px]">Diverging lens extends focal length back to Retina surface</text>
+              </g>
+            </svg>
+          </div>
+
+          <div className="flex items-center gap-2 text-[11px] text-slate-300 bg-slate-950/70 p-2.5 rounded-xl border border-slate-800">
+            <Info className="w-4 h-4 text-sky-400 shrink-0" />
+            <span>
+              <strong>Optical Physics of Vision:</strong> Myopia (short-sightedness) is corrected with a <em>concave (diverging) lens</em>, while Hypermetropia (long-sightedness) is corrected with a <em>convex (converging) lens</em>.
             </span>
           </div>
         </div>
