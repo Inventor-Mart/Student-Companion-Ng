@@ -25,8 +25,9 @@ import { PhysicsDiagram, PhysicsDiagramType } from './PhysicsDiagram';
 import { AgricDiagram, AgricDiagramType } from './AgricDiagram';
 import { ComputingDiagram, ComputingDiagramType } from './ComputingDiagram';
 import { FurtherMathDiagram, FurtherMathDiagramType } from './FurtherMathDiagram';
+import { EconomicsDiagram, EconomicsDiagramType } from './EconomicsDiagram';
 
-type AnyDiagramType = BiologicalDiagramType | ChemicalDiagramType | PhysicsDiagramType | AgricDiagramType | ComputingDiagramType | FurtherMathDiagramType;
+type AnyDiagramType = BiologicalDiagramType | ChemicalDiagramType | PhysicsDiagramType | AgricDiagramType | ComputingDiagramType | FurtherMathDiagramType | EconomicsDiagramType;
 
 interface DivisionStep {
   dividend: string;
@@ -619,6 +620,13 @@ export const LessonNoteReader: React.FC = () => {
                 'further-math-logic-truth-venn'
               ];
 
+              const economicsDiagramTypes: EconomicsDiagramType[] = [
+                'economics-demand-supply-equilibrium',
+                'economics-production-possibility-curve',
+                'economics-cost-curves-anatomy',
+                'economics-utility-diminishing-marginal'
+              ];
+
               if (chemicalDiagramTypes.includes(block.diagramType as ChemicalDiagramType)) {
                 return (
                   <ChemicalDiagram key={idx} type={block.diagramType as ChemicalDiagramType} />
@@ -642,6 +650,11 @@ export const LessonNoteReader: React.FC = () => {
               if (furtherMathDiagramTypes.includes(block.diagramType as FurtherMathDiagramType)) {
                 return (
                   <FurtherMathDiagram key={idx} type={block.diagramType as FurtherMathDiagramType} />
+                );
+              }
+              if (economicsDiagramTypes.includes(block.diagramType as EconomicsDiagramType)) {
+                return (
+                  <EconomicsDiagram key={idx} type={block.diagramType as EconomicsDiagramType} />
                 );
               }
               return (
