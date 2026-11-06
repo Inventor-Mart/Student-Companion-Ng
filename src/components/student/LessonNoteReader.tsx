@@ -20,8 +20,9 @@ import {
 } from '../../utils/mathFormatter';
 import { BiologicalDiagram, DiagramType as BiologicalDiagramType } from './BiologicalDiagram';
 import { ChemicalDiagram, ChemicalDiagramType } from './ChemicalDiagram';
+import { PhysicsDiagram, PhysicsDiagramType } from './PhysicsDiagram';
 
-type AnyDiagramType = BiologicalDiagramType | ChemicalDiagramType;
+type AnyDiagramType = BiologicalDiagramType | ChemicalDiagramType | PhysicsDiagramType;
 
 interface DivisionStep {
   dividend: string;
@@ -573,7 +574,7 @@ export const LessonNoteReader: React.FC = () => {
               );
             }
 
-            // Scientific & Biological Diagrams
+            // Scientific, Chemical & Biological Diagrams
             if (block.type === 'diagram') {
               const chemicalDiagramTypes: ChemicalDiagramType[] = [
                 'distillation-apparatus',
@@ -583,9 +584,23 @@ export const LessonNoteReader: React.FC = () => {
                 'bunsen-burner-flame',
                 'periodic-table-trends'
               ];
+              const physicsDiagramTypes: PhysicsDiagramType[] = [
+                'bimetallic-strip-thermostat',
+                'pinhole-camera-eclipse',
+                'plane-mirror-reflection',
+                'concave-mirror-rays',
+                'refraction-total-internal-reflection',
+                'block-and-tackle-pulley'
+              ];
+
               if (chemicalDiagramTypes.includes(block.diagramType as ChemicalDiagramType)) {
                 return (
                   <ChemicalDiagram key={idx} type={block.diagramType as ChemicalDiagramType} />
+                );
+              }
+              if (physicsDiagramTypes.includes(block.diagramType as PhysicsDiagramType)) {
+                return (
+                  <PhysicsDiagram key={idx} type={block.diagramType as PhysicsDiagramType} />
                 );
               }
               return (
