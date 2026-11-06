@@ -29,8 +29,9 @@ import { EconomicsDiagram, EconomicsDiagramType } from './EconomicsDiagram';
 import { CommerceDiagram, CommerceDiagramType } from './CommerceDiagram';
 import { CivicDiagram, CivicDiagramType } from './CivicDiagram';
 import { GovernmentDiagram, GovernmentDiagramType } from './GovernmentDiagram';
+import { GeographyDiagram, GeographyDiagramType } from './GeographyDiagram';
 
-type AnyDiagramType = BiologicalDiagramType | ChemicalDiagramType | PhysicsDiagramType | AgricDiagramType | ComputingDiagramType | FurtherMathDiagramType | EconomicsDiagramType | CommerceDiagramType | CivicDiagramType | GovernmentDiagramType;
+type AnyDiagramType = BiologicalDiagramType | ChemicalDiagramType | PhysicsDiagramType | AgricDiagramType | ComputingDiagramType | FurtherMathDiagramType | EconomicsDiagramType | CommerceDiagramType | CivicDiagramType | GovernmentDiagramType | GeographyDiagramType;
 
 interface DivisionStep {
   dividend: string;
@@ -648,6 +649,13 @@ export const LessonNoteReader: React.FC = () => {
                 'government-public-opinion-pressure-flow'
               ];
 
+              const geographyDiagramTypes: GeographyDiagramType[] = [
+                'geography-earth-internal-layers',
+                'geography-rock-cycle',
+                'geography-volcanic-features-cross-section',
+                'geography-river-profile-features'
+              ];
+
               if (chemicalDiagramTypes.includes(block.diagramType as ChemicalDiagramType)) {
                 return (
                   <ChemicalDiagram key={idx} type={block.diagramType as ChemicalDiagramType} />
@@ -691,6 +699,11 @@ export const LessonNoteReader: React.FC = () => {
               if (governmentDiagramTypes.includes(block.diagramType as GovernmentDiagramType)) {
                 return (
                   <GovernmentDiagram key={idx} type={block.diagramType as GovernmentDiagramType} />
+                );
+              }
+              if (geographyDiagramTypes.includes(block.diagramType as GeographyDiagramType)) {
+                return (
+                  <GeographyDiagram key={idx} type={block.diagramType as GeographyDiagramType} />
                 );
               }
               return (
