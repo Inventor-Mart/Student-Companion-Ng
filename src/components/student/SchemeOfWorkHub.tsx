@@ -175,11 +175,12 @@ export const SchemeOfWorkHub: React.FC = () => {
     student,
     toggleDownloadNote,
     isOffline,
-    setActiveStudentTab
+    setActiveStudentTab,
+    updateStudentClass
   } = useApp();
 
   const [viewMode, setViewMode] = useState<'class' | 'matrix'>('class');
-  const [selectedClass, setSelectedClass] = useState<NigerianClassLevel>(student.classLevel);
+  const [selectedClass, setSelectedClass] = useState<NigerianClassLevel>(student.classLevel || 'JSS 1');
   const [selectedStream, setSelectedStream] = useState<'Science' | 'Non-Science' | 'All'>('Science');
   const [selectedTerm, setSelectedTerm] = useState<'All' | '1st Term' | '2nd Term' | '3rd Term'>('All');
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -192,7 +193,7 @@ export const SchemeOfWorkHub: React.FC = () => {
   const classLevels: NigerianClassLevel[] = ['JSS 1', 'JSS 2', 'JSS 3', 'SS 1', 'SS 2', 'SS 3'];
 
   // Handle class level change and adjust stream
-  const handleSelectClass = (lvl: NigerianClassLevel) => {
+  const handleSelectClass = (lvl: NigerianClassLevel, syncGlobal = true) => {
     setSelectedClass(lvl);
     if (lvl.startsWith('JSS')) {
       setSelectedStream('All');
@@ -206,12 +207,15 @@ export const SchemeOfWorkHub: React.FC = () => {
       setExplorerSubject(newOfficial[0]);
       setExplorerWeek(1);
     }
+    if (syncGlobal && updateStudentClass) {
+      updateStudentClass(lvl, lvl.startsWith('JSS') ? 'Junior' : (selectedStream === 'Science' ? 'Science' : 'Non-Science'));
+    }
   };
 
-  // Keep selectedClass synchronized with global student.classLevel
+  // Keep selectedClass synchronized with global student.classLevel only when changed externally
   React.useEffect(() => {
-    if (student.classLevel) {
-      handleSelectClass(student.classLevel);
+    if (student.classLevel && student.classLevel !== selectedClass) {
+      handleSelectClass(student.classLevel, false);
     }
   }, [student.classLevel]);
 

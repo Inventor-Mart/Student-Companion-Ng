@@ -219,7 +219,7 @@ export const StudentDashboard: React.FC = () => {
                 <button
                   key={lvl}
                   type="button"
-                  onClick={() => updateStudentClass(lvl, lvl.startsWith('JSS') ? 'Science' : (student.stream || 'Science'))}
+                  onClick={() => updateStudentClass(lvl, lvl.startsWith('JSS') ? 'Junior' : (student.stream === 'Junior' ? 'Science' : (student.stream || 'Science')))}
                   className={`py-1.5 px-1 rounded-lg text-xs font-bold transition-all text-center cursor-pointer ${
                     isActive
                       ? 'bg-[#84E000] text-slate-950 shadow-md shadow-[#84E000]/30 ring-1 ring-white'

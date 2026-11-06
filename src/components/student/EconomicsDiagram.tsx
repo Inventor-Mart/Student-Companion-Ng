@@ -4,7 +4,9 @@ export type EconomicsDiagramType =
   | 'economics-demand-supply-equilibrium'
   | 'economics-production-possibility-curve'
   | 'economics-cost-curves-anatomy'
-  | 'economics-utility-diminishing-marginal';
+  | 'economics-utility-diminishing-marginal'
+  | 'economics-elasticity-spectrum'
+  | 'economics-market-structures-matrix';
 
 interface EconomicsDiagramProps {
   type: EconomicsDiagramType;
@@ -397,6 +399,199 @@ export const EconomicsDiagram: React.FC<EconomicsDiagramProps> = ({ type, captio
               <text x="12" y="19" fill="#94a3b8" fontSize="10" fontWeight="bold">WAEC RULE:</text>
               <text x="95" y="19" fill="#38bdf8" fontSize="10">TU is at Maximum when MU = 0.</text>
               <text x="285" y="19" fill="#f472b6" fontSize="10">Consumer Equilibrium: MUx/Px = MUy/Py</text>
+            </g>
+          </svg>
+        </div>
+
+        {caption && (
+          <p className="mt-2 text-center text-xs font-medium text-slate-400">
+            {caption}
+          </p>
+        )}
+      </div>
+    );
+  }
+
+  // 5. Price Elasticity of Demand Spectrum (Ed = 0, Ed < 1, Ed = 1, Ed > 1, Ed = ∞)
+  if (type === 'economics-elasticity-spectrum') {
+    return (
+      <div className="my-6 rounded-xl border border-slate-700/80 bg-slate-900/90 p-5 shadow-xl">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3">
+          <div>
+            <h4 className="text-sm font-semibold text-emerald-400">
+              The Price Elasticity of Demand Spectrum (Degrees of Elasticity)
+            </h4>
+            <p className="text-xs text-slate-400">
+              Comparative Slopes of Demand Curves from Perfectly Inelastic to Perfectly Elastic
+            </p>
+          </div>
+          <span className="text-[10px] text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-800/60 font-medium font-mono">
+            Ed = (%ΔQd) / (%ΔP)
+          </span>
+        </div>
+
+        <div className="w-full overflow-x-auto py-3">
+          <svg viewBox="0 0 680 250" className="w-full max-w-2xl mx-auto min-w-[560px] text-xs font-sans">
+            {/* Panel 1: Ed = 0 (Vertical) */}
+            <g transform="translate(15, 20)">
+              <rect width="120" height="180" rx="8" fill="#1e293b" stroke="#475569" strokeWidth="1" />
+              <text x="60" y="22" fill="#f87171" textAnchor="middle" className="text-[11px] font-bold">Ed = 0</text>
+              <text x="60" y="36" fill="#94a3b8" textAnchor="middle" className="text-[8.5px]">Perfect Inelastic</text>
+              {/* Axes */}
+              <line x1="20" y1="50" x2="20" y2="140" stroke="#64748b" strokeWidth="1.5" />
+              <line x1="20" y1="140" x2="105" y2="140" stroke="#64748b" strokeWidth="1.5" />
+              {/* Curve (Vertical) */}
+              <line x1="60" y1="55" x2="60" y2="140" stroke="#f43f5e" strokeWidth="2.5" />
+              <text x="65" y="70" fill="#f43f5e" className="text-[9px] font-bold">D</text>
+              <text x="60" y="160" fill="#cbd5e1" textAnchor="middle" className="text-[8px]">Insulin, Table Salt</text>
+              <text x="60" y="172" fill="#94a3b8" textAnchor="middle" className="text-[7.5px]">Qd invariant to P</text>
+            </g>
+
+            {/* Panel 2: Ed < 1 (Steep) */}
+            <g transform="translate(145, 20)">
+              <rect width="120" height="180" rx="8" fill="#1e293b" stroke="#475569" strokeWidth="1" />
+              <text x="60" y="22" fill="#fbbf24" textAnchor="middle" className="text-[11px] font-bold">Ed &lt; 1</text>
+              <text x="60" y="36" fill="#94a3b8" textAnchor="middle" className="text-[8.5px]">Inelastic (Steep)</text>
+              {/* Axes */}
+              <line x1="20" y1="50" x2="20" y2="140" stroke="#64748b" strokeWidth="1.5" />
+              <line x1="20" y1="140" x2="105" y2="140" stroke="#64748b" strokeWidth="1.5" />
+              {/* Curve (Steep) */}
+              <line x1="35" y1="55" x2="80" y2="135" stroke="#f59e0b" strokeWidth="2.5" />
+              <text x="85" y="130" fill="#f59e0b" className="text-[9px] font-bold">D</text>
+              <text x="60" y="160" fill="#cbd5e1" textAnchor="middle" className="text-[8px]">Garri, Petrol (PMS)</text>
+              <text x="60" y="172" fill="#94a3b8" textAnchor="middle" className="text-[7.5px]">%ΔQd &lt; %ΔP</text>
+            </g>
+
+            {/* Panel 3: Ed = 1 (Unitary) */}
+            <g transform="translate(275, 20)">
+              <rect width="120" height="180" rx="8" fill="#1e293b" stroke="#475569" strokeWidth="1" />
+              <text x="60" y="22" fill="#38bdf8" textAnchor="middle" className="text-[11px] font-bold">Ed = 1</text>
+              <text x="60" y="36" fill="#94a3b8" textAnchor="middle" className="text-[8.5px]">Unitary Elastic</text>
+              {/* Axes */}
+              <line x1="20" y1="50" x2="20" y2="140" stroke="#64748b" strokeWidth="1.5" />
+              <line x1="20" y1="140" x2="105" y2="140" stroke="#64748b" strokeWidth="1.5" />
+              {/* Hyperbola curve */}
+              <path d="M 32 60 Q 50 110 95 130" stroke="#38bdf8" strokeWidth="2.5" fill="none" />
+              <text x="98" y="130" fill="#38bdf8" className="text-[9px] font-bold">D</text>
+              <text x="60" y="160" fill="#cbd5e1" textAnchor="middle" className="text-[8px]">Rectangular Hyperbola</text>
+              <text x="60" y="172" fill="#94a3b8" textAnchor="middle" className="text-[7.5px]">%ΔQd = %ΔP</text>
+            </g>
+
+            {/* Panel 4: Ed > 1 (Flat / Gentle) */}
+            <g transform="translate(405, 20)">
+              <rect width="120" height="180" rx="8" fill="#1e293b" stroke="#475569" strokeWidth="1" />
+              <text x="60" y="22" fill="#a78bfa" textAnchor="middle" className="text-[11px] font-bold">Ed &gt; 1</text>
+              <text x="60" y="36" fill="#94a3b8" textAnchor="middle" className="text-[8.5px]">Elastic (Gentle)</text>
+              {/* Axes */}
+              <line x1="20" y1="50" x2="20" y2="140" stroke="#64748b" strokeWidth="1.5" />
+              <line x1="20" y1="140" x2="105" y2="140" stroke="#64748b" strokeWidth="1.5" />
+              {/* Gentle curve */}
+              <line x1="25" y1="75" x2="98" y2="120" stroke="#a855f7" strokeWidth="2.5" />
+              <text x="100" y="118" fill="#a855f7" className="text-[9px] font-bold">D</text>
+              <text x="60" y="160" fill="#cbd5e1" textAnchor="middle" className="text-[8px]">Soft drinks, Fashion</text>
+              <text x="60" y="172" fill="#94a3b8" textAnchor="middle" className="text-[7.5px]">%ΔQd &gt; %ΔP</text>
+            </g>
+
+            {/* Panel 5: Ed = ∞ (Horizontal) */}
+            <g transform="translate(535, 20)">
+              <rect width="130" height="180" rx="8" fill="#1e293b" stroke="#475569" strokeWidth="1" />
+              <text x="65" y="22" fill="#34d399" textAnchor="middle" className="text-[11px] font-bold">Ed = ∞</text>
+              <text x="65" y="36" fill="#94a3b8" textAnchor="middle" className="text-[8.5px]">Perfect Elastic</text>
+              {/* Axes */}
+              <line x1="20" y1="50" x2="20" y2="140" stroke="#64748b" strokeWidth="1.5" />
+              <line x1="20" y1="140" x2="115" y2="140" stroke="#64748b" strokeWidth="1.5" />
+              {/* Horizontal line */}
+              <line x1="20" y1="85" x2="110" y2="85" stroke="#10b981" strokeWidth="2.5" />
+              <text x="112" y="88" fill="#10b981" className="text-[9px] font-bold">D</text>
+              <text x="65" y="160" fill="#cbd5e1" textAnchor="middle" className="text-[8px]">Pure Competitor Firm</text>
+              <text x="65" y="172" fill="#94a3b8" textAnchor="middle" className="text-[7.5px]">Price Taker (P=AR=MR)</text>
+            </g>
+
+            {/* Bottom summary bar */}
+            <g transform="translate(60, 215)">
+              <rect width="560" height="26" rx="6" fill="#0f172a" stroke="#334155" strokeWidth="1" />
+              <text x="280" y="17" fill="#38bdf8" textAnchor="middle" className="text-[10px] font-semibold">
+                Revenue Effect: When Ed &lt; 1, Price rise increases Total Revenue; when Ed &gt; 1, Price cut increases Total Revenue.
+              </text>
+            </g>
+          </svg>
+        </div>
+
+        {caption && (
+          <p className="mt-2 text-center text-xs font-medium text-slate-400">
+            {caption}
+          </p>
+        )}
+      </div>
+    );
+  }
+
+  // 6. Market Structures Comparison Matrix (Perfect Competition vs Monopoly)
+  if (type === 'economics-market-structures-matrix') {
+    return (
+      <div className="my-6 rounded-xl border border-slate-700/80 bg-slate-900/90 p-5 shadow-xl">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3">
+          <div>
+            <h4 className="text-sm font-semibold text-emerald-400">
+              Comparative Analysis of Market Structures
+            </h4>
+            <p className="text-xs text-slate-400">
+              Pricing power, entry barriers, demand curve slope, and profit maximization (MC = MR)
+            </p>
+          </div>
+          <span className="text-[10px] text-cyan-400 bg-cyan-950/60 px-2 py-0.5 rounded border border-cyan-800/60 font-medium">
+            Microeconomics · WAEC Exam Core
+          </span>
+        </div>
+
+        <div className="w-full overflow-x-auto py-3">
+          <svg viewBox="0 0 660 220" className="w-full max-w-2xl mx-auto min-w-[540px] text-xs font-sans">
+            {/* Header Row */}
+            <rect x="10" y="10" width="640" height="30" rx="5" fill="#1e293b" stroke="#334155" strokeWidth="1" />
+            <text x="80" y="30" fill="#94a3b8" textAnchor="middle" className="text-[10px] font-bold uppercase">Structure</text>
+            <text x="200" y="30" fill="#94a3b8" textAnchor="middle" className="text-[10px] font-bold uppercase">Sellers &amp; Product</text>
+            <text x="330" y="30" fill="#94a3b8" textAnchor="middle" className="text-[10px] font-bold uppercase">Price Control</text>
+            <text x="460" y="30" fill="#94a3b8" textAnchor="middle" className="text-[10px] font-bold uppercase">Entry Barriers</text>
+            <text x="580" y="30" fill="#94a3b8" textAnchor="middle" className="text-[10px] font-bold uppercase">Long-Run Profit</text>
+
+            {/* Row 1: Perfect Competition */}
+            <g transform="translate(10, 45)">
+              <rect width="640" height="38" rx="4" fill="#064e3b" fillOpacity="0.4" stroke="#059669" strokeWidth="1" />
+              <text x="70" y="24" fill="#34d399" textAnchor="middle" className="text-[10.5px] font-bold">Perfect Comp.</text>
+              <text x="190" y="24" fill="#e2e8f0" textAnchor="middle" className="text-[9.5px]">Infinite / Homogeneous</text>
+              <text x="320" y="24" fill="#6ee7b7" textAnchor="middle" className="text-[9.5px] font-semibold">None (Price Taker)</text>
+              <text x="450" y="24" fill="#e2e8f0" textAnchor="middle" className="text-[9.5px]">Completely Free</text>
+              <text x="570" y="24" fill="#34d399" textAnchor="middle" className="text-[9.5px] font-bold">Normal Only</text>
+            </g>
+
+            {/* Row 2: Monopolistic Competition */}
+            <g transform="translate(10, 88)">
+              <rect width="640" height="38" rx="4" fill="#1e1b4b" fillOpacity="0.5" stroke="#6366f1" strokeWidth="1" />
+              <text x="70" y="24" fill="#a5b4fc" textAnchor="middle" className="text-[10px] font-bold">Monopolistic</text>
+              <text x="190" y="24" fill="#e2e8f0" textAnchor="middle" className="text-[9.5px]">Many / Differentiated</text>
+              <text x="320" y="24" fill="#c7d2fe" textAnchor="middle" className="text-[9.5px]">Slight Brand Power</text>
+              <text x="450" y="24" fill="#e2e8f0" textAnchor="middle" className="text-[9.5px]">Relatively Low</text>
+              <text x="570" y="24" fill="#a5b4fc" textAnchor="middle" className="text-[9.5px]">Normal Only</text>
+            </g>
+
+            {/* Row 3: Oligopoly */}
+            <g transform="translate(10, 131)">
+              <rect width="640" height="38" rx="4" fill="#312e81" fillOpacity="0.3" stroke="#818cf8" strokeWidth="1" />
+              <text x="70" y="24" fill="#c084fc" textAnchor="middle" className="text-[10.5px] font-bold">Oligopoly</text>
+              <text x="190" y="24" fill="#e2e8f0" textAnchor="middle" className="text-[9.5px]">Few (MTN, Airtel, Glo)</text>
+              <text x="320" y="24" fill="#e9d5ff" textAnchor="middle" className="text-[9.5px]">Kinked Demand Curve</text>
+              <text x="450" y="24" fill="#fca5a5" textAnchor="middle" className="text-[9.5px]">High Capital Setup</text>
+              <text x="570" y="24" fill="#c084fc" textAnchor="middle" className="text-[9.5px] font-bold">Supernormal</text>
+            </g>
+
+            {/* Row 4: Pure Monopoly */}
+            <g transform="translate(10, 174)">
+              <rect width="640" height="38" rx="4" fill="#881337" fillOpacity="0.35" stroke="#f43f5e" strokeWidth="1" />
+              <text x="70" y="24" fill="#fb7185" textAnchor="middle" className="text-[10.5px] font-bold">Monopoly</text>
+              <text x="190" y="24" fill="#e2e8f0" textAnchor="middle" className="text-[9.5px]">Single Seller / Unique</text>
+              <text x="320" y="24" fill="#fca5a5" textAnchor="middle" className="text-[9.5px] font-bold">Price Maker</text>
+              <text x="450" y="24" fill="#f87171" textAnchor="middle" className="text-[9.5px] font-bold">Blocked / Legal-Patent</text>
+              <text x="570" y="24" fill="#fb7185" textAnchor="middle" className="text-[9.5px] font-bold">Supernormal</text>
             </g>
           </svg>
         </div>

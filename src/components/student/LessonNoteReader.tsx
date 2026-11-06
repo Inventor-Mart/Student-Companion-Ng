@@ -32,8 +32,25 @@ import { GovernmentDiagram, GovernmentDiagramType } from './GovernmentDiagram';
 import { GeographyDiagram, GeographyDiagramType } from './GeographyDiagram';
 import { LiteratureDiagram, LiteratureDiagramType } from './LiteratureDiagram';
 import { CRSDiagram, CRSDiagramType } from './CRSDiagram';
+import { SS2MathDiagram, SS2MathDiagramType } from './SS2MathDiagram';
+import { SS2EnglishDiagram, SS2EnglishDiagramType } from './SS2EnglishDiagram';
 
-type AnyDiagramType = BiologicalDiagramType | ChemicalDiagramType | PhysicsDiagramType | AgricDiagramType | ComputingDiagramType | FurtherMathDiagramType | EconomicsDiagramType | CommerceDiagramType | CivicDiagramType | GovernmentDiagramType | GeographyDiagramType | LiteratureDiagramType | CRSDiagramType;
+type AnyDiagramType =
+  | BiologicalDiagramType
+  | ChemicalDiagramType
+  | PhysicsDiagramType
+  | AgricDiagramType
+  | ComputingDiagramType
+  | FurtherMathDiagramType
+  | EconomicsDiagramType
+  | CommerceDiagramType
+  | CivicDiagramType
+  | GovernmentDiagramType
+  | GeographyDiagramType
+  | LiteratureDiagramType
+  | CRSDiagramType
+  | SS2MathDiagramType
+  | SS2EnglishDiagramType;
 
 interface DivisionStep {
   dividend: string;
@@ -593,7 +610,9 @@ export const LessonNoteReader: React.FC = () => {
                 'bohr-atomic-model',
                 'ionic-covalent-bonding',
                 'bunsen-burner-flame',
-                'periodic-table-trends'
+                'periodic-table-trends',
+                'reaction-energy-profile',
+                'daniell-electrochemical-cell'
               ];
               const physicsDiagramTypes: PhysicsDiagramType[] = [
                 'bimetallic-strip-thermostat',
@@ -601,7 +620,9 @@ export const LessonNoteReader: React.FC = () => {
                 'plane-mirror-reflection',
                 'concave-mirror-rays',
                 'refraction-total-internal-reflection',
-                'block-and-tackle-pulley'
+                'block-and-tackle-pulley',
+                'transverse-wave-properties',
+                'convex-lens-ray-diagram'
               ];
 
               const agricDiagramTypes: AgricDiagramType[] = [
@@ -616,60 +637,88 @@ export const LessonNoteReader: React.FC = () => {
                 'spreadsheet-grid-anatomy',
                 'relational-database-schema',
                 'storage-backup-hierarchy',
-                'data-flow-charts'
+                'data-flow-charts',
+                'erd-data-modeling',
+                'database-normalization-pipeline'
               ];
 
               const furtherMathDiagramTypes: FurtherMathDiagramType[] = [
                 'further-math-quadratic-roots-parabola',
                 'further-math-coordinate-geometry',
                 'further-math-unit-circle-astc',
-                'further-math-logic-truth-venn'
+                'further-math-logic-truth-venn',
+                'further-math-differentiation-turning-points',
+                'further-math-vectors-resolution'
               ];
 
               const economicsDiagramTypes: EconomicsDiagramType[] = [
                 'economics-demand-supply-equilibrium',
                 'economics-production-possibility-curve',
                 'economics-cost-curves-anatomy',
-                'economics-utility-diminishing-marginal'
+                'economics-utility-diminishing-marginal',
+                'economics-elasticity-spectrum',
+                'economics-market-structures-matrix'
               ];
 
               const commerceDiagramTypes: CommerceDiagramType[] = [
                 'commerce-channels-of-distribution',
                 'commerce-trade-documents-flow',
-                'commerce-balance-of-trade-payments'
+                'commerce-balance-of-trade-payments',
+                'commerce-stock-exchange-ngx',
+                'commerce-insurance-principles'
               ];
 
               const civicDiagramTypes: CivicDiagramType[] = [
                 'civic-citizenship-rights-duties',
                 'civic-three-arms-of-government',
-                'civic-electoral-process-cycle'
+                'civic-electoral-process-cycle',
+                'civic-citizenship-acquisition',
+                'civic-inec-bvas-voting-flow'
               ];
 
               const governmentDiagramTypes: GovernmentDiagramType[] = [
                 'government-federal-vs-unitary-tiers',
                 'government-presidential-vs-parliamentary',
-                'government-public-opinion-pressure-flow'
+                'government-public-opinion-pressure-flow',
+                'government-nigeria-constitutional-evolution',
+                'government-local-government-structure'
               ];
 
               const geographyDiagramTypes: GeographyDiagramType[] = [
                 'geography-earth-internal-layers',
                 'geography-rock-cycle',
                 'geography-volcanic-features-cross-section',
-                'geography-river-profile-features'
+                'geography-river-profile-features',
+                'geography-atmospheric-pressure-wind-belts'
               ];
 
               const literatureDiagramTypes: LiteratureDiagramType[] = [
                 'literature-dramatic-structure-freytag-pyramid',
                 'literature-genres-and-subgenres-tree',
                 'literature-poetic-meter-and-sonnet-anatomy',
-                'literature-figures-of-speech-wheel'
+                'literature-figures-of-speech-wheel',
+                'literature-african-drama-character-map'
               ];
 
               const crsDiagramTypes: CRSDiagramType[] = [
                 'crs-creation-and-sovereignty-timeline',
                 'crs-covenant-history-and-promises-map',
                 'crs-exodus-tabernacle-and-route-diagram',
-                'crs-ten-commandments-tablets'
+                'crs-ten-commandments-tablets',
+                'crs-passion-and-resurrection-timeline'
+              ];
+
+              const ss2MathDiagramTypes: SS2MathDiagramType[] = [
+                'math-circle-theorems',
+                'math-trig-bearing-diagram',
+                'math-cumulative-frequency-ogive',
+                'math-inequalities-plane'
+              ];
+
+              const ss2EnglishDiagramTypes: SS2EnglishDiagramType[] = [
+                'english-sentence-clause-tree',
+                'english-intonation-tunes',
+                'english-formal-letter-layout'
               ];
 
               if (chemicalDiagramTypes.includes(block.diagramType as ChemicalDiagramType)) {
@@ -730,6 +779,16 @@ export const LessonNoteReader: React.FC = () => {
               if (crsDiagramTypes.includes(block.diagramType as CRSDiagramType)) {
                 return (
                   <CRSDiagram key={idx} type={block.diagramType as CRSDiagramType} />
+                );
+              }
+              if (ss2MathDiagramTypes.includes(block.diagramType as SS2MathDiagramType)) {
+                return (
+                  <SS2MathDiagram key={idx} type={block.diagramType as SS2MathDiagramType} />
+                );
+              }
+              if (ss2EnglishDiagramTypes.includes(block.diagramType as SS2EnglishDiagramType)) {
+                return (
+                  <SS2EnglishDiagram key={idx} type={block.diagramType as SS2EnglishDiagramType} />
                 );
               }
               return (

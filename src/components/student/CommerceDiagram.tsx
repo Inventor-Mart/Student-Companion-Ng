@@ -3,7 +3,9 @@ import React, { useState } from 'react';
 export type CommerceDiagramType =
   | 'commerce-channels-of-distribution'
   | 'commerce-trade-documents-flow'
-  | 'commerce-balance-of-trade-payments';
+  | 'commerce-balance-of-trade-payments'
+  | 'commerce-stock-exchange-ngx'
+  | 'commerce-insurance-principles';
 
 interface CommerceDiagramProps {
   type: CommerceDiagramType;
@@ -321,6 +323,177 @@ export const CommerceDiagram: React.FC<CommerceDiagramProps> = ({ type, caption 
               <rect width="230" height="45" rx="5" fill="#1e293b" stroke="#334155" strokeWidth="1" />
               <text x="12" y="18" fill="#f59e0b" fontSize="10" fontWeight="bold">BALANCE OF PAYMENTS (BOP):</text>
               <text x="12" y="34" fill="#cbd5e1" fontSize="9">Total Inflows - Total Outflows (All Accounts)</text>
+            </g>
+          </svg>
+        </div>
+
+        {caption && (
+          <p className="mt-2 text-center text-xs font-medium text-slate-400">
+            {caption}
+          </p>
+        )}
+      </div>
+    );
+  }
+
+  // 4. Nigerian Capital Market & Stock Exchange (NGX)
+  if (type === 'commerce-stock-exchange-ngx') {
+    return (
+      <div className="my-6 rounded-xl border border-slate-700/80 bg-slate-900/90 p-5 shadow-xl">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3">
+          <div>
+            <h4 className="text-sm font-semibold text-emerald-400">
+              The Nigerian Capital Market Architecture &amp; The Nigerian Exchange (NGX)
+            </h4>
+            <p className="text-xs text-slate-400">
+              Regulatory oversight (SEC), Primary vs. Secondary Market, and Stockbroker Intermediation
+            </p>
+          </div>
+          <span className="rounded bg-emerald-950/80 px-2.5 py-1 text-xs font-semibold text-emerald-300 border border-emerald-800">
+            Capital Market · SEC &amp; NGX
+          </span>
+        </div>
+
+        <div className="relative mt-4 flex justify-center overflow-x-auto py-2">
+          <svg viewBox="0 0 620 270" className="w-full max-w-2xl select-none text-xs font-sans">
+            {/* Top Level: SEC (Apex Regulator) */}
+            <g transform="translate(190, 15)">
+              <rect width="240" height="42" rx="6" fill="#1e1b4b" stroke="#6366f1" strokeWidth="2" />
+              <text x="120" y="20" fill="#a5b4fc" textAnchor="middle" className="text-[11px] font-bold">SECURITIES &amp; EXCHANGE COMMISSION (SEC)</text>
+              <text x="120" y="34" fill="#cbd5e1" textAnchor="middle" className="text-[8.5px]">Apex Capital Market Regulatory Authority of Nigeria</text>
+            </g>
+
+            {/* Connecting lines from SEC down */}
+            <line x1="310" y1="57" x2="310" y2="80" stroke="#818cf8" strokeWidth="2" />
+
+            {/* Middle Level: The Nigerian Exchange Group (NGX) */}
+            <g transform="translate(170, 80)">
+              <rect width="280" height="42" rx="6" fill="#064e3b" stroke="#10b981" strokeWidth="2" />
+              <text x="140" y="20" fill="#34d399" textAnchor="middle" className="text-[11px] font-bold">NIGERIAN EXCHANGE GROUP (NGX)</text>
+              <text x="140" y="34" fill="#e2e8f0" textAnchor="middle" className="text-[8.5px]">Regulated trading floor for equities, bonds &amp; derivatives</text>
+            </g>
+
+            {/* Split from NGX into Primary and Secondary Markets */}
+            <path d="M 230 122 L 230 145 L 140 145 L 140 160" stroke="#94a3b8" strokeWidth="1.5" fill="none" />
+            <path d="M 390 122 L 390 145 L 480 145 L 480 160" stroke="#94a3b8" strokeWidth="1.5" fill="none" />
+
+            {/* Sub-Market 1: Primary Market (IPO) */}
+            <g transform="translate(30, 160)">
+              <rect width="220" height="95" rx="6" fill="#1e293b" stroke="#38bdf8" strokeWidth="1.5" />
+              <rect width="220" height="24" rx="6" fill="#0284c7" />
+              <rect y="18" width="220" height="6" fill="#0284c7" />
+              <text x="110" y="16" fill="#ffffff" textAnchor="middle" className="text-[10px] font-bold">1. PRIMARY MARKET (NEW ISSUES)</text>
+              <text x="12" y="38" fill="#cbd5e1" className="text-[8.5px]">• Initial Public Offerings (IPOs)</text>
+              <text x="12" y="54" fill="#cbd5e1" className="text-[8.5px]">• Capital directly raised by companies</text>
+              <text x="12" y="70" fill="#cbd5e1" className="text-[8.5px]">• Rights issues and debenture floats</text>
+              <text x="12" y="86" fill="#38bdf8" className="text-[8px] font-bold">Transaction: Issuer ➔ Investor</text>
+            </g>
+
+            {/* Sub-Market 2: Secondary Market (Stock Exchange) */}
+            <g transform="translate(370, 160)">
+              <rect width="220" height="95" rx="6" fill="#1e293b" stroke="#f59e0b" strokeWidth="1.5" />
+              <rect width="220" height="24" rx="6" fill="#d97706" />
+              <rect y="18" width="220" height="6" fill="#d97706" />
+              <text x="110" y="16" fill="#ffffff" textAnchor="middle" className="text-[10px] font-bold">2. SECONDARY MARKET (TRADING)</text>
+              <text x="12" y="38" fill="#cbd5e1" className="text-[8.5px]">• Resale of existing shares &amp; securities</text>
+              <text x="12" y="54" fill="#cbd5e1" className="text-[8.5px]">• Stockbrokers execute via CSCS portal</text>
+              <text x="12" y="70" fill="#cbd5e1" className="text-[8.5px]">• Bulls (expect rise) vs Bears (expect fall)</text>
+              <text x="12" y="86" fill="#fbbf24" className="text-[8px] font-bold">Transaction: Investor ➔ Investor</text>
+            </g>
+
+            {/* Bull vs Bear market tags */}
+            <g transform="translate(260, 175)">
+              <rect width="100" height="28" rx="4" fill="#022c22" stroke="#10b981" strokeWidth="1" />
+              <text x="50" y="18" fill="#34d399" textAnchor="middle" className="text-[9px] font-bold">▲ BULL (Optimism)</text>
+            </g>
+            <g transform="translate(260, 215)">
+              <rect width="100" height="28" rx="4" fill="#450a0a" stroke="#f43f5e" strokeWidth="1" />
+              <text x="50" y="18" fill="#fb7185" textAnchor="middle" className="text-[9px] font-bold">▼ BEAR (Pessimism)</text>
+            </g>
+          </svg>
+        </div>
+
+        {caption && (
+          <p className="mt-2 text-center text-xs font-medium text-slate-400">
+            {caption}
+          </p>
+        )}
+      </div>
+    );
+  }
+
+  // 5. The Six Fundamental Principles of Insurance
+  if (type === 'commerce-insurance-principles') {
+    return (
+      <div className="my-6 rounded-xl border border-slate-700/80 bg-slate-900/90 p-5 shadow-xl">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3">
+          <div>
+            <h4 className="text-sm font-semibold text-emerald-400">
+              The Six Fundamental Principles of Insurance
+            </h4>
+            <p className="text-xs text-slate-400">
+              Legal foundation governing insurable risk, claims compensation, and underwriting in Nigeria
+            </p>
+          </div>
+          <span className="rounded bg-indigo-950/80 px-2.5 py-1 text-xs font-semibold text-indigo-300 border border-indigo-800">
+            NAICOM Regulatory Standards
+          </span>
+        </div>
+
+        <div className="relative mt-4 flex justify-center overflow-x-auto py-2">
+          <svg viewBox="0 0 640 240" className="w-full max-w-2xl select-none text-xs font-sans">
+            {/* Box 1: Insurable Interest */}
+            <g transform="translate(15, 20)">
+              <rect width="195" height="95" rx="6" fill="#1e293b" stroke="#38bdf8" strokeWidth="1.5" />
+              <text x="10" y="22" fill="#38bdf8" className="text-[10px] font-bold">1. INSURABLE INTEREST</text>
+              <text x="10" y="40" fill="#cbd5e1" className="text-[8.5px]">The insured must suffer a recognized</text>
+              <text x="10" y="54" fill="#cbd5e1" className="text-[8.5px]">direct financial loss if the insured property</text>
+              <text x="10" y="68" fill="#cbd5e1" className="text-[8.5px]">is damaged. (Prevents gambling/arson).</text>
+            </g>
+
+            {/* Box 2: Utmost Good Faith */}
+            <g transform="translate(222, 20)">
+              <rect width="195" height="95" rx="6" fill="#1e293b" stroke="#10b981" strokeWidth="1.5" />
+              <text x="10" y="22" fill="#34d399" className="text-[10px] font-bold">2. UTMOST GOOD FAITH</text>
+              <text x="10" y="40" fill="#cbd5e1" className="text-[8.5px]">Uberrimae Fidei: Both parties must</text>
+              <text x="10" y="54" fill="#cbd5e1" className="text-[8.5px]">disclose all material facts honestly</text>
+              <text x="10" y="68" fill="#cbd5e1" className="text-[8.5px]">without concealment or fraud.</text>
+            </g>
+
+            {/* Box 3: Principle of Indemnity */}
+            <g transform="translate(430, 20)">
+              <rect width="195" height="95" rx="6" fill="#1e293b" stroke="#f59e0b" strokeWidth="1.5" />
+              <text x="10" y="22" fill="#fbbf24" className="text-[10px] font-bold">3. INDEMNITY</text>
+              <text x="10" y="40" fill="#cbd5e1" className="text-[8.5px]">Restores the insured to the exact</text>
+              <text x="10" y="54" fill="#cbd5e1" className="text-[8.5px]">financial position before loss occurred.</text>
+              <text x="10" y="68" fill="#f87171" className="text-[8px] font-bold">★ Cannot profit from insurance!</text>
+            </g>
+
+            {/* Box 4: Subrogation */}
+            <g transform="translate(15, 125)">
+              <rect width="195" height="95" rx="6" fill="#1e293b" stroke="#a855f7" strokeWidth="1.5" />
+              <text x="10" y="22" fill="#c084fc" className="text-[10px] font-bold">4. SUBROGATION</text>
+              <text x="10" y="40" fill="#cbd5e1" className="text-[8.5px]">Once an insurer pays a total loss claim,</text>
+              <text x="10" y="54" fill="#cbd5e1" className="text-[8.5px]">all rights to the damaged scrap belong</text>
+              <text x="10" y="68" fill="#cbd5e1" className="text-[8.5px]">exclusively to the insurance company.</text>
+            </g>
+
+            {/* Box 5: Contribution */}
+            <g transform="translate(222, 125)">
+              <rect width="195" height="95" rx="6" fill="#1e293b" stroke="#ec4899" strokeWidth="1.5" />
+              <text x="10" y="22" fill="#f472b6" className="text-[10px] font-bold">5. CONTRIBUTION</text>
+              <text x="10" y="40" fill="#cbd5e1" className="text-[8.5px]">If property is insured with multiple firms,</text>
+              <text x="10" y="54" fill="#cbd5e1" className="text-[8.5px]">each insurer pays only their proportionate</text>
+              <text x="10" y="68" fill="#cbd5e1" className="text-[8.5px]">rateable share of the validated loss.</text>
+            </g>
+
+            {/* Box 6: Proximate Cause */}
+            <g transform="translate(430, 125)">
+              <rect width="195" height="95" rx="6" fill="#1e293b" stroke="#6366f1" strokeWidth="1.5" />
+              <text x="10" y="22" fill="#818cf8" className="text-[10px] font-bold">6. PROXIMATE CAUSE</text>
+              <text x="10" y="40" fill="#cbd5e1" className="text-[8.5px]">The direct, active, unbroken cause that</text>
+              <text x="10" y="54" fill="#cbd5e1" className="text-[8.5px]">sets in motion an uninterrupted chain of</text>
+              <text x="10" y="68" fill="#cbd5e1" className="text-[8.5px]">events leading to the insured peril.</text>
             </g>
           </svg>
         </div>

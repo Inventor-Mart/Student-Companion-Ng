@@ -232,7 +232,7 @@ export const InAppControlsDrawer: React.FC<InAppControlsDrawerProps> = ({
                     <button
                       key={lvl}
                       type="button"
-                      onClick={() => updateStudentClass(lvl, lvl.startsWith('JSS') ? 'Science' : (student.stream || 'Science'))}
+                      onClick={() => updateStudentClass(lvl, lvl.startsWith('JSS') ? 'Junior' : (student.stream === 'Junior' ? 'Science' : (student.stream || 'Science')))}
                       className={`py-1.5 px-2 rounded-xl text-xs font-bold transition-all text-center cursor-pointer ${
                         student.classLevel === lvl
                           ? 'bg-[#84E000] text-slate-950 font-black shadow-sm ring-1 ring-white'

@@ -5,7 +5,9 @@ export type ComputingDiagramType =
   | 'spreadsheet-grid-anatomy'
   | 'relational-database-schema'
   | 'storage-backup-hierarchy'
-  | 'data-flow-charts';
+  | 'data-flow-charts'
+  | 'erd-data-modeling'
+  | 'database-normalization-pipeline';
 
 interface ComputingDiagramProps {
   type: ComputingDiagramType;
@@ -426,6 +428,241 @@ export const ComputingDiagram: React.FC<ComputingDiagramProps> = ({ type }) => {
             <Info className="w-4 h-4 text-cyan-400 shrink-0" />
             <span>
               <strong>Flowchart Convention:</strong> Parallelograms represent user Input/Output (`INPUT ExamScore`); diamonds represent conditional Decision tests (`Score ≥ 50?`) with mutually exclusive exit paths.
+            </span>
+          </div>
+        </div>
+      );
+
+    // ----------------------------------------------------
+    // 5. ENTITY RELATIONSHIP DIAGRAM (ERD & CARDINALITY)
+    // ----------------------------------------------------
+    case 'erd-data-modeling':
+      return (
+        <div className="my-4 p-4 rounded-2xl bg-slate-900 border border-slate-800 shadow-lg space-y-3">
+          <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+            <div className="flex items-center gap-2 text-xs font-bold text-white">
+              <Database className="w-4 h-4 text-indigo-400" />
+              <span>Entity-Relationship Diagram (ERD): Entities, Attributes &amp; Cardinality (1:N)</span>
+            </div>
+            <span className="text-[10px] text-indigo-400 bg-indigo-950/60 px-2 py-0.5 rounded border border-indigo-800/60 font-medium">
+              Data Processing · Crow&apos;s Foot Notation
+            </span>
+          </div>
+
+          <div className="w-full overflow-x-auto py-2">
+            <svg viewBox="0 0 680 300" className="w-full max-w-2xl mx-auto min-w-[540px] text-xs font-sans">
+              <defs>
+                <linearGradient id="erdGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor="#1e1b4b" />
+                  <stop offset="100%" stopColor="#0f172a" />
+                </linearGradient>
+              </defs>
+
+              {/* Entity 1: STUDENT */}
+              <g transform="translate(30, 40)">
+                <rect x="0" y="0" width="170" height="210" rx="8" fill="url(#erdGrad)" stroke="#6366f1" strokeWidth="2" />
+                <rect x="0" y="0" width="170" height="36" rx="8" fill="#4338ca" />
+                <rect x="0" y="28" width="170" height="8" fill="#4338ca" />
+                <text x="85" y="24" fill="#ffffff" textAnchor="middle" className="text-[12px] font-bold tracking-wider">STUDENT</text>
+
+                {/* Attributes */}
+                {/* PK */}
+                <rect x="8" y="46" width="154" height="24" rx="4" fill="#312e81" stroke="#818cf8" strokeWidth="1" />
+                <text x="14" y="62" fill="#a5b4fc" className="text-[10px] font-mono font-bold">PK  StudentID</text>
+                <text x="125" y="62" fill="#fbbf24" className="text-[9px] font-mono font-bold">INT</text>
+
+                {/* Non-key attributes */}
+                <text x="14" y="95" fill="#e2e8f0" className="text-[10px] font-mono">   FirstName</text>
+                <text x="125" y="95" fill="#94a3b8" className="text-[9px] font-mono">VARCHAR</text>
+
+                <text x="14" y="125" fill="#e2e8f0" className="text-[10px] font-mono">   LastName</text>
+                <text x="125" y="125" fill="#94a3b8" className="text-[9px] font-mono">VARCHAR</text>
+
+                <text x="14" y="155" fill="#e2e8f0" className="text-[10px] font-mono">   ClassLevel</text>
+                <text x="125" y="155" fill="#94a3b8" className="text-[9px] font-mono">VARCHAR</text>
+
+                <text x="14" y="185" fill="#e2e8f0" className="text-[10px] font-mono">   DateOfBirth</text>
+                <text x="125" y="185" fill="#94a3b8" className="text-[9px] font-mono">DATE</text>
+              </g>
+
+              {/* Relationship Diamond: ENROLLS IN */}
+              <g transform="translate(260, 110)">
+                <polygon points="65,0 130,35 65,70 0,35" fill="#1e293b" stroke="#38bdf8" strokeWidth="2" />
+                <text x="65" y="38" fill="#38bdf8" textAnchor="middle" className="text-[10px] font-bold">ENROLLS</text>
+                <text x="65" y="50" fill="#94a3b8" textAnchor="middle" className="text-[8px]">M : N</text>
+              </g>
+
+              {/* Connector lines with Crow's Foot & 1 marks */}
+              <line x1="200" y1="145" x2="260" y2="145" stroke="#818cf8" strokeWidth="2" />
+              {/* One marker on Student side */}
+              <line x1="215" y1="137" x2="215" y2="153" stroke="#818cf8" strokeWidth="2" />
+              <line x1="222" y1="137" x2="222" y2="153" stroke="#818cf8" strokeWidth="2" />
+              <text x="210" y="130" fill="#a5b4fc" className="text-[9px] font-bold">1</text>
+
+              <line x1="390" y1="145" x2="470" y2="145" stroke="#34d399" strokeWidth="2" />
+              {/* Many marker (crow's foot) on Course side */}
+              <line x1="450" y1="145" x2="470" y2="135" stroke="#34d399" strokeWidth="2" />
+              <line x1="450" y1="145" x2="470" y2="155" stroke="#34d399" strokeWidth="2" />
+              <circle cx="445" cy="145" r="4" fill="#0f172a" stroke="#34d399" strokeWidth="1.5" />
+              <text x="450" y="130" fill="#34d399" className="text-[9px] font-bold">N (Many)</text>
+
+              {/* Entity 2: COURSE */}
+              <g transform="translate(470, 40)">
+                <rect x="0" y="0" width="170" height="210" rx="8" fill="url(#erdGrad)" stroke="#10b981" strokeWidth="2" />
+                <rect x="0" y="0" width="170" height="36" rx="8" fill="#065f46" />
+                <rect x="0" y="28" width="170" height="8" fill="#065f46" />
+                <text x="85" y="24" fill="#ffffff" textAnchor="middle" className="text-[12px] font-bold tracking-wider">COURSE</text>
+
+                {/* Attributes */}
+                {/* PK */}
+                <rect x="8" y="46" width="154" height="24" rx="4" fill="#064e3b" stroke="#34d399" strokeWidth="1" />
+                <text x="14" y="62" fill="#6ee7b7" className="text-[10px] font-mono font-bold">PK  CourseCode</text>
+                <text x="125" y="62" fill="#fbbf24" className="text-[9px] font-mono font-bold">CHAR(6)</text>
+
+                <text x="14" y="95" fill="#e2e8f0" className="text-[10px] font-mono">   CourseTitle</text>
+                <text x="125" y="95" fill="#94a3b8" className="text-[9px] font-mono">VARCHAR</text>
+
+                <text x="14" y="125" fill="#e2e8f0" className="text-[10px] font-mono">   CreditUnits</text>
+                <text x="125" y="125" fill="#94a3b8" className="text-[9px] font-mono">INT</text>
+
+                {/* FK */}
+                <rect x="8" y="140" width="154" height="24" rx="4" fill="#1e293b" stroke="#94a3b8" strokeWidth="1" strokeDasharray="3 3" />
+                <text x="14" y="156" fill="#cbd5e1" className="text-[10px] font-mono font-bold">FK  DeptID</text>
+                <text x="125" y="156" fill="#94a3b8" className="text-[9px] font-mono">INT</text>
+
+                <text x="14" y="185" fill="#e2e8f0" className="text-[10px] font-mono">   Semester</text>
+                <text x="125" y="185" fill="#94a3b8" className="text-[9px] font-mono">INT</text>
+              </g>
+
+              {/* Legend bar at bottom */}
+              <g transform="translate(140, 275)">
+                <text x="0" y="0" fill="#94a3b8" className="text-[9px] font-bold">Legend:</text>
+                <rect x="50" y="-9" width="18" height="11" rx="2" fill="#312e81" stroke="#818cf8" strokeWidth="1" />
+                <text x="75" y="0" fill="#cbd5e1" className="text-[9px]">PK = Primary Key</text>
+                <rect x="180" y="-9" width="18" height="11" rx="2" fill="#1e293b" stroke="#94a3b8" strokeWidth="1" strokeDasharray="2 2" />
+                <text x="205" y="0" fill="#cbd5e1" className="text-[9px]">FK = Foreign Key</text>
+                <line x1="300" y1="-4" x2="330" y2="-4" stroke="#38bdf8" strokeWidth="1.5" />
+                <text x="336" y="0" fill="#cbd5e1" className="text-[9px]">Relationship Cardinality</text>
+              </g>
+            </svg>
+          </div>
+
+          <div className="flex items-center gap-2 text-[11px] text-slate-300 bg-slate-950/70 p-2.5 rounded-xl border border-slate-800">
+            <Info className="w-4 h-4 text-indigo-400 shrink-0" />
+            <span>
+              <strong>ERD Cardinality Rule:</strong> In relational modeling, an entity is a distinct real-world object (Student, Course). A Primary Key (PK) uniquely identifies each record. When linking entities, the PK of the parent table migrates to become a Foreign Key (FK) in the related table.
+            </span>
+          </div>
+        </div>
+      );
+
+    // ----------------------------------------------------
+    // 6. DATABASE NORMALIZATION PIPELINE (UNF -> 1NF -> 2NF -> 3NF)
+    // ----------------------------------------------------
+    case 'database-normalization-pipeline':
+      return (
+        <div className="my-4 p-4 rounded-2xl bg-slate-900 border border-slate-800 shadow-lg space-y-3">
+          <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+            <div className="flex items-center gap-2 text-xs font-bold text-white">
+              <GitBranch className="w-4 h-4 text-cyan-400" />
+              <span>Database Normalization Pipeline: UNF → 1NF → 2NF → 3NF</span>
+            </div>
+            <span className="text-[10px] text-cyan-400 bg-cyan-950/60 px-2 py-0.5 rounded border border-cyan-800/60 font-medium">
+              Data Processing · WAEC Database Mastery
+            </span>
+          </div>
+
+          <div className="w-full overflow-x-auto py-2">
+            <svg viewBox="0 0 700 240" className="w-full max-w-2xl mx-auto min-w-[560px] text-xs font-sans">
+              {/* Step 1: UNF */}
+              <g transform="translate(15, 30)">
+                <rect x="0" y="0" width="145" height="150" rx="8" fill="#1e293b" stroke="#f43f5e" strokeWidth="2" />
+                <rect x="0" y="0" width="145" height="30" rx="8" fill="#9f1239" />
+                <rect x="0" y="22" width="145" height="8" fill="#9f1239" />
+                <text x="72" y="20" fill="#ffffff" textAnchor="middle" className="text-[11px] font-bold">UNF (Unnormalized)</text>
+                <text x="12" y="52" fill="#fca5a5" className="text-[9px] font-semibold">Problems:</text>
+                <text x="12" y="70" fill="#cbd5e1" className="text-[8.5px]">• Repeating groups</text>
+                <text x="12" y="88" fill="#cbd5e1" className="text-[8.5px]">• Multi-valued fields</text>
+                <text x="12" y="106" fill="#cbd5e1" className="text-[8.5px]">• Insert/Delete anomalies</text>
+                <text x="12" y="124" fill="#cbd5e1" className="text-[8.5px]">• Severe redundancy</text>
+              </g>
+
+              {/* Arrow 1 */}
+              <g transform="translate(165, 90)">
+                <line x1="0" y1="15" x2="25" y2="15" stroke="#f43f5e" strokeWidth="2" />
+                <polygon points="25,15 17,11 17,19" fill="#f43f5e" />
+                <text x="12" y="5" fill="#f43f5e" textAnchor="middle" className="text-[8px] font-bold">Flatten</text>
+              </g>
+
+              {/* Step 2: 1NF */}
+              <g transform="translate(195, 30)">
+                <rect x="0" y="0" width="145" height="150" rx="8" fill="#1e293b" stroke="#f59e0b" strokeWidth="2" />
+                <rect x="0" y="0" width="145" height="30" rx="8" fill="#b45309" />
+                <rect x="0" y="22" width="145" height="8" fill="#b45309" />
+                <text x="72" y="20" fill="#ffffff" textAnchor="middle" className="text-[11px] font-bold">1st Normal Form (1NF)</text>
+                <text x="12" y="52" fill="#fde68a" className="text-[9px] font-semibold">Conditions Met:</text>
+                <text x="12" y="70" fill="#cbd5e1" className="text-[8.5px]">✓ Atomic values only</text>
+                <text x="12" y="88" fill="#cbd5e1" className="text-[8.5px]">✓ Unique row identifier (PK)</text>
+                <text x="12" y="106" fill="#cbd5e1" className="text-[8.5px]">✓ No repeating groups</text>
+                <text x="12" y="130" fill="#f87171" className="text-[8px] font-bold">Remaining: Partial Dep.</text>
+              </g>
+
+              {/* Arrow 2 */}
+              <g transform="translate(345, 90)">
+                <line x1="0" y1="15" x2="25" y2="15" stroke="#f59e0b" strokeWidth="2" />
+                <polygon points="25,15 17,11 17,19" fill="#f59e0b" />
+                <text x="12" y="5" fill="#f59e0b" textAnchor="middle" className="text-[8px] font-bold">Split PK</text>
+              </g>
+
+              {/* Step 3: 2NF */}
+              <g transform="translate(375, 30)">
+                <rect x="0" y="0" width="145" height="150" rx="8" fill="#1e293b" stroke="#3b82f6" strokeWidth="2" />
+                <rect x="0" y="0" width="145" height="30" rx="8" fill="#1d4ed8" />
+                <rect x="0" y="22" width="145" height="8" fill="#1d4ed8" />
+                <text x="72" y="20" fill="#ffffff" textAnchor="middle" className="text-[11px] font-bold">2nd Normal Form (2NF)</text>
+                <text x="12" y="52" fill="#bfdbfe" className="text-[9px] font-semibold">Conditions Met:</text>
+                <text x="12" y="70" fill="#cbd5e1" className="text-[8.5px]">✓ In 1NF</text>
+                <text x="12" y="88" fill="#cbd5e1" className="text-[8.5px]">✓ NO Partial dependency</text>
+                <text x="12" y="106" fill="#cbd5e1" className="text-[8.5px]">✓ All non-keys depend</text>
+                <text x="18" y="118" fill="#cbd5e1" className="text-[8.5px]">  on entire Primary Key</text>
+                <text x="12" y="136" fill="#f87171" className="text-[8px] font-bold">Remaining: Transitive</text>
+              </g>
+
+              {/* Arrow 3 */}
+              <g transform="translate(525, 90)">
+                <line x1="0" y1="15" x2="25" y2="15" stroke="#3b82f6" strokeWidth="2" />
+                <polygon points="25,15 17,11 17,19" fill="#3b82f6" />
+                <text x="12" y="5" fill="#3b82f6" textAnchor="middle" className="text-[8px] font-bold">Split Non-PK</text>
+              </g>
+
+              {/* Step 4: 3NF */}
+              <g transform="translate(555, 30)">
+                <rect x="0" y="0" width="135" height="150" rx="8" fill="#1e293b" stroke="#10b981" strokeWidth="2" />
+                <rect x="0" y="0" width="135" height="30" rx="8" fill="#047857" />
+                <rect x="0" y="22" width="135" height="8" fill="#047857" />
+                <text x="67" y="20" fill="#ffffff" textAnchor="middle" className="text-[11px] font-bold">3rd Normal Form (3NF)</text>
+                <text x="10" y="52" fill="#a7f3d0" className="text-[9px] font-semibold">Conditions Met:</text>
+                <text x="10" y="70" fill="#cbd5e1" className="text-[8.5px]">✓ In 2NF</text>
+                <text x="10" y="88" fill="#cbd5e1" className="text-[8.5px]">✓ NO Transitive dependency</text>
+                <text x="10" y="106" fill="#cbd5e1" className="text-[8.5px]">✓ Non-keys depend ONLY</text>
+                <text x="16" y="118" fill="#cbd5e1" className="text-[8.5px]">  on the Primary Key</text>
+                <text x="10" y="136" fill="#34d399" className="text-[8.5px] font-bold">★ Zero Redundancy!</text>
+              </g>
+
+              {/* Bottom Rule Mnemonic */}
+              <g transform="translate(100, 210)">
+                <rect x="0" y="0" width="500" height="24" rx="6" fill="#0f172a" stroke="#475569" strokeWidth="1" />
+                <text x="250" y="16" fill="#38bdf8" textAnchor="middle" className="text-[10px] font-bold">
+                  The Key Rule: Every non-key attribute must depend on the key (1NF), the whole key (2NF), and nothing but the key (3NF).
+                </text>
+              </g>
+            </svg>
+          </div>
+
+          <div className="flex items-center gap-2 text-[11px] text-slate-300 bg-slate-950/70 p-2.5 rounded-xl border border-slate-800">
+            <Info className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span>
+              <strong>Normalisation Summary:</strong> 1NF ensures atomic columns; 2NF removes partial functional dependencies (where an attribute depends on only part of a composite primary key); 3NF eliminates transitive dependencies (where a non-key attribute depends on another non-key attribute).
             </span>
           </div>
         </div>

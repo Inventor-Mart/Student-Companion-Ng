@@ -33,7 +33,7 @@ export const HeaderClassSwitcher: React.FC = () => {
   }, [isOpen]);
 
   const handleSelect = (lvl: NigerianClassLevel) => {
-    updateStudentClass(lvl, lvl.startsWith('JSS') ? 'Science' : (student.stream || 'Science'));
+    updateStudentClass(lvl, lvl.startsWith('JSS') ? 'Junior' : (student.stream === 'Junior' ? 'Science' : (student.stream || 'Science')));
     setIsOpen(false);
   };
 

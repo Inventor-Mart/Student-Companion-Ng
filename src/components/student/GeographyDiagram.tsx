@@ -4,7 +4,8 @@ export type GeographyDiagramType =
   | 'geography-earth-internal-layers'
   | 'geography-rock-cycle'
   | 'geography-volcanic-features-cross-section'
-  | 'geography-river-profile-features';
+  | 'geography-river-profile-features'
+  | 'geography-atmospheric-pressure-wind-belts';
 
 interface GeographyDiagramProps {
   type: GeographyDiagramType;
@@ -364,6 +365,90 @@ export const GeographyDiagram: React.FC<GeographyDiagramProps> = ({ type, captio
               <rect width="480" height="45" rx="5" fill="#1e293b" stroke="#334155" strokeWidth="1" />
               <text x="12" y="18" fill="#38bdf8" fontSize="10" fontWeight="bold">DRAINAGE BASIN SUMMARY:</text>
               <text x="12" y="32" fill="#cbd5e1" fontSize="8">Upper Stage erodes vertically; Middle Stage widens valleys through meanders; Lower Stage deposits alluvium to form fertile agricultural flood plains and deltas (e.g. Niger Delta).</text>
+            </g>
+          </svg>
+        </div>
+
+        {caption && (
+          <p className="mt-2 text-center text-xs font-medium text-slate-400">
+            {caption}
+          </p>
+        )}
+      </div>
+    );
+  }
+
+  // 5. Planetary Winds & Global Atmospheric Pressure Belts
+  if (type === 'geography-atmospheric-pressure-wind-belts') {
+    return (
+      <div className="my-6 rounded-xl border border-slate-700/80 bg-slate-900/90 p-5 shadow-xl">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3">
+          <div>
+            <h4 className="text-sm font-semibold text-emerald-400">
+              Planetary Wind Systems &amp; Global Atmospheric Pressure Belts
+            </h4>
+            <p className="text-xs text-slate-400">
+              Tri-cellular circulation, Coriolis deflection, and the Inter-Tropical Discontinuity (ITD) in West Africa
+            </p>
+          </div>
+          <span className="rounded bg-emerald-950/80 px-2.5 py-1 text-xs font-semibold text-emerald-300 border border-emerald-800">
+            Climatology · ITD &amp; Trade Winds
+          </span>
+        </div>
+
+        <div className="relative mt-4 flex justify-center overflow-x-auto py-2">
+          <svg viewBox="0 0 620 280" className="w-full max-w-2xl select-none text-xs font-sans">
+            {/* Global Hemispheric Cross-Section */}
+            {/* 1. North Polar High (90°N) */}
+            <g transform="translate(40, 20)">
+              <rect width="540" height="28" rx="4" fill="#0369a1" fillOpacity="0.4" stroke="#38bdf8" strokeWidth="1" />
+              <text x="70" y="18" fill="#38bdf8" className="text-[10px] font-bold">90°N POLAR HIGH (Cold Dense Air)</text>
+              <text x="350" y="18" fill="#cbd5e1" className="text-[9px]">Polar Easterlies (Deflected right by Coriolis)</text>
+            </g>
+
+            {/* 2. Sub-Polar Low (60°N) */}
+            <g transform="translate(40, 52)">
+              <rect width="540" height="28" rx="4" fill="#1e293b" stroke="#64748b" strokeWidth="1" />
+              <text x="70" y="18" fill="#e2e8f0" className="text-[10px] font-bold">60°N SUB-POLAR LOW (Rising Air)</text>
+              <text x="350" y="18" fill="#facc15" className="text-[9px]">South-Westerlies (Warm oceanic winds)</text>
+            </g>
+
+            {/* 3. Sub-Tropical High (30°N) - Horse Latitudes */}
+            <g transform="translate(40, 84)">
+              <rect width="540" height="34" rx="4" fill="#ca8a04" fillOpacity="0.3" stroke="#f59e0b" strokeWidth="1" />
+              <text x="70" y="21" fill="#fbbf24" className="text-[10px] font-bold">30°N SUB-TROPICAL HIGH (Horse Latitudes)</text>
+              <text x="350" y="21" fill="#fca5a5" className="text-[9px]">North-East Trade Winds (Dry Harmattan to Nigeria)</text>
+            </g>
+
+            {/* 4. EQUATORIAL LOW / ITCZ / DOLDRUMS (0°) - Highlighted */}
+            <g transform="translate(30, 122)">
+              <rect width="560" height="42" rx="6" fill="#064e3b" stroke="#10b981" strokeWidth="2" />
+              <text x="80" y="22" fill="#34d399" className="text-[11px] font-bold">0° EQUATORIAL LOW (Doldrums / ITCZ / ITD)</text>
+              <text x="80" y="34" fill="#a7f3d0" className="text-[8.5px]">Intense solar insolation; low pressure trough where NE and SW trade winds converge.</text>
+              <rect x="440" y="8" width="105" height="26" rx="4" fill="#022c22" stroke="#34d399" strokeWidth="1" />
+              <text x="492" y="25" fill="#34d399" textAnchor="middle" className="text-[9px] font-bold">HEAVY CONVECTION</text>
+            </g>
+
+            {/* 5. Sub-Tropical High (30°S) */}
+            <g transform="translate(40, 168)">
+              <rect width="540" height="34" rx="4" fill="#ca8a04" fillOpacity="0.3" stroke="#f59e0b" strokeWidth="1" />
+              <text x="70" y="21" fill="#fbbf24" className="text-[10px] font-bold">30°S SUB-TROPICAL HIGH</text>
+              <text x="350" y="21" fill="#38bdf8" className="text-[9px]">South-East Trade Winds (Crosses equator as SW Monsoon)</text>
+            </g>
+
+            {/* 6. Sub-Polar Low (60°S) */}
+            <g transform="translate(40, 206)">
+              <rect width="540" height="28" rx="4" fill="#1e293b" stroke="#64748b" strokeWidth="1" />
+              <text x="70" y="18" fill="#e2e8f0" className="text-[10px] font-bold">60°S SUB-POLAR LOW</text>
+              <text x="350" y="18" fill="#cbd5e1" className="text-[9px]">North-Westerlies (Roaring Forties)</text>
+            </g>
+
+            {/* Bottom Nigerian Climate Link */}
+            <g transform="translate(40, 242)">
+              <rect width="540" height="30" rx="4" fill="#0f172a" stroke="#334155" strokeWidth="1" />
+              <text x="270" y="19" fill="#38bdf8" textAnchor="middle" className="text-[9px] font-medium">
+                West African Climate: When the ITD shifts North (July), SW Monsoon brings rains; when ITD shifts South (Jan), NE Trades bring dusty Harmattan.
+              </text>
             </g>
           </svg>
         </div>

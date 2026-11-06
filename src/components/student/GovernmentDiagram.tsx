@@ -3,7 +3,9 @@ import React, { useState } from 'react';
 export type GovernmentDiagramType =
   | 'government-federal-vs-unitary-tiers'
   | 'government-presidential-vs-parliamentary'
-  | 'government-public-opinion-pressure-flow';
+  | 'government-public-opinion-pressure-flow'
+  | 'government-nigeria-constitutional-evolution'
+  | 'government-local-government-structure';
 
 interface GovernmentDiagramProps {
   type: GovernmentDiagramType;
@@ -288,6 +290,171 @@ export const GovernmentDiagram: React.FC<GovernmentDiagramProps> = ({ type, capt
               <text x="15" y="20" fill="#a7f3d0" fontSize="10" fontWeight="bold">POLITICAL PARTIES VS. PRESSURE GROUPS:</text>
               <text x="15" y="34" fill="#cbd5e1" fontSize="9">Political Parties seek to win elections, capture state power, and form the government.</text>
               <text x="15" y="47" fill="#94a3b8" fontSize="8">Pressure Groups NEVER seek to govern; they influence government policies strictly in the interest of their members.</text>
+            </g>
+          </svg>
+        </div>
+
+        {caption && (
+          <p className="mt-2 text-center text-xs font-medium text-slate-400">
+            {caption}
+          </p>
+        )}
+      </div>
+    );
+  }
+
+  // 4. Constitutional Evolution Timeline of Nigeria (Colonial to 1999)
+  if (type === 'government-nigeria-constitutional-evolution') {
+    return (
+      <div className="my-6 rounded-xl border border-slate-700/80 bg-slate-900/90 p-5 shadow-xl">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3">
+          <div>
+            <h4 className="text-sm font-semibold text-emerald-400">
+              Constitutional Development of Nigeria (Colonial to 1999)
+            </h4>
+            <p className="text-xs text-slate-400">
+              Evolution of fundamental laws, regionalism, federation, and democratic governance in Nigeria
+            </p>
+          </div>
+          <span className="rounded bg-emerald-950/80 px-2.5 py-1 text-xs font-semibold text-emerald-300 border border-emerald-800">
+            Constitutional History · WAEC Core
+          </span>
+        </div>
+
+        <div className="relative mt-4 flex justify-center overflow-x-auto py-2">
+          <svg viewBox="0 0 640 280" className="w-full max-w-2xl select-none text-xs font-sans">
+            {/* Timeline Horizontal Line */}
+            <line x1="30" y1="130" x2="610" y2="130" stroke="#475569" strokeWidth="2.5" />
+
+            {/* 1. Clifford (1922) */}
+            <g transform="translate(30, 25)">
+              <rect width="130" height="90" rx="6" fill="#1e293b" stroke="#38bdf8" strokeWidth="1.5" />
+              <text x="65" y="18" fill="#38bdf8" textAnchor="middle" className="text-[10px] font-bold">CLIFFORD (1922)</text>
+              <text x="10" y="36" fill="#cbd5e1" className="text-[8px]">• Elective Principle</text>
+              <text x="10" y="50" fill="#cbd5e1" className="text-[8px]">• 4 elected Africans</text>
+              <text x="10" y="64" fill="#cbd5e1" className="text-[8px]">• Birthed NNDP (Macaulay)</text>
+              <text x="10" y="78" fill="#94a3b8" className="text-[7.5px]">• Isolated Northern region</text>
+              {/* Connector to timeline */}
+              <line x1="65" y1="90" x2="65" y2="105" stroke="#38bdf8" strokeWidth="2" />
+              <circle cx="65" cy="105" r="5" fill="#38bdf8" />
+            </g>
+
+            {/* 2. Richards (1946) */}
+            <g transform="translate(180, 145)">
+              <circle cx="65" cy="-15" r="5" fill="#10b981" />
+              <line x1="65" y1="-15" x2="65" y2="0" stroke="#10b981" strokeWidth="2" />
+              <rect width="130" height="90" rx="6" fill="#1e293b" stroke="#10b981" strokeWidth="1.5" />
+              <text x="65" y="18" fill="#34d399" textAnchor="middle" className="text-[10px] font-bold">RICHARDS (1946)</text>
+              <text x="10" y="36" fill="#cbd5e1" className="text-[8px]">• Birthed Regionalism</text>
+              <text x="10" y="50" fill="#cbd5e1" className="text-[8px]">• North, West &amp; East</text>
+              <text x="10" y="64" fill="#cbd5e1" className="text-[8px]">• Linked North to council</text>
+              <text x="10" y="78" fill="#f87171" className="text-[7.5px]">• Zero native consultation</text>
+            </g>
+
+            {/* 3. Lyttelton (1954) */}
+            <g transform="translate(330, 25)">
+              <rect width="130" height="90" rx="6" fill="#1e293b" stroke="#f59e0b" strokeWidth="1.5" />
+              <text x="65" y="18" fill="#fbbf24" textAnchor="middle" className="text-[10px] font-bold">LYTTELTON (1954)</text>
+              <text x="10" y="36" fill="#cbd5e1" className="text-[8px]">• First True Federalism</text>
+              <text x="10" y="50" fill="#cbd5e1" className="text-[8px]">• Premier offices created</text>
+              <text x="10" y="64" fill="#cbd5e1" className="text-[8px]">• Exclusive &amp; Concurrent</text>
+              <text x="10" y="78" fill="#cbd5e1" className="text-[7.5px]">• Civil service regionalized</text>
+              {/* Connector to timeline */}
+              <line x1="65" y1="90" x2="65" y2="105" stroke="#f59e0b" strokeWidth="2" />
+              <circle cx="65" cy="105" r="5" fill="#f59e0b" />
+            </g>
+
+            {/* 4. 1960 / 1963 / 1999 */}
+            <g transform="translate(480, 145)">
+              <circle cx="65" cy="-15" r="5" fill="#a855f7" />
+              <line x1="65" y1="-15" x2="65" y2="0" stroke="#a855f7" strokeWidth="2" />
+              <rect width="135" height="90" rx="6" fill="#1e293b" stroke="#a855f7" strokeWidth="1.5" />
+              <text x="67" y="18" fill="#c084fc" textAnchor="middle" className="text-[10px] font-bold">1963 &amp; 1999 CFRN</text>
+              <text x="10" y="36" fill="#cbd5e1" className="text-[8px]">• 1963: First Republic</text>
+              <text x="10" y="50" fill="#cbd5e1" className="text-[8px]">• Severed British Queen</text>
+              <text x="10" y="64" fill="#cbd5e1" className="text-[8px]">• 1999: Fourth Republic</text>
+              <text x="10" y="78" fill="#38bdf8" className="text-[7.5px]">• US Presidential System</text>
+            </g>
+
+            {/* Bottom summary guide */}
+            <g transform="translate(100, 250)">
+              <text x="220" y="12" fill="#94a3b8" textAnchor="middle" className="text-[9px] font-medium">
+                Milestones: Clifford (Elections) ➔ Richards (Regions) ➔ Macpherson (Consultation) ➔ Lyttelton (Federalism) ➔ 1999 (Presidentialism).
+              </text>
+            </g>
+          </svg>
+        </div>
+
+        {caption && (
+          <p className="mt-2 text-center text-xs font-medium text-slate-400">
+            {caption}
+          </p>
+        )}
+      </div>
+    );
+  }
+
+  // 5. Local Government Administrative Structure (1976 Reforms)
+  if (type === 'government-local-government-structure') {
+    return (
+      <div className="my-6 rounded-xl border border-slate-700/80 bg-slate-900/90 p-5 shadow-xl">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3">
+          <div>
+            <h4 className="text-sm font-semibold text-emerald-400">
+              Local Government Structure: 1976 Unified Reforms &amp; 774 LGAs
+            </h4>
+            <p className="text-xs text-slate-400">
+              Third tier of government: Executive Chairman, Supervisory Councilors, Legislative Council, and Career Departments
+            </p>
+          </div>
+          <span className="rounded bg-indigo-950/80 px-2.5 py-1 text-xs font-semibold text-indigo-300 border border-indigo-800">
+            Section 7, 1999 CFRN
+          </span>
+        </div>
+
+        <div className="relative mt-4 flex justify-center overflow-x-auto py-2">
+          <svg viewBox="0 0 620 270" className="w-full max-w-2xl select-none text-xs font-sans">
+            {/* Top Level: Executive Chairman */}
+            <g transform="translate(180, 15)">
+              <rect width="260" height="42" rx="6" fill="#064e3b" stroke="#10b981" strokeWidth="2" />
+              <text x="130" y="20" fill="#34d399" textAnchor="middle" className="text-[11px] font-bold">EXECUTIVE CHAIRMAN</text>
+              <text x="130" y="34" fill="#cbd5e1" textAnchor="middle" className="text-[8.5px]">Political Chief Executive &amp; Accounting Officer</text>
+            </g>
+
+            {/* Downward line */}
+            <line x1="310" y1="57" x2="310" y2="80" stroke="#10b981" strokeWidth="2" />
+
+            {/* Level 2: Vice Chairman & Supervisory Councilors */}
+            <g transform="translate(140, 80)">
+              <rect width="340" height="40" rx="6" fill="#1e1b4b" stroke="#6366f1" strokeWidth="1.5" />
+              <text x="170" y="19" fill="#a5b4fc" textAnchor="middle" className="text-[10px] font-bold">VICE CHAIRMAN &amp; SUPERVISORY COUNCILORS</text>
+              <text x="170" y="32" fill="#cbd5e1" textAnchor="middle" className="text-[8px]">Cabinet heads of Health, Works, Agriculture, Education</text>
+            </g>
+
+            {/* Left branch: Legislative Council */}
+            <line x1="200" y1="120" x2="110" y2="145" stroke="#94a3b8" strokeWidth="1.5" />
+            <g transform="translate(20, 145)">
+              <rect width="180" height="60" rx="6" fill="#1e293b" stroke="#38bdf8" strokeWidth="1.5" />
+              <text x="90" y="20" fill="#38bdf8" textAnchor="middle" className="text-[10px] font-bold">LEGISLATIVE COUNCIL</text>
+              <text x="10" y="36" fill="#cbd5e1" className="text-[8px]">• Ward Councilors</text>
+              <text x="10" y="48" fill="#cbd5e1" className="text-[8px]">• Passes local bye-laws</text>
+            </g>
+
+            {/* Right branch: Career Bureaucracy */}
+            <line x1="420" y1="120" x2="510" y2="145" stroke="#94a3b8" strokeWidth="1.5" />
+            <g transform="translate(420, 145)">
+              <rect width="180" height="60" rx="6" fill="#1e293b" stroke="#f59e0b" strokeWidth="1.5" />
+              <text x="90" y="20" fill="#fbbf24" textAnchor="middle" className="text-[10px] font-bold">CAREER BUREAUCRACY</text>
+              <text x="10" y="36" fill="#cbd5e1" className="text-[8px]">• Secretary to Local Govt</text>
+              <text x="10" y="48" fill="#cbd5e1" className="text-[8px]">• Heads of Service Depts</text>
+            </g>
+
+            {/* Bottom 5 Core Departments Bar */}
+            <g transform="translate(30, 220)">
+              <rect width="560" height="34" rx="6" fill="#0f172a" stroke="#334155" strokeWidth="1" />
+              <text x="280" y="21" fill="#34d399" textAnchor="middle" className="text-[9px] font-semibold">
+                Core Departments: 1. Administration &amp; General Duties | 2. Finance &amp; Supplies | 3. Works &amp; Housing | 4. Primary Health Care | 5. Agriculture &amp; Social Development
+              </text>
             </g>
           </svg>
         </div>

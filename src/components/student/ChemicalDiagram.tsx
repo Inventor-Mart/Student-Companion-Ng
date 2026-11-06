@@ -7,7 +7,9 @@ export type ChemicalDiagramType =
   | 'bohr-atomic-model'
   | 'ionic-covalent-bonding'
   | 'bunsen-burner-flame'
-  | 'periodic-table-trends';
+  | 'periodic-table-trends'
+  | 'reaction-energy-profile'
+  | 'daniell-electrochemical-cell';
 
 interface ChemicalDiagramProps {
   type: ChemicalDiagramType;
@@ -610,7 +612,186 @@ export const ChemicalDiagram: React.FC<ChemicalDiagramProps> = ({ type }) => {
         </div>
       );
 
+    // ----------------------------------------------------
+    // 7. THERMOCHEMICAL REACTION ENERGY PROFILES
+    // ----------------------------------------------------
+    case 'reaction-energy-profile':
+      return (
+        <div className="my-4 p-4 rounded-2xl bg-slate-900 border border-slate-800 shadow-lg space-y-3">
+          <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+            <div className="flex items-center gap-2 text-xs font-bold text-white">
+              <Flame className="w-4 h-4 text-amber-400" />
+              <span>Reaction Energy Profiles: Exothermic vs. Endothermic Pathways</span>
+            </div>
+            <span className="text-[10px] text-amber-400 bg-amber-950/60 px-2 py-0.5 rounded border border-amber-800/60 font-medium">
+              Thermochemistry · Activation Energy (E_a) & ΔH
+            </span>
+          </div>
+
+          <div className="w-full overflow-x-auto py-2">
+            <svg viewBox="0 0 620 310" className="w-full max-w-2xl mx-auto min-w-[480px] text-xs font-sans">
+              {/* EXOTHERMIC REACTION (LEFT) */}
+              <g transform="translate(15, 10)">
+                <text x="135" y="20" fill="#f43f5e" textAnchor="middle" className="text-[11px] font-bold">EXOTHERMIC (ΔH &lt; 0)</text>
+                <text x="135" y="34" fill="#94a3b8" textAnchor="middle" className="text-[9px]">Heat Released to Surroundings</text>
+
+                {/* Axes */}
+                <line x1="40" y1="260" x2="260" y2="260" stroke="#94a3b8" strokeWidth="1.5" />
+                <line x1="40" y1="260" x2="40" y2="40" stroke="#94a3b8" strokeWidth="1.5" />
+                <text x="240" y="275" fill="#64748b" className="text-[9px]">Reaction Progress →</text>
+                <text x="15" y="140" fill="#64748b" transform="rotate(-90 15 140)" className="text-[9px]">Potential Energy →</text>
+
+                {/* Reactants Level */}
+                <line x1="40" y1="150" x2="90" y2="150" stroke="#38bdf8" strokeWidth="3" />
+                <text x="65" y="142" fill="#38bdf8" textAnchor="middle" className="text-[10px] font-bold">Reactants</text>
+
+                {/* Energy Hump / Activated Complex */}
+                <path d="M 90 150 C 130 50 150 50 170 150 L 220 220 L 250 220" fill="none" stroke="#f43f5e" strokeWidth="3" />
+                <circle cx="140" cy="65" r="4" fill="#f43f5e" />
+                <text x="140" y="55" fill="#f43f5e" textAnchor="middle" className="text-[9px] font-bold">Activated Complex</text>
+
+                {/* Products Level */}
+                <line x1="220" y1="220" x2="260" y2="220" stroke="#10b981" strokeWidth="3" />
+                <text x="240" y="212" fill="#10b981" textAnchor="middle" className="text-[10px] font-bold">Products</text>
+
+                {/* Activation Energy Arrow E_a */}
+                <line x1="85" y1="150" x2="85" y2="65" stroke="#fbbf24" strokeWidth="1.5" strokeDasharray="2 2" />
+                <text x="95" y="105" fill="#fbbf24" className="text-[9px] font-bold">E_a</text>
+
+                {/* ΔH Arrow (Downwards) */}
+                <line x1="215" y1="150" x2="215" y2="220" stroke="#f43f5e" strokeWidth="2" />
+                <polygon points="215,225 212,217 218,217" fill="#f43f5e" />
+                <text x="225" y="190" fill="#f43f5e" className="text-[10px] font-extrabold">-ΔH</text>
+              </g>
+
+              {/* DIVIDER */}
+              <line x1="310" y1="20" x2="310" y2="290" stroke="#334155" strokeWidth="1" strokeDasharray="3 3" />
+
+              {/* ENDOTHERMIC REACTION (RIGHT) */}
+              <g transform="translate(325, 10)">
+                <text x="135" y="20" fill="#38bdf8" textAnchor="middle" className="text-[11px] font-bold">ENDOTHERMIC (ΔH &gt; 0)</text>
+                <text x="135" y="34" fill="#94a3b8" textAnchor="middle" className="text-[9px]">Heat Absorbed from Surroundings</text>
+
+                {/* Axes */}
+                <line x1="40" y1="260" x2="260" y2="260" stroke="#94a3b8" strokeWidth="1.5" />
+                <line x1="40" y1="260" x2="40" y2="40" stroke="#94a3b8" strokeWidth="1.5" />
+                <text x="240" y="275" fill="#64748b" className="text-[9px]">Reaction Progress →</text>
+
+                {/* Reactants Level (Low) */}
+                <line x1="40" y1="220" x2="90" y2="220" stroke="#38bdf8" strokeWidth="3" />
+                <text x="65" y="212" fill="#38bdf8" textAnchor="middle" className="text-[10px] font-bold">Reactants</text>
+
+                {/* Energy Hump */}
+                <path d="M 90 220 C 130 50 160 50 180 130 L 220 130 L 260 130" fill="none" stroke="#38bdf8" strokeWidth="3" />
+                <circle cx="145" cy="65" r="4" fill="#38bdf8" />
+                <text x="145" y="55" fill="#38bdf8" textAnchor="middle" className="text-[9px] font-bold">Transition State</text>
+
+                {/* Products Level (High) */}
+                <line x1="220" y1="130" x2="260" y2="130" stroke="#a855f7" strokeWidth="3" />
+                <text x="240" y="122" fill="#a855f7" textAnchor="middle" className="text-[10px] font-bold">Products</text>
+
+                {/* ΔH Arrow (Upwards) */}
+                <line x1="215" y1="220" x2="215" y2="130" stroke="#38bdf8" strokeWidth="2" />
+                <polygon points="215,125 212,133 218,133" fill="#38bdf8" />
+                <text x="225" y="180" fill="#38bdf8" className="text-[10px] font-extrabold">+ΔH</text>
+              </g>
+            </svg>
+          </div>
+
+          <div className="flex items-center gap-2 text-[11px] text-slate-300 bg-slate-950/70 p-2.5 rounded-xl border border-slate-800">
+            <Info className="w-4 h-4 text-amber-400 shrink-0" />
+            <span>
+              <strong>Effect of Catalysts:</strong> A positive catalyst provides an alternative reaction pathway with a lower Activation Energy (E_a), speeding up both forward and reverse reaction rates equally without altering the net enthalpy change (ΔH) or the equilibrium constant (K_c).
+            </span>
+          </div>
+        </div>
+      );
+
+    // ----------------------------------------------------
+    // 8. THE DANIELL ELECTROCHEMICAL GALVANIC CELL
+    // ----------------------------------------------------
+    case 'daniell-electrochemical-cell':
+      return (
+        <div className="my-4 p-4 rounded-2xl bg-slate-900 border border-slate-800 shadow-lg space-y-3">
+          <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+            <div className="flex items-center gap-2 text-xs font-bold text-white">
+              <FlaskConical className="w-4 h-4 text-cyan-400" />
+              <span>The Daniell Galvanic Cell & Salt Bridge Dynamics</span>
+            </div>
+            <span className="text-[10px] text-cyan-400 bg-cyan-950/60 px-2 py-0.5 rounded border border-cyan-800/60 font-medium">
+              Electrochemistry · E°_cell = +1.10V
+            </span>
+          </div>
+
+          <div className="w-full overflow-x-auto py-2">
+            <svg viewBox="0 0 620 330" className="w-full max-w-2xl mx-auto min-w-[480px] text-xs font-sans">
+              {/* VOLTMETER & EXTERNAL CIRCUIT */}
+              <circle cx="310" cy="50" r="26" fill="#1e293b" stroke="#38bdf8" strokeWidth="2" />
+              <text x="310" y="46" fill="#38bdf8" textAnchor="middle" className="text-[11px] font-extrabold">V</text>
+              <text x="310" y="62" fill="#10b981" textAnchor="middle" className="text-[10px] font-bold">1.10 V</text>
+
+              {/* Wire Left from Anode */}
+              <line x1="160" y1="130" x2="160" y2="50" stroke="#f59e0b" strokeWidth="2" />
+              <line x1="160" y1="50" x2="284" y2="50" stroke="#f59e0b" strokeWidth="2" />
+              {/* Electron Flow Arrow Left to Right */}
+              <polygon points="230,47 240,50 230,53" fill="#fbbf24" />
+              <text x="210" y="42" fill="#fbbf24" className="text-[9px] font-bold">e⁻ Flow →</text>
+
+              {/* Wire Right to Cathode */}
+              <line x1="336" y1="50" x2="460" y2="50" stroke="#f59e0b" strokeWidth="2" />
+              <line x1="460" y1="50" x2="460" y2="130" stroke="#f59e0b" strokeWidth="2" />
+
+              {/* ANODE BEAKER (LEFT: ZINC) */}
+              <g transform="translate(80, 110)">
+                {/* Beaker Glass */}
+                <rect x="20" y="30" width="160" height="170" fill="#0f172a" stroke="#475569" strokeWidth="2" rx="4" />
+                {/* Solution (1M ZnSO4 - Clear/Slate) */}
+                <rect x="22" y="70" width="156" height="128" fill="#1e293b" opacity="0.6" />
+                <text x="100" y="185" fill="#94a3b8" textAnchor="middle" className="text-[10px] font-semibold">1.0 M ZnSO₄(aq)</text>
+
+                {/* Zinc Electrode (Anode - Negative) */}
+                <rect x="65" y="10" width="30" height="140" fill="#94a3b8" stroke="#cbd5e1" strokeWidth="1.5" />
+                <text x="80" y="2" fill="#f8fafc" textAnchor="middle" className="text-[10px] font-bold">Zn Anode (-)</text>
+                <text x="80" y="100" fill="#0f172a" textAnchor="middle" className="text-[10px] font-extrabold" transform="rotate(-90 80 100)">OXIDATION</text>
+
+                <text x="100" y="215" fill="#f87171" textAnchor="middle" className="text-[9px] font-bold">Zn(s) → Zn²⁺ + 2e⁻</text>
+              </g>
+
+              {/* INVERTED U-TUBE SALT BRIDGE */}
+              <path d="M 220 180 L 220 100 Q 220 85 240 85 L 380 85 Q 400 85 400 100 L 400 180" fill="none" stroke="#a855f7" strokeWidth="16" strokeLinecap="round" opacity="0.8" />
+              <text x="310" y="105" fill="#ffffff" textAnchor="middle" className="text-[10px] font-bold">SALT BRIDGE (KNO₃ / Agar-Agar)</text>
+              <text x="250" y="135" fill="#c084fc" className="text-[8px] font-bold">NO₃⁻ →</text>
+              <text x="350" y="135" fill="#c084fc" className="text-[8px] font-bold">→ K⁺</text>
+
+              {/* CATHODE BEAKER (RIGHT: COPPER) */}
+              <g transform="translate(360, 110)">
+                {/* Beaker Glass */}
+                <rect x="20" y="30" width="160" height="170" fill="#0f172a" stroke="#475569" strokeWidth="2" rx="4" />
+                {/* Solution (1M CuSO4 - Deep Blue) */}
+                <rect x="22" y="70" width="156" height="128" fill="#0369a1" opacity="0.5" />
+                <text x="100" y="185" fill="#38bdf8" textAnchor="middle" className="text-[10px] font-bold">1.0 M CuSO₄(aq)</text>
+
+                {/* Copper Electrode (Cathode - Positive) */}
+                <rect x="85" y="10" width="30" height="140" fill="#b45309" stroke="#f59e0b" strokeWidth="1.5" />
+                <text x="100" y="2" fill="#fbbf24" textAnchor="middle" className="text-[10px] font-bold">Cu Cathode (+)</text>
+                <text x="100" y="100" fill="#ffffff" textAnchor="middle" className="text-[10px] font-extrabold" transform="rotate(-90 100 100)">REDUCTION</text>
+
+                <text x="100" y="215" fill="#4ade80" textAnchor="middle" className="text-[9px] font-bold">Cu²⁺ + 2e⁻ → Cu(s)</text>
+              </g>
+            </svg>
+          </div>
+
+          <div className="flex items-center gap-2 text-[11px] text-slate-300 bg-slate-950/70 p-2.5 rounded-xl border border-slate-800">
+            <Info className="w-4 h-4 text-cyan-400 shrink-0" />
+            <span>
+              <strong>Crucial Functions of the Salt Bridge:</strong> 1. Completes the internal electrical circuit by allowing ion migration; 2. Maintains electrical neutrality in both half-cells (anions migrate to the anode, cations migrate to the cathode), preventing voltage shutdown.
+            </span>
+          </div>
+        </div>
+      );
+
     default:
       return null;
   }
 };
+

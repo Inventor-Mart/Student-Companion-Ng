@@ -12,6 +12,7 @@ import {
 import {
   UserRole,
   StudentProfile,
+  NigerianClassLevel,
   CurriculumTopic,
   CBTExam,
   CBTExamResult,
@@ -391,13 +392,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               const data = docSnap.data() as StudentProfile;
               setStudent(data);
             } else {
+              const savedStudentStr = safeGetItem('sc_student');
+              let initialClass: NigerianClassLevel = 'JSS 1';
+              if (savedStudentStr) {
+                try {
+                  const parsed = JSON.parse(savedStudentStr);
+                  if (parsed.classLevel) initialClass = parsed.classLevel;
+                } catch {}
+              }
+
               // Seed new user profile in Firestore
               const newProfile: StudentProfile = {
                 id: user.uid,
                 name: user.displayName || 'Registered Student',
-                school: '',
-                classLevel: 'JSS 1',
-                stream: 'Science',
+                school: 'Federal Secondary School',
+                classLevel: initialClass,
+                stream: initialClass.startsWith('JSS') ? 'Junior' : 'Science',
                 xp: 0,
                 rank: 'Fresher',
                 streakDays: 1,
@@ -407,7 +417,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 downloadedSubjectIds: [],
                 completedQuizIds: []
               };
-              setDoc(studentDocRef, newProfile).catch((err) => {
+              setDoc(studentDocRef, newProfile, { merge: true }).catch((err) => {
                 handleFirestoreError(err, OperationType.CREATE, path);
               });
               setStudent(newProfile);
@@ -530,7 +540,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateStudentClass = (classLevel: any, stream?: any) => {
-    const finalStream = stream || (typeof classLevel === 'string' && classLevel.startsWith('JSS') ? 'Science' : 'Science');
+    const finalStream = stream || (typeof classLevel === 'string' && classLevel.startsWith('JSS') ? 'Junior' : 'Science');
     setStudent(prev => {
       const updated = {
         ...prev,
@@ -538,10 +548,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         stream: finalStream
       };
 
+      safeSetItem('sc_student', JSON.stringify(updated));
+
       if (currentUser && !isOffline) {
         const docRef = doc(db, 'students', currentUser.uid);
         const path = `students/${currentUser.uid}`;
-        updateDoc(docRef, { classLevel, stream: finalStream }).catch(err => {
+        setDoc(docRef, { classLevel, stream: finalStream }, { merge: true }).catch(err => {
           handleFirestoreError(err, OperationType.UPDATE, path);
         });
       }

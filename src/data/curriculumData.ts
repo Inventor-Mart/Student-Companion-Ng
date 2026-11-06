@@ -33,6 +33,21 @@ import { SS1_GOVERNMENT_TOPICS } from './ss1GovernmentData';
 import { SS1_GEOGRAPHY_TOPICS } from './ss1GeographyData';
 import { SS1_LITERATURE_TOPICS } from './ss1LiteratureData';
 import { SS1_CRS_TOPICS } from './ss1CRSData';
+import { SS2_MATH_TOPICS } from './ss2MathData';
+import { SS2_ENGLISH_TOPICS } from './ss2EnglishData';
+import { SS2_BIOLOGY_TOPICS } from './ss2BiologyData';
+import { SS2_CHEMISTRY_TOPICS } from './ss2ChemistryData';
+import { SS2_PHYSICS_TOPICS } from './ss2PhysicsData';
+import { SS2_AGRIC_TOPICS } from './ss2AgricData';
+import { SS2_DATA_PROCESSING_TOPICS } from './ss2DataProcessingData';
+import { SS2_ECONOMICS_TOPICS } from './ss2EconomicsData';
+import { SS2_CIVIC_TOPICS } from './ss2CivicData';
+import { SS2_FURTHER_MATH_TOPICS } from './ss2FurtherMathData';
+import { SS2_COMMERCE_TOPICS } from './ss2CommerceData';
+import { SS2_GOVERNMENT_TOPICS } from './ss2GovernmentData';
+import { SS2_LITERATURE_TOPICS } from './ss2LiteratureData';
+import { SS2_GEOGRAPHY_TOPICS } from './ss2GeographyData';
+import { SS2_CRS_TOPICS } from './ss2CRSData';
 export { JSS1_ENGLISH_TOPICS } from './jss1EnglishData';
 export { JSS2_ENGLISH_TOPICS } from './jss2EnglishData';
 export { JSS3_MATH_TOPICS } from './jss3MathData';
@@ -64,6 +79,21 @@ export { SS1_GOVERNMENT_TOPICS } from './ss1GovernmentData';
 export { SS1_GEOGRAPHY_TOPICS } from './ss1GeographyData';
 export { SS1_LITERATURE_TOPICS } from './ss1LiteratureData';
 export { SS1_CRS_TOPICS } from './ss1CRSData';
+export { SS2_MATH_TOPICS } from './ss2MathData';
+export { SS2_ENGLISH_TOPICS } from './ss2EnglishData';
+export { SS2_BIOLOGY_TOPICS } from './ss2BiologyData';
+export { SS2_CHEMISTRY_TOPICS } from './ss2ChemistryData';
+export { SS2_PHYSICS_TOPICS } from './ss2PhysicsData';
+export { SS2_AGRIC_TOPICS } from './ss2AgricData';
+export { SS2_DATA_PROCESSING_TOPICS } from './ss2DataProcessingData';
+export { SS2_ECONOMICS_TOPICS } from './ss2EconomicsData';
+export { SS2_CIVIC_TOPICS } from './ss2CivicData';
+export { SS2_FURTHER_MATH_TOPICS } from './ss2FurtherMathData';
+export { SS2_COMMERCE_TOPICS } from './ss2CommerceData';
+export { SS2_GOVERNMENT_TOPICS } from './ss2GovernmentData';
+export { SS2_LITERATURE_TOPICS } from './ss2LiteratureData';
+export { SS2_GEOGRAPHY_TOPICS } from './ss2GeographyData';
+export { SS2_CRS_TOPICS } from './ss2CRSData';
 
 export const OFFICIAL_SUBJECTS_BY_CLASS = {
   'JSS 1': [
@@ -233,6 +263,21 @@ export const NIGERIAN_CURRICULUM_TOPICS: CurriculumTopic[] = [
   ...SS1_GEOGRAPHY_TOPICS,
   ...SS1_LITERATURE_TOPICS,
   ...SS1_CRS_TOPICS,
+  ...SS2_MATH_TOPICS,
+  ...SS2_ENGLISH_TOPICS,
+  ...SS2_BIOLOGY_TOPICS,
+  ...SS2_CHEMISTRY_TOPICS,
+  ...SS2_PHYSICS_TOPICS,
+  ...SS2_AGRIC_TOPICS,
+  ...SS2_DATA_PROCESSING_TOPICS,
+  ...SS2_ECONOMICS_TOPICS,
+  ...SS2_CIVIC_TOPICS,
+  ...SS2_FURTHER_MATH_TOPICS,
+  ...SS2_COMMERCE_TOPICS,
+  ...SS2_GOVERNMENT_TOPICS,
+  ...SS2_LITERATURE_TOPICS,
+  ...SS2_GEOGRAPHY_TOPICS,
+  ...SS2_CRS_TOPICS,
   // ==========================================
   // JSS 1 SUBJECTS (15 SUBJECTS)
   // ==========================================
@@ -604,35 +649,5 @@ Therefore: $25_{10} = 11001_2$.`,
     contentMarkdown: `### 1. Clifford Constitution (1922)\nIntroduced the Elective Principle (4 elected Africans: 3 Lagos, 1 Calabar). Birthed Nigeria’s first political party: NNDP.\n\n### 2. The 1999 Constitution\nEstablishes a Federal Republic with Executive President, bicameral National Assembly (Senate & House of Reps), and independent Judiciary.`,
     keyTakeaways: ['Clifford Constitution (1922) birthed early political parties.', '1999 Constitution establishes the Fourth Republic presidential system.'],
     associatedQuizId: 'jamb-government-nigeria-2025'
-  },
-  {
-    id: 'comm-ss2-banking-finance',
-    classLevel: 'SS 2',
-    stream: 'Non-Science',
-    subject: 'Commerce',
-    term: '2nd Term',
-    weekNumber: 3,
-    topicTitle: 'Commercial Banking & Central Bank of Nigeria (CBN)',
-    subtopics: ['Functions of Commercial Banks (Credit Creation)', 'Monetary Policy Tools of the CBN (MPR, CRR)', 'Electronic Payment Systems (NIBSS, Remita)'],
-    readingTimeMinutes: 7,
-    summary: 'The architecture of Nigerian financial institutions, currency issuance, and international trade financing.',
-    contentMarkdown: `### 1. Commercial Banks vs Central Bank of Nigeria (CBN)\n- **CBN:** Government bank, sole issuer of legal tender (Naira), regulator of banking sector, lender of last resort.\n- **Commercial Banks (e.g. GTBank, Zenith, Access):** Accept deposits, grant loans, facilitate domestic and foreign payments, create credit.\n\n### 2. Monetary Policy Tools\n- **Monetary Policy Rate (MPR):** Benchmark interest rate.\n- **Cash Reserve Ratio (CRR):** Percentage of customer deposits banks must keep at CBN.`,
-    keyTakeaways: ['CBN is the lender of last resort and issues the Naira.', 'Commercial banks generate money through the credit multiplier process.'],
-    associatedQuizId: 'jamb-economics-commercial-2025'
-  },
-  {
-    id: 'lit-ss2-african-drama',
-    classLevel: 'SS 2',
-    stream: 'Non-Science',
-    subject: 'Literature-in-English',
-    term: '2nd Term',
-    weekNumber: 2,
-    topicTitle: 'African Drama: The Lion and the Jewel by Wole Soyinka',
-    subtopics: ['Conflict between Tradition and Modernity', 'Character Analysis: Baroka, Lakunle, Sidi', 'Use of Song, Dance and Mime'],
-    readingTimeMinutes: 8,
-    summary: 'Critical study of Soyinka’s celebrated comedic satire set in the Yoruba village of Ilujinle.',
-    contentMarkdown: `### 1. Major Themes in "The Lion and the Jewel"\n- **Tradition vs. Modernity:** Lakunle embodies superficial Westernization, while Baroka champions resilient, cunning African tradition.\n- **Bride Price:** Lakunle refuses to pay the bride price, calling it barbaric, whereas Sidi refuses to marry him without it because it honors her virginity.\n- **The Lion’s Triumph:** Baroka feigns impotence through Sadiku, lowering Sidi’s guard and ultimately winning her hand.`,
-    keyTakeaways: ['Baroka triumphs through traditional cunning.', 'Sidi rejects Lakunle because he refuses to pay her bride price.'],
-    associatedQuizId: 'waec-literature-african-prose-2025'
   }
 ];

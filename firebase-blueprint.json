@@ -19,7 +19,6 @@
         },
         "school": {
           "type": "string",
-          "minLength": 2,
           "maxLength": 150,
           "description": "Registered secondary school name"
         },

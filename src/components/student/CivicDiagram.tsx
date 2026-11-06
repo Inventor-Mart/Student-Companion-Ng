@@ -3,7 +3,9 @@ import React, { useState } from 'react';
 export type CivicDiagramType =
   | 'civic-citizenship-rights-duties'
   | 'civic-three-arms-of-government'
-  | 'civic-electoral-process-cycle';
+  | 'civic-electoral-process-cycle'
+  | 'civic-citizenship-acquisition'
+  | 'civic-inec-bvas-voting-flow';
 
 interface CivicDiagramProps {
   type: CivicDiagramType;
@@ -274,6 +276,216 @@ export const CivicDiagram: React.FC<CivicDiagramProps> = ({ type, caption }) => 
               <rect width="440" height="30" rx="5" fill="#0f172a" stroke="#334155" strokeWidth="1" />
               <text x="15" y="19" fill="#34d399" fontSize="9" fontWeight="bold">CORNERSTONE OF DEMOCRACY:</text>
               <text x="180" y="19" fill="#cbd5e1" fontSize="9">Transparent elections cure political apathy and confer constitutional legitimacy.</text>
+            </g>
+          </svg>
+        </div>
+
+        {caption && (
+          <p className="mt-2 text-center text-xs font-medium text-slate-400">
+            {caption}
+          </p>
+        )}
+      </div>
+    );
+  }
+
+  // 4. Constitutional Acquisition of Nigerian Citizenship (Sections 25, 26, 27)
+  if (type === 'civic-citizenship-acquisition') {
+    return (
+      <div className="my-6 rounded-xl border border-slate-700/80 bg-slate-900/90 p-5 shadow-xl">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3">
+          <div>
+            <h4 className="text-sm font-semibold text-emerald-400">
+              Modes of Acquiring Nigerian Citizenship (1999 Constitution)
+            </h4>
+            <p className="text-xs text-slate-400">
+              Constitutional criteria, qualifications, and restrictions under Sections 25, 26, and 27
+            </p>
+          </div>
+          <span className="text-[10px] text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-800/60 font-medium">
+            1999 CFRN Chapter III
+          </span>
+        </div>
+
+        <div className="w-full overflow-x-auto py-3">
+          <svg viewBox="0 0 680 260" className="w-full max-w-2xl mx-auto min-w-[560px] text-xs font-sans">
+            {/* Mode 1: By Birth (Section 25) */}
+            <g transform="translate(15, 20)">
+              <rect width="200" height="210" rx="8" fill="#1e293b" stroke="#10b981" strokeWidth="2" />
+              <rect width="200" height="32" rx="8" fill="#065f46" />
+              <rect y="24" width="200" height="8" fill="#065f46" />
+              <text x="100" y="21" fill="#ffffff" textAnchor="middle" className="text-[11px] font-bold">1. BY BIRTH (Sec. 25)</text>
+
+              <text x="14" y="52" fill="#6ee7b7" className="text-[9.5px] font-bold">Primary Legal Basis:</text>
+              <text x="14" y="70" fill="#cbd5e1" className="text-[8.5px]">• Born in Nigeria before 1/10/1960</text>
+              <text x="20" y="82" fill="#94a3b8" className="text-[8px]">  with parent/grandparent indigenous</text>
+              <text x="14" y="100" fill="#cbd5e1" className="text-[8.5px]">• Born in Nigeria after 1/10/1960</text>
+              <text x="20" y="112" fill="#94a3b8" className="text-[8px]">  with at least one parent citizen</text>
+              <text x="14" y="130" fill="#cbd5e1" className="text-[8.5px]">• Born outside Nigeria to parents</text>
+              <text x="20" y="142" fill="#94a3b8" className="text-[8px]">  who are citizens by birth</text>
+
+              <rect x="12" y="165" width="176" height="30" rx="4" fill="#064e3b" stroke="#34d399" strokeWidth="1" />
+              <text x="100" y="184" fill="#34d399" textAnchor="middle" className="text-[8.5px] font-bold">★ Cannot be deprived of citizenship</text>
+            </g>
+
+            {/* Mode 2: By Registration (Section 26) */}
+            <g transform="translate(240, 20)">
+              <rect width="200" height="210" rx="8" fill="#1e293b" stroke="#38bdf8" strokeWidth="2" />
+              <rect width="200" height="32" rx="8" fill="#0369a1" />
+              <rect y="24" width="200" height="8" fill="#0369a1" />
+              <text x="100" y="21" fill="#ffffff" textAnchor="middle" className="text-[11px] font-bold">2. REGISTRATION (Sec. 26)</text>
+
+              <text x="14" y="52" fill="#7dd3fc" className="text-[9.5px] font-bold">Eligibility Categories:</text>
+              <text x="14" y="70" fill="#cbd5e1" className="text-[8.5px]">• A foreign woman married to</text>
+              <text x="20" y="82" fill="#94a3b8" className="text-[8px]">  a Nigerian male citizen</text>
+              <text x="14" y="100" fill="#cbd5e1" className="text-[8.5px]">• Person of full age born abroad</text>
+              <text x="20" y="112" fill="#94a3b8" className="text-[8px]">  whose grandparents are citizens</text>
+              <text x="14" y="130" fill="#cbd5e1" className="text-[8.5px]">• Satisfies President of good</text>
+              <text x="20" y="142" fill="#94a3b8" className="text-[8px]">  character &amp; oath of allegiance</text>
+
+              <rect x="12" y="165" width="176" height="30" rx="4" fill="#0c4a6e" stroke="#38bdf8" strokeWidth="1" />
+              <text x="100" y="184" fill="#7dd3fc" textAnchor="middle" className="text-[8.5px] font-bold">Can be deprived if disloyal / jailed</text>
+            </g>
+
+            {/* Mode 3: By Naturalization (Section 27) */}
+            <g transform="translate(465, 20)">
+              <rect width="200" height="210" rx="8" fill="#1e293b" stroke="#f59e0b" strokeWidth="2" />
+              <rect width="200" height="32" rx="8" fill="#b45309" />
+              <rect y="24" width="200" height="8" fill="#b45309" />
+              <text x="100" y="21" fill="#ffffff" textAnchor="middle" className="text-[11px] font-bold">3. NATURALIZATION (Sec. 27)</text>
+
+              <text x="14" y="52" fill="#fde68a" className="text-[9.5px] font-bold">Strict Criteria:</text>
+              <text x="14" y="70" fill="#cbd5e1" className="text-[8.5px]">• 15 years continuous residence</text>
+              <text x="20" y="82" fill="#94a3b8" className="text-[8px]">  in Nigeria prior to application</text>
+              <text x="14" y="100" fill="#cbd5e1" className="text-[8.5px]">• Good character &amp; community</text>
+              <text x="20" y="112" fill="#94a3b8" className="text-[8px]">  governor&apos;s testimonial</text>
+              <text x="14" y="130" fill="#cbd5e1" className="text-[8.5px]">• Renounce previous nationality</text>
+              <text x="20" y="142" fill="#94a3b8" className="text-[8px]">  and take Oath of Allegiance</text>
+
+              <rect x="12" y="165" width="176" height="30" rx="4" fill="#451a03" stroke="#f59e0b" strokeWidth="1" />
+              <text x="100" y="184" fill="#fde68a" textAnchor="middle" className="text-[8.5px] font-bold">Presidential Certificate of Nat.</text>
+            </g>
+
+            {/* Bottom Note */}
+            <g transform="translate(100, 240)">
+              <text x="240" y="12" fill="#94a3b8" textAnchor="middle" className="text-[9.5px] font-medium">
+                Dual Citizenship: A Nigerian by birth may hold foreign citizenship without losing Nigerian status (Section 28).
+              </text>
+            </g>
+          </svg>
+        </div>
+
+        {caption && (
+          <p className="mt-2 text-center text-xs font-medium text-slate-400">
+            {caption}
+          </p>
+        )}
+      </div>
+    );
+  }
+
+  // 5. Modern Nigerian Electoral Workflow: BVAS & IReV Transmission
+  if (type === 'civic-inec-bvas-voting-flow') {
+    return (
+      <div className="my-6 rounded-xl border border-slate-700/80 bg-slate-900/90 p-5 shadow-xl">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3">
+          <div>
+            <h4 className="text-sm font-semibold text-emerald-400">
+              Modern Nigerian Electoral Pipeline: Accreditation (BVAS) to IReV
+            </h4>
+            <p className="text-xs text-slate-400">
+              The Electoral Act 2022 integrity workflow at the Polling Unit (PU)
+            </p>
+          </div>
+          <span className="text-[10px] text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-800/60 font-medium">
+            INEC · Electoral Act 2022
+          </span>
+        </div>
+
+        <div className="w-full overflow-x-auto py-3">
+          <svg viewBox="0 0 680 230" className="w-full max-w-2xl mx-auto min-w-[560px] text-xs font-sans">
+            {/* Step 1: PVC Verification */}
+            <g transform="translate(15, 30)">
+              <rect width="115" height="120" rx="6" fill="#1e293b" stroke="#38bdf8" strokeWidth="1.5" />
+              <rect width="115" height="24" rx="6" fill="#0284c7" />
+              <rect y="18" width="115" height="6" fill="#0284c7" />
+              <text x="57" y="16" fill="#ffffff" textAnchor="middle" className="text-[9.5px] font-bold">1. PVC PRESENT</text>
+              <text x="10" y="42" fill="#cbd5e1" className="text-[8px]">• Permanent Voter Card</text>
+              <text x="10" y="58" fill="#cbd5e1" className="text-[8px]">• Confirms PU match</text>
+              <text x="10" y="74" fill="#cbd5e1" className="text-[8px]">• Queue at registered</text>
+              <text x="14" y="86" fill="#94a3b8" className="text-[7.5px]">polling unit location</text>
+            </g>
+
+            {/* Arrow 1 */}
+            <line x1="130" y1="90" x2="148" y2="90" stroke="#94a3b8" strokeWidth="2" />
+            <polygon points="148,90 142,86 142,94" fill="#94a3b8" />
+
+            {/* Step 2: BVAS Biometrics */}
+            <g transform="translate(150, 30)">
+              <rect width="115" height="120" rx="6" fill="#1e293b" stroke="#10b981" strokeWidth="1.5" />
+              <rect width="115" height="24" rx="6" fill="#059669" />
+              <rect y="18" width="115" height="6" fill="#059669" />
+              <text x="57" y="16" fill="#ffffff" textAnchor="middle" className="text-[9.5px] font-bold">2. BVAS ACCREDIT</text>
+              <text x="10" y="42" fill="#cbd5e1" className="text-[8px]">• Bimodal Verification</text>
+              <text x="10" y="58" fill="#cbd5e1" className="text-[8px]">• Fingerprint scan</text>
+              <text x="10" y="74" fill="#cbd5e1" className="text-[8px]">• Facial recognition</text>
+              <text x="10" y="90" fill="#34d399" className="text-[8px] font-bold">★ Stops ghost voting</text>
+            </g>
+
+            {/* Arrow 2 */}
+            <line x1="265" y1="90" x2="283" y2="90" stroke="#94a3b8" strokeWidth="2" />
+            <polygon points="283,90 277,86 277,94" fill="#94a3b8" />
+
+            {/* Step 3: Secret Ballot */}
+            <g transform="translate(285, 30)">
+              <rect width="115" height="120" rx="6" fill="#1e293b" stroke="#f59e0b" strokeWidth="1.5" />
+              <rect width="115" height="24" rx="6" fill="#d97706" />
+              <rect y="18" width="115" height="6" fill="#d97706" />
+              <text x="57" y="16" fill="#ffffff" textAnchor="middle" className="text-[9.5px] font-bold">3. SECRET BALLOT</text>
+              <text x="10" y="42" fill="#cbd5e1" className="text-[8px]">• Marked ballot paper</text>
+              <text x="10" y="58" fill="#cbd5e1" className="text-[8px]">• Thumbprint in booth</text>
+              <text x="10" y="74" fill="#cbd5e1" className="text-[8px]">• Drop in clear box</text>
+              <text x="10" y="90" fill="#fbbf24" className="text-[8px] font-bold">★ Absolute secrecy</text>
+            </g>
+
+            {/* Arrow 3 */}
+            <line x1="400" y1="90" x2="418" y2="90" stroke="#94a3b8" strokeWidth="2" />
+            <polygon points="418,90 412,86 412,94" fill="#94a3b8" />
+
+            {/* Step 4: PU Count & EC8A */}
+            <g transform="translate(420, 30)">
+              <rect width="115" height="120" rx="6" fill="#1e293b" stroke="#a855f7" strokeWidth="1.5" />
+              <rect width="115" height="24" rx="6" fill="#7e22ce" />
+              <rect y="18" width="115" height="6" fill="#7e22ce" />
+              <text x="57" y="16" fill="#ffffff" textAnchor="middle" className="text-[9.5px] font-bold">4. COUNT &amp; EC8A</text>
+              <text x="10" y="42" fill="#cbd5e1" className="text-[8px]">• Open count in public</text>
+              <text x="10" y="58" fill="#cbd5e1" className="text-[8px]">• Party agents countersign</text>
+              <text x="10" y="74" fill="#cbd5e1" className="text-[8px]">• Results announced</text>
+              <text x="10" y="90" fill="#cbd5e1" className="text-[8px]">• Form EC8A filled</text>
+            </g>
+
+            {/* Arrow 4 */}
+            <line x1="535" y1="90" x2="553" y2="90" stroke="#94a3b8" strokeWidth="2" />
+            <polygon points="553,90 547,86 547,94" fill="#94a3b8" />
+
+            {/* Step 5: IReV Upload */}
+            <g transform="translate(555, 30)">
+              <rect width="115" height="120" rx="6" fill="#1e293b" stroke="#10b981" strokeWidth="2" />
+              <rect width="115" height="24" rx="6" fill="#047857" />
+              <rect y="18" width="115" height="6" fill="#047857" />
+              <text x="57" y="16" fill="#ffffff" textAnchor="middle" className="text-[9.5px] font-bold">5. IReV UPLOAD</text>
+              <text x="10" y="42" fill="#cbd5e1" className="text-[8px]">• Snapshot of EC8A</text>
+              <text x="10" y="58" fill="#cbd5e1" className="text-[8px]">• Transmitted via BVAS</text>
+              <text x="10" y="74" fill="#cbd5e1" className="text-[8px]">• Public cloud viewing</text>
+              <text x="10" y="90" fill="#34d399" className="text-[8px] font-bold">★ Real-time audit</text>
+            </g>
+
+            {/* Bottom summary bar */}
+            <g transform="translate(50, 180)">
+              <rect width="580" height="30" rx="6" fill="#0f172a" stroke="#334155" strokeWidth="1" />
+              <text x="290" y="19" fill="#38bdf8" textAnchor="middle" className="text-[10px] font-semibold">
+                Section 47 of Electoral Act 2022: Accreditation with the Bimodal Voter Accreditation System (BVAS) is mandatory by law.
+              </text>
             </g>
           </svg>
         </div>

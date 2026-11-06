@@ -4,7 +4,8 @@ export type LiteratureDiagramType =
   | 'literature-dramatic-structure-freytag-pyramid'
   | 'literature-genres-and-subgenres-tree'
   | 'literature-poetic-meter-and-sonnet-anatomy'
-  | 'literature-figures-of-speech-wheel';
+  | 'literature-figures-of-speech-wheel'
+  | 'literature-african-drama-character-map';
 
 interface LiteratureDiagramProps {
   type: LiteratureDiagramType;
@@ -398,6 +399,91 @@ export const LiteratureDiagram: React.FC<LiteratureDiagramProps> = ({ type, capt
               <text x="15" y="118" fill="#cbd5e1" fontSize="8">• <tspan fontWeight="bold" fill="#fbcfe8">Synecdoche</tspan>: Part represents whole</text>
               <text x="25" y="128" fill="#94a3b8" fontSize="7">&quot;All hands on deck; give us this day our daily bread.&quot;</text>
             </g>
+          </svg>
+        </div>
+
+        {caption && (
+          <p className="mt-2 text-center text-xs font-medium text-slate-400">
+            {caption}
+          </p>
+        )}
+      </div>
+    );
+  }
+
+  // 5. African Drama Character & Conflict Architecture (The Lion and the Jewel)
+  if (type === 'literature-african-drama-character-map') {
+    return (
+      <div className="my-6 rounded-xl border border-slate-700/80 bg-slate-900/90 p-5 shadow-xl">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3">
+          <div>
+            <h4 className="text-sm font-semibold text-rose-400">
+              Dramatic Conflict &amp; Character Dynamic: The Lion and the Jewel (Wole Soyinka)
+            </h4>
+            <p className="text-xs text-slate-400">
+              Clash of Cultures: Baroka (Tradition &amp; Cunning) vs. Lakunle (Superficial Westernization) for Sidi (The Jewel)
+            </p>
+          </div>
+          <span className="rounded bg-rose-950/80 px-2.5 py-1 text-xs font-semibold text-rose-300 border border-rose-800">
+            WAEC African Drama Core
+          </span>
+        </div>
+
+        <div className="relative mt-4 flex justify-center overflow-x-auto py-2">
+          <svg viewBox="0 0 640 280" className="w-full max-w-2xl select-none text-xs font-sans">
+            {/* Protagonist: SIDI (The Jewel of Ilujinle) in Center */}
+            <g transform="translate(240, 20)">
+              <rect width="160" height="90" rx="8" fill="#1e1b4b" stroke="#ec4899" strokeWidth="2" />
+              <text x="80" y="24" fill="#f472b6" textAnchor="middle" className="text-[12px] font-bold">SIDI (The Jewel)</text>
+              <text x="12" y="44" fill="#cbd5e1" className="text-[8.5px]">• The Village Belle of Ilujinle</text>
+              <text x="12" y="58" fill="#cbd5e1" className="text-[8.5px]">• Pride inflated by Lagos Magazine</text>
+              <text x="12" y="72" fill="#cbd5e1" className="text-[8.5px]">• Demands full Bride Price</text>
+              <text x="12" y="84" fill="#fbbf24" className="text-[8px] font-bold">Symbol: African Beauty &amp; Pride</text>
+            </g>
+
+            {/* Suitor 1: LAKUNLE (The School Teacher) on Left */}
+            <g transform="translate(20, 140)">
+              <rect width="180" height="110" rx="8" fill="#1e293b" stroke="#38bdf8" strokeWidth="2" />
+              <text x="90" y="22" fill="#38bdf8" textAnchor="middle" className="text-[11px] font-bold">LAKUNLE (The School Teacher)</text>
+              <text x="10" y="40" fill="#cbd5e1" className="text-[8.5px]">• Superficial Western Modernity</text>
+              <text x="10" y="54" fill="#cbd5e1" className="text-[8.5px]">• Refuses Bride Price as &quot;barbaric&quot;</text>
+              <text x="10" y="68" fill="#cbd5e1" className="text-[8.5px]">• Uses bombastic, hollow English</text>
+              <text x="10" y="82" fill="#f87171" className="text-[8.5px] font-bold">• Flawed, pretentious intellectual</text>
+              <text x="10" y="98" fill="#94a3b8" className="text-[8px]">Symbol: Alienated Westernization</text>
+            </g>
+
+            {/* Suitor 2: BAROKA (The Bale / The Lion) on Right */}
+            <g transform="translate(440, 140)">
+              <rect width="180" height="110" rx="8" fill="#064e3b" stroke="#10b981" strokeWidth="2" />
+              <text x="90" y="22" fill="#34d399" textAnchor="middle" className="text-[11px] font-bold">BAROKA (The Bale / The Lion)</text>
+              <text x="10" y="40" fill="#cbd5e1" className="text-[8.5px]">• 62-year-old Traditional Ruler</text>
+              <text x="10" y="54" fill="#cbd5e1" className="text-[8.5px]">• Shrewd, cunning, resilient</text>
+              <text x="10" y="68" fill="#cbd5e1" className="text-[8.5px]">• Feigns impotence via Sadiku</text>
+              <text x="10" y="82" fill="#a7f3d0" className="text-[8.5px] font-bold">• Subdues and marries Sidi</text>
+              <text x="10" y="98" fill="#fbbf24" className="text-[8px]">Symbol: Enduring African Tradition</text>
+            </g>
+
+            {/* Catalyst / Intermediary: SADIKU (Head Wife) in Bottom Center */}
+            <g transform="translate(240, 155)">
+              <rect width="160" height="80" rx="6" fill="#1e293b" stroke="#f59e0b" strokeWidth="1.5" />
+              <text x="80" y="20" fill="#fbbf24" textAnchor="middle" className="text-[10px] font-bold">SADIKU (Bale&apos;s Head Wife)</text>
+              <text x="10" y="38" fill="#cbd5e1" className="text-[8px]">• Matchmaker &amp; Tradition Custodian</text>
+              <text x="10" y="52" fill="#cbd5e1" className="text-[8px]">• Deceived by Baroka&apos;s false impotence</text>
+              <text x="10" y="66" fill="#cbd5e1" className="text-[8px]">• Lures Sidi into the Bale&apos;s palace</text>
+            </g>
+
+            {/* Connecting Conflict Arrows */}
+            {/* Lakunle to Sidi */}
+            <line x1="150" y1="140" x2="250" y2="105" stroke="#38bdf8" strokeWidth="2" strokeDasharray="4 2" />
+            <text x="155" y="115" fill="#38bdf8" className="text-[8px] font-bold">Wooes with words</text>
+
+            {/* Baroka to Sidi */}
+            <line x1="480" y1="140" x2="390" y2="105" stroke="#10b981" strokeWidth="2" />
+            <text x="430" y="115" fill="#34d399" className="text-[8px] font-bold">Wooes with cunning</text>
+
+            {/* Sadiku links */}
+            <line x1="440" y1="195" x2="400" y2="195" stroke="#f59e0b" strokeWidth="1.5" />
+            <line x1="320" y1="155" x2="320" y2="110" stroke="#f59e0b" strokeWidth="1.5" />
           </svg>
         </div>
 

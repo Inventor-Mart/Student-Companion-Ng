@@ -4,7 +4,9 @@ export type FurtherMathDiagramType =
   | 'further-math-quadratic-roots-parabola'
   | 'further-math-coordinate-geometry'
   | 'further-math-unit-circle-astc'
-  | 'further-math-logic-truth-venn';
+  | 'further-math-logic-truth-venn'
+  | 'further-math-differentiation-turning-points'
+  | 'further-math-vectors-resolution';
 
 interface FurtherMathDiagramProps {
   type: FurtherMathDiagramType;
@@ -469,6 +471,157 @@ export const FurtherMathDiagram: React.FC<FurtherMathDiagramProps> = ({ type, ca
               <text x="155" y="17" fill="#cbd5e1" fontSize="10">
                 A conditional statement (P ⇒ Q) is LOGICALLY EQUIVALENT ONLY to its Contrapositive (~Q ⇒ ~P).
               </text>
+            </g>
+          </svg>
+        </div>
+
+        {caption && (
+          <p className="mt-2 text-center text-xs font-medium text-slate-400">
+            {caption}
+          </p>
+        )}
+      </div>
+    );
+  }
+
+  // 5. Calculus: Differentiation Turning Points (Max, Min, Inflexion)
+  if (type === 'further-math-differentiation-turning-points') {
+    return (
+      <div className="my-6 rounded-xl border border-slate-700/80 bg-slate-900/90 p-5 shadow-xl">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3">
+          <div>
+            <h4 className="text-sm font-semibold text-emerald-400">
+              Calculus: Stationary Points, Tangents &amp; Second Derivative Tests
+            </h4>
+            <p className="text-xs text-slate-400">
+              Local Maximum (d²y/dx² &lt; 0), Local Minimum (d²y/dx² &gt; 0), and Point of Inflexion
+            </p>
+          </div>
+          <span className="rounded bg-emerald-950/80 px-2.5 py-1 text-xs font-semibold text-emerald-300 border border-emerald-800 font-mono">
+            dy/dx = 0 at stationary points
+          </span>
+        </div>
+
+        <div className="relative mt-4 flex justify-center overflow-x-auto py-2">
+          <svg viewBox="0 0 580 300" className="w-full max-w-xl select-none text-xs font-sans">
+            {/* Coordinate Axes */}
+            <line x1="40" y1="250" x2="540" y2="250" stroke="#64748b" strokeWidth="1.5" />
+            <line x1="50" y1="260" x2="50" y2="25" stroke="#64748b" strokeWidth="1.5" />
+            <text x="535" y="265" fill="#94a3b8" className="text-[10px] font-bold">x</text>
+            <text x="35" y="30" fill="#94a3b8" className="text-[10px] font-bold">y</text>
+
+            {/* Cubic Curve y = f(x) */}
+            <path
+              d="M 60 230 C 130 50, 200 40, 270 145 C 340 240, 420 230, 500 50"
+              fill="none"
+              stroke="#38bdf8"
+              strokeWidth="2.5"
+            />
+            <text x="505" y="55" fill="#38bdf8" className="text-[11px] font-mono font-bold">y = f(x)</text>
+
+            {/* Point 1: Local Maximum (x ≈ 165, y ≈ 62) */}
+            {/* Horizontal Tangent line */}
+            <line x1="110" y1="62" x2="220" y2="62" stroke="#f59e0b" strokeWidth="2" strokeDasharray="4 2" />
+            <circle cx="165" cy="62" r="5" fill="#ef4444" stroke="#ffffff" strokeWidth="2" />
+            {/* Callout box for Max */}
+            <rect x="90" y="20" width="150" height="34" rx="4" fill="#1e1b4b" stroke="#f59e0b" strokeWidth="1" />
+            <text x="165" y="34" fill="#fbbf24" textAnchor="middle" className="text-[9px] font-bold">LOCAL MAXIMUM</text>
+            <text x="165" y="47" fill="#cbd5e1" textAnchor="middle" className="text-[8.5px] font-mono">dy/dx = 0, d²y/dx² &lt; 0</text>
+
+            {/* Point 2: Point of Inflexion (x ≈ 270, y ≈ 145) */}
+            <circle cx="270" cy="145" r="4.5" fill="#a855f7" stroke="#ffffff" strokeWidth="1.5" />
+            <line x1="230" y1="120" x2="310" y2="170" stroke="#a855f7" strokeWidth="1.5" strokeDasharray="3 3" />
+            <text x="285" y="140" fill="#c084fc" className="text-[9px] font-bold">Inflexion Point (d²y/dx² = 0)</text>
+
+            {/* Point 3: Local Minimum (x ≈ 375, y ≈ 215) */}
+            {/* Horizontal Tangent line */}
+            <line x1="320" y1="215" x2="430" y2="215" stroke="#10b981" strokeWidth="2" strokeDasharray="4 2" />
+            <circle cx="375" cy="215" r="5" fill="#10b981" stroke="#ffffff" strokeWidth="2" />
+            {/* Callout box for Min */}
+            <rect x="300" y="235" width="150" height="34" rx="4" fill="#064e3b" stroke="#10b981" strokeWidth="1" />
+            <text x="375" y="249" fill="#34d399" textAnchor="middle" className="text-[9px] font-bold">LOCAL MINIMUM</text>
+            <text x="375" y="262" fill="#cbd5e1" textAnchor="middle" className="text-[8.5px] font-mono">dy/dx = 0, d²y/dx² &gt; 0</text>
+
+            {/* Slope Sign Indicators */}
+            <text x="95" y="160" fill="#4ade80" className="text-[9px] font-bold">dy/dx &gt; 0 (Rising)</text>
+            <text x="215" y="115" fill="#f87171" className="text-[9px] font-bold">dy/dx &lt; 0 (Falling)</text>
+            <text x="440" y="160" fill="#4ade80" className="text-[9px] font-bold">dy/dx &gt; 0 (Rising)</text>
+          </svg>
+        </div>
+
+        {caption && (
+          <p className="mt-2 text-center text-xs font-medium text-slate-400">
+            {caption}
+          </p>
+        )}
+      </div>
+    );
+  }
+
+  // 6. Vectors: Resolution and Resultant in 2D & 3D
+  if (type === 'further-math-vectors-resolution') {
+    return (
+      <div className="my-6 rounded-xl border border-slate-700/80 bg-slate-900/90 p-5 shadow-xl">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3">
+          <div>
+            <h4 className="text-sm font-semibold text-emerald-400">
+              Vectors: Component Resolution, Dot Product &amp; Resultants
+            </h4>
+            <p className="text-xs text-slate-400">
+              Resolution into Orthogonal Components: R = Rx i + Ry j and Dot Product a · b = |a||b| cos θ
+            </p>
+          </div>
+          <span className="rounded bg-indigo-950/80 px-2.5 py-1 text-xs font-semibold text-indigo-300 border border-indigo-800 font-mono">
+            R² = Rx² + Ry²
+          </span>
+        </div>
+
+        <div className="relative mt-4 flex justify-center overflow-x-auto py-2">
+          <svg viewBox="0 0 580 280" className="w-full max-w-xl select-none text-xs font-sans">
+            {/* Coordinate Grid Axes */}
+            <line x1="50" y1="230" x2="520" y2="230" stroke="#64748b" strokeWidth="1.5" />
+            <line x1="60" y1="240" x2="60" y2="30" stroke="#64748b" strokeWidth="1.5" />
+            <text x="515" y="245" fill="#94a3b8" className="text-[10px] font-bold">X (Unit vector i)</text>
+            <text x="40" y="35" fill="#94a3b8" className="text-[10px] font-bold">Y (j)</text>
+
+            {/* Vector Triangle: Origin at (60, 230) */}
+            {/* Horizontal Component Rx (60, 230) -> (360, 230) */}
+            <line x1="60" y1="230" x2="360" y2="230" stroke="#3b82f6" strokeWidth="3" />
+            <polygon points="360,230 348,225 348,235" fill="#3b82f6" />
+            <text x="210" y="250" fill="#60a5fa" textAnchor="middle" className="text-[10.5px] font-mono font-bold">
+              Rx = |R| cos θ  (Horizontal)
+            </text>
+
+            {/* Vertical Component Ry (360, 230) -> (360, 70) */}
+            <line x1="360" y1="230" x2="360" y2="70" stroke="#10b981" strokeWidth="3" strokeDasharray="5 3" />
+            <polygon points="360,70 355,82 365,82" fill="#10b981" />
+            <text x="375" y="150" fill="#34d399" className="text-[10.5px] font-mono font-bold">
+              Ry = |R| sin θ
+            </text>
+
+            {/* Resultant Vector R (60, 230) -> (360, 70) */}
+            <line x1="60" y1="230" x2="360" y2="70" stroke="#f59e0b" strokeWidth="3.5" />
+            <polygon points="360,70 347,79 354,87" fill="#f59e0b" />
+            <text x="180" y="135" fill="#fbbf24" className="text-[12px] font-bold">
+              R = (Rx i + Ry j)
+            </text>
+
+            {/* Angle Arc at origin */}
+            <path d="M 120 230 A 60 60 0 0 0 110 203" fill="none" stroke="#facc15" strokeWidth="2" />
+            <text x="130" y="218" fill="#facc15" className="text-[11px] font-bold">θ</text>
+
+            {/* Right Angle symbol at (360, 230) */}
+            <rect x="345" y="215" width="15" height="15" fill="none" stroke="#94a3b8" strokeWidth="1" />
+
+            {/* Right side summary formulas */}
+            <g transform="translate(420, 50)">
+              <rect width="145" height="150" rx="6" fill="#1e293b" stroke="#475569" strokeWidth="1" />
+              <text x="72" y="22" fill="#38bdf8" textAnchor="middle" className="text-[10px] font-bold">VECTOR RULES:</text>
+              <text x="12" y="48" fill="#cbd5e1" className="text-[8.5px] font-mono">|R| = √(Rx² + Ry²)</text>
+              <text x="12" y="74" fill="#cbd5e1" className="text-[8.5px] font-mono">tan θ = Ry / Rx</text>
+              <text x="12" y="102" fill="#fbbf24" className="text-[8.5px] font-bold">Dot Product:</text>
+              <text x="12" y="118" fill="#cbd5e1" className="text-[8.5px] font-mono">a · b = ax bx + ay by</text>
+              <text x="12" y="136" fill="#a7f3d0" className="text-[8px]">If a · b = 0, a ⊥ b</text>
             </g>
           </svg>
         </div>

@@ -7,7 +7,9 @@ export type DiagramType =
   | 'tooth-structure'
   | 'heart-anatomy'
   | 'villus-structure'
-  | 'nephron-structure';
+  | 'nephron-structure'
+  | 'bio-respiratory-alveoli'
+  | 'bio-ecological-pyramids';
 
 interface BiologicalDiagramProps {
   type: DiagramType;
@@ -508,7 +510,158 @@ export const BiologicalDiagram: React.FC<BiologicalDiagramProps> = ({ type, capt
         </div>
       );
 
+    // ----------------------------------------------------
+    // 7. RESPIRATORY ALVEOLAR SAC & GAS EXCHANGE
+    // ----------------------------------------------------
+    case 'bio-respiratory-alveoli':
+      return (
+        <div className="my-4 p-4 rounded-2xl bg-slate-900 border border-slate-800 shadow-lg space-y-3">
+          <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+            <div className="flex items-center gap-2 text-xs font-bold text-white">
+              <Eye className="w-4 h-4 text-emerald-400" />
+              <span>Micro-Architecture of Alveolus & Pulmonary Capillary Gas Exchange</span>
+            </div>
+            <span className="text-[10px] text-sky-400 bg-sky-950/60 px-2 py-0.5 rounded border border-sky-800/60 font-medium">
+              Respiratory Biology · Diffusion Gradients
+            </span>
+          </div>
+
+          <div className="w-full overflow-x-auto py-2">
+            <svg viewBox="0 0 580 300" className="w-full max-w-xl mx-auto min-w-[420px] text-xs font-sans">
+              {/* Alveolar Cavity (Air space) */}
+              <circle cx="210" cy="150" r="115" fill="#0f172a" stroke="#334155" strokeWidth="2" />
+              <text x="210" y="100" fill="#38bdf8" textAnchor="middle" className="text-[11px] font-bold">ALVEOLAR AIR SPACE</text>
+              <text x="210" y="118" fill="#94a3b8" textAnchor="middle" className="text-[9px]">High pO₂ (104 mmHg) · Low pCO₂ (40 mmHg)</text>
+
+              {/* Single cell thick alveolar epithelium */}
+              <circle cx="210" cy="150" r="115" fill="none" stroke="#10b981" strokeWidth="5" strokeDasharray="6 2" />
+              <text x="75" y="145" fill="#34d399" className="text-[9px] font-bold">Squamous</text>
+              <text x="75" y="157" fill="#34d399" className="text-[9px] font-bold">Epithelium</text>
+              <text x="75" y="169" fill="#94a3b8" className="text-[8px]">(1 cell thick)</text>
+
+              {/* Surfactant fluid film lining inner alveolus */}
+              <circle cx="210" cy="150" r="109" fill="none" stroke="#38bdf8" strokeWidth="1.5" opacity="0.7" />
+
+              {/* Surrounding Pulmonary Capillary */}
+              <path d="M 330 20 C 360 80 360 220 330 280" fill="none" stroke="#64748b" strokeWidth="42" strokeLinecap="round" opacity="0.3" />
+              {/* Deoxygenated Blood entering from Pulmonary Artery (Blue) */}
+              <path d="M 330 20 C 350 70 350 110 345 130" fill="none" stroke="#0284c7" strokeWidth="26" />
+              <text x="375" y="45" fill="#38bdf8" className="text-[10px] font-bold">From Pulmonary Artery</text>
+              <text x="375" y="58" fill="#94a3b8" className="text-[9px]">Deoxygenated Blood (Low pO₂)</text>
+
+              {/* Oxygenated Blood leaving to Pulmonary Vein (Red) */}
+              <path d="M 345 170 C 350 190 350 230 330 280" fill="none" stroke="#be123c" strokeWidth="26" />
+              <text x="375" y="255" fill="#fb7185" className="text-[10px] font-bold">To Pulmonary Vein</text>
+              <text x="375" y="268" fill="#94a3b8" className="text-[9px]">Oxygenated Blood (High pO₂)</text>
+
+              {/* Red Blood Cells (Erythrocytes) in capillary */}
+              <circle cx="340" cy="50" r="7" fill="#1e3a8a" stroke="#60a5fa" strokeWidth="1" />
+              <circle cx="350" cy="100" r="7" fill="#4338ca" stroke="#818cf8" strokeWidth="1" />
+              <circle cx="350" cy="150" r="7" fill="#881337" stroke="#fb7185" strokeWidth="1" />
+              <circle cx="350" cy="200" r="7" fill="#be123c" stroke="#f43f5e" strokeWidth="1" />
+              <circle cx="340" cy="250" r="7" fill="#e11d48" stroke="#fda4af" strokeWidth="1" />
+
+              {/* Diffusion Arrows: O2 into blood, CO2 into alveolus */}
+              {/* O2 Arrow (Green/Red) */}
+              <g transform="translate(250, 135)">
+                <line x1="0" y1="0" x2="80" y2="0" stroke="#f43f5e" strokeWidth="3" />
+                <polygon points="85,0 75,-4 75,4" fill="#f43f5e" />
+                <text x="40" y="-8" fill="#f43f5e" textAnchor="middle" className="text-[10px] font-extrabold">O₂ Diffusion</text>
+              </g>
+
+              {/* CO2 Arrow (Blue) */}
+              <g transform="translate(330, 165)">
+                <line x1="0" y1="0" x2="-80" y2="0" stroke="#38bdf8" strokeWidth="3" />
+                <polygon points="-85,0 -75,-4 -75,4" fill="#38bdf8" />
+                <text x="-40" y="16" fill="#38bdf8" textAnchor="middle" className="text-[10px] font-extrabold">CO₂ Diffusion</text>
+              </g>
+            </svg>
+          </div>
+
+          <div className="flex items-center gap-2 text-[11px] text-slate-300 bg-slate-950/70 p-2.5 rounded-xl border border-slate-800">
+            <Info className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span>
+              <strong>Four Structural Adaptations for Rapid Diffusion (Fick's Law):</strong> 1. Enormous surface area (millions of alveoli); 2. Extremely thin diffusion barrier (1-cell thick epithelium + 1-cell thick capillary wall); 3. Moist surfactant inner lining; 4. Dense capillary network maintaining steep concentration gradients.
+            </span>
+          </div>
+        </div>
+      );
+
+    // ----------------------------------------------------
+    // 8. ECOLOGICAL ENERGY PYRAMID & 10% EFFICIENCY
+    // ----------------------------------------------------
+    case 'bio-ecological-pyramids':
+      return (
+        <div className="my-4 p-4 rounded-2xl bg-slate-900 border border-slate-800 shadow-lg space-y-3">
+          <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+            <div className="flex items-center gap-2 text-xs font-bold text-white">
+              <Eye className="w-4 h-4 text-amber-400" />
+              <span>Trophic Energy Pyramid & Lindeman's 10% Thermodynamic Efficiency</span>
+            </div>
+            <span className="text-[10px] text-amber-400 bg-amber-950/60 px-2 py-0.5 rounded border border-amber-800/60 font-medium">
+              Ecology · Energy Dissipation
+            </span>
+          </div>
+
+          <div className="w-full overflow-x-auto py-2">
+            <svg viewBox="0 0 600 280" className="w-full max-w-xl mx-auto min-w-[440px] text-xs font-sans">
+              {/* TIER 4: TERTIARY CONSUMERS (Apex: Eagle / Lion) */}
+              <g transform="translate(230, 25)">
+                <polygon points="70,0 0,50 140,50" fill="#dc2626" fillOpacity="0.8" stroke="#ef4444" strokeWidth="1.5" />
+                <text x="70" y="38" fill="#ffffff" textAnchor="middle" className="text-[10px] font-bold">Tertiary Consumers</text>
+                <text x="70" y="48" fill="#fecaca" textAnchor="middle" className="text-[8px]">10 kJ Energy (Apex Predators)</text>
+              </g>
+
+              {/* TIER 3: SECONDARY CONSUMERS (Carnivores: Snakes / Lizards) */}
+              <g transform="translate(180, 75)">
+                <polygon points="50,0 190,0 240,55 0,55" fill="#f59e0b" fillOpacity="0.8" stroke="#fbbf24" strokeWidth="1.5" />
+                <text x="120" y="32" fill="#ffffff" textAnchor="middle" className="text-[11px] font-bold">Secondary Consumers (Carnivores)</text>
+                <text x="120" y="46" fill="#fef3c7" textAnchor="middle" className="text-[9px]">100 kJ Energy Available</text>
+              </g>
+
+              {/* TIER 2: PRIMARY CONSUMERS (Herbivores: Grasshoppers / Cattle) */}
+              <g transform="translate(130, 130)">
+                <polygon points="50,0 290,0 340,55 0,55" fill="#0284c7" fillOpacity="0.8" stroke="#38bdf8" strokeWidth="1.5" />
+                <text x="170" y="32" fill="#ffffff" textAnchor="middle" className="text-[11px] font-bold">Primary Consumers (Herbivores)</text>
+                <text x="170" y="46" fill="#e0f2fe" textAnchor="middle" className="text-[9px]">1,000 kJ Energy Available</text>
+              </g>
+
+              {/* TIER 1: PRIMARY PRODUCERS (Autotrophs: Green Grasses / Phytoplankton) */}
+              <g transform="translate(70, 185)">
+                <polygon points="60,0 400,0 460,60 0,60" fill="#059669" fillOpacity="0.8" stroke="#34d399" strokeWidth="1.5" />
+                <text x="230" y="32" fill="#ffffff" textAnchor="middle" className="text-[12px] font-extrabold">Primary Producers (Photosynthetic Plants)</text>
+                <text x="230" y="48" fill="#a7f3d0" textAnchor="middle" className="text-[10px]">10,000 kJ Energy (Traps ~1% of Solar Insolation)</text>
+              </g>
+
+              {/* 90% Heat Energy Dissipation Arrows (Right side) */}
+              <g transform="translate(535, 30)">
+                <path d="M 0 190 C 20 170 30 130 10 90 C -10 60 20 20 10 0" fill="none" stroke="#f43f5e" strokeWidth="2.5" strokeDasharray="4 2" />
+                <text x="-40" y="110" fill="#f43f5e" className="text-[9px] font-bold">90% Energy Lost</text>
+                <text x="-40" y="122" fill="#cbd5e1" className="text-[8px]">as Metabolic Heat &</text>
+                <text x="-40" y="133" fill="#cbd5e1" className="text-[8px]">Respiration at each tier</text>
+              </g>
+
+              {/* 10% Transfer Badge */}
+              <g transform="translate(10, 80)">
+                <rect x="0" y="0" width="105" height="50" fill="#1e293b" stroke="#38bdf8" strokeWidth="1" rx="6" />
+                <text x="52" y="18" fill="#38bdf8" textAnchor="middle" className="text-[9px] font-bold">LINDEMAN'S LAW</text>
+                <text x="52" y="32" fill="#10b981" textAnchor="middle" className="text-[12px] font-extrabold">~10%</text>
+                <text x="52" y="44" fill="#94a3b8" textAnchor="middle" className="text-[8px]">Trophic Efficiency</text>
+              </g>
+            </svg>
+          </div>
+
+          <div className="flex items-center gap-2 text-[11px] text-slate-300 bg-slate-950/70 p-2.5 rounded-xl border border-slate-800">
+            <Info className="w-4 h-4 text-amber-400 shrink-0" />
+            <span>
+              <strong>Ecological Law:</strong> Unlike pyramids of numbers or biomass which can sometimes be inverted (e.g., millions of parasites feeding on one single tree), the <em>Pyramid of Energy can NEVER be inverted</em> because energy is dissipated irreversibly as heat according to the Second Law of Thermodynamics.
+            </span>
+          </div>
+        </div>
+      );
+
     default:
       return null;
   }
 };
+

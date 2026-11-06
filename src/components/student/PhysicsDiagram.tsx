@@ -7,7 +7,9 @@ export type PhysicsDiagramType =
   | 'plane-mirror-reflection'
   | 'concave-mirror-rays'
   | 'refraction-total-internal-reflection'
-  | 'block-and-tackle-pulley';
+  | 'block-and-tackle-pulley'
+  | 'transverse-wave-properties'
+  | 'convex-lens-ray-diagram';
 
 interface PhysicsDiagramProps {
   type: PhysicsDiagramType;
@@ -512,7 +514,154 @@ export const PhysicsDiagram: React.FC<PhysicsDiagramProps> = ({ type }) => {
         </div>
       );
 
+    // ----------------------------------------------------
+    // 7. TRANSVERSE WAVE PROFILE & PARAMETERS
+    // ----------------------------------------------------
+    case 'transverse-wave-properties':
+      return (
+        <div className="my-4 p-4 rounded-2xl bg-slate-900 border border-slate-800 shadow-lg space-y-3">
+          <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+            <div className="flex items-center gap-2 text-xs font-bold text-white">
+              <Eye className="w-4 h-4 text-emerald-400" />
+              <span>Transverse Wave Anatomy: Wavelength (λ), Amplitude (A), Crest & Trough</span>
+            </div>
+            <span className="text-[10px] text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-800/60 font-medium">
+              Wave Mechanics · v = fλ
+            </span>
+          </div>
+
+          <div className="w-full overflow-x-auto py-2">
+            <svg viewBox="0 0 600 280" className="w-full max-w-xl mx-auto min-w-[440px] text-xs font-sans">
+              {/* Equilibrium Line */}
+              <line x1="40" y1="140" x2="560" y2="140" stroke="#475569" strokeWidth="1.5" strokeDasharray="3 3" />
+              <text x="565" y="144" fill="#64748b" className="text-[9px]">Equilibrium Axis</text>
+
+              {/* Y Axis (Displacement) */}
+              <line x1="60" y1="20" x2="60" y2="260" stroke="#94a3b8" strokeWidth="1.5" />
+              <text x="55" y="15" fill="#cbd5e1" textAnchor="end" className="text-[9px] font-bold">+Displacement (y)</text>
+              <text x="55" y="265" fill="#cbd5e1" textAnchor="end" className="text-[9px] font-bold">-Displacement</text>
+
+              {/* Sine Wave Curve (2 full cycles) */}
+              <path
+                d="M 60 140 Q 120 40 180 140 T 300 140 T 420 140 T 540 140"
+                fill="none"
+                stroke="#10b981"
+                strokeWidth="3.5"
+              />
+
+              {/* Crest Points */}
+              <circle cx="120" cy="90" r="4" fill="#38bdf8" />
+              <text x="120" y="75" fill="#38bdf8" textAnchor="middle" className="text-[10px] font-bold">Crest 1</text>
+              <circle cx="360" cy="90" r="4" fill="#38bdf8" />
+              <text x="360" y="75" fill="#38bdf8" textAnchor="middle" className="text-[10px] font-bold">Crest 2</text>
+
+              {/* Trough Points */}
+              <circle cx="240" cy="190" r="4" fill="#f43f5e" />
+              <text x="240" y="210" fill="#f43f5e" textAnchor="middle" className="text-[10px] font-bold">Trough 1</text>
+              <circle cx="480" cy="190" r="4" fill="#f43f5e" />
+              <text x="480" y="210" fill="#f43f5e" textAnchor="middle" className="text-[10px] font-bold">Trough 2</text>
+
+              {/* Wavelength Arrow between successive crests */}
+              <line x1="120" y1="45" x2="360" y2="45" stroke="#fbbf24" strokeWidth="2" />
+              <polygon points="120,45 128,42 128,48" fill="#fbbf24" />
+              <polygon points="360,45 352,42 352,48" fill="#fbbf24" />
+              <text x="240" y="38" fill="#fbbf24" textAnchor="middle" className="text-[10px] font-extrabold">Wavelength (λ = distance between successive crests)</text>
+
+              {/* Amplitude (A) Indicator */}
+              <line x1="120" y1="140" x2="120" y2="90" stroke="#38bdf8" strokeWidth="2" strokeDasharray="2 2" />
+              <text x="130" y="120" fill="#38bdf8" className="text-[9px] font-bold">Amplitude (A)</text>
+
+              {/* Propagation direction arrow */}
+              <line x1="380" y1="245" x2="520" y2="245" stroke="#94a3b8" strokeWidth="2" />
+              <polygon points="525,245 515,240 515,250" fill="#94a3b8" />
+              <text x="450" y="260" fill="#94a3b8" textAnchor="middle" className="text-[9px]">Wave Propagation Direction →</text>
+            </svg>
+          </div>
+
+          <div className="flex items-center gap-2 text-[11px] text-slate-300 bg-slate-950/70 p-2.5 rounded-xl border border-slate-800">
+            <Info className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span>
+              <strong>Golden Wave Equation:</strong> The velocity of any wave is given by v = fλ, where v is wave speed (m/s), f is frequency (Hz), and λ is wavelength (meters). In a transverse wave, particles oscillate perpendicular to the direction of wave travel.
+            </span>
+          </div>
+        </div>
+      );
+
+    // ----------------------------------------------------
+    // 8. CONVEX (CONVERGING) LENS RAY DIAGRAM
+    // ----------------------------------------------------
+    case 'convex-lens-ray-diagram':
+      return (
+        <div className="my-4 p-4 rounded-2xl bg-slate-900 border border-slate-800 shadow-lg space-y-3">
+          <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+            <div className="flex items-center gap-2 text-xs font-bold text-white">
+              <Eye className="w-4 h-4 text-sky-400" />
+              <span>Convex Lens Ray Tracing: Real, Inverted & Diminished Image (Object Beyond 2F)</span>
+            </div>
+            <span className="text-[10px] text-sky-400 bg-sky-950/60 px-2 py-0.5 rounded border border-sky-800/60 font-medium">
+              Geometrical Optics · 1/f = 1/u + 1/v
+            </span>
+          </div>
+
+          <div className="w-full overflow-x-auto py-2">
+            <svg viewBox="0 0 600 270" className="w-full max-w-xl mx-auto min-w-[440px] text-xs font-sans">
+              {/* Principal Axis */}
+              <line x1="20" y1="135" x2="580" y2="135" stroke="#64748b" strokeWidth="1.5" />
+              <text x="575" y="150" fill="#64748b" className="text-[9px]">Principal Axis</text>
+
+              {/* Convex Lens Body */}
+              <path d="M 300 25 C 320 70 320 200 300 245 C 280 200 280 70 300 25 Z" fill="#0284c7" fillOpacity="0.3" stroke="#38bdf8" strokeWidth="2" />
+              <line x1="300" y1="20" x2="300" y2="250" stroke="#38bdf8" strokeWidth="1" strokeDasharray="3 3" />
+              <text x="300" y="15" fill="#38bdf8" textAnchor="middle" className="text-[10px] font-bold">Convex Lens</text>
+
+              {/* Optical Center O */}
+              <circle cx="300" cy="135" r="3" fill="#ffffff" />
+              <text x="295" y="150" fill="#ffffff" className="text-[9px] font-bold">O</text>
+
+              {/* Focal Points and 2F Points */}
+              {/* Left F and 2F */}
+              <circle cx="210" cy="135" r="3" fill="#cbd5e1" />
+              <text x="210" y="150" fill="#cbd5e1" textAnchor="middle" className="text-[9px] font-bold">F₁</text>
+              <circle cx="120" cy="135" r="3" fill="#cbd5e1" />
+              <text x="120" y="150" fill="#cbd5e1" textAnchor="middle" className="text-[9px] font-bold">2F₁</text>
+
+              {/* Right F and 2F */}
+              <circle cx="390" cy="135" r="3" fill="#cbd5e1" />
+              <text x="390" y="150" fill="#cbd5e1" textAnchor="middle" className="text-[9px] font-bold">F₂</text>
+              <circle cx="480" cy="135" r="3" fill="#cbd5e1" />
+              <text x="480" y="150" fill="#cbd5e1" textAnchor="middle" className="text-[9px] font-bold">2F₂</text>
+
+              {/* Object AB (Beyond 2F1: at x = 70, height = 70) */}
+              <line x1="70" y1="135" x2="70" y2="65" stroke="#f59e0b" strokeWidth="3" />
+              <polygon points="70,60 66,70 74,70" fill="#f59e0b" />
+              <text x="65" y="55" fill="#f59e0b" className="text-[10px] font-bold">Object (u &gt; 2f)</text>
+
+              {/* Ray 1: Parallel to axis, refracts through F2 */}
+              <line x1="70" y1="65" x2="300" y2="65" stroke="#f43f5e" strokeWidth="2" />
+              <line x1="300" y1="65" x2="520" y2="200" stroke="#f43f5e" strokeWidth="2" />
+
+              {/* Ray 2: Passes undeviated through optical center O */}
+              <line x1="70" y1="65" x2="520" y2="195" stroke="#38bdf8" strokeWidth="2" />
+
+              {/* Image A'B' (Formed between F2 and 2F2: at x = 430, height = -35) */}
+              <line x1="432" y1="135" x2="432" y2="170" stroke="#10b981" strokeWidth="3" />
+              <polygon points="432,175 428,165 436,165" fill="#10b981" />
+              <text x="440" y="190" fill="#10b981" className="text-[10px] font-bold">Real, Inverted Image</text>
+              <text x="440" y="202" fill="#a7f3d0" className="text-[8px]">Diminished (Between F and 2F)</text>
+            </svg>
+          </div>
+
+          <div className="flex items-center gap-2 text-[11px] text-slate-300 bg-slate-950/70 p-2.5 rounded-xl border border-slate-800">
+            <Info className="w-4 h-4 text-sky-400 shrink-0" />
+            <span>
+              <strong>Lens Formula & Sign Convention (Real-is-Positive):</strong> 1/f = 1/u + 1/v, where f is positive for convex lenses and negative for concave lenses. When u &gt; 2f, the image formed is real, inverted, diminished, and situated between f and 2f on the opposite side.
+            </span>
+          </div>
+        </div>
+      );
+
     default:
       return null;
   }
 };
+

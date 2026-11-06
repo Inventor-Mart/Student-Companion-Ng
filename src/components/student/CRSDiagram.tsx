@@ -4,7 +4,8 @@ export type CRSDiagramType =
   | 'crs-creation-and-sovereignty-timeline'
   | 'crs-covenant-history-and-promises-map'
   | 'crs-exodus-tabernacle-and-route-diagram'
-  | 'crs-ten-commandments-tablets';
+  | 'crs-ten-commandments-tablets'
+  | 'crs-passion-and-resurrection-timeline';
 
 interface CRSDiagramProps {
   type: CRSDiagramType;
@@ -366,6 +367,91 @@ export const CRSDiagram: React.FC<CRSDiagramProps> = ({ type, caption }) => {
               <rect width="480" height="38" rx="5" fill="#1e293b" stroke="#334155" strokeWidth="1" />
               <text x="12" y="16" fill="#34d399" fontSize="9" fontWeight="bold">JESUS&apos; SUMMARY OF THE LAW (Matthew 22:37–40):</text>
               <text x="12" y="28" fill="#cbd5e1" fontSize="8">&quot;Love the Lord your God with all your heart... and love your neighbor as yourself. On these two depend all the Law and Prophets.&quot;</text>
+            </g>
+          </svg>
+        </div>
+
+        {caption && (
+          <p className="mt-2 text-center text-xs font-medium text-slate-400">
+            {caption}
+          </p>
+        )}
+      </div>
+    );
+  }
+
+  // 5. The Passion, Death & Resurrection of Jesus Christ
+  if (type === 'crs-passion-and-resurrection-timeline') {
+    return (
+      <div className="my-6 rounded-xl border border-slate-700/80 bg-slate-900/90 p-5 shadow-xl">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3">
+          <div>
+            <h4 className="text-sm font-semibold text-amber-400">
+              The Passion, Crucifixion, Resurrection &amp; Great Commission of Jesus
+            </h4>
+            <p className="text-xs text-slate-400">
+              Synoptic Gospel narrative: Gethsemane $\to$ Trials $\to$ Golgotha $\to$ Empty Tomb $\to$ Ascension
+            </p>
+          </div>
+          <span className="rounded bg-amber-950/80 px-2.5 py-1 text-xs font-semibold text-amber-300 border border-amber-800">
+            Matthew 26–28 / Luke 22–24
+          </span>
+        </div>
+
+        <div className="relative mt-4 flex justify-center overflow-x-auto py-2">
+          <svg viewBox="0 0 640 250" className="w-full max-w-2xl select-none text-xs font-sans">
+            {/* Horizontal Timeline Connector */}
+            <line x1="40" y1="120" x2="600" y2="120" stroke="#f59e0b" strokeWidth="2.5" />
+
+            {/* 1. The Last Supper & Gethsemane */}
+            <g transform="translate(15, 20)">
+              <rect width="135" height="85" rx="6" fill="#1e293b" stroke="#38bdf8" strokeWidth="1.5" />
+              <text x="67" y="18" fill="#38bdf8" textAnchor="middle" className="text-[9.5px] font-bold">1. GETHSEMANE</text>
+              <text x="8" y="36" fill="#cbd5e1" className="text-[8px]">• Last Supper (Bread/Wine)</text>
+              <text x="8" y="50" fill="#cbd5e1" className="text-[8px]">• Agony: &quot;Not My will&quot;</text>
+              <text x="8" y="64" fill="#cbd5e1" className="text-[8px]">• Judas betrayal with a kiss</text>
+              <line x1="67" y1="85" x2="67" y2="100" stroke="#38bdf8" strokeWidth="2" />
+              <circle cx="67" cy="100" r="4.5" fill="#38bdf8" />
+            </g>
+
+            {/* 2. Sanhedrin & Roman Trials */}
+            <g transform="translate(170, 135)">
+              <circle cx="67" cy="-15" r="4.5" fill="#f87171" />
+              <line x1="67" y1="-15" x2="67" y2="0" stroke="#f87171" strokeWidth="2" />
+              <rect width="135" height="85" rx="6" fill="#1e293b" stroke="#f87171" strokeWidth="1.5" />
+              <text x="67" y="18" fill="#f87171" textAnchor="middle" className="text-[9.5px] font-bold">2. THE TRIALS</text>
+              <text x="8" y="36" fill="#cbd5e1" className="text-[8px]">• Sanhedrin: Blasphemy charge</text>
+              <text x="8" y="50" fill="#cbd5e1" className="text-[8px]">• Pontius Pilate: Sedition</text>
+              <text x="8" y="64" fill="#cbd5e1" className="text-[8px]">• Peter&apos;s threefold denial</text>
+            </g>
+
+            {/* 3. Golgotha (The Crucifixion) */}
+            <g transform="translate(325, 20)">
+              <rect width="135" height="85" rx="6" fill="#881337" fillOpacity="0.4" stroke="#f43f5e" strokeWidth="2" />
+              <text x="67" y="18" fill="#fb7185" textAnchor="middle" className="text-[9.5px] font-bold">3. CRUCIFIXION</text>
+              <text x="8" y="36" fill="#fca5a5" className="text-[8px]">• Simon of Cyrene aids</text>
+              <text x="8" y="50" fill="#cbd5e1" className="text-[8px]">• 7 Words from Cross</text>
+              <text x="8" y="64" fill="#cbd5e1" className="text-[8px]">• Temple veil torn in two</text>
+              <line x1="67" y1="85" x2="67" y2="100" stroke="#f43f5e" strokeWidth="2" />
+              <circle cx="67" cy="100" r="4.5" fill="#f43f5e" />
+            </g>
+
+            {/* 4. Resurrection & Ascension */}
+            <g transform="translate(480, 135)">
+              <circle cx="67" cy="-15" r="4.5" fill="#34d399" />
+              <line x1="67" y1="-15" x2="67" y2="0" stroke="#34d399" strokeWidth="2" />
+              <rect width="145" height="85" rx="6" fill="#064e3b" fillOpacity="0.4" stroke="#10b981" strokeWidth="2" />
+              <text x="72" y="18" fill="#34d399" textAnchor="middle" className="text-[9.5px] font-bold">4. RESURRECTION</text>
+              <text x="8" y="36" fill="#a7f3d0" className="text-[8px]">• The Empty Tomb (Mary Mag.)</text>
+              <text x="8" y="50" fill="#cbd5e1" className="text-[8px]">• Road to Emmaus &amp; Upper Room</text>
+              <text x="8" y="64" fill="#fbbf24" className="text-[8px] font-bold">★ Great Commission (Matt 28)</text>
+            </g>
+
+            {/* Bottom summary text */}
+            <g transform="translate(80, 230)">
+              <text x="240" y="12" fill="#94a3b8" textAnchor="middle" className="text-[9px] font-medium">
+                Theological Centrality (1 Cor 15:14): &quot;If Christ has not been raised, our preaching is useless and so is your faith.&quot;
+              </text>
             </g>
           </svg>
         </div>
