@@ -24,8 +24,9 @@ import { ChemicalDiagram, ChemicalDiagramType } from './ChemicalDiagram';
 import { PhysicsDiagram, PhysicsDiagramType } from './PhysicsDiagram';
 import { AgricDiagram, AgricDiagramType } from './AgricDiagram';
 import { ComputingDiagram, ComputingDiagramType } from './ComputingDiagram';
+import { FurtherMathDiagram, FurtherMathDiagramType } from './FurtherMathDiagram';
 
-type AnyDiagramType = BiologicalDiagramType | ChemicalDiagramType | PhysicsDiagramType | AgricDiagramType | ComputingDiagramType;
+type AnyDiagramType = BiologicalDiagramType | ChemicalDiagramType | PhysicsDiagramType | AgricDiagramType | ComputingDiagramType | FurtherMathDiagramType;
 
 interface DivisionStep {
   dividend: string;
@@ -611,6 +612,13 @@ export const LessonNoteReader: React.FC = () => {
                 'data-flow-charts'
               ];
 
+              const furtherMathDiagramTypes: FurtherMathDiagramType[] = [
+                'further-math-quadratic-roots-parabola',
+                'further-math-coordinate-geometry',
+                'further-math-unit-circle-astc',
+                'further-math-logic-truth-venn'
+              ];
+
               if (chemicalDiagramTypes.includes(block.diagramType as ChemicalDiagramType)) {
                 return (
                   <ChemicalDiagram key={idx} type={block.diagramType as ChemicalDiagramType} />
@@ -629,6 +637,11 @@ export const LessonNoteReader: React.FC = () => {
               if (computingDiagramTypes.includes(block.diagramType as ComputingDiagramType)) {
                 return (
                   <ComputingDiagram key={idx} type={block.diagramType as ComputingDiagramType} />
+                );
+              }
+              if (furtherMathDiagramTypes.includes(block.diagramType as FurtherMathDiagramType)) {
+                return (
+                  <FurtherMathDiagram key={idx} type={block.diagramType as FurtherMathDiagramType} />
                 );
               }
               return (
