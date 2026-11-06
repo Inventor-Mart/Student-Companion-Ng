@@ -937,5 +937,96 @@ export const CBT_EXAMS_DATABASE: CBTExam[] = [
         topicRef: 'Organic Chemistry & Alkanols'
       }
     ]
+  },
+  // --- SS 1 BIOLOGY 2ND TERM EXAM ---
+  {
+    id: 'waec-biology-ss1-mock',
+    examType: 'WAEC',
+    title: 'WAEC SSCE Biology Promotional Exam (SS 1)',
+    subject: 'Biology',
+    classLevel: 'SS 1',
+    durationMinutes: 15,
+    year: 2025,
+    xpReward: 350,
+    questions: [
+      {
+        id: 1,
+        question: 'Which of the following plant tissues is composed of dead cells with uniformly thickened, heavily lignified secondary walls?',
+        options: [
+          'Parenchyma',
+          'Collenchyma',
+          'Sclerenchyma',
+          'Phloem companion cells'
+        ],
+        correctOptionIndex: 2,
+        explanation: 'Sclerenchyma cells lose their protoplasts at maturity and develop thick, lignified secondary walls providing rigid, non-elastic mechanical strength.',
+        topicRef: 'Plant Tissues & Histology'
+      },
+      {
+        id: 2,
+        question: 'The stepped growth curve observed in insects and other arthropods is a direct consequence of:',
+        options: [
+          'Seasonal temperature variations',
+          'Periodic ecdysis of the rigid chitinous exoskeleton',
+          'Alternation of sexual and asexual generations',
+          'Fluctuation in blood volume'
+        ],
+        correctOptionIndex: 1,
+        explanation: 'Because the chitinous exoskeleton is non-expandable once hardened, growth can only occur immediately after shedding the old cuticle (ecdysis) before the new one hardens.',
+        topicRef: 'Supporting Systems & Skeletons'
+      },
+      {
+        id: 3,
+        question: 'During photosynthesis, the photolysis of water in the thylakoid grana yields:',
+        options: [
+          'Carbon dioxide, glucose, and ADP',
+          'Protons, electrons, and oxygen gas',
+          'Lactic acid and ATP',
+          'Sucrose and water vapor'
+        ],
+        correctOptionIndex: 1,
+        explanation: 'Photolysis is the light-driven catalytic splitting of water molecules into hydrogen ions (protons), electrons, and free oxygen gas as a byproduct.',
+        topicRef: 'Plant Nutrition & Photosynthesis'
+      },
+      {
+        id: 4,
+        question: 'A food sample treated with sodium hydroxide followed by copper (II) sulphate solution produces a distinct violet coloration. This indicates the presence of:',
+        options: [
+          'Reducing sugars',
+          'Starch',
+          'Proteins',
+          'Lipids'
+        ],
+        correctOptionIndex: 2,
+        explanation: 'The Biuret test produces a violet or purple coloration in the presence of peptide bonds found in protein molecules.',
+        topicRef: 'Food Tests & Animal Nutrition'
+      },
+      {
+        id: 5,
+        question: 'Why does the left ventricle of the mammalian heart possess a much thicker muscular wall than the right ventricle?',
+        options: [
+          'It pumps blood against high systemic resistance to all parts of the body',
+          'It contains deoxygenated blood under low pressure',
+          'It houses the sinoatrial pacemaker node',
+          'It connects directly to the pulmonary artery'
+        ],
+        correctOptionIndex: 0,
+        explanation: 'The left ventricle pumps oxygenated blood through the systemic aorta to distant body extremities, requiring substantial muscular force compared to the short pulmonary circuit.',
+        topicRef: 'Mammalian Circulatory System'
+      },
+      {
+        id: 6,
+        question: 'In the human nephron, ultrafiltration takes place under high hydrostatic pressure primarily because:',
+        options: [
+          'The Loop of Henle is surrounded by a dense capillary network',
+          'The afferent arteriole entering the glomerulus is wider than the efferent arteriole leaving it',
+          'The renal vein contains valves',
+          'Antidiuretic hormone stimulates renal blood flow'
+        ],
+        correctOptionIndex: 1,
+        explanation: 'The diameter differential between the wide afferent arteriole and the narrow efferent arteriole creates high filtration pressure inside the glomerular capillaries.',
+        topicRef: 'Excretory Systems & Nephron Physiology'
+      }
+    ]
   }
 ];
