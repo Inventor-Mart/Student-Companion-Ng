@@ -195,6 +195,34 @@ service cloud.firestore {
              (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 50));
     }
 
+    function isValidForumChannel(data) {
+      return data.keys().hasAll(['id', 'title', 'audience', 'category']) &&
+             data.id is string && isValidId(data.id) &&
+             data.title is string && data.title.size() <= 100 &&
+             data.audience in ['student', 'parent'] &&
+             data.category in ['academics', 'competitions', 'general', 'parenting', 'exams'];
+    }
+
+    function isValidForumMessage(data) {
+      return data.keys().hasAll(['id', 'channelId', 'senderId', 'senderName', 'senderRole', 'text']) &&
+             data.id is string && isValidId(data.id) &&
+             data.channelId is string && isValidId(data.channelId) &&
+             data.senderId is string && isValidId(data.senderId) &&
+             data.senderName is string && data.senderName.size() <= 100 &&
+             data.senderRole in ['student', 'parent', 'tutor', 'admin'] &&
+             data.text is string && data.text.size() >= 1 && data.text.size() <= 1000;
+    }
+
+    function isValidForumReport(data) {
+      return data.keys().hasAll(['id', 'messageId', 'channelId', 'reportedUserId', 'reporterUserId', 'messageText', 'reason', 'status']) &&
+             data.id is string && isValidId(data.id) &&
+             data.messageId is string && isValidId(data.messageId) &&
+             data.reportedUserId is string && isValidId(data.reportedUserId) &&
+             data.reporterUserId is string && isValidId(data.reporterUserId) &&
+             data.reason in ['spam', 'bullying', 'inappropriate', 'contact_sharing', 'other'] &&
+             data.status in ['pending', 'resolved', 'dismissed'];
+    }
+
     // --- COLLECTION RULES ---
 
     // 1. Students Collection
@@ -303,6 +331,27 @@ service cloud.firestore {
     match /subscriptionPayments/{paymentId} {
       allow get, list: if true;
       allow create: if isValidId(paymentId) && isValidSubscriptionPayment(incoming());
+      allow update, delete: if isAdmin();
+    }
+
+    // 11. Forum Channels Collection
+    match /forumChannels/{channelId} {
+      allow get, list: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    // 12. Forum Messages Collection
+    match /forumMessages/{messageId} {
+      allow get, list: if true;
+      allow create: if isVerified() && isValidId(messageId) && incoming().id == messageId && incoming().senderId == request.auth.uid && isValidForumMessage(incoming());
+      allow update: if isVerified() && isValidId(messageId) && (isAdmin() || (incoming().id == existing().id && incoming().senderId == existing().senderId));
+      allow delete: if isAdmin();
+    }
+
+    // 13. Forum Reports Collection
+    match /forumReports/{reportId} {
+      allow get, list: if isAdmin();
+      allow create: if isVerified() && isValidId(reportId) && incoming().id == reportId && incoming().reporterUserId == request.auth.uid && isValidForumReport(incoming());
       allow update, delete: if isAdmin();
     }
   }

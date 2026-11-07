@@ -1,0 +1,458 @@
+import React, { useState, useMemo } from 'react';
+import { useApp } from '../../context/AppContext';
+import { ForumChannel, ForumMessage, ForumReport } from '../../types';
+import {
+  INITIAL_FORUM_CHANNELS,
+  getStoredForumMessages,
+  saveStoredForumMessages,
+  getStoredForumReports,
+  saveStoredForumReports
+} from '../../data/forumData';
+import { filterMessageText } from '../../utils/profanityFilter';
+import {
+  MessageSquare,
+  HeartHandshake,
+  Award,
+  Coffee,
+  Send,
+  Flag,
+  CornerDownRight,
+  X,
+  AlertTriangle,
+  CheckCircle2,
+  ThumbsUp,
+  Lightbulb,
+  ShieldCheck,
+  UserCheck
+} from 'lucide-react';
+
+export const ParentCommunityForum: React.FC = () => {
+  const { currentUserProfile, currentUser } = useApp();
+
+  // Channels for parents
+  const parentChannels = useMemo(() => {
+    return INITIAL_FORUM_CHANNELS.filter(c => c.audience === 'parent');
+  }, []);
+
+  const [activeChannelId, setActiveChannelId] = useState<string>(parentChannels[0]?.id || 'parent-progress');
+  const [messages, setMessages] = useState<ForumMessage[]>(() => getStoredForumMessages());
+  const [inputText, setInputText] = useState('');
+  const [inputWarning, setInputWarning] = useState<string | null>(null);
+  const [replyingTo, setReplyingTo] = useState<ForumMessage | null>(null);
+
+  // Reporting modal state
+  const [reportingMessage, setReportingMessage] = useState<ForumMessage | null>(null);
+  const [reportReason, setReportReason] = useState<ForumReport['reason']>('bullying');
+  const [reportSubmitted, setReportSubmitted] = useState(false);
+
+  // Filter messages for current active channel
+  const currentChannel = parentChannels.find(c => c.id === activeChannelId) || parentChannels[0];
+  const channelMessages = messages.filter(m => m.channelId === activeChannelId);
+
+  // Handle reaction toggle
+  const handleToggleReaction = (msgId: string, reactionType: 'thumbsUp' | 'lightbulb' | 'fire' | 'clap') => {
+    const currentUserId = currentUser?.uid || currentUserProfile?.id || 'current-parent';
+    setMessages(prev => {
+      const updated = prev.map(msg => {
+        if (msg.id !== msgId) return msg;
+        const currentList = msg.reactions[reactionType] || [];
+        const hasReacted = currentList.includes(currentUserId);
+        const updatedList = hasReacted
+          ? currentList.filter(id => id !== currentUserId)
+          : [...currentList, currentUserId];
+
+        return {
+          ...msg,
+          reactions: {
+            ...msg.reactions,
+            [reactionType]: updatedList
+          }
+        };
+      });
+      saveStoredForumMessages(updated);
+      return updated;
+    });
+  };
+
+  // Handle sending a new message
+  const handleSendMessage = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!inputText.trim()) return;
+
+    // Run safety & profanity screening
+    const filterResult = filterMessageText(inputText);
+    if (!filterResult.isClean) {
+      setInputWarning(filterResult.warningMessage || 'Please review your message for community safety.');
+      return;
+    }
+
+    setInputWarning(null);
+
+    const newMsg: ForumMessage = {
+      id: `msg-par-${Date.now()}`,
+      channelId: activeChannelId,
+      senderId: currentUser?.uid || currentUserProfile?.id || 'my-parent-id',
+      senderName: currentUserProfile?.fullName || 'Verified Parent',
+      senderRole: 'parent',
+      text: filterResult.sanitizedText,
+      reactions: {
+        thumbsUp: [],
+        lightbulb: [],
+        fire: [],
+        clap: []
+      },
+      replyToId: replyingTo?.id,
+      replyToText: replyingTo ? (replyingTo.text.length > 60 ? `${replyingTo.text.slice(0, 60)}...` : replyingTo.text) : undefined,
+      createdAt: 'Just now'
+    };
+
+    setMessages(prev => {
+      const updated = [...prev, newMsg];
+      saveStoredForumMessages(updated);
+      return updated;
+    });
+    setInputText('');
+    setReplyingTo(null);
+  };
+
+  // Submit report
+  const handleSubmitReport = () => {
+    if (!reportingMessage) return;
+
+    // Create report record for Super Admin moderation
+    const newReport: ForumReport = {
+      id: `rep-${Date.now()}`,
+      messageId: reportingMessage.id,
+      channelId: reportingMessage.channelId,
+      reportedUserId: reportingMessage.senderId,
+      reportedUserName: reportingMessage.senderName,
+      reporterUserId: currentUser?.uid || currentUserProfile?.id || 'current-parent',
+      messageText: reportingMessage.text,
+      reason: reportReason,
+      status: 'pending',
+      createdAt: 'Just now'
+    };
+
+    const existingReports = getStoredForumReports();
+    saveStoredForumReports([newReport, ...existingReports]);
+
+    setMessages(prev => {
+      const updated = prev.map(m => (m.id === reportingMessage.id ? { ...m, isReported: true } : m));
+      saveStoredForumMessages(updated);
+      return updated;
+    });
+
+    setReportSubmitted(true);
+    setTimeout(() => {
+      setReportingMessage(null);
+      setReportSubmitted(false);
+    }, 1400);
+  };
+
+  return (
+    <div className="flex-1 w-full flex flex-col bg-slate-950 text-slate-100 h-full overflow-hidden rounded-2xl border border-slate-800 shadow-xl">
+      {/* Top Header Banner */}
+      <div className="bg-slate-900/95 border-b border-slate-800 px-4 py-3 shrink-0">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-indigo-600 to-purple-700 flex items-center justify-center text-white shadow-md shadow-indigo-950/50">
+              <HeartHandshake className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm font-bold text-white">Parents&apos; Discussion Lounge</h2>
+                <span className="text-[10px] bg-indigo-950 text-indigo-300 font-semibold px-2 py-0.5 rounded-full border border-indigo-800/60 flex items-center gap-1">
+                  <ShieldCheck className="w-3 h-3" />
+                  Parents Only
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400">
+                Share academic guidance, exam tips, and child progress insights with fellow Nigerian parents
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Channel Selector Pills */}
+        <div className="flex items-center gap-2 mt-3 overflow-x-auto pb-1 scrollbar-none">
+          {parentChannels.map(ch => {
+            const isActive = ch.id === activeChannelId;
+            return (
+              <button
+                key={ch.id}
+                onClick={() => {
+                  setActiveChannelId(ch.id);
+                  setReplyingTo(null);
+                }}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold shrink-0 transition-all cursor-pointer ${
+                  isActive
+                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-900/40'
+                    : 'bg-slate-800/80 text-slate-300 hover:bg-slate-800 hover:text-white border border-slate-700/60'
+                }`}
+              >
+                {ch.category === 'parenting' && <HeartHandshake className="w-3.5 h-3.5" />}
+                {ch.category === 'exams' && <Award className="w-3.5 h-3.5" />}
+                {ch.category === 'general' && <Coffee className="w-3.5 h-3.5" />}
+                <span>{ch.title}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Channel Purpose Banner */}
+      <div className="bg-slate-900/40 px-4 py-2 border-b border-slate-800/60 text-[11px] text-slate-400 flex items-center justify-between">
+        <span className="truncate">{currentChannel.description}</span>
+        <span className="text-[10px] text-indigo-400 font-medium shrink-0 ml-2">
+          {channelMessages.length} contributions
+        </span>
+      </div>
+
+      {/* Messages Scroll Area */}
+      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3.5">
+        {channelMessages.length === 0 ? (
+          <div className="h-64 flex flex-col items-center justify-center text-center p-6 text-slate-500">
+            <MessageSquare className="w-8 h-8 text-slate-600 mb-2" />
+            <p className="text-xs font-semibold text-slate-400">No discussions in this lounge yet</p>
+            <p className="text-[11px] text-slate-500 max-w-xs mt-1">
+              Start a topic to ask for advice or share experiences on child academics!
+            </p>
+          </div>
+        ) : (
+          channelMessages.map(msg => {
+            const currentUserId = currentUser?.uid || currentUserProfile?.id || 'current-parent';
+            const isMe = msg.senderId === currentUserId;
+
+            return (
+              <div
+                key={msg.id}
+                className={`flex flex-col space-y-1.5 max-w-2xl ${
+                  isMe ? 'ml-auto items-end' : 'mr-auto items-start'
+                }`}
+              >
+                {/* Sender Metadata Header */}
+                <div className="flex items-center gap-1.5 text-[11px] px-1">
+                  <span className={`font-bold ${isMe ? 'text-indigo-400' : 'text-slate-200'}`}>
+                    {isMe ? 'You' : msg.senderName}
+                  </span>
+                  <span className="text-[10px] font-semibold bg-indigo-950 text-indigo-300 px-1.5 py-0.5 rounded border border-indigo-800/60 flex items-center gap-1">
+                    <UserCheck className="w-2.5 h-2.5 text-indigo-400" />
+                    Verified Parent
+                  </span>
+                  <span className="text-slate-500 text-[10px]">· {msg.createdAt}</span>
+                </div>
+
+                {/* Reply snippet preview */}
+                {msg.replyToText && (
+                  <div className="text-[11px] bg-slate-900/80 border-l-2 border-indigo-500 px-2.5 py-1 rounded text-slate-400 flex items-center gap-1.5 max-w-lg italic">
+                    <CornerDownRight className="w-3 h-3 text-indigo-400 shrink-0" />
+                    <span className="truncate">{msg.replyToText}</span>
+                  </div>
+                )}
+
+                {/* Message Bubble Card */}
+                <div
+                  className={`relative p-3.5 rounded-2xl text-xs sm:text-[13px] leading-relaxed shadow-sm max-w-xl break-words ${
+                    isMe
+                      ? 'bg-indigo-950/80 text-indigo-50 border border-indigo-700/60 rounded-tr-sm'
+                      : 'bg-slate-900 text-slate-200 border border-slate-800 rounded-tl-sm'
+                  }`}
+                >
+                  <p>{msg.text}</p>
+
+                  {/* Reaction counts and actions row */}
+                  <div className="mt-2.5 pt-2 border-t border-slate-800/60 flex items-center justify-between gap-2">
+                    {/* Reaction Badges */}
+                    <div className="flex items-center gap-1.5">
+                      {/* Thumbs Up / Helpful */}
+                      <button
+                        onClick={() => handleToggleReaction(msg.id, 'thumbsUp')}
+                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-medium transition-colors ${
+                          msg.reactions.thumbsUp.includes(currentUserId)
+                            ? 'bg-indigo-900/80 text-indigo-300 border border-indigo-700'
+                            : 'bg-slate-800/80 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                        }`}
+                        title="Agree"
+                      >
+                        <ThumbsUp className="w-2.5 h-2.5" />
+                        <span>{msg.reactions.thumbsUp.length || 0}</span>
+                      </button>
+
+                      {/* Lightbulb (Helpful Advice) */}
+                      <button
+                        onClick={() => handleToggleReaction(msg.id, 'lightbulb')}
+                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-medium transition-colors ${
+                          msg.reactions.lightbulb.includes(currentUserId)
+                            ? 'bg-amber-900/80 text-amber-300 border border-amber-700'
+                            : 'bg-slate-800/80 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                        }`}
+                        title="Valuable Advice"
+                      >
+                        <Lightbulb className="w-2.5 h-2.5" />
+                        <span>{msg.reactions.lightbulb.length || 0}</span>
+                      </button>
+                    </div>
+
+                    {/* Reply & Report actions */}
+                    <div className="flex items-center gap-2 text-[11px] text-slate-400">
+                      <button
+                        onClick={() => setReplyingTo(msg)}
+                        className="hover:text-indigo-400 transition-colors flex items-center gap-1"
+                        title="Reply to message"
+                      >
+                        <CornerDownRight className="w-3 h-3" />
+                        <span className="hidden sm:inline">Reply</span>
+                      </button>
+
+                      {!isMe && (
+                        <button
+                          onClick={() => setReportingMessage(msg)}
+                          className="hover:text-rose-400 transition-colors p-1"
+                          title="Report message"
+                        >
+                          <Flag className="w-3 h-3" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {/* Compose Box (Bottom Fixed Bar) */}
+      <div className="bg-slate-900/95 border-t border-slate-800 p-3 shrink-0">
+        {/* Reply indicator */}
+        {replyingTo && (
+          <div className="mb-2 px-3 py-1.5 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-between text-xs text-slate-300">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <CornerDownRight className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+              <span className="font-semibold text-white">Replying to {replyingTo.senderName}:</span>
+              <span className="truncate text-slate-400 italic text-[11px]">{replyingTo.text}</span>
+            </div>
+            <button
+              onClick={() => setReplyingTo(null)}
+              className="p-1 hover:text-white rounded text-slate-400"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+
+        {/* Safety Warning */}
+        {inputWarning && (
+          <div className="mb-2 px-3 py-2 rounded-xl bg-amber-950/80 border border-amber-700/60 flex items-center gap-2 text-xs text-amber-200">
+            <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+            <span>{inputWarning}</span>
+          </div>
+        )}
+
+        <form onSubmit={handleSendMessage} className="flex items-end gap-2">
+          <div className="flex-1 relative">
+            <textarea
+              value={inputText}
+              onChange={e => {
+                setInputText(e.target.value);
+                if (inputWarning) setInputWarning(null);
+              }}
+              placeholder={`Contribute to #${currentChannel.title} (Max 500 characters)...`}
+              rows={2}
+              maxLength={500}
+              className="w-full bg-slate-950 text-xs sm:text-sm text-white px-3.5 py-2.5 rounded-xl border border-slate-700 focus:outline-none focus:border-indigo-500 resize-none placeholder-slate-500"
+            />
+            <div className="absolute right-2.5 bottom-2 text-[10px] text-slate-500">
+              {inputText.length}/500
+            </div>
+          </div>
+
+          <button
+            type="submit"
+            disabled={!inputText.trim()}
+            className="p-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:hover:bg-indigo-600 text-white font-semibold transition-all shadow-md shadow-indigo-950/40 cursor-pointer shrink-0"
+            title="Share with Parents"
+          >
+            <Send className="w-4 h-4" />
+          </button>
+        </form>
+      </div>
+
+      {/* Report Modal */}
+      {reportingMessage && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-sm w-full p-4 space-y-3.5 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
+              <div className="flex items-center gap-2 text-rose-400 font-bold text-sm">
+                <Flag className="w-4 h-4" />
+                <span>Report Content</span>
+              </div>
+              <button
+                onClick={() => setReportingMessage(null)}
+                className="text-slate-400 hover:text-white p-1"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {reportSubmitted ? (
+              <div className="py-6 text-center space-y-2">
+                <CheckCircle2 className="w-10 h-10 text-emerald-400 mx-auto" />
+                <p className="text-sm font-bold text-white">Report Submitted</p>
+                <p className="text-xs text-slate-400">
+                  Thank you for helping maintain a supportive, safe forum.
+                </p>
+              </div>
+            ) : (
+              <>
+                <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-800 text-xs text-slate-300 italic">
+                  &quot;{reportingMessage.text.slice(0, 100)}...&quot;
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold text-slate-300 block">
+                    Reason for report:
+                  </label>
+                  {[
+                    { id: 'inappropriate', label: 'Inappropriate or Disrespectful' },
+                    { id: 'spam', label: 'Commercial Spam or Unsolicited Promotion' },
+                    { id: 'bullying', label: 'Harassment or Conflict' }
+                  ].map(item => (
+                    <label
+                      key={item.id}
+                      className="flex items-center gap-2 p-2 rounded-lg bg-slate-850 hover:bg-slate-800 border border-slate-700/60 cursor-pointer text-xs text-slate-200"
+                    >
+                      <input
+                        type="radio"
+                        name="parentReportReason"
+                        checked={reportReason === item.id}
+                        onChange={() => setReportReason(item.id as any)}
+                        className="text-indigo-500 focus:ring-indigo-500"
+                      />
+                      <span>{item.label}</span>
+                    </label>
+                  ))}
+                </div>
+
+                <div className="flex gap-2 pt-1">
+                  <button
+                    onClick={() => setReportingMessage(null)}
+                    className="flex-1 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSubmitReport}
+                    className="flex-1 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow-md shadow-rose-950/40"
+                  >
+                    Submit Report
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};

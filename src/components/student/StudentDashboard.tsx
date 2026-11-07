@@ -17,7 +17,8 @@ import {
   CheckCircle2,
   Trophy,
   Atom,
-  GraduationCap
+  GraduationCap,
+  MessageSquare
 } from 'lucide-react';
 import { NairaText, NairaSign } from '../../utils/currency';
 
@@ -306,6 +307,51 @@ export const StudentDashboard: React.FC = () => {
               Inter-School Standings & Cup
             </p>
           </button>
+        </div>
+      </div>
+
+      {/* Student Academic & Competition Chat Forum Banner */}
+      <div className="bg-gradient-to-r from-teal-950/80 via-slate-900 to-emerald-950/40 border border-teal-600/50 rounded-2xl p-3.5 shadow-md">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-teal-500/20 border border-teal-500/40 flex items-center justify-center text-teal-300 shrink-0">
+              <MessageSquare className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs font-bold text-white">Student Academic & Contest Forum</span>
+                <span className="text-[9px] font-bold text-teal-300 bg-teal-950 px-1.5 py-0.2 rounded border border-teal-700 uppercase">
+                  Community
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-300 mt-0.5">
+                Chat with secondary school scholars across Nigeria on formulas, tough topics & contests!
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setActiveStudentTab('community')}
+            className="flex items-center gap-1 px-3 py-1.5 bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold rounded-xl transition-colors shadow-sm shrink-0 cursor-pointer"
+          >
+            <span>Open Chat</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
+        <div className="flex items-center gap-2 mt-2.5 pt-2 border-t border-slate-800/80 text-[10px] text-slate-400">
+          <span className="flex items-center gap-1 text-emerald-400 font-medium">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            Academics
+          </span>
+          <span>•</span>
+          <span className="flex items-center gap-1 text-amber-400 font-medium">
+            <Trophy className="w-3 h-3" />
+            Contests
+          </span>
+          <span>•</span>
+          <span className="text-slate-300">
+            JSS 1 - SS 3 Active Scholars
+          </span>
         </div>
       </div>
 

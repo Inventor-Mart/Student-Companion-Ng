@@ -1,6 +1,6 @@
 import React from 'react';
 import { useApp } from '../../context/AppContext';
-import { LayoutDashboard, BookOpen, Award, Trophy, Users, Gamepad2, Atom, Sparkles } from 'lucide-react';
+import { LayoutDashboard, BookOpen, Award, Trophy, Users, Gamepad2, Atom, Sparkles, MessageSquare } from 'lucide-react';
 
 export const StudentBottomNav: React.FC = () => {
   const { activeStudentTab, setActiveStudentTab } = useApp();
@@ -12,10 +12,15 @@ export const StudentBottomNav: React.FC = () => {
       icon: LayoutDashboard
     },
     {
+      id: 'community',
+      label: 'Forum',
+      icon: MessageSquare,
+      isLive: true
+    },
+    {
       id: 'ai-coach',
       label: 'AI Coach',
-      icon: Sparkles,
-      isLive: true
+      icon: Sparkles
     },
     {
       id: 'syllabus',

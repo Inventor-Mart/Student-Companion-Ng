@@ -23,10 +23,21 @@ import {
   Database,
   UserCheck,
   Camera,
-  X
+  X,
+  MessageSquare,
+  AlertTriangle,
+  Trash2,
+  ShieldAlert
 } from 'lucide-react';
 import { SchoolAdminPortal } from './SchoolAdminPortal';
 import { NairaText, NairaSign } from '../../utils/currency';
+import { ForumReport, ForumMessage } from '../../types';
+import {
+  getStoredForumReports,
+  saveStoredForumReports,
+  getStoredForumMessages,
+  saveStoredForumMessages
+} from '../../data/forumData';
 
 export const SuperAdminPortal: React.FC = () => {
   const {
@@ -38,11 +49,35 @@ export const SuperAdminPortal: React.FC = () => {
     currentRole
   } = useApp();
 
-  const [portalView, setPortalView] = useState<'directory' | 'school_admin'>('directory');
+  const [portalView, setPortalView] = useState<'directory' | 'school_admin' | 'forum_moderation'>('directory');
   const [roleFilter, setRoleFilter] = useState<'all' | UserRole>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedUserForEdit, setSelectedUserForEdit] = useState<RegisteredUserProfile | null>(null);
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
+
+  // Forum moderation state
+  const [forumReports, setForumReports] = useState<ForumReport[]>(() => getStoredForumReports());
+  const [moderationNotice, setModerationNotice] = useState<string | null>(null);
+
+  const handleDismissReport = (reportId: string) => {
+    const updated = forumReports.map(r => r.id === reportId ? { ...r, status: 'dismissed' as const } : r);
+    setForumReports(updated);
+    saveStoredForumReports(updated);
+    setModerationNotice('Report dismissed as non-violating.');
+    setTimeout(() => setModerationNotice(null), 3000);
+  };
+
+  const handleDeleteReportedMessage = (report: ForumReport) => {
+    const currentMessages = getStoredForumMessages();
+    const updatedMessages = currentMessages.filter(m => m.id !== report.messageId);
+    saveStoredForumMessages(updatedMessages);
+
+    const updatedReports = forumReports.map(r => r.id === report.id ? { ...r, status: 'resolved' as const } : r);
+    setForumReports(updatedReports);
+    saveStoredForumReports(updatedReports);
+    setModerationNotice('Reported message removed from forum and recorded as resolved.');
+    setTimeout(() => setModerationNotice(null), 3500);
+  };
 
   // Edit form state
   const [editFullName, setEditFullName] = useState<string>('');
@@ -138,6 +173,170 @@ export const SuperAdminPortal: React.FC = () => {
     }, 1200);
   };
 
+  if (portalView === 'forum_moderation') {
+    const pendingReports = forumReports.filter(r => r.status === 'pending');
+    const resolvedReports = forumReports.filter(r => r.status !== 'pending');
+
+    return (
+      <div className="flex-1 w-full flex flex-col overflow-y-auto px-3 sm:px-6 py-4 space-y-4 touch-pan-y text-slate-100 pb-16">
+        <div className="bg-[#0B1526] px-4 py-3 rounded-2xl border border-slate-800 flex items-center justify-between text-xs">
+          <div className="flex items-center gap-2">
+            <ShieldAlert className="w-4 h-4 text-amber-400" />
+            <span className="font-bold text-white text-sm">Community Forum Moderation Console</span>
+            <span className="bg-amber-950 text-amber-400 text-[10px] font-semibold px-2 py-0.5 rounded-full border border-amber-800">
+              Child Protection & Safe Chat
+            </span>
+          </div>
+          <button
+            onClick={() => setPortalView('directory')}
+            className="text-amber-400 hover:text-amber-300 font-bold flex items-center gap-1 cursor-pointer bg-slate-900 px-3 py-1.5 rounded-xl border border-slate-700"
+          >
+            &larr; Return to Super Admin User Directory
+          </button>
+        </div>
+
+        {moderationNotice && (
+          <div className="bg-emerald-950/80 border border-emerald-800 text-emerald-300 text-xs px-4 py-3 rounded-xl flex items-center gap-2 shadow-md">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span>{moderationNotice}</span>
+          </div>
+        )}
+
+        {/* Moderation Metrics */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
+            <span className="text-xs text-slate-400 block">Pending Reports</span>
+            <div className="text-2xl font-black text-rose-400 mt-1 flex items-center gap-2">
+              <span>{pendingReports.length}</span>
+              {pendingReports.length > 0 && (
+                <span className="text-[10px] bg-rose-950 text-rose-300 px-2 py-0.5 rounded-full border border-rose-800 font-semibold">
+                  Action Required
+                </span>
+              )}
+            </div>
+            <p className="text-[11px] text-slate-500 mt-1">Reported by peers for bullying, phone harvesting, or profanity.</p>
+          </div>
+
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
+            <span className="text-xs text-slate-400 block">Processed & Resolved</span>
+            <div className="text-2xl font-black text-emerald-400 mt-1">
+              {resolvedReports.length}
+            </div>
+            <p className="text-[11px] text-slate-500 mt-1">Deleted messages or dismissed false alarms.</p>
+          </div>
+
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
+            <span className="text-xs text-slate-400 block">Active Protection Filter</span>
+            <div className="text-sm font-bold text-indigo-300 mt-2 flex items-center gap-1.5">
+              <ShieldCheck className="w-4 h-4 text-emerald-400" />
+              <span>Regex Vulgarity + Contact Scraper</span>
+            </div>
+            <p className="text-[11px] text-slate-500 mt-1">Nigerian betting keywords & 11-digit phone numbers blocked client-side.</p>
+          </div>
+        </div>
+
+        {/* Pending Reports Queue */}
+        <div className="bg-slate-900 rounded-2xl border border-slate-800 p-4 space-y-3">
+          <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+            <h2 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-rose-400" />
+              <span>Reported Messages Requiring Review</span>
+            </h2>
+            <span className="text-[11px] text-slate-400 font-mono">
+              Queue: {pendingReports.length} incident{pendingReports.length === 1 ? '' : 's'}
+            </span>
+          </div>
+
+          {pendingReports.length === 0 ? (
+            <div className="text-center py-8 text-slate-500 space-y-2">
+              <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto" />
+              <p className="text-xs font-medium text-slate-300">Clean Queue — No Active Moderation Incidents!</p>
+              <p className="text-[11px] text-slate-500">Student and parent chats comply with the Community Safety Standard.</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {pendingReports.map(rep => (
+                <div
+                  key={rep.id}
+                  className="bg-slate-950 border border-rose-900/50 rounded-2xl p-4 space-y-3 shadow-md"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-white">{rep.reportedUserName}</span>
+                        <span className="text-[10px] bg-rose-950 text-rose-300 px-2 py-0.5 rounded-full border border-rose-800 font-bold uppercase tracking-wider">
+                          {rep.reason.replace('_', ' ')}
+                        </span>
+                        <span className="text-[10px] text-slate-500">{rep.createdAt}</span>
+                      </div>
+                      <p className="text-[11px] text-slate-400 mt-0.5">
+                        Channel: <strong className="text-slate-300">{rep.channelId}</strong> · Reporter ID: <strong className="text-slate-400 font-mono">{rep.reporterUserId}</strong>
+                      </p>
+                    </div>
+
+                    <span className="text-[10px] bg-amber-950 text-amber-300 px-2 py-0.5 rounded font-mono border border-amber-800">
+                      Status: {rep.status}
+                    </span>
+                  </div>
+
+                  <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-3 text-xs text-slate-200 font-mono">
+                    "{rep.messageText}"
+                  </div>
+
+                  <div className="flex items-center justify-end gap-2 pt-1">
+                    <button
+                      onClick={() => handleDismissReport(rep.id)}
+                      className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold border border-slate-700 transition-colors cursor-pointer"
+                    >
+                      Dismiss Report
+                    </button>
+                    <button
+                      onClick={() => handleDeleteReportedMessage(rep)}
+                      className="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition-colors shadow-sm flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Delete Message & Resolve</span>
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Resolved Incident History */}
+        {resolvedReports.length > 0 && (
+          <div className="bg-slate-900 rounded-2xl border border-slate-800 p-4 space-y-2.5">
+            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+              Moderation Audit Log (Past Decisions)
+            </h3>
+            <div className="space-y-2">
+              {resolvedReports.map(rep => (
+                <div
+                  key={rep.id}
+                  className="bg-slate-950 p-2.5 rounded-xl border border-slate-800 flex items-center justify-between text-xs"
+                >
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                    <div>
+                      <span className="font-semibold text-white">{rep.reportedUserName}</span>
+                      <span className="text-slate-500 text-[11px] ml-2">"{rep.messageText.length > 40 ? `${rep.messageText.slice(0, 40)}...` : rep.messageText}"</span>
+                    </div>
+                  </div>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${
+                    rep.status === 'resolved' ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' : 'bg-slate-800 text-slate-400'
+                  }`}>
+                    {rep.status}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   if (portalView === 'school_admin') {
     return (
       <div className="flex-1 w-full flex flex-col overflow-hidden">
@@ -191,6 +390,19 @@ export const SuperAdminPortal: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => setPortalView('forum_moderation')}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-950/70 hover:bg-amber-900 border border-amber-700/60 text-amber-300 text-xs font-bold transition-all cursor-pointer shadow-sm relative"
+            >
+              <ShieldAlert className="w-3.5 h-3.5" />
+              <span>Forum Moderation</span>
+              {forumReports.filter(r => r.status === 'pending').length > 0 && (
+                <span className="w-4 h-4 rounded-full bg-rose-500 text-white text-[10px] font-black flex items-center justify-center">
+                  {forumReports.filter(r => r.status === 'pending').length}
+                </span>
+              )}
+            </button>
+
             <button
               onClick={() => setPortalView('school_admin')}
               className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-purple-950/70 hover:bg-purple-900 border border-purple-700/60 text-purple-300 text-xs font-bold transition-all cursor-pointer shadow-sm"

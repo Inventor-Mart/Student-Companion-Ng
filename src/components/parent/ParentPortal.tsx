@@ -17,9 +17,12 @@ import {
   Award,
   BookOpen,
   CreditCard,
-  X
+  X,
+  MessageSquare,
+  LayoutDashboard
 } from 'lucide-react';
 import { NairaText, NairaSign } from '../../utils/currency';
+import { ParentCommunityForum } from './ParentCommunityForum';
 
 export const ParentPortal: React.FC = () => {
   const {
@@ -44,6 +47,7 @@ export const ParentPortal: React.FC = () => {
   const [isTopUpModalOpen, setIsTopUpModalOpen] = useState<boolean>(false);
   const [topUpAmount, setTopUpAmount] = useState<number>(10000);
   const [isProcessingPaystack, setIsProcessingPaystack] = useState<boolean>(false);
+  const [parentTab, setParentTab] = useState<'overview' | 'community'>('overview');
 
   // If locked, render PIN Gate
   if (!isParentPinUnlocked) {
@@ -134,8 +138,45 @@ export const ParentPortal: React.FC = () => {
         </button>
       </div>
 
-      {/* Wallet Balance & Funding Card */}
-      <div className="bg-gradient-to-br from-emerald-950/80 via-slate-900 to-slate-900 rounded-3xl p-4 border border-emerald-800/60 shadow-sm space-y-3">
+      {/* Tab Switcher: Overview vs Community Lounge */}
+      <div className="flex items-center gap-2 bg-slate-900/90 p-1.5 rounded-2xl border border-slate-800">
+        <button
+          onClick={() => setParentTab('overview')}
+          className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+            parentTab === 'overview'
+              ? 'bg-emerald-600 text-white shadow-sm'
+              : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <LayoutDashboard className="w-4 h-4" />
+          <span>Overview & Escrow</span>
+        </button>
+        <button
+          onClick={() => setParentTab('community')}
+          className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+            parentTab === 'community'
+              ? 'bg-emerald-600 text-white shadow-sm'
+              : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <MessageSquare className="w-4 h-4" />
+          <div className="flex items-center gap-1.5">
+            <span>Community Lounge</span>
+            <span className="text-[9px] bg-indigo-900/80 text-indigo-300 font-bold px-1.5 py-0.2 rounded border border-indigo-700/50">
+              Parents Only
+            </span>
+          </div>
+        </button>
+      </div>
+
+      {parentTab === 'community' ? (
+        <div className="flex-1 w-full flex flex-col min-h-[560px]">
+          <ParentCommunityForum />
+        </div>
+      ) : (
+        <>
+          {/* Wallet Balance & Funding Card */}
+          <div className="bg-gradient-to-br from-emerald-950/80 via-slate-900 to-slate-900 rounded-3xl p-4 border border-emerald-800/60 shadow-sm space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 text-emerald-400 text-xs font-semibold">
             <Wallet className="w-4 h-4" />
@@ -349,6 +390,8 @@ export const ParentPortal: React.FC = () => {
           ))}
         </div>
       </div>
+      </>
+      )}
 
       {/* Paystack Funding Simulation Modal */}
       {isTopUpModalOpen && (

@@ -20,6 +20,7 @@ import { KnowMorePage } from './components/landing/KnowMorePage';
 import { SignInPage } from './components/auth/SignInPage';
 import { SignUpPage } from './components/auth/SignUpPage';
 import { AiStudyCoach } from './components/student/AiStudyCoach';
+import { StudentCommunityForum } from './components/student/StudentCommunityForum';
 import { GrowthPartnerPortal } from './components/partner/GrowthPartnerPortal';
 
 const AppContent: React.FC = () => {
@@ -193,6 +194,7 @@ const AppContent: React.FC = () => {
                   {activeStudentTab === 'formulas' && <ScienceFormulasHub />}
                   {activeStudentTab === 'tutors' && <TutorDiscovery />}
                   {activeStudentTab === 'games' && <GamesHub />}
+                  {activeStudentTab === 'community' && <StudentCommunityForum />}
                 </div>
 
                 {/* Fixed Thumb-Zone Bottom Nav */}

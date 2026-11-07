@@ -10,7 +10,7 @@ export type NigerianClassLevel =
 
 export type AcademicStream = 'Junior' | 'Science' | 'Non-Science';
 
-export type StudentRank = 'Fresher' | 'Scholar' | 'Prefect' | 'Senior Boy' | 'Senior Girl';
+export type StudentRank = 'Fresher' | 'Scholar' | 'Prefect' | 'Senior Boy' | 'Senior Girl' | 'Senior Prefect';
 
 export interface StudentProfile {
   id: string;
@@ -276,5 +276,56 @@ export interface SubscriptionPayment {
   partnerId?: string | null;
   partnerCommissionCredited: boolean;
   commissionAmountNaira?: number;
+  createdAt: string;
+}
+
+export type ForumAudience = 'student' | 'parent';
+export type ForumCategory = 'academics' | 'competitions' | 'general' | 'parenting' | 'exams';
+
+export interface ForumChannel {
+  id: string;
+  title: string;
+  description: string;
+  audience: ForumAudience;
+  category: ForumCategory;
+  iconName: string;
+  messageCount: number;
+  lastActivityAt: string;
+}
+
+export interface ForumMessageReaction {
+  thumbsUp: string[]; // array of user IDs
+  lightbulb: string[];
+  fire: string[];
+  clap: string[];
+}
+
+export interface ForumMessage {
+  id: string;
+  channelId: string;
+  senderId: string;
+  senderName: string;
+  senderRole: UserRole;
+  senderClassLevel?: NigerianClassLevel;
+  senderRank?: StudentRank;
+  senderSchool?: string;
+  text: string;
+  reactions: ForumMessageReaction;
+  isReported?: boolean;
+  replyToId?: string;
+  replyToText?: string;
+  createdAt: string;
+}
+
+export interface ForumReport {
+  id: string;
+  messageId: string;
+  channelId: string;
+  reportedUserId: string;
+  reportedUserName: string;
+  reporterUserId: string;
+  messageText: string;
+  reason: 'spam' | 'bullying' | 'inappropriate' | 'contact_sharing' | 'other';
+  status: 'pending' | 'resolved' | 'dismissed';
   createdAt: string;
 }

@@ -584,6 +584,50 @@
         }
       },
       "required": ["id", "studentId", "studentName", "plan", "amountNaira", "paymentGateway", "status", "partnerCommissionCredited", "createdAt"]
+    },
+    "ForumChannel": {
+      "title": "ForumChannel",
+      "description": "Topic and group communication channel for students or parents",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 100 },
+        "description": { "type": "string", "maxLength": 300 },
+        "audience": { "type": "string", "enum": ["student", "parent"] },
+        "category": { "type": "string", "enum": ["academics", "competitions", "general", "parenting", "exams"] },
+        "iconName": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["id", "title", "audience", "category"]
+    },
+    "ForumMessage": {
+      "title": "ForumMessage",
+      "description": "Individual community forum post or discussion thread reply",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "channelId": { "type": "string", "maxLength": 128 },
+        "senderId": { "type": "string", "maxLength": 128 },
+        "senderName": { "type": "string", "maxLength": 100 },
+        "senderRole": { "type": "string", "enum": ["student", "parent", "tutor", "admin"] },
+        "text": { "type": "string", "maxLength": 1000 }
+      },
+      "required": ["id", "channelId", "senderId", "senderName", "senderRole", "text"]
+    },
+    "ForumReport": {
+      "title": "ForumReport",
+      "description": "User-submitted flag against inappropriate or harmful message content",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "messageId": { "type": "string", "maxLength": 128 },
+        "channelId": { "type": "string", "maxLength": 128 },
+        "reportedUserId": { "type": "string", "maxLength": 128 },
+        "reporterUserId": { "type": "string", "maxLength": 128 },
+        "messageText": { "type": "string", "maxLength": 1000 },
+        "reason": { "type": "string", "enum": ["spam", "bullying", "inappropriate", "contact_sharing", "other"] },
+        "status": { "type": "string", "enum": ["pending", "resolved", "dismissed"] }
+      },
+      "required": ["id", "messageId", "channelId", "reportedUserId", "reporterUserId", "messageText", "reason", "status"]
     }
   },
   "firestore": {
@@ -652,6 +696,24 @@
         "$ref": "#/entities/SubscriptionPayment"
       },
       "description": "Student subscription payment transaction receipts"
+    },
+    "/forumChannels/{channelId}": {
+      "schema": {
+        "$ref": "#/entities/ForumChannel"
+      },
+      "description": "Community forum topic channels"
+    },
+    "/forumMessages/{messageId}": {
+      "schema": {
+        "$ref": "#/entities/ForumMessage"
+      },
+      "description": "Messages posted in community channels"
+    },
+    "/forumReports/{reportId}": {
+      "schema": {
+        "$ref": "#/entities/ForumReport"
+      },
+      "description": "Safety violation reports submitted for administrative review"
     }
   }
 }
