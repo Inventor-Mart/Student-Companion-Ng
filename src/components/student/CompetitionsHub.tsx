@@ -53,7 +53,7 @@ export const CompetitionsHub: React.FC = () => {
     setCurrentRole
   } = useApp();
 
-  const [activeTab, setActiveTab] = useState<'termly' | 'weekly' | 'spotlight' | 'prizes'>('termly');
+  const [activeTab, setActiveTab] = useState<'termly' | 'schools' | 'weekly' | 'spotlight' | 'prizes'>('termly');
   const [hasEnteredThisWeek, setHasEnteredThisWeek] = useState<boolean>(false);
 
   // Leaderboard filter: 'national' or specific class level
@@ -234,10 +234,11 @@ export const CompetitionsHub: React.FC = () => {
         </div>
       </div>
 
-      {/* 4 Clean Tabs */}
-      <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4 bg-slate-900 p-1 rounded-2xl border border-slate-800 text-xs">
+      {/* 5 Clean Navigation Tabs */}
+      <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-5 bg-slate-900 p-1 rounded-2xl border border-slate-800 text-xs">
         {[
-          { id: 'termly', label: '3-Day Championship 🏆', icon: School },
+          { id: 'termly', label: '3-Day Championship 🏆', icon: Trophy },
+          { id: 'schools', label: 'Inter-School League 🏫', icon: School },
           { id: 'weekly', label: 'Weekly Competition', icon: Timer },
           { id: 'spotlight', label: 'Student of the Week', icon: Crown },
           { id: 'prizes', label: 'Prize Vault 🎁', icon: Gift }
@@ -740,7 +741,152 @@ export const CompetitionsHub: React.FC = () => {
       )}
 
       {/* ============================================================== */}
-      {/* TAB 2: WEEKLY COMPETITIONS                                     */}
+      {/* TAB 2: TERMLY INTER-SCHOOL LEAGUE (RANKED BY STUDENT XP)       */}
+      {/* ============================================================== */}
+      {activeTab === 'schools' && (
+        <div className="space-y-4">
+          <div className="bg-slate-900 rounded-3xl p-4 sm:p-5 border border-slate-800 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <School className="w-5 h-5 text-indigo-400" />
+                  <span>Term 2 National Inter-School Championship</span>
+                </h3>
+                <p className="text-xs text-slate-300 mt-1 leading-relaxed">
+                  Secondary schools across Nigeria battle for the prestigious Termly Gold Cup and STEM Lab Grants based on the aggregate XP points and quiz accuracies of their registered students.
+                </p>
+              </div>
+              <span className="text-[10px] font-mono text-indigo-300 bg-indigo-950 px-2.5 py-1 rounded-full border border-indigo-800 shrink-0 self-start">
+                Term 2 Week 8
+              </span>
+            </div>
+
+            {/* Student's School Performance Highlight */}
+            <div className="bg-gradient-to-r from-indigo-950/60 via-slate-950 to-indigo-950/40 border border-indigo-500/60 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-400 block">
+                  Your Institution's Standing
+                </span>
+                <h4 className="text-sm font-black text-white mt-0.5">{studentSchool}</h4>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Your daily syllabus drills, CBT tests, and championship exams boost your school's score!
+                </p>
+              </div>
+
+              <div className="flex items-center gap-3 text-right">
+                <div className="bg-slate-900/90 px-3 py-1.5 rounded-xl border border-slate-800">
+                  <span className="text-[10px] text-slate-400 block">School Rank</span>
+                  <span className="text-sm font-black text-amber-400 font-mono">Rank #1</span>
+                </div>
+                <div className="bg-slate-900/90 px-3 py-1.5 rounded-xl border border-slate-800">
+                  <span className="text-[10px] text-slate-400 block">Aggregate Points</span>
+                  <span className="text-sm font-black text-emerald-400 font-mono">42,850 pts</span>
+                </div>
+              </div>
+            </div>
+
+            {/* National School League Standings Table */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-xs font-bold text-white px-1">
+                <span>All-Nigeria School League Table</span>
+                <span className="text-[10px] text-slate-400 font-mono">Ranked by Total Student XP</span>
+              </div>
+
+              <div className="space-y-2">
+                {SCHOOL_LEADERBOARD_DATA.map(sch => {
+                  const isUserSchool =
+                    sch.schoolName.toLowerCase().includes(studentSchool.toLowerCase()) ||
+                    (studentSchool === 'Secondary School' && sch.rank === 1);
+
+                  return (
+                    <div
+                      key={sch.rank}
+                      className={`p-3.5 rounded-2xl border flex items-center justify-between text-xs transition-all ${
+                        sch.rank === 1
+                          ? 'bg-amber-950/40 border-amber-500/70 shadow-sm'
+                          : isUserSchool
+                          ? 'bg-indigo-950/40 border-indigo-500/70 shadow-sm'
+                          : 'bg-slate-950 border-slate-800'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <span
+                          className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-black font-mono shrink-0 ${
+                            sch.rank === 1
+                              ? 'bg-amber-500 text-slate-950 shadow-md'
+                              : sch.rank === 2
+                              ? 'bg-slate-300 text-slate-950'
+                              : sch.rank === 3
+                              ? 'bg-amber-700 text-white'
+                              : 'bg-slate-800 text-slate-400'
+                          }`}
+                        >
+                          {sch.rank}
+                        </span>
+
+                        <div>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-bold text-white text-xs">{sch.schoolName}</span>
+                            {isUserSchool && (
+                              <span className="text-[9px] font-bold text-indigo-300 bg-indigo-950 px-1.5 rounded border border-indigo-700">
+                                Your School
+                              </span>
+                            )}
+                            {sch.rank === 1 && (
+                              <span className="text-[9px] font-bold text-amber-400 bg-amber-950 px-1.5 rounded border border-amber-800">
+                                🏆 Gold Cup Leader
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[10px] text-slate-400 mt-0.5">
+                            {sch.state} State · {sch.studentCount} Contributing Scholars · {sch.averageAccuracy}% Avg Accuracy
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="text-right font-mono shrink-0 ml-2">
+                        <span className="font-bold text-emerald-400 text-sm block">
+                          {sch.totalPoints.toLocaleString()}
+                        </span>
+                        <span className="text-[10px] text-slate-400">Total Points</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* Intra-Class Tournament Standings Card */}
+          <div className="bg-slate-900 rounded-2xl p-4 border border-slate-800 space-y-3">
+            <div className="flex items-center justify-between">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+                <Users className="w-3.5 h-3.5 text-amber-400" />
+                <span>Termly Intra-Class Competition ({studentClass})</span>
+              </h4>
+              <span className="text-[10px] text-emerald-400 font-semibold">{studentSchool}</span>
+            </div>
+
+            <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 text-xs space-y-2">
+              <div className="flex justify-between items-center text-slate-300">
+                <span>Class Average CBT Accuracy:</span>
+                <span className="font-mono font-bold text-white">84.2%</span>
+              </div>
+              <div className="flex justify-between items-center text-slate-300">
+                <span>State Cohort Standing:</span>
+                <span className="font-mono font-bold text-amber-400">#2 across Lagos State Secondary Schools</span>
+              </div>
+              <div className="flex justify-between items-center text-slate-300">
+                <span>Inter-Class Grand Reward:</span>
+                <span className="text-emerald-400 font-semibold">Gold Cup Trophy & ₦500,000 School STEM Lab Grant</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================== */}
+      {/* TAB 3: WEEKLY COMPETITIONS                                     */}
       {/* ============================================================== */}
       {activeTab === 'weekly' && (
         <div className="space-y-4">
