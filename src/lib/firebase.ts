@@ -72,8 +72,14 @@ export async function signInWithGoogle() {
   try {
     const result = await signInWithPopup(auth, googleProvider);
     return result.user;
-  } catch (error) {
-    console.error('Google Sign In Error:', error);
+  } catch (error: any) {
+    if (error?.code === 'auth/unauthorized-domain' || error?.message?.includes('unauthorized-domain')) {
+      const err = new Error('auth/unauthorized-domain');
+      (err as any).code = 'auth/unauthorized-domain';
+      (err as any).domain = typeof window !== 'undefined' ? window.location.hostname : '';
+      throw err;
+    }
+    console.warn('Google Sign In:', error?.message || error);
     throw error;
   }
 }

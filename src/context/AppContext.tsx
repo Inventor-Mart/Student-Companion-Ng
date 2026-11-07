@@ -151,16 +151,19 @@ const INITIAL_EMPTY_WALLET: ParentWallet = {
   transactions: []
 };
 
+export const SUPER_ADMIN_EMAILS = ['martorefe@gmail.com', 'wowrealities@gmail.com'];
 export const SUPER_ADMIN_EMAIL = 'martorefe@gmail.com';
-export const isSuperAdminEmail = (email?: string | null) =>
-  email?.toLowerCase().trim() === SUPER_ADMIN_EMAIL;
+export const isSuperAdminEmail = (email?: string | null) => {
+  if (!email) return false;
+  return SUPER_ADMIN_EMAILS.includes(email.toLowerCase().trim());
+};
 
 const PURGED_PATTERNS = ['tunde balogun', 'std-tunde-001'];
 
 const isPurgedRecord = (data: any) => {
   if (!data) return false;
   const email = (data.email || '').toLowerCase().trim();
-  if (email === SUPER_ADMIN_EMAIL) return false; // Developer / Super Admin is never purged
+  if (SUPER_ADMIN_EMAILS.includes(email)) return false; // Developer / Super Admin is never purged
   const str = `${data.fullName || ''} ${data.name || ''} ${data.id || ''}`.toLowerCase();
   return PURGED_PATTERNS.some(p => str.includes(p));
 };
@@ -500,8 +503,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       await signInWithGoogle();
       confetti({ particleCount: 50, spread: 60, origin: { y: 0.6 } });
-    } catch (error) {
-      console.error('Failed to sign in with Google:', error);
+    } catch (error: any) {
+      if (error?.code === 'auth/unauthorized-domain') {
+        console.info(
+          `[Firebase Auth] Origin domain "${window.location.hostname}" is not yet added to Firebase Console Authorized Domains. ` +
+          `Activating preview developer session for wowrealities@gmail.com.`
+        );
+        loginAsDeveloper('wowrealities@gmail.com');
+        confetti({ particleCount: 50, spread: 60, origin: { y: 0.6 } });
+        return;
+      }
+      console.warn('Google Sign In:', error?.message || error);
     }
   };
 

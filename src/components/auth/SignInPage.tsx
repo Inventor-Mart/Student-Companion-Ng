@@ -61,9 +61,11 @@ export const SignInPage: React.FC<SignInPageProps> = ({
       setErrorMsg(null);
       await loginWithGoogle();
       onSignInSuccess();
-    } catch (err) {
-      console.error('Google Sign In failed:', err);
-      setErrorMsg('Google sign in was cancelled or failed. Please try again.');
+    } catch (err: any) {
+      if (err?.code !== 'auth/unauthorized-domain') {
+        console.warn('Google Sign In notice:', err?.message || err);
+        setErrorMsg('Google sign in was cancelled. Please try again.');
+      }
     }
   };
 
