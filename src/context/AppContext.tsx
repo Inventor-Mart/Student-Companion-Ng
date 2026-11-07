@@ -22,8 +22,15 @@ import {
   ChatMessage,
   VerifiedAddress,
   TutorVerificationDetails,
-  RegisteredUserProfile
+  RegisteredUserProfile,
+  ChampionshipRegistration,
+  ChampionshipTier
 } from '../types';
+import {
+  getStoredChampionshipRegistrations,
+  saveStoredChampionshipRegistrations,
+  TERMLY_REGISTRATION_FEE_NAIRA
+} from '../data/competitionPrizesData';
 import { INITIAL_USER_DIRECTORY } from '../data/mockUsersData';
 import {
   auth,
@@ -114,6 +121,13 @@ interface AppContextType {
   setActiveTutorChatId: (tutorId: string | null) => void;
   chatMessages: Record<string, ChatMessage[]>;
   sendChatMessage: (tutorId: string, text: string, sender: 'student' | 'tutor') => void;
+
+  // Termly Championship & Prizes
+  championshipRegistrations: ChampionshipRegistration[];
+  currentStudentChampionship: ChampionshipRegistration | null;
+  requestChampionshipEntry: () => void;
+  approveChampionshipRegistration: (registrationId: string) => boolean;
+  submitChampionshipExamResult: (score: number, totalQuestions: number, timeSpentSeconds: number) => void;
 
   // Reset demo
   resetDemoData: () => void;
@@ -861,6 +875,138 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
   };
 
+  // Termly Championship & Prizes State & Handlers
+  const [championshipRegistrations, setChampionshipRegistrations] = useState<ChampionshipRegistration[]>(() =>
+    getStoredChampionshipRegistrations()
+  );
+
+  const currentStudentId = currentUser?.uid || student.id || 'my-student-id';
+  const currentStudentChampionship = championshipRegistrations.find(r => r.studentId === currentStudentId) || null;
+
+  const requestChampionshipEntry = () => {
+    const tier: ChampionshipTier = student.classLevel.startsWith('JSS') ? 'junior' : 'senior';
+    const newReg: ChampionshipRegistration = {
+      id: `reg-champ-${Date.now()}`,
+      studentId: currentStudentId,
+      studentName: student.name || currentUserProfile?.fullName || 'Scholar Student',
+      studentSchool: student.school || 'Secondary School',
+      classLevel: student.classLevel,
+      tier,
+      registrationFeeNaira: TERMLY_REGISTRATION_FEE_NAIRA,
+      status: 'pending_parent',
+      requestedAt: 'Just now'
+    };
+
+    setChampionshipRegistrations(prev => {
+      const filtered = prev.filter(r => r.studentId !== currentStudentId);
+      const updated = [newReg, ...filtered];
+      saveStoredChampionshipRegistrations(updated);
+      return updated;
+    });
+
+    confetti({ particleCount: 40, spread: 50, origin: { y: 0.6 } });
+  };
+
+  const approveChampionshipRegistration = (registrationId: string): boolean => {
+    const reg = championshipRegistrations.find(r => r.id === registrationId);
+    if (!reg) return false;
+
+    if (parentWallet.balanceNaira < reg.registrationFeeNaira) {
+      return false; // Insufficient parent wallet funds
+    }
+
+    const debitTx: any = {
+      id: `tx-champ-${Date.now().toString().slice(-6)}`,
+      type: 'debit',
+      amountNaira: reg.registrationFeeNaira,
+      description: `Termly Championship Entry: ${reg.studentName} (${reg.classLevel} ${reg.tier.toUpperCase()})`,
+      timestamp: 'Just now',
+      status: 'successful',
+      reference: `CHAMP_${registrationId}`
+    };
+
+    setParentWallet(prev => {
+      const updatedBalance = prev.balanceNaira - reg.registrationFeeNaira;
+      const updated = {
+        ...prev,
+        balanceNaira: updatedBalance,
+        transactions: [debitTx, ...prev.transactions]
+      };
+
+      if (currentUser && !isOffline) {
+        const walletDocRef = doc(db, 'wallets', currentUser.uid);
+        const path = `wallets/${currentUser.uid}`;
+        updateDoc(walletDocRef, {
+          balanceNaira: updatedBalance,
+          updatedAt: new Date().toISOString()
+        }).catch(err => {
+          handleFirestoreError(err, OperationType.UPDATE, path);
+        });
+      }
+
+      return updated;
+    });
+
+    setChampionshipRegistrations(prev => {
+      const updated = prev.map(r =>
+        r.id === registrationId
+          ? { ...r, status: 'paid' as const, paidAt: 'Just now' }
+          : r
+      );
+      saveStoredChampionshipRegistrations(updated);
+      return updated;
+    });
+
+    confetti({ particleCount: 70, spread: 70, origin: { y: 0.5 } });
+    return true;
+  };
+
+  const submitChampionshipExamResult = (score: number, totalQuestions: number, timeSpentSeconds: number) => {
+    setChampionshipRegistrations(prev => {
+      let didUpdate = false;
+      const updated = prev.map(r => {
+        if (r.studentId === currentStudentId) {
+          didUpdate = true;
+          return {
+            ...r,
+            status: 'completed' as const,
+            score,
+            totalQuestions,
+            timeSpentSeconds,
+            completedAt: 'Just now'
+          };
+        }
+        return r;
+      });
+
+      if (!didUpdate) {
+        const tier: ChampionshipTier = student.classLevel.startsWith('JSS') ? 'junior' : 'senior';
+        updated.push({
+          id: `reg-champ-${Date.now()}`,
+          studentId: currentStudentId,
+          studentName: student.name || currentUserProfile?.fullName || 'Scholar Student',
+          studentSchool: student.school || 'Secondary School',
+          classLevel: student.classLevel,
+          tier,
+          registrationFeeNaira: TERMLY_REGISTRATION_FEE_NAIRA,
+          status: 'completed',
+          requestedAt: 'Today',
+          paidAt: 'Today',
+          score,
+          totalQuestions,
+          timeSpentSeconds,
+          completedAt: 'Just now'
+        });
+      }
+
+      saveStoredChampionshipRegistrations(updated);
+      return updated;
+    });
+
+    addStudentXP(score * 15, 'Termly Championship Grand Examination');
+    confetti({ particleCount: 90, spread: 80, origin: { y: 0.5 } });
+  };
+
   const createTutorBooking = (
     params: Omit<TutorBooking, 'id' | 'createdAt' | 'status' | 'isParentApproved'>
   ): TutorBooking => {
@@ -1179,6 +1325,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         chatMessages,
         sendChatMessage,
         resetDemoData,
+        championshipRegistrations,
+        currentStudentChampionship,
+        requestChampionshipEntry,
+        approveChampionshipRegistration,
+        submitChampionshipExamResult,
         isSuperAdmin,
         impersonatedUser,
         allRegisteredUsers,

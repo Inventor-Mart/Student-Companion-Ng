@@ -19,7 +19,9 @@ import {
   CreditCard,
   X,
   MessageSquare,
-  LayoutDashboard
+  LayoutDashboard,
+  Trophy,
+  Smartphone
 } from 'lucide-react';
 import { NairaText, NairaSign } from '../../utils/currency';
 import { ParentCommunityForum } from './ParentCommunityForum';
@@ -36,7 +38,9 @@ export const ParentPortal: React.FC = () => {
     rejectTutorBooking,
     student,
     examResults,
-    currentUserProfile
+    currentUserProfile,
+    championshipRegistrations,
+    approveChampionshipRegistration
   } = useApp();
 
   const parentName = currentUserProfile?.fullName || 'Registered Parent';
@@ -204,6 +208,104 @@ export const ParentPortal: React.FC = () => {
             <span>Fund Wallet</span>
           </button>
         </div>
+      </div>
+
+      {/* Termly Championship Registrations Queue */}
+      <div className="bg-gradient-to-r from-amber-950/70 via-slate-900 to-amber-950/40 rounded-3xl p-4 border border-amber-600/50 space-y-3 shadow-md">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 shrink-0">
+              <Trophy className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="flex items-center gap-1.5">
+                <h3 className="text-xs font-bold text-white uppercase tracking-wider">
+                  Termly Championship Registrations
+                </h3>
+                <span className="text-[10px] bg-amber-950 text-amber-300 font-bold px-1.5 py-0.2 rounded border border-amber-700">
+                  <NairaText amount={10000} /> Fee
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-300">
+                Prizes: 1st Android Phone 📱 · 2nd Scholar Hoodie 🧥 · 3rd School Bag & Calculator 🎒
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Check if any registration exists for ward */}
+        {championshipRegistrations.filter(r => r.status === 'pending_parent').length > 0 ? (
+          championshipRegistrations
+            .filter(r => r.status === 'pending_parent')
+            .map(reg => (
+              <div
+                key={reg.id}
+                className="bg-slate-950 p-3.5 rounded-2xl border border-amber-500/40 space-y-3"
+              >
+                <div className="flex items-start justify-between">
+                  <div>
+                    <span className="font-bold text-white text-xs block">{reg.studentName}</span>
+                    <span className="text-[11px] text-slate-400">
+                      {reg.studentSchool} · {reg.classLevel} ({reg.tier.toUpperCase()} TIER)
+                    </span>
+                  </div>
+                  <span className="text-xs font-extrabold text-amber-400 font-mono">
+                    <NairaText amount={reg.registrationFeeNaira} />
+                  </span>
+                </div>
+
+                <div className="bg-slate-900 p-2.5 rounded-xl border border-slate-800 text-[11px] text-slate-300 flex items-center justify-between">
+                  <span>Parent Wallet Available Balance:</span>
+                  <strong className="text-emerald-400 font-mono"><NairaText amount={parentWallet.balanceNaira} /></strong>
+                </div>
+
+                <div className="flex items-center gap-2 pt-1">
+                  {parentWallet.balanceNaira < reg.registrationFeeNaira ? (
+                    <button
+                      onClick={() => {
+                        setTopUpAmount(reg.registrationFeeNaira);
+                        setIsTopUpModalOpen(true);
+                      }}
+                      className="flex-1 py-2 px-3 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold transition-colors shadow-sm flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <PlusCircle className="w-3.5 h-3.5" />
+                      <span>Fund <NairaText amount={reg.registrationFeeNaira} /> & Authorize</span>
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => approveChampionshipRegistration(reg.id)}
+                      className="flex-1 py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-colors shadow-sm flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <ShieldCheck className="w-3.5 h-3.5" />
+                      <span>Authorize & Escrow <NairaText amount={reg.registrationFeeNaira} /></span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))
+        ) : championshipRegistrations.some(r => r.status === 'paid' || r.status === 'completed') ? (
+          <div className="bg-slate-950/70 p-3 rounded-2xl border border-emerald-800/40 flex items-center justify-between text-xs">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              <div>
+                <span className="text-white font-medium block">
+                  {wardName} is Registered for the Championship!
+                </span>
+                <span className="text-[11px] text-slate-400">
+                  ₦10,000 Entry fee confirmed · Ward can compete in the Timed Grand Exam
+                </span>
+              </div>
+            </div>
+            <span className="text-[10px] bg-emerald-950 text-emerald-300 font-bold px-2 py-0.5 rounded-full border border-emerald-800">
+              Entry Active
+            </span>
+          </div>
+        ) : (
+          <div className="bg-slate-950/60 p-3 rounded-2xl border border-slate-800 text-xs text-slate-400 flex items-center justify-between">
+            <span>No pending competition requests from {wardName} right now.</span>
+            <span className="text-[10px] text-slate-500">Term 2 Championship</span>
+          </div>
+        )}
       </div>
 
       {/* Pending Tutoring Approvals Queue */}

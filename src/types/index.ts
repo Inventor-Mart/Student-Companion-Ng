@@ -329,3 +329,33 @@ export interface ForumReport {
   status: 'pending' | 'resolved' | 'dismissed';
   createdAt: string;
 }
+
+export type ChampionshipTier = 'junior' | 'senior';
+
+export interface ChampionshipPrize {
+  rank: 1 | 2 | 3;
+  title: string;
+  subtitle: string;
+  specification: string;
+  valueNaira: number;
+  badge: string;
+  iconName: string;
+}
+
+export interface ChampionshipRegistration {
+  id: string;
+  studentId: string;
+  studentName: string;
+  studentSchool: string;
+  classLevel: NigerianClassLevel;
+  tier: ChampionshipTier;
+  registrationFeeNaira: number;
+  status: 'pending_parent' | 'paid' | 'completed';
+  requestedAt: string;
+  paidAt?: string;
+  score?: number;
+  totalQuestions?: number;
+  timeSpentSeconds?: number;
+  completedAt?: string;
+  rank?: number;
+}
