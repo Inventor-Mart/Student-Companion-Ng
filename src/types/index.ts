@@ -342,15 +342,31 @@ export interface ChampionshipPrize {
   iconName: string;
 }
 
+export interface ChampionshipStageResult {
+  day: 1 | 2 | 3;
+  subject: 'English Language' | 'Mathematics' | 'General Paper';
+  totalQuestions: number;
+  timeAllottedSeconds: number;
+  score: number; // raw correct count
+  scorePercentage: number;
+  timeSpentSeconds: number;
+  completedAt: string;
+}
+
 export interface ChampionshipRegistration {
   id: string;
   studentId: string;
   studentName: string;
   studentSchool: string;
   classLevel: NigerianClassLevel;
-  tier: ChampionshipTier;
+  tier?: ChampionshipTier;
   registrationFeeNaira: number;
   status: 'pending_parent' | 'paid' | 'completed';
+  currentStage?: 1 | 2 | 3 | 'finished';
+  stageResults?: Partial<Record<1 | 2 | 3, ChampionshipStageResult>>;
+  cumulativeScore?: number; // total correct out of 140
+  cumulativePercentage?: number;
+  cumulativeTimeSpentSeconds?: number;
   requestedAt: string;
   paidAt?: string;
   score?: number;
@@ -359,3 +375,4 @@ export interface ChampionshipRegistration {
   completedAt?: string;
   rank?: number;
 }
+

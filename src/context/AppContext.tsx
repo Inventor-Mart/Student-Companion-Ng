@@ -128,6 +128,7 @@ interface AppContextType {
   requestChampionshipEntry: () => void;
   approveChampionshipRegistration: (registrationId: string) => boolean;
   submitChampionshipExamResult: (score: number, totalQuestions: number, timeSpentSeconds: number) => void;
+  submitChampionshipStageResult: (day: 1 | 2 | 3, score: number, totalQuestions: number, timeSpentSeconds: number) => void;
 
   // Reset demo
   resetDemoData: () => void;
@@ -894,6 +895,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       tier,
       registrationFeeNaira: TERMLY_REGISTRATION_FEE_NAIRA,
       status: 'pending_parent',
+      currentStage: 1,
+      stageResults: {},
       requestedAt: 'Just now'
     };
 
@@ -919,7 +922,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       id: `tx-champ-${Date.now().toString().slice(-6)}`,
       type: 'debit',
       amountNaira: reg.registrationFeeNaira,
-      description: `Termly Championship Entry: ${reg.studentName} (${reg.classLevel} ${reg.tier.toUpperCase()})`,
+      description: `Termly Championship Entry: ${reg.studentName} (${reg.classLevel})`,
       timestamp: 'Just now',
       status: 'successful',
       reference: `CHAMP_${registrationId}`
@@ -950,7 +953,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setChampionshipRegistrations(prev => {
       const updated = prev.map(r =>
         r.id === registrationId
-          ? { ...r, status: 'paid' as const, paidAt: 'Just now' }
+          ? {
+              ...r,
+              status: 'paid' as const,
+              currentStage: 1 as const,
+              stageResults: r.stageResults || {},
+              paidAt: 'Just now'
+            }
           : r
       );
       saveStoredChampionshipRegistrations(updated);
@@ -961,27 +970,70 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return true;
   };
 
-  const submitChampionshipExamResult = (score: number, totalQuestions: number, timeSpentSeconds: number) => {
+  const submitChampionshipStageResult = (
+    day: 1 | 2 | 3,
+    score: number,
+    totalQuestions: number,
+    timeSpentSeconds: number
+  ) => {
+    const subject = day === 1 ? 'English Language' : day === 2 ? 'Mathematics' : 'General Paper';
+    const timeAllottedSeconds = day === 1 ? 1800 : 1620;
+    const scorePercentage = Math.round((score / totalQuestions) * 100);
+
+    const stageResult: any = {
+      day,
+      subject,
+      totalQuestions,
+      timeAllottedSeconds,
+      score,
+      scorePercentage,
+      timeSpentSeconds,
+      completedAt: 'Just now'
+    };
+
     setChampionshipRegistrations(prev => {
-      let didUpdate = false;
+      let didFind = false;
       const updated = prev.map(r => {
         if (r.studentId === currentStudentId) {
-          didUpdate = true;
+          didFind = true;
+          const prevStages = r.stageResults || {};
+          const newStages = { ...prevStages, [day]: stageResult };
+
+          const stageValues = Object.values(newStages).filter(Boolean) as any[];
+          const cumulativeScore = stageValues.reduce((acc, s) => acc + s.score, 0);
+          const totalQ = stageValues.reduce((acc, s) => acc + s.totalQuestions, 0);
+          const cumulativeTime = stageValues.reduce((acc, s) => acc + s.timeSpentSeconds, 0);
+          const cumulativePercentage = totalQ > 0 ? Math.round((cumulativeScore / totalQ) * 100) : 0;
+
+          const isFinished = day === 3 || (newStages[1] && newStages[2] && newStages[3]);
+          const nextStage: 1 | 2 | 3 | 'finished' = isFinished
+            ? 'finished'
+            : day === 1
+            ? 2
+            : 3;
+
           return {
             ...r,
-            status: 'completed' as const,
-            score,
-            totalQuestions,
-            timeSpentSeconds,
-            completedAt: 'Just now'
+            currentStage: nextStage,
+            status: isFinished ? ('completed' as const) : r.status,
+            stageResults: newStages,
+            cumulativeScore,
+            cumulativePercentage,
+            cumulativeTimeSpentSeconds: cumulativeTime,
+            score: cumulativePercentage,
+            totalQuestions: totalQ,
+            timeSpentSeconds: cumulativeTime,
+            completedAt: isFinished ? 'Just now' : r.completedAt
           };
         }
         return r;
       });
 
-      if (!didUpdate) {
+      if (!didFind) {
         const tier: ChampionshipTier = student.classLevel.startsWith('JSS') ? 'junior' : 'senior';
-        updated.push({
+        const newStages = { [day]: stageResult };
+        const nextStage: 1 | 2 | 3 | 'finished' = day === 3 ? 'finished' : (day + 1 as 2 | 3);
+        updated.unshift({
           id: `reg-champ-${Date.now()}`,
           studentId: currentStudentId,
           studentName: student.name || currentUserProfile?.fullName || 'Scholar Student',
@@ -989,13 +1041,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           classLevel: student.classLevel,
           tier,
           registrationFeeNaira: TERMLY_REGISTRATION_FEE_NAIRA,
-          status: 'completed',
-          requestedAt: 'Today',
-          paidAt: 'Today',
-          score,
+          status: day === 3 ? 'completed' : 'paid',
+          currentStage: nextStage,
+          stageResults: newStages,
+          cumulativeScore: score,
+          cumulativePercentage: scorePercentage,
+          cumulativeTimeSpentSeconds: timeSpentSeconds,
+          score: scorePercentage,
           totalQuestions,
           timeSpentSeconds,
-          completedAt: 'Just now'
+          requestedAt: 'Today',
+          paidAt: 'Today',
+          completedAt: day === 3 ? 'Just now' : undefined
         });
       }
 
@@ -1003,8 +1060,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return updated;
     });
 
-    addStudentXP(score * 15, 'Termly Championship Grand Examination');
-    confetti({ particleCount: 90, spread: 80, origin: { y: 0.5 } });
+    addStudentXP(score * 15, `Championship Day ${day} (${subject})`);
+    confetti({ particleCount: 80, spread: 70, origin: { y: 0.6 } });
+  };
+
+  const submitChampionshipExamResult = (score: number, totalQuestions: number, timeSpentSeconds: number) => {
+    submitChampionshipStageResult(1, Math.round((score / 100) * totalQuestions), totalQuestions, timeSpentSeconds);
   };
 
   const createTutorBooking = (
@@ -1330,6 +1391,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         requestChampionshipEntry,
         approveChampionshipRegistration,
         submitChampionshipExamResult,
+        submitChampionshipStageResult,
         isSuperAdmin,
         impersonatedUser,
         allRegisteredUsers,

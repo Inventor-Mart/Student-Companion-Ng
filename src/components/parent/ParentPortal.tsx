@@ -246,7 +246,7 @@ export const ParentPortal: React.FC = () => {
                   <div>
                     <span className="font-bold text-white text-xs block">{reg.studentName}</span>
                     <span className="text-[11px] text-slate-400">
-                      {reg.studentSchool} · {reg.classLevel} ({reg.tier.toUpperCase()} TIER)
+                      {reg.studentSchool} · {reg.classLevel} (Official Class Curriculum)
                     </span>
                   </div>
                   <span className="text-xs font-extrabold text-amber-400 font-mono">
@@ -289,10 +289,10 @@ export const ParentPortal: React.FC = () => {
               <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
               <div>
                 <span className="text-white font-medium block">
-                  {wardName} is Registered for the Championship!
+                  {wardName} is Registered for the 3-Day Championship!
                 </span>
                 <span className="text-[11px] text-slate-400">
-                  ₦10,000 Entry fee confirmed · Ward can compete in the Timed Grand Exam
+                  ₦10,000 Entry fee confirmed · Ward can compete across Day 1, Day 2, and Day 3
                 </span>
               </div>
             </div>
