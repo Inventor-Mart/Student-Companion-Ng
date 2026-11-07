@@ -292,6 +292,298 @@
         }
       },
       "required": ["email", "role"]
+    },
+    "GrowthPartner": {
+      "title": "GrowthPartner",
+      "description": "Registered Growth Partner profile for lifetime revenue sharing",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_-]+$",
+          "description": "Partner UID corresponding to auth.uid"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 100,
+          "description": "Partner full name or corporate organization"
+        },
+        "email": {
+          "type": "string",
+          "maxLength": 150,
+          "description": "Partner contact email"
+        },
+        "phone": {
+          "type": "string",
+          "maxLength": 30,
+          "description": "Partner telephone number"
+        },
+        "referralCode": {
+          "type": "string",
+          "maxLength": 30,
+          "pattern": "^[a-zA-Z0-9_-]+$",
+          "description": "Unique referral code for attributing students"
+        },
+        "commissionRatePercent": {
+          "type": "number",
+          "description": "Revenue share percentage (default 10%)"
+        },
+        "totalEarningsNaira": {
+          "type": "number",
+          "description": "Cumulative gross commissions earned in Naira"
+        },
+        "totalPaidOutNaira": {
+          "type": "number",
+          "description": "Total amount paid out to bank in Naira"
+        },
+        "activeReferralsCount": {
+          "type": "number",
+          "description": "Total number of active attributed students"
+        },
+        "bankName": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "Settlement commercial bank in Nigeria"
+        },
+        "accountNumber": {
+          "type": "string",
+          "maxLength": 20,
+          "description": "NUBAN 10-digit settlement account number"
+        },
+        "accountName": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "Verified bank account holder name"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["active", "suspended", "pending_approval"],
+          "description": "Partner account status"
+        },
+        "createdAt": {
+          "type": "string",
+          "maxLength": 50,
+          "description": "Partner onboarding ISO timestamp"
+        }
+      },
+      "required": ["id", "name", "email", "referralCode", "commissionRatePercent", "totalEarningsNaira", "totalPaidOutNaira", "activeReferralsCount", "status", "createdAt"]
+    },
+    "Referral": {
+      "title": "Referral",
+      "description": "Attribution mapping linking a Growth Partner to a referred student/parent",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_-]+$",
+          "description": "Referral record ID"
+        },
+        "partnerId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_-]+$",
+          "description": "Attributed Growth Partner UID"
+        },
+        "referredUserId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_-]+$",
+          "description": "Student or parent auth UID"
+        },
+        "referredUserName": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "Student display name"
+        },
+        "referralCodeUsed": {
+          "type": "string",
+          "maxLength": 30,
+          "description": "The partner referral code entered at sign-up"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["active", "churned"],
+          "description": "Referral relationship lifecycle state"
+        },
+        "totalVolumePaidNaira": {
+          "type": "number",
+          "description": "Lifetime subscription volume paid by the student"
+        },
+        "totalCommissionEarnedNaira": {
+          "type": "number",
+          "description": "Total 10% lifetime commission generated for partner"
+        },
+        "lastPaymentDate": {
+          "type": "string",
+          "maxLength": 50,
+          "description": "Most recent payment timestamp"
+        },
+        "createdAt": {
+          "type": "string",
+          "maxLength": 50,
+          "description": "Attribution creation timestamp"
+        }
+      },
+      "required": ["id", "partnerId", "referredUserId", "referralCodeUsed", "status", "totalVolumePaidNaira", "totalCommissionEarnedNaira", "createdAt"]
+    },
+    "PartnerWallet": {
+      "title": "PartnerWallet",
+      "description": "Digital wallet balance and earnings ledger for Growth Partners",
+      "type": "object",
+      "properties": {
+        "partnerId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_-]+$",
+          "description": "Partner UID corresponding to auth.uid"
+        },
+        "balanceNaira": {
+          "type": "number",
+          "description": "Available withdrawable commission balance in Naira"
+        },
+        "lifetimeEarnedNaira": {
+          "type": "number",
+          "description": "Total lifetime commission earned"
+        },
+        "totalWithdrawnNaira": {
+          "type": "number",
+          "description": "Total commission successfully withdrawn"
+        },
+        "updatedAt": {
+          "type": "string",
+          "maxLength": 50,
+          "description": "Last balance update timestamp"
+        }
+      },
+      "required": ["partnerId", "balanceNaira", "lifetimeEarnedNaira", "totalWithdrawnNaira", "updatedAt"]
+    },
+    "RevenueShareTransaction": {
+      "title": "RevenueShareTransaction",
+      "description": "Immutable ledger receipt of a 10% revenue share payout credited to a partner",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_-]+$",
+          "description": "Unique transaction record identifier"
+        },
+        "partnerId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_-]+$",
+          "description": "Credited partner UID"
+        },
+        "studentId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_-]+$",
+          "description": "Subscribing student UID"
+        },
+        "studentName": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "Subscribing student name"
+        },
+        "paymentId": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "Reference ID of the source subscription payment"
+        },
+        "subscriptionPlan": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "Purchased subscription tier (e.g. WAEC Termly Pass)"
+        },
+        "paymentAmountNaira": {
+          "type": "number",
+          "description": "Total subscription fee paid by student"
+        },
+        "commissionRatePercent": {
+          "type": "number",
+          "description": "Commission rate applied (10)"
+        },
+        "commissionAmountNaira": {
+          "type": "number",
+          "description": "Exact 10% credit amount in Naira"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["credited", "reversed"],
+          "description": "Credit status"
+        },
+        "createdAt": {
+          "type": "string",
+          "maxLength": 50,
+          "description": "Transaction timestamp"
+        }
+      },
+      "required": ["id", "partnerId", "studentId", "studentName", "paymentId", "subscriptionPlan", "paymentAmountNaira", "commissionRatePercent", "commissionAmountNaira", "status", "createdAt"]
+    },
+    "SubscriptionPayment": {
+      "title": "SubscriptionPayment",
+      "description": "Student subscription payment transaction record",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_-]+$",
+          "description": "Unique payment reference identifier"
+        },
+        "studentId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_-]+$",
+          "description": "Subscribing student UID"
+        },
+        "studentName": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "Subscribing student full name"
+        },
+        "plan": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "Subscription tier title"
+        },
+        "amountNaira": {
+          "type": "number",
+          "description": "Amount paid in Nigerian Naira"
+        },
+        "paymentGateway": {
+          "type": "string",
+          "enum": ["Paystack", "Flutterwave", "Direct Escrow"],
+          "description": "Payment processor gateway"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["successful", "pending", "failed"],
+          "description": "Payment settlement status"
+        },
+        "partnerId": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "Attributed Growth Partner UID, if referred"
+        },
+        "partnerCommissionCredited": {
+          "type": "boolean",
+          "description": "Whether 10% revenue share was credited to partner wallet"
+        },
+        "commissionAmountNaira": {
+          "type": "number",
+          "description": "Calculated 10% commission in Naira"
+        },
+        "createdAt": {
+          "type": "string",
+          "maxLength": 50,
+          "description": "Payment creation timestamp"
+        }
+      },
+      "required": ["id", "studentId", "studentName", "plan", "amountNaira", "paymentGateway", "status", "partnerCommissionCredited", "createdAt"]
     }
   },
   "firestore": {
@@ -330,6 +622,36 @@
         "$ref": "#/entities/Admin"
       },
       "description": "Authorized admin accounts and curriculum verifiers"
+    },
+    "/growthPartners/{partnerId}": {
+      "schema": {
+        "$ref": "#/entities/GrowthPartner"
+      },
+      "description": "Growth partner profiles and referral metrics"
+    },
+    "/referrals/{referralId}": {
+      "schema": {
+        "$ref": "#/entities/Referral"
+      },
+      "description": "Referrals linking partners to students"
+    },
+    "/partnerWallets/{partnerId}": {
+      "schema": {
+        "$ref": "#/entities/PartnerWallet"
+      },
+      "description": "Growth Partner digital earnings wallet"
+    },
+    "/revenueShareTransactions/{transactionId}": {
+      "schema": {
+        "$ref": "#/entities/RevenueShareTransaction"
+      },
+      "description": "Immutable ledger of 10% revenue share credits"
+    },
+    "/subscriptionPayments/{paymentId}": {
+      "schema": {
+        "$ref": "#/entities/SubscriptionPayment"
+      },
+      "description": "Student subscription payment transaction receipts"
     }
   }
 }

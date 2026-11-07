@@ -121,6 +121,80 @@ service cloud.firestore {
              data.role in ['superadmin', 'curriculum_moderator'];
     }
 
+    function isValidGrowthPartner(data) {
+      return data.keys().hasAll(['id', 'name', 'email', 'referralCode', 'commissionRatePercent', 'totalEarningsNaira', 'totalPaidOutNaira', 'activeReferralsCount', 'status', 'createdAt']) &&
+             data.keys().hasOnly(['id', 'name', 'email', 'phone', 'referralCode', 'commissionRatePercent', 'totalEarningsNaira', 'totalPaidOutNaira', 'activeReferralsCount', 'bankName', 'accountNumber', 'accountName', 'status', 'createdAt', 'updatedAt']) &&
+             data.id is string && isValidId(data.id) &&
+             data.name is string && data.name.size() >= 1 && data.name.size() <= 100 &&
+             data.email is string && data.email.size() <= 150 &&
+             data.referralCode is string && data.referralCode.size() <= 30 &&
+             data.commissionRatePercent is number && data.commissionRatePercent >= 0 && data.commissionRatePercent <= 100 &&
+             data.totalEarningsNaira is number && data.totalEarningsNaira >= 0 &&
+             data.totalPaidOutNaira is number && data.totalPaidOutNaira >= 0 &&
+             data.activeReferralsCount is number && data.activeReferralsCount >= 0 &&
+             data.status in ['active', 'suspended', 'pending_approval'] &&
+             data.createdAt is string && data.createdAt.size() <= 50 &&
+             (!('phone' in data) || (data.phone is string && data.phone.size() <= 50)) &&
+             (!('bankName' in data) || (data.bankName is string && data.bankName.size() <= 100)) &&
+             (!('accountNumber' in data) || (data.accountNumber is string && data.accountNumber.size() <= 30)) &&
+             (!('accountName' in data) || (data.accountName is string && data.accountName.size() <= 100)) &&
+             (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 50));
+    }
+
+    function isValidReferral(data) {
+      return data.keys().hasAll(['id', 'partnerId', 'referredUserId', 'referralCodeUsed', 'status', 'totalVolumePaidNaira', 'totalCommissionEarnedNaira', 'createdAt']) &&
+             data.keys().hasOnly(['id', 'partnerId', 'referredUserId', 'referredUserName', 'referralCodeUsed', 'status', 'totalVolumePaidNaira', 'totalCommissionEarnedNaira', 'lastPaymentDate', 'createdAt', 'updatedAt']) &&
+             data.id is string && isValidId(data.id) &&
+             data.partnerId is string && isValidId(data.partnerId) &&
+             data.referredUserId is string && isValidId(data.referredUserId) &&
+             data.referralCodeUsed is string && data.referralCodeUsed.size() <= 30 &&
+             data.status in ['active', 'churned'] &&
+             data.totalVolumePaidNaira is number && data.totalVolumePaidNaira >= 0 &&
+             data.totalCommissionEarnedNaira is number && data.totalCommissionEarnedNaira >= 0 &&
+             data.createdAt is string && data.createdAt.size() <= 50 &&
+             (!('referredUserName' in data) || (data.referredUserName is string && data.referredUserName.size() <= 100)) &&
+             (!('lastPaymentDate' in data) || (data.lastPaymentDate is string && data.lastPaymentDate.size() <= 50)) &&
+             (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 50));
+    }
+
+    function isValidPartnerWallet(data) {
+      return data.keys().hasAll(['partnerId', 'balanceNaira', 'lifetimeEarnedNaira', 'totalWithdrawnNaira']) &&
+             data.keys().hasOnly(['partnerId', 'balanceNaira', 'lifetimeEarnedNaira', 'totalWithdrawnNaira', 'updatedAt']) &&
+             data.partnerId is string && isValidId(data.partnerId) &&
+             data.balanceNaira is number && data.balanceNaira >= 0 &&
+             data.lifetimeEarnedNaira is number && data.lifetimeEarnedNaira >= 0 &&
+             data.totalWithdrawnNaira is number && data.totalWithdrawnNaira >= 0 &&
+             (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 50));
+    }
+
+    function isValidRevenueShareTx(data) {
+      return data.keys().hasAll(['id', 'partnerId', 'studentId', 'studentName', 'paymentId', 'subscriptionPlan', 'paymentAmountNaira', 'commissionRatePercent', 'commissionAmountNaira', 'status', 'createdAt']) &&
+             data.keys().hasOnly(['id', 'partnerId', 'studentId', 'studentName', 'paymentId', 'subscriptionPlan', 'paymentAmountNaira', 'commissionRatePercent', 'commissionAmountNaira', 'status', 'createdAt', 'updatedAt']) &&
+             data.id is string && isValidId(data.id) &&
+             data.partnerId is string && isValidId(data.partnerId) &&
+             data.studentId is string && isValidId(data.studentId) &&
+             data.paymentAmountNaira is number && data.paymentAmountNaira >= 0 &&
+             data.commissionAmountNaira is number && data.commissionAmountNaira >= 0 &&
+             data.status in ['credited', 'reversed'] &&
+             data.createdAt is string && data.createdAt.size() <= 50 &&
+             (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 50));
+    }
+
+    function isValidSubscriptionPayment(data) {
+      return data.keys().hasAll(['id', 'studentId', 'studentName', 'plan', 'amountNaira', 'paymentGateway', 'status', 'partnerCommissionCredited', 'createdAt']) &&
+             data.keys().hasOnly(['id', 'studentId', 'studentName', 'plan', 'amountNaira', 'paymentGateway', 'status', 'partnerId', 'partnerCommissionCredited', 'commissionAmountNaira', 'createdAt', 'updatedAt']) &&
+             data.id is string && isValidId(data.id) &&
+             data.studentId is string && isValidId(data.studentId) &&
+             data.amountNaira is number && data.amountNaira >= 0 &&
+             data.paymentGateway in ['Paystack', 'Flutterwave', 'Direct Escrow'] &&
+             data.status in ['successful', 'pending', 'failed'] &&
+             data.partnerCommissionCredited is bool &&
+             data.createdAt is string && data.createdAt.size() <= 50 &&
+             (!('partnerId' in data) || (data.partnerId == null || (data.partnerId is string && isValidId(data.partnerId)))) &&
+             (!('commissionAmountNaira' in data) || (data.commissionAmountNaira is number && data.commissionAmountNaira >= 0)) &&
+             (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 50));
+    }
+
     // --- COLLECTION RULES ---
 
     // 1. Students Collection
@@ -192,6 +266,44 @@ service cloud.firestore {
       allow get: if isValidId(adminId) && isVerified() && (request.auth.uid == adminId || isAdmin());
       allow create, update: if isValidId(adminId) && (isAdmin() || (isSignedIn() && request.auth.uid == adminId && request.auth.token.email == 'martorefe@gmail.com'));
       allow list, delete: if isAdmin();
+    }
+
+    // 6. Growth Partners Collection
+    match /growthPartners/{partnerId} {
+      allow get, list: if true;
+      allow create: if isValidId(partnerId) && incoming().id == partnerId && isValidGrowthPartner(incoming());
+      allow update: if isValidId(partnerId) && isValidGrowthPartner(incoming()) && incoming().id == existing().id;
+      allow delete: if isAdmin();
+    }
+
+    // 7. Referrals Collection
+    match /referrals/{referralId} {
+      allow get, list: if true;
+      allow create: if isValidId(referralId) && isValidReferral(incoming());
+      allow update: if isValidId(referralId) && isValidReferral(incoming());
+      allow delete: if isAdmin();
+    }
+
+    // 8. Partner Wallets Collection
+    match /partnerWallets/{partnerId} {
+      allow get, list: if true;
+      allow create: if isValidId(partnerId) && incoming().partnerId == partnerId && isValidPartnerWallet(incoming());
+      allow update: if isValidId(partnerId) && isValidPartnerWallet(incoming()) && incoming().partnerId == existing().partnerId;
+      allow delete: if isAdmin();
+    }
+
+    // 9. Revenue Share Transactions Collection
+    match /revenueShareTransactions/{transactionId} {
+      allow get, list: if true;
+      allow create: if isValidId(transactionId) && isValidRevenueShareTx(incoming());
+      allow update, delete: if isAdmin();
+    }
+
+    // 10. Subscription Payments Collection
+    match /subscriptionPayments/{paymentId} {
+      allow get, list: if true;
+      allow create: if isValidId(paymentId) && isValidSubscriptionPayment(incoming());
+      allow update, delete: if isAdmin();
     }
   }
 }

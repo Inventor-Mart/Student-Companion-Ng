@@ -76,7 +76,7 @@ export const EconomicsDiagram: React.FC<EconomicsDiagramProps> = ({ type, captio
 
             {/* Vertical Axis: Price (P in ₦) */}
             <line x1="70" y1="270" x2="70" y2="30" stroke="#94a3b8" strokeWidth="1.5" markerEnd="url(#econArrow)" />
-            <text x="25" y="40" fill="#cbd5e1" fontSize="12" fontWeight="600">Price (₦)</text>
+            <text x="25" y="40" fill="#cbd5e1" fontSize="12" fontWeight="600" style={{ fontFamily: 'system-ui, -apple-system, Roboto, "Segoe UI", Arial, sans-serif' }}>Price (₦)</text>
 
             {/* Demand Curve (Downward sloping from (110, 60) to (430, 250)) */}
             <line x1="100" y1="60" x2="440" y2="250" stroke="#ef4444" strokeWidth="3" />
@@ -266,7 +266,7 @@ export const EconomicsDiagram: React.FC<EconomicsDiagramProps> = ({ type, captio
             <text x="55" y="275" fill="#94a3b8" fontSize="11">0</text>
 
             <line x1="60" y1="260" x2="60" y2="30" stroke="#94a3b8" strokeWidth="1.5" markerEnd="url(#costArrow)" />
-            <text x="15" y="25" fill="#cbd5e1" fontSize="12" fontWeight="600">Cost (₦)</text>
+            <text x="15" y="25" fill="#cbd5e1" fontSize="12" fontWeight="600" style={{ fontFamily: 'system-ui, -apple-system, Roboto, "Segoe UI", Arial, sans-serif' }}>Cost (₦)</text>
 
             {/* AFC: Asymptotic hyperbola approaching both axes */}
             <path

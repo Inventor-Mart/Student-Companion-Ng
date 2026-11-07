@@ -1,85 +1,87 @@
-# SS 3 Lesson Notes (Batch 2): Chemistry, Physics & Agricultural Science (2nd Term) & Batch 1 Term Alignment
+# Universal Nigerian Naira (₦) Currency Display & Cross-Platform Font Fallback
 
-Comprehensive 12-week Second Term lesson note curricula for Senior Secondary 3 (SS 3) covering Chemistry, Physics, and Agricultural Science, plus aligning Batch 1 (Mathematics, English Language, and Biology) to Second Term. Built strictly according to the Nigerian NERDC and WAEC syllabus with custom dark-themed colored SVG diagrams, structured Markdown comparison tables, worked examination drills, and zero ASCII art.
-
----
+Standardize currency display across all platform personas (Growth Partner, Parent, Tutor, School Admin, and Student) using the official Nigerian Naira (`₦`) symbol with comma-separated whole numbers and cross-platform font fallbacks to eliminate missing-glyph boxes (`▯`).
 
 ## User Review & Critical Decisions
 
 > [!IMPORTANT]
-> The following parameters were confirmed via user clarification:
+> The following product decisions were confirmed during clarification:
+> - **Symbol Formatting**: Direct Naira (`₦`) symbol rendered with a dedicated cross-platform font fallback (`system-ui, -apple-system, Roboto, 'Segoe UI', Arial, sans-serif`) to prevent tofu boxes (`▯`) on Android, iOS, Windows, and mobile Chrome.
+> - **Number Formatting**: Comma-separated whole Naira amounts (e.g., `₦15,000`, `₦1,500`, `₦500`, `₦0`) without trailing decimals across all dashboards, ledgers, and modals.
 
-- **Confirmed Batch 2 Subjects**: **Chemistry**, **Physics**, and **Agricultural Science** (Pure Sciences and Agronomy).
-- **Confirmed Term Scope**: **2nd Term** comprehensive scheme of work (12 weeks each).
-- **Confirmed Batch 1 Alignment**: Updated SS 3 Batch 1 (`ss3MathData.ts`, `ss3EnglishData.ts`, `ss3BiologyData.ts`) so their term and metadata seamlessly align to **2nd Term**.
-- **Confirmed Presentation Standard**: Strict **Zero-ASCII Policy**. All visual illustrations rendered as interactive, dark-themed colored SVG diagram components, accompanied by styled Markdown tables and key takeaways.
-
----
-
-## 1. Status: Completed Execution Summary
-
-| Subject | Term | Week Count | Status | Associated SVG Components |
-| :--- | :--- | :--- | :--- | :--- |
-| **Mathematics (Batch 1)** | 2nd Term | 12 Weeks | Completed | `math-surds-and-conjugates`, `math-coordinate-geometry-calculus`, `math-linear-programming-feasible-region` |
-| **English Language (Batch 1)** | 2nd Term | 12 Weeks | Completed | `english-phonemic-vowel-matrix`, `english-advanced-sentence-synthesis` |
-| **Biology (Batch 1)** | 2nd Term | 12 Weeks | Completed | `bio-reflex-arc-neural-pathway`, `bio-genetics-punnett-square`, `bio-human-eye-optics` |
-| **Chemistry (Batch 2)** | 2nd Term | 12 Weeks | Completed | `chemical-nuclear-decay-series`, `chemical-electrolytic-downs-cell` |
-| **Physics (Batch 2)** | 2nd Term | 12 Weeks | Completed | `physics-ac-rlc-resonance`, `physics-photoelectric-work-function` |
-| **Agricultural Science (Batch 2)**| 2nd Term | 12 Weeks | Completed | `agric-tractor-implement-coupling` |
+- **Confirmed Decision 1**: Implement universal `formatNaira`, `<NairaText />`, and `<NairaSign />` components in `src/utils/currency.tsx` with dedicated font isolation so the symbol never inherits fonts lacking glyph U+20A6 (such as `JetBrains Mono`).
+- **Confirmed Decision 2**: Audit and standardize every persona in the app (Growth Partner, Parent, Tutor, Admin, Student) to use this uniform representation.
 
 ---
 
-## 2. Subject Schemes of Work (2nd Term — 12 Weeks Each)
+## 1. Overview & Core Concept
 
-### A. SS 3 Chemistry (2nd Term)
-- **Week 1: Nuclear Chemistry & Radioactivity**: Natural vs. artificial radioactivity, properties of $\alpha, \beta, \gamma$ rays, balancing nuclear equations, and nuclear fission vs. fusion. `[Diagram: chemical-nuclear-decay-series]`
-- **Week 2: Radioactive Decay Kinetics & Half-Life**: The decay constant $\lambda$, half-life formula $t_{1/2} = 0.693 / \lambda$, carbon dating, and industrial/medical applications of radioisotopes (Cobalt-60, Iodine-131). `[Diagram: chemical-nuclear-decay-series]`
-- **Week 3: Metals & Their Extraction I (Iron & Aluminium)**: Occurrence, blast furnace extraction of pig iron, conversion to steel, and Hall-Héroult electrolytic extraction of aluminium from bauxite.
-- **Week 4: Metals & Their Extraction II (Copper & Alkali Metals)**: Smelting and electrolytic refining of copper, extraction of sodium via the Downs Cell, and comparative reactivity series. `[Diagram: chemical-electrolytic-downs-cell]`
-- **Week 5: Coordination Chemistry & Transition Metals**: Electronic configurations of first-row transition elements ($d$-block), variable oxidation states, catalytic properties, colored ion formation, and complex ions.
-- **Week 6: Mid-Term Problem Solving & WAEC Stoichiometry Clinic**: Worked solutions for redox titrations, nuclear decay problems, and chemical metallurgy calculations.
-- **Week 7: Organic Chemistry: Fats, Oils & Saponification**: Structure of triglycerides, saponification reaction, soap vs. detergent mechanism, and cleansing action in hard water.
-- **Week 8: Giant Macromolecules: Polymers & Polymerization**: Natural polymers (cellulose, starch, proteins, natural rubber) vs. synthetic polymers (nylon-6,6, terylene, polythene), and addition vs. condensation polymerization.
-- **Week 9: Carbohydrates & Proteins**: Classification of sugars (monosaccharides, disaccharides, polysaccharides), optical activity, protein primary/secondary structure, peptide bonds, and denaturation.
-- **Week 10: Industrial Chemistry & Chemical Pollution**: Industrial production of ammonia (Haber process), sulfuric acid (Contact process), chemical effluents, greenhouse gases, and green chemistry in Nigeria.
-- **Week 11: Qualitative Inorganic Analysis (Cation & Anion Tests)**: Confirmatory bench reagent tests for cations ($Fe^{2+}, Fe^{3+}, Cu^{2+}, Al^{3+}, Zn^{2+}, Pb^{2+}, NH_4^+$) and anions ($SO_4^{2-}, SO_3^{2-}, Cl^-, NO_3^-, CO_3^{2-}$).
-- **Week 12: Term Review & WAEC Practical Chemistry Masterclass**: Quantitative volumetric analysis (acid-base titrations), indicator choices (methyl orange vs. phenolphthalein), and scoring rubrics for practical theory.
+- **The Problem**: On Android devices (as seen in the user's screenshot), monospace font stacks like `JetBrains Mono` or default system monospace engines lack the Unicode glyph for the Nigerian Naira (`₦` / `U+20A6`). As a result, Android Chrome displays a rectangular missing-glyph tofu box (`▯0`).
+- **The Solution**:
+  1. Define a font fallback system in `src/index.css` and `index.html` ensuring `Roboto` and system fonts back up custom web fonts.
+  2. Provide a lightweight, reusable `<NairaText />` and `<NairaSign />` utility that forces glyph rendering through standard sans-serif system fonts even within monospace stat numbers.
+  3. Format all values as whole Naira integers with standard locale grouping (`₦15,000`).
 
 ---
 
-### B. SS 3 Physics (2nd Term)
-- **Week 1: Alternating Current (AC) Circuits I**: Alternating voltage and current generation, sinusoidal waveforms, peak value, root-mean-square (r.m.s.) values: $I_{\text{rms}} = I_0 / \sqrt{2}$, $V_{\text{rms}} = V_0 / \sqrt{2}$.
-- **Week 2: Alternating Current (AC) Circuits II: RLC Series Circuits**: Resistance ($R$), inductive reactance ($X_L = 2\pi f L$), capacitive reactance ($X_C = \frac{1}{2\pi f C}$), impedance ($Z = \sqrt{R^2 + (X_L - X_C)^2}$), and electrical resonance ($f_0 = \frac{1}{2\pi\sqrt{LC}}$). `[Diagram: physics-ac-rlc-resonance]`
-- **Week 3: Electromagnetic Induction & Transformers**: Faraday’s laws, Lenz’s law, eddy currents, transformer equation $\frac{V_s}{V_p} = \frac{N_s}{N_p} = \frac{I_p}{I_s}$, efficiency, power losses (copper, iron, hysteresis), and national grid transmission.
-- **Week 4: Quantum Physics: Wave-Particle Duality**: Blackbody radiation, Planck’s quantum hypothesis $E = hf$, de Broglie wavelength $\lambda = \frac{h}{p}$, and Davisson-Germer electron diffraction proof.
-- **Week 5: The Photoelectric Effect**: Hertz’s discovery, Einstein’s photoelectric equation $hf = W_0 + \frac{1}{2}mv_{\text{max}}^2$, work function ($W_0 = hf_0$), threshold frequency, stopping potential, and photocell applications. `[Diagram: physics-photoelectric-work-function]`
-- **Week 6: Mid-Term Assessment & Physics Problem Solving Clinic**: Comprehensive drills on AC circuit calculations, transformer efficiency, and photoelectric stopping potentials.
-- **Week 7: Atomic Models & Energy Levels**: Thomson and Rutherford models, Bohr’s hydrogen atom model, line absorption/emission spectra, Lyman/Balmer/Paschen series, and ionization potentials.
-- **Week 8: X-Rays: Production, Properties & Uses**: X-ray tube (Coolidge tube) mechanics, continuous vs. characteristic X-ray spectra, Bragg’s law of diffraction, medical radiography, and industrial inspection.
-- **Week 9: Nuclear Physics & Mass Defect**: Nuclear structure, binding energy, mass defect ($\Delta m$), Einstein’s mass-energy equivalence ($E = \Delta m \cdot c^2$), and nuclear reactor architecture.
-- **Week 10: Semiconductor Electronics I (P-N Junction)**: Intrinsic vs. extrinsic semiconductors, p-type and n-type doping, majority/minority carriers, forward and reverse biased p-n junction diodes, and rectification.
-- **Week 11: Semiconductor Electronics II (Transistors & Logic Gates)**: Bipolar junction transistors (NPN, PNP), amplification, and fundamental digital logic gates (AND, OR, NOT, NAND, NOR) with truth tables.
-- **Week 12: Term Review & WAEC Practical Physics Masterclass**: Mechanics and electricity practical analysis, error calculations (parallax, zero error), slope evaluation on linear graphs, and intercept interpretation.
+## 2. User Experience & Visual Design
+
+- **Growth Partner Persona (`GrowthPartnerPortal.tsx`)**:
+  - Primary metric cards: Available Balance (`₦0`), Withdrawn (`₦0`), Lifetime Earnings (`₦0`).
+  - Active Referrals Roster: Total Volume (`₦15,000`), Total Commission (`₦1,500`).
+  - Audit Ledger: Payment Amount (`₦15,000`), Commission Credited (`+₦1,500`).
+  - Test Simulator: Plan prices (`₦15,000`, `₦35,000`, `₦5,000`), custom amount field, expected 10% credit (`₦1,500`).
+  - Bank Withdrawal Modal: Available balance reference (`Max: ₦1,000`), amount input label (`Withdrawal Amount (₦)`).
+- **Parent Persona (`ParentPortal.tsx`)**:
+  - Digital Wallet Balance (`₦35,000`), quick top-up buttons (`₦1,000`, `₦2,500`, `₦5,000`, `₦10,000`), Paystack checkout button, and tutor booking escrow deductions (`-₦3,500`).
+- **Tutor Persona (`TutorPortal.tsx`, `TutorDiscovery.tsx`, `TutorMapLocator.tsx`)**:
+  - Hourly rate display (`₦3,500 / hr`), available payout balance (`₦...`), funds held in escrow, payout request button.
+- **School Admin & Super Admin (`SchoolAdminPortal.tsx`, `SuperAdminPortal.tsx`)**:
+  - Tutor hourly rates in user directory (`₦3,000 / hr`), licensing and institutional quotas.
+- **Sign-Up Flow (`SignUpPage.tsx`)**:
+  - Tutor hourly rate configuration input (`Hourly Rate (₦)`).
 
 ---
 
-### C. SS 3 Agricultural Science (2nd Term)
-- **Week 1: Farm Power & Energy Sources**: Human, animal, mechanical, electrical, solar, and wind power on farms; comparative efficiencies and operational costs.
-- **Week 2: Farm Machinery & Tractor Implements**: Internal combustion tractor layout, three-point linkage hitch, primary tillage implements (disc plough, mouldboard plough) vs. secondary tillage (disc harrow, ridger, cultivator). `[Diagram: agric-tractor-implement-coupling]`
-- **Week 3: Maintenance & Servicing of Farm Machinery**: Routine daily checks, periodic servicing of air filters and engine oil, workshop safety precautions, and prolonging machinery lifespan.
-- **Week 4: Animal Health & Disease Concepts**: Definition of livestock disease, predisposing factors, and modes of transmission (direct, airborne, waterborne, vector-borne).
-- **Week 5: Selected Livestock Diseases I (Bacterial & Viral)**: Anthrax, Tuberculosis, Foot-and-Mouth disease, Rinderpest, Newcastle disease, and African Swine Fever: causal pathogens, symptoms, and prophylactic vaccines.
-- **Week 6: Mid-Term Practical Agronomy Clinic**: Identification of tractor implement components, veterinary equipment (drenching guns, emasculators, syringes), and feed ingredients.
-- **Week 7: Selected Livestock Diseases II (Protozoan & Parasites)**: Trypanosomiasis (Nagana / Tsetse fly vector), Coccidiosis, Ectoparasites (ticks, lice, mites) vs. Endoparasites (tapeworms, roundworms, liver flukes).
-- **Week 8: Aquaculture & Fish Farming**: Fish pond construction (site selection, dyke construction, inlet/outlet screens), pond fertilization, stocking fingerlings, feeding regimes, and fish preservation.
-- **Week 9: Apiculture (Bee Keeping)**: Castes in a honeybee colony (Queen, Drone, Worker), modern beehive design (Langstroth hive), swarming, honey extraction, and economic importance of apiculture.
-- **Week 10: Agricultural Extension & Technology Transfer**: Principles of agricultural extension, extension teaching methods (individual, group, mass methods), role of ADPs (Agricultural Development Programmes), and adoption barriers.
-- **Week 11: Agricultural Financing, Cooperatives & Insurance**: Sources of farm credit (commercial banks, microfinance, NACRDB), agricultural cooperatives, and agricultural risk management through insurance (NAIC).
-- **Week 12: Term Review & WAEC SSCE Agricultural Science Masterclass**: Specimen identification keys, specimen soil and weed mounts, livestock carcass cuts, and essay response structuring.
+## 3. Key Product Decisions & Trade-Offs
+
+- **Decision 1: Specialized `<NairaText />` Component vs. Inline CSS Classes**
+  - *Chosen Approach*: Provide both `src/utils/currency.tsx` (with `<NairaSign />`, `<NairaText />`, and `formatNaira()`) and global CSS utility `.naira-symbol`.
+  - *Why*: Enables seamless usage across large numerical displays, small badge metadata, table cells, and string-only alerts or option dropdowns.
+  - *Alternatives Considered*: Pure string interpolation (`₦${val}`) was rejected because Android browsers still fail to render `₦` when wrapped in `font-mono`.
+
+- **Decision 2: Global Theme Font Stacks in Tailwind CSS**
+  - *Chosen Approach*: Update `src/index.css` to add `Roboto`, `'Segoe UI'`, and `Arial` immediately after `JetBrains Mono` and `Plus Jakarta Sans`.
+  - *Why*: Provides automatic secondary fallback at the root stylesheet level for standard string usages.
 
 ---
 
-## 3. Technical Integration & Verification
-- Full integration into `src/data/curriculumData.ts`.
-- Zero compiler errors verified via `compile_applet` and zero lint issues verified via `lint_applet`.
-- Dev server running cleanly on port 3000.
+## 4. Technical Architecture & Component Mapping
+
+```
+┌────────────────────────────────────────────────────────┐
+│                   Currency Subsystem                   │
+│                                                        │
+│  src/utils/currency.tsx                                │
+│  ├─ formatNaira(amount)       -> "₦15,000"             │
+│  ├─ <NairaSign />             -> <span font-sans>₦</span>
+│  └─ <NairaText amount={val}/> -> <span><NairaSign/>val │
+└───────────────────────────┬────────────────────────────┘
+                            │
+            ┌───────────────┼───────────────┬────────────────┐
+            ▼               ▼               ▼                ▼
+    Growth Partner       Parent           Tutor         School Admin
+    ───────────────   ─────────────   ─────────────   ───────────────
+    - Wallet Card     - Wallet Card   - Hourly Rate   - Directory Fee
+    - Ledger Rows     - Top-Up Grid   - Escrow Bal    - Quota Pricing
+    - Simulator       - Booking Fee   - Payout Req    - SuperAdmin Tx
+```
+
+### Files to Update
+1. **`src/utils/currency.tsx`** *(New)*: Core currency utilities and font-safe React components.
+2. **`src/index.css`**: Update `--font-mono` and `--font-sans` with robust system fallbacks (`Roboto`, `'Segoe UI'`, `Arial`); add `.naira-symbol` helper.
+3. **`src/components/partner/GrowthPartnerPortal.tsx`**: Replace all `₦` occurrences and `font-mono` containers with `<NairaText />` or safe font wrappers.
+4. **`src/components/parent/ParentPortal.tsx`**: Update wallet balance, top-up buttons, and transaction rows.
+5. **`src/components/tutor/TutorPortal.tsx`** & **`src/components/student/TutorDiscovery.tsx`**: Standardize tutor hourly rates and escrow balances.
+6. **`src/components/admin/SuperAdminPortal.tsx`**: Ensure user directory and tutor rates display formatted Naira amounts.
+7. **Verification**: Co-execute `compile_applet` and `lint_applet` to confirm 0 errors.

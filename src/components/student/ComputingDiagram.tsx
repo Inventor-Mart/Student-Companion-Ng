@@ -138,7 +138,7 @@ export const ComputingDiagram: React.FC<ComputingDiagramProps> = ({ type }) => {
 
                 {/* THE ACTIVE CELL C4 (Heavy Green Border with Handle) */}
                 <rect x="240" y="0" width="115" height="28" fill="#022c22" stroke="#10b981" strokeWidth="2.5" />
-                <text x="250" y="18" fill="#34d399" className="text-[11px] font-mono font-bold">₦ 5,662.50</text>
+                <text x="250" y="18" fill="#34d399" className="text-[11px] font-bold" style={{ fontFamily: 'system-ui, -apple-system, Roboto, "Segoe UI", Arial, sans-serif' }}>₦ 5,662.50</text>
                 {/* Bottom-right auto-fill handle */}
                 <rect x="351" y="24" width="5" height="5" fill="#10b981" />
 

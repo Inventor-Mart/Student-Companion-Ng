@@ -19,6 +19,7 @@ import {
   CreditCard,
   X
 } from 'lucide-react';
+import { NairaText, NairaSign } from '../../utils/currency';
 
 export const ParentPortal: React.FC = () => {
   const {
@@ -145,8 +146,8 @@ export const ParentPortal: React.FC = () => {
 
         <div>
           <span className="text-xs text-slate-400 block">Available Balance</span>
-          <div className="text-2xl font-extrabold text-white font-mono tracking-tight mt-0.5">
-            ₦{parentWallet.balanceNaira.toLocaleString()}
+          <div className="text-2xl font-extrabold text-white tracking-tight mt-0.5">
+            <NairaText amount={parentWallet.balanceNaira} />
           </div>
         </div>
 
@@ -212,8 +213,8 @@ export const ParentPortal: React.FC = () => {
                   </div>
                 </div>
 
-                <span className="text-xs font-mono font-bold text-amber-400">
-                  ₦{req.amountNaira.toLocaleString()}
+                <span className="text-xs font-bold text-amber-400">
+                  <NairaText amount={req.amountNaira} />
                 </span>
               </div>
 
@@ -335,11 +336,14 @@ export const ParentPortal: React.FC = () => {
               </div>
 
               <span
-                className={`font-mono font-bold text-xs ${
+                className={`font-bold text-xs ${
                   tx.type === 'credit' ? 'text-emerald-400' : 'text-slate-300'
                 }`}
               >
-                {tx.type === 'credit' ? '+' : '-'}₦{tx.amountNaira.toLocaleString()}
+                <NairaText
+                  amount={tx.amountNaira}
+                  prefix={tx.type === 'credit' ? '+' : '-'}
+                />
               </span>
             </div>
           ))}
@@ -373,13 +377,13 @@ export const ParentPortal: React.FC = () => {
                   <button
                     key={amt}
                     onClick={() => setTopUpAmount(amt)}
-                    className={`py-2 px-2 rounded-xl border text-center font-mono text-xs font-bold transition-all ${
+                    className={`py-2 px-2 rounded-xl border text-center text-xs font-bold transition-all ${
                       topUpAmount === amt
                         ? 'bg-emerald-950 border-emerald-500 text-emerald-300'
                         : 'bg-slate-950 border-slate-800 text-slate-400'
                     }`}
                   >
-                    ₦{amt.toLocaleString()}
+                    <NairaText amount={amt} />
                   </button>
                 ))}
               </div>
@@ -404,7 +408,13 @@ export const ParentPortal: React.FC = () => {
                 disabled={isProcessingPaystack}
                 className="flex-1 py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-colors shadow-sm flex items-center justify-center gap-1.5"
               >
-                {isProcessingPaystack ? 'Connecting Paystack...' : `Pay ₦${topUpAmount.toLocaleString()}`}
+                {isProcessingPaystack ? (
+                  'Connecting Paystack...'
+                ) : (
+                  <span>
+                    Pay <NairaText amount={topUpAmount} />
+                  </span>
+                )}
               </button>
             </div>
           </div>

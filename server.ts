@@ -6,6 +6,23 @@ import { GoogleGenAI } from '@google/genai';
 import { Resend } from 'resend';
 import nodemailer from 'nodemailer';
 
+import { initializeApp as initServerFirebase, getApps as getServerApps } from 'firebase/app';
+import {
+  getFirestore as getServerFirestore,
+  doc,
+  getDoc,
+  setDoc,
+  updateDoc,
+  runTransaction,
+  collection,
+  query,
+  where,
+  getDocs,
+  orderBy,
+  limit
+} from 'firebase/firestore';
+import firebaseConfig from './firebase-applet-config.json';
+
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
@@ -15,6 +32,11 @@ const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 
 app.use(express.json());
+
+// Initialize server-side Firestore
+const serverApps = getServerApps();
+const serverApp = serverApps.length > 0 ? serverApps[0] : initServerFirebase(firebaseConfig, 'companion-server');
+const serverDb = getServerFirestore(serverApp, firebaseConfig.firestoreDatabaseId);
 
 // Initialize GoogleGenAI server-side with required User-Agent
 const apiKey = process.env.GEMINI_API_KEY;
@@ -324,6 +346,492 @@ app.post('/api/send-verification-code', async (req, res) => {
     return res.status(500).json({
       success: false,
       error: error?.message || 'Internal server error while dispatching verification email',
+    });
+  }
+});
+
+// ==========================================
+// GROWTH PARTNER & LIFETIME REVENUE SHARE API
+// ==========================================
+
+// 1. Backend Payment Trigger Function: Check referral, calculate 10%, atomic wallet credit
+app.post('/api/partners/process-subscription-payment', async (req, res) => {
+  try {
+    const { studentId, studentName, plan, amountNaira, paymentGateway, clientPaymentId } = req.body;
+
+    if (!studentId || !plan || typeof amountNaira !== 'number' || amountNaira <= 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields: studentId, plan, and valid positive amountNaira are mandatory',
+      });
+    }
+
+    const paymentId = clientPaymentId || `PAY_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const sanitizedStudentName = studentName || 'Student Scholar';
+    const gateway = paymentGateway || 'Paystack';
+
+    // Step A: Check if student has an active Growth Partner referral
+    const referralsRef = collection(serverDb, 'referrals');
+    const referralQuery = query(
+      referralsRef,
+      where('referredUserId', '==', studentId),
+      where('status', '==', 'active')
+    );
+    const referralSnapshot = await getDocs(referralQuery);
+
+    let partnerId: string | null = null;
+    let referralDocId: string | null = null;
+    let partnerCommissionRate = 10; // Default 10% Lifetime Revenue Share
+
+    if (!referralSnapshot.empty) {
+      const activeReferral = referralSnapshot.docs[0];
+      referralDocId = activeReferral.id;
+      const refPartnerId = activeReferral.data().partnerId;
+
+      if (typeof refPartnerId === 'string' && refPartnerId.trim().length > 0) {
+        partnerId = refPartnerId;
+
+        // Fetch partner document to verify status and custom commission rate if any
+        const partnerDocRef = doc(serverDb, 'growthPartners', refPartnerId);
+        const partnerSnap = await getDoc(partnerDocRef);
+        if (partnerSnap.exists()) {
+          const pData = partnerSnap.data();
+          if (pData.status === 'active') {
+            partnerCommissionRate = typeof pData.commissionRatePercent === 'number' ? pData.commissionRatePercent : 10;
+          } else {
+            // Partner suspended or inactive; do not credit
+            partnerId = null;
+          }
+        }
+      }
+    }
+
+    // Step B: Calculate 10% Revenue Share Commission
+    const commissionAmount = partnerId
+      ? Math.round((amountNaira * partnerCommissionRate) / 100)
+      : 0;
+
+    const resolvedPartnerId = partnerId;
+    const resolvedReferralDocId = referralDocId;
+
+    // Step C: Execute Atomic Firestore Transaction
+    await runTransaction(serverDb, async (transaction) => {
+      let walletSnap: any = null;
+      let partnerSnap: any = null;
+      let refSnap: any = null;
+
+      let walletRef: any = null;
+      let partnerRef: any = null;
+      let refDocRef: any = null;
+
+      if (resolvedPartnerId && resolvedReferralDocId && commissionAmount > 0) {
+        // --- ALL READS FIRST ---
+        walletRef = doc(serverDb, 'partnerWallets', resolvedPartnerId);
+        partnerRef = doc(serverDb, 'growthPartners', resolvedPartnerId);
+        refDocRef = doc(serverDb, 'referrals', resolvedReferralDocId);
+
+        walletSnap = await transaction.get(walletRef);
+        partnerSnap = await transaction.get(partnerRef);
+        refSnap = await transaction.get(refDocRef);
+      }
+
+      // --- ALL WRITES AFTER ALL READS ---
+      if (resolvedPartnerId && resolvedReferralDocId && commissionAmount > 0 && walletRef && partnerRef && refDocRef) {
+        let currentBalance = 0;
+        let currentLifetime = 0;
+        let currentWithdrawn = 0;
+
+        if (walletSnap && walletSnap.exists()) {
+          const wData = walletSnap.data();
+          currentBalance = typeof wData.balanceNaira === 'number' ? wData.balanceNaira : 0;
+          currentLifetime = typeof wData.lifetimeEarnedNaira === 'number' ? wData.lifetimeEarnedNaira : 0;
+          currentWithdrawn = typeof wData.totalWithdrawnNaira === 'number' ? wData.totalWithdrawnNaira : 0;
+        }
+
+        const newBalance = currentBalance + commissionAmount;
+        const newLifetime = currentLifetime + commissionAmount;
+
+        transaction.set(
+          walletRef,
+          {
+            partnerId: resolvedPartnerId,
+            balanceNaira: newBalance,
+            lifetimeEarnedNaira: newLifetime,
+            totalWithdrawnNaira: currentWithdrawn,
+            updatedAt: new Date().toISOString(),
+          },
+          { merge: true }
+        );
+
+        let currentTotalEarnings = 0;
+        if (partnerSnap && partnerSnap.exists()) {
+          currentTotalEarnings = partnerSnap.data().totalEarningsNaira || 0;
+        }
+
+        transaction.set(
+          partnerRef,
+          {
+            totalEarningsNaira: currentTotalEarnings + commissionAmount,
+            updatedAt: new Date().toISOString(),
+          },
+          { merge: true }
+        );
+
+        let prevVolume = 0;
+        let prevCommission = 0;
+        if (refSnap && refSnap.exists()) {
+          prevVolume = refSnap.data().totalVolumePaidNaira || 0;
+          prevCommission = refSnap.data().totalCommissionEarnedNaira || 0;
+        }
+
+        transaction.set(
+          refDocRef,
+          {
+            totalVolumePaidNaira: prevVolume + amountNaira,
+            totalCommissionEarnedNaira: prevCommission + commissionAmount,
+            lastPaymentDate: new Date().toISOString(),
+          },
+          { merge: true }
+        );
+
+        // Create Immutable Revenue Share Receipt
+        const revTxId = `REV_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+        const revTxRef = doc(serverDb, 'revenueShareTransactions', revTxId);
+        transaction.set(revTxRef, {
+          id: revTxId,
+          partnerId: resolvedPartnerId,
+          studentId,
+          studentName: sanitizedStudentName,
+          paymentId,
+          subscriptionPlan: plan,
+          paymentAmountNaira: amountNaira,
+          commissionRatePercent: partnerCommissionRate,
+          commissionAmountNaira: commissionAmount,
+          status: 'credited',
+          createdAt: new Date().toISOString(),
+        });
+      }
+
+      // Record Subscription Payment Receipt
+      const paymentRef = doc(serverDb, 'subscriptionPayments', paymentId);
+      transaction.set(paymentRef, {
+        id: paymentId,
+        studentId,
+        studentName: sanitizedStudentName,
+        plan,
+        amountNaira,
+        paymentGateway: gateway,
+        status: 'successful',
+        partnerId: resolvedPartnerId || null,
+        partnerCommissionCredited: resolvedPartnerId ? true : false,
+        commissionAmountNaira: commissionAmount,
+        createdAt: new Date().toISOString(),
+      });
+    });
+
+    console.log(
+      `[Revenue Share Trigger] Payment ${paymentId}: ₦${amountNaira} for ${plan}. Partner: ${partnerId || 'None'}. Commission: ₦${commissionAmount}`
+    );
+
+    return res.json({
+      success: true,
+      paymentId,
+      hasPartner: Boolean(partnerId),
+      partnerId,
+      paymentAmountNaira: amountNaira,
+      commissionRatePercent: partnerCommissionRate,
+      commissionAmountNaira: commissionAmount,
+      message: partnerId
+        ? `Payment verified. ${partnerCommissionRate}% revenue share (₦${commissionAmount.toLocaleString()}) credited to Growth Partner digital wallet.`
+        : 'Payment verified and recorded. No associated Growth Partner found for student.',
+    });
+  } catch (error: any) {
+    console.error('Error in /api/partners/process-subscription-payment:', error);
+    return res.status(500).json({
+      success: false,
+      error: error?.message || 'Failed to process subscription payment and revenue share trigger',
+    });
+  }
+});
+
+// 2. Register or Bind Student to a Partner via Referral Code
+app.post('/api/partners/register-referral', async (req, res) => {
+  try {
+    const { referralCode, studentId, studentName } = req.body;
+
+    if (!referralCode || !studentId) {
+      return res.status(400).json({
+        success: false,
+        error: 'referralCode and studentId are required',
+      });
+    }
+
+    const cleanCode = String(referralCode).trim().toUpperCase();
+
+    // Query partner with this code
+    const partnersRef = collection(serverDb, 'growthPartners');
+    const partnerQuery = query(partnersRef, where('referralCode', '==', cleanCode));
+    const partnerSnap = await getDocs(partnerQuery);
+
+    if (partnerSnap.empty) {
+      return res.status(404).json({
+        success: false,
+        error: `Referral code "${cleanCode}" was not found or is inactive.`,
+      });
+    }
+
+    const partnerDoc = partnerSnap.docs[0];
+    const partner = partnerDoc.data();
+
+    if (partner.status !== 'active') {
+      return res.status(400).json({
+        success: false,
+        error: `Growth Partner account associated with code "${cleanCode}" is not active.`,
+      });
+    }
+
+    const partnerId = partner.id || partnerDoc.id;
+
+    // Check if referral already exists
+    const referralId = `${partnerId}_${studentId}`;
+    const referralRef = doc(serverDb, 'referrals', referralId);
+    const existingRef = await getDoc(referralRef);
+
+    if (existingRef.exists()) {
+      return res.json({
+        success: true,
+        alreadyLinked: true,
+        partnerId,
+        partnerName: partner.name,
+        message: 'Student is already linked to this Growth Partner.',
+      });
+    }
+
+    // Create new referral record
+    await setDoc(referralRef, {
+      id: referralId,
+      partnerId,
+      referredUserId: studentId,
+      referredUserName: studentName || 'Student Scholar',
+      referralCodeUsed: cleanCode,
+      status: 'active',
+      totalVolumePaidNaira: 0,
+      totalCommissionEarnedNaira: 0,
+      createdAt: new Date().toISOString(),
+    });
+
+    // Increment partner activeReferralsCount
+    await updateDoc(doc(serverDb, 'growthPartners', partnerId), {
+      activeReferralsCount: (partner.activeReferralsCount || 0) + 1,
+      updatedAt: new Date().toISOString(),
+    });
+
+    return res.json({
+      success: true,
+      partnerId,
+      partnerName: partner.name,
+      referralCode: cleanCode,
+      message: `Successfully attributed to Growth Partner: ${partner.name}`,
+    });
+  } catch (error: any) {
+    console.error('Error in /api/partners/register-referral:', error);
+    return res.status(500).json({
+      success: false,
+      error: error?.message || 'Failed to bind referral code',
+    });
+  }
+});
+
+// 3. Get or Onboard Growth Partner Profile
+app.post('/api/partners/onboard', async (req, res) => {
+  try {
+    const { partnerId, name, email, phone, bankName, accountNumber, accountName } = req.body;
+
+    if (!partnerId || !name || !email) {
+      return res.status(400).json({
+        success: false,
+        error: 'partnerId, name, and email are required',
+      });
+    }
+
+    const partnerRef = doc(serverDb, 'growthPartners', partnerId);
+    const partnerSnap = await getDoc(partnerRef);
+
+    if (partnerSnap.exists()) {
+      return res.json({
+        success: true,
+        partner: partnerSnap.data(),
+        message: 'Existing Growth Partner profile retrieved',
+      });
+    }
+
+    // Generate unique referral code
+    const initials = name.replace(/[^a-zA-Z]/g, '').substring(0, 4).toUpperCase() || 'GP';
+    const randNum = Math.floor(1000 + Math.random() * 9000);
+    const referralCode = `GP-${initials}${randNum}`;
+
+    const newPartner = {
+      id: partnerId,
+      name,
+      email,
+      phone: phone || '',
+      referralCode,
+      commissionRatePercent: 10,
+      totalEarningsNaira: 0,
+      totalPaidOutNaira: 0,
+      activeReferralsCount: 0,
+      bankName: bankName || 'Access Bank',
+      accountNumber: accountNumber || '0123456789',
+      accountName: accountName || name,
+      status: 'active',
+      createdAt: new Date().toISOString(),
+    };
+
+    await setDoc(partnerRef, newPartner);
+
+    // Initialize partner digital wallet
+    const walletRef = doc(serverDb, 'partnerWallets', partnerId);
+    await setDoc(walletRef, {
+      partnerId,
+      balanceNaira: 0,
+      lifetimeEarnedNaira: 0,
+      totalWithdrawnNaira: 0,
+      updatedAt: new Date().toISOString(),
+    });
+
+    return res.json({
+      success: true,
+      partner: newPartner,
+      message: `Growth Partner profile created! Your unique referral code is ${referralCode}`,
+    });
+  } catch (error: any) {
+    console.error('Error in /api/partners/onboard:', error);
+    return res.status(500).json({
+      success: false,
+      error: error?.message || 'Failed to onboard Growth Partner',
+    });
+  }
+});
+
+// 4. Partner Dashboard Summary & Analytics
+app.get('/api/partners/:partnerId/summary', async (req, res) => {
+  try {
+    const { partnerId } = req.params;
+
+    if (!partnerId) {
+      return res.status(400).json({ error: 'partnerId is required' });
+    }
+
+    const partnerDoc = await getDoc(doc(serverDb, 'growthPartners', partnerId));
+    if (!partnerDoc.exists()) {
+      return res.status(404).json({ error: 'Growth Partner profile not found' });
+    }
+
+    const walletDoc = await getDoc(doc(serverDb, 'partnerWallets', partnerId));
+    const walletData = walletDoc.exists()
+      ? walletDoc.data()
+      : { balanceNaira: 0, lifetimeEarnedNaira: 0, totalWithdrawnNaira: 0 };
+
+    // Get referrals
+    const refQuery = query(collection(serverDb, 'referrals'), where('partnerId', '==', partnerId));
+    const refSnap = await getDocs(refQuery);
+    const referrals = refSnap.docs.map((d) => d.data());
+
+    // Get recent revenue share transactions
+    const txQuery = query(
+      collection(serverDb, 'revenueShareTransactions'),
+      where('partnerId', '==', partnerId)
+    );
+    const txSnap = await getDocs(txQuery);
+    const transactions = txSnap.docs.map((d) => d.data());
+
+    // Sort transactions client-side by date desc
+    transactions.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+    return res.json({
+      success: true,
+      partner: partnerDoc.data(),
+      wallet: walletData,
+      referralsCount: referrals.length,
+      referrals,
+      transactions: transactions.slice(0, 25),
+    });
+  } catch (error: any) {
+    console.error('Error in /api/partners/:partnerId/summary:', error);
+    return res.status(500).json({
+      success: false,
+      error: error?.message || 'Failed to fetch partner summary',
+    });
+  }
+});
+
+// 5. Submit Withdrawal Request from Partner Digital Wallet
+app.post('/api/partners/withdraw', async (req, res) => {
+  try {
+    const { partnerId, amountNaira } = req.body;
+
+    if (!partnerId || typeof amountNaira !== 'number' || amountNaira <= 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Valid partnerId and positive amountNaira are required',
+      });
+    }
+
+    const walletRef = doc(serverDb, 'partnerWallets', partnerId);
+    const partnerRef = doc(serverDb, 'growthPartners', partnerId);
+
+    const result = await runTransaction(serverDb, async (transaction) => {
+      // 1. ALL READS FIRST
+      const walletSnap = await transaction.get(walletRef);
+      const partnerSnap = await transaction.get(partnerRef);
+
+      if (!walletSnap.exists()) {
+        throw new Error('Partner digital wallet does not exist');
+      }
+
+      const wData = walletSnap.data();
+      const currentBalance = wData.balanceNaira || 0;
+
+      if (currentBalance < amountNaira) {
+        throw new Error(`Insufficient wallet balance. Available: ₦${currentBalance.toLocaleString()}, Requested: ₦${amountNaira.toLocaleString()}`);
+      }
+
+      const newBalance = currentBalance - amountNaira;
+      const newWithdrawn = (wData.totalWithdrawnNaira || 0) + amountNaira;
+
+      // 2. ALL WRITES AFTER READS
+      transaction.update(walletRef, {
+        balanceNaira: newBalance,
+        totalWithdrawnNaira: newWithdrawn,
+        updatedAt: new Date().toISOString(),
+      });
+
+      if (partnerSnap.exists()) {
+        const pData = partnerSnap.data();
+        transaction.update(partnerRef, {
+          totalPaidOutNaira: (pData.totalPaidOutNaira || 0) + amountNaira,
+          updatedAt: new Date().toISOString(),
+        });
+      }
+
+      return {
+        newBalance,
+        newWithdrawn,
+      };
+    });
+
+    return res.json({
+      success: true,
+      amountWithdrawn: amountNaira,
+      remainingBalanceNaira: result.newBalance,
+      totalWithdrawnNaira: result.newWithdrawn,
+      message: `Withdrawal request of ₦${amountNaira.toLocaleString()} processed successfully to your registered bank account.`,
+    });
+  } catch (error: any) {
+    console.error('Error in /api/partners/withdraw:', error);
+    return res.status(400).json({
+      success: false,
+      error: error?.message || 'Withdrawal processing failed',
     });
   }
 });

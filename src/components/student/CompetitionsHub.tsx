@@ -21,6 +21,7 @@ import {
   Crown
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import { NairaText, NairaSign } from '../../utils/currency';
 
 export const CompetitionsHub: React.FC = () => {
   const { student, currentUserProfile, startExam, addStudentXP } = useApp();
@@ -79,8 +80,8 @@ export const CompetitionsHub: React.FC = () => {
             </div>
           </div>
 
-          <span className="text-[10px] font-bold text-amber-400 bg-amber-950 px-2 py-0.5 rounded border border-amber-800 animate-pulse">
-            ₦50,000 Weekly Pool 🎁
+          <span className="text-[10px] font-bold text-amber-400 bg-amber-950 px-2 py-0.5 rounded border border-amber-800 animate-pulse flex items-center gap-1">
+            <NairaText amount={50000} /> Weekly Pool 🎁
           </span>
         </div>
       </div>
@@ -142,20 +143,28 @@ export const CompetitionsHub: React.FC = () => {
             <div className="bg-slate-950/80 rounded-2xl p-3 border border-amber-800/40 space-y-1.5">
               <span className="text-[11px] font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
                 <Gift className="w-3.5 h-3.5" />
-                <span>Weekly Prize Pool: ₦50,000 Airtime + Swag</span>
+                <span className="flex items-center gap-1">
+                  Weekly Prize Pool: <NairaText amount={50000} /> Airtime + Swag
+                </span>
               </span>
               <div className="grid grid-cols-3 gap-2 text-center text-xs">
                 <div className="bg-slate-900/80 p-2 rounded-xl border border-slate-800">
                   <span className="text-amber-400 font-bold block text-xs">🥇 1st Place</span>
-                  <span className="text-[11px] text-white font-mono">₦30,000 + Hoodie</span>
+                  <span className="text-[11px] text-white">
+                    <NairaText amount={30000} /> + Hoodie
+                  </span>
                 </div>
                 <div className="bg-slate-900/80 p-2 rounded-xl border border-slate-800">
                   <span className="text-slate-300 font-bold block text-xs">🥈 2nd Place</span>
-                  <span className="text-[11px] text-white font-mono">₦15,000 Airtime</span>
+                  <span className="text-[11px] text-white">
+                    <NairaText amount={15000} /> Airtime
+                  </span>
                 </div>
                 <div className="bg-slate-900/80 p-2 rounded-xl border border-slate-800">
                   <span className="text-amber-600 font-bold block text-xs">🥉 3rd Place</span>
-                  <span className="text-[11px] text-white font-mono">₦5,000 Airtime</span>
+                  <span className="text-[11px] text-white">
+                    <NairaText amount={5000} /> Airtime
+                  </span>
                 </div>
               </div>
             </div>
@@ -402,7 +411,7 @@ export const CompetitionsHub: React.FC = () => {
             </div>
 
             <p className="text-xs text-slate-300 bg-slate-950/70 p-3 rounded-2xl border border-amber-900/40 leading-relaxed">
-              Earn XP across your curriculum topics and timed CBT exams this week to climb the national standings and win the ₦50,000 weekly Student of the Week reward!
+              Earn XP across your curriculum topics and timed CBT exams this week to climb the national standings and win the <NairaText amount={50000} /> weekly Student of the Week reward!
             </p>
           </div>
 

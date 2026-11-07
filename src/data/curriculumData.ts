@@ -54,6 +54,15 @@ import { SS3_BIOLOGY_TOPICS } from './ss3BiologyData';
 import { SS3_CHEMISTRY_TOPICS } from './ss3ChemistryData';
 import { SS3_PHYSICS_TOPICS } from './ss3PhysicsData';
 import { SS3_AGRIC_TOPICS } from './ss3AgricData';
+import { SS3_ECONOMICS_TOPICS } from './ss3EconomicsData';
+import { SS3_COMMERCE_TOPICS } from './ss3CommerceData';
+import { SS3_GOVERNMENT_TOPICS } from './ss3GovernmentData';
+import { SS3_CIVIC_TOPICS } from './ss3CivicData';
+import { SS3_DATA_PROCESSING_TOPICS } from './ss3DataProcessingData';
+import { SS3_FURTHER_MATH_TOPICS } from './ss3FurtherMathData';
+import { SS3_GEOGRAPHY_TOPICS } from './ss3GeographyData';
+import { SS3_LITERATURE_TOPICS } from './ss3LiteratureData';
+import { SS3_CRS_TOPICS } from './ss3CRSData';
 export { JSS1_ENGLISH_TOPICS } from './jss1EnglishData';
 export { JSS2_ENGLISH_TOPICS } from './jss2EnglishData';
 export { JSS3_MATH_TOPICS } from './jss3MathData';
@@ -106,6 +115,15 @@ export { SS3_BIOLOGY_TOPICS } from './ss3BiologyData';
 export { SS3_CHEMISTRY_TOPICS } from './ss3ChemistryData';
 export { SS3_PHYSICS_TOPICS } from './ss3PhysicsData';
 export { SS3_AGRIC_TOPICS } from './ss3AgricData';
+export { SS3_ECONOMICS_TOPICS } from './ss3EconomicsData';
+export { SS3_COMMERCE_TOPICS } from './ss3CommerceData';
+export { SS3_GOVERNMENT_TOPICS } from './ss3GovernmentData';
+export { SS3_CIVIC_TOPICS } from './ss3CivicData';
+export { SS3_DATA_PROCESSING_TOPICS } from './ss3DataProcessingData';
+export { SS3_FURTHER_MATH_TOPICS } from './ss3FurtherMathData';
+export { SS3_GEOGRAPHY_TOPICS } from './ss3GeographyData';
+export { SS3_LITERATURE_TOPICS } from './ss3LiteratureData';
+export { SS3_CRS_TOPICS } from './ss3CRSData';
 
 export const OFFICIAL_SUBJECTS_BY_CLASS = {
   'JSS 1': [
@@ -296,6 +314,15 @@ export const NIGERIAN_CURRICULUM_TOPICS: CurriculumTopic[] = [
   ...SS3_CHEMISTRY_TOPICS,
   ...SS3_PHYSICS_TOPICS,
   ...SS3_AGRIC_TOPICS,
+  ...SS3_ECONOMICS_TOPICS,
+  ...SS3_COMMERCE_TOPICS,
+  ...SS3_GOVERNMENT_TOPICS,
+  ...SS3_CIVIC_TOPICS,
+  ...SS3_DATA_PROCESSING_TOPICS,
+  ...SS3_FURTHER_MATH_TOPICS,
+  ...SS3_GEOGRAPHY_TOPICS,
+  ...SS3_LITERATURE_TOPICS,
+  ...SS3_CRS_TOPICS,
   // ==========================================
   // JSS 1 SUBJECTS (15 SUBJECTS)
   // ==========================================

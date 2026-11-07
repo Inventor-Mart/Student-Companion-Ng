@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 
 import { TutorSecurityVerificationModal } from '../auth/VerificationModals';
+import { NairaText, NairaSign, formatNaira } from '../../utils/currency';
 
 export const TutorPortal: React.FC = () => {
   const {
@@ -74,7 +75,7 @@ export const TutorPortal: React.FC = () => {
       return;
     }
     setPayoutStatusMessage(
-      `Payout of ₦${availablePayout.toLocaleString()} initiated to ${tutorVerification.bankName} (${tutorVerification.accountNumber}). Processing within 15 minutes.`
+      `Payout of ${formatNaira(availablePayout)} initiated to ${tutorVerification.bankName} (${tutorVerification.accountNumber}). Processing within 15 minutes.`
     );
     setTimeout(() => setPayoutStatusMessage(''), 5000);
   };
@@ -128,8 +129,8 @@ export const TutorPortal: React.FC = () => {
 
           <div className="text-right">
             <span className="text-[10px] text-slate-400 block">Hourly Rate</span>
-            <span className="text-xs font-bold text-emerald-400 font-mono">
-              ₦{tutorHourlyRate.toLocaleString()}
+            <span className="text-xs font-bold text-emerald-400">
+              <NairaText amount={tutorHourlyRate} />
             </span>
           </div>
         </div>
@@ -208,8 +209,8 @@ export const TutorPortal: React.FC = () => {
                     <p className="text-xs text-slate-400 mt-1">{b.subject} · {b.topic}</p>
                   </div>
                   <div className="text-right">
-                    <span className="text-xs font-mono font-bold text-emerald-400">
-                      ₦{b.amountNaira.toLocaleString()}
+                    <span className="text-xs font-bold text-emerald-400">
+                      <NairaText amount={b.amountNaira} />
                     </span>
                     <span className="text-[10px] text-slate-500 block uppercase">{b.bookingType}</span>
                   </div>
@@ -241,8 +242,8 @@ export const TutorPortal: React.FC = () => {
           <div className="grid grid-cols-2 gap-3">
             <div className="bg-slate-900 rounded-2xl p-4 border border-slate-800 space-y-1">
               <span className="text-[11px] text-slate-400 block">Available for Payout</span>
-              <div className="text-xl font-bold font-mono text-emerald-400">
-                ₦{availablePayout.toLocaleString()}
+              <div className="text-xl font-bold text-emerald-400">
+                <NairaText amount={availablePayout} />
               </div>
               <span className="text-[10px] text-slate-500 block">
                 {availablePayout > 0 ? 'Ready to withdraw' : 'Completed sessions payout'}
@@ -251,8 +252,8 @@ export const TutorPortal: React.FC = () => {
 
             <div className="bg-slate-900 rounded-2xl p-4 border border-slate-800 space-y-1">
               <span className="text-[11px] text-slate-400 block">Held in Escrow</span>
-              <div className="text-xl font-bold font-mono text-amber-400">
-                ₦{heldInEscrow.toLocaleString()}
+              <div className="text-xl font-bold text-amber-400">
+                <NairaText amount={heldInEscrow} />
               </div>
               <span className="text-[10px] text-slate-500 block">
                 {myBookings.filter(b => b.status === 'confirmed').length} active session(s)
@@ -329,7 +330,9 @@ export const TutorPortal: React.FC = () => {
                 className="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-500 active:scale-[0.98] text-white text-xs font-bold rounded-xl transition-all shadow-sm flex items-center justify-center gap-1.5 cursor-pointer"
               >
                 <ArrowUpRight className="w-4 h-4" />
-                <span>Request Payout (₦{availablePayout.toLocaleString()})</span>
+                <span>
+                  Request Payout (<NairaText amount={availablePayout} />)
+                </span>
               </button>
             )}
           </div>

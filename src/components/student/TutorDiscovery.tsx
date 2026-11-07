@@ -20,6 +20,7 @@ import {
 
 import { ParentAddressVerificationModal } from '../auth/VerificationModals';
 import { TutorMapLocator } from '../tutors/TutorMapLocator';
+import { NairaText, NairaSign } from '../../utils/currency';
 
 export const TutorDiscovery: React.FC = () => {
   const {
@@ -231,8 +232,8 @@ export const TutorDiscovery: React.FC = () => {
             <div className="pt-2 border-t border-slate-800 flex items-center justify-between">
               <div>
                 <span className="text-[10px] text-slate-400 block">Rate</span>
-                <span className="text-xs font-bold text-white font-mono">
-                  ₦{tutor.hourlyRateNaira.toLocaleString()} / hr
+                <span className="text-xs font-bold text-white">
+                  <NairaText amount={tutor.hourlyRateNaira} /> / hr
                 </span>
               </div>
 
@@ -330,8 +331,8 @@ export const TutorDiscovery: React.FC = () => {
                     <div>
                       <h4 className="font-bold text-white text-xs">{selectedTutorForBooking.name}</h4>
                       <p className="text-[11px] text-slate-400">{selectedTutorForBooking.education}</p>
-                      <span className="text-[11px] font-mono text-emerald-400">
-                        ₦{selectedTutorForBooking.hourlyRateNaira.toLocaleString()} / hr
+                      <span className="text-[11px] text-emerald-400 font-semibold">
+                        <NairaText amount={selectedTutorForBooking.hourlyRateNaira} /> / hr
                       </span>
                     </div>
                   </div>
@@ -436,8 +437,8 @@ export const TutorDiscovery: React.FC = () => {
                   {/* Cost Summary */}
                   <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 flex items-center justify-between text-xs">
                     <span className="text-slate-400">Estimated Total (2 hrs):</span>
-                    <span className="font-mono font-bold text-emerald-400 text-sm">
-                      ₦{(selectedTutorForBooking.hourlyRateNaira * 2).toLocaleString()}
+                    <span className="font-bold text-emerald-400 text-sm">
+                      <NairaText amount={selectedTutorForBooking.hourlyRateNaira * 2} />
                     </span>
                   </div>
 

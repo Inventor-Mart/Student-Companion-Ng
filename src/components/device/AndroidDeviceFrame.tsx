@@ -9,12 +9,14 @@ export const AndroidDeviceFrame: React.FC<{ children: React.ReactNode }> = ({ ch
   const { isDeviceFrame, isOffline, currentRole, isSuperAdmin, switchRole } = useApp();
   const [isControlsOpen, setIsControlsOpen] = useState(false);
 
-  const roleLabel = {
+  const roleLabelMap: Record<string, string> = {
     student: 'Student',
+    growth_partner: 'Growth Partner',
     parent: 'Parent',
     tutor: 'Tutor',
     admin: 'Admin'
-  }[currentRole] || 'App';
+  };
+  const roleLabel = roleLabelMap[currentRole] || 'App';
 
   if (!isDeviceFrame) {
     // 100% Full-Screen Responsive View - Fills the entire preview pane

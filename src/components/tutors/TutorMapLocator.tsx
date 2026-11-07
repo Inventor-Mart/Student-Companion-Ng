@@ -19,6 +19,7 @@ import {
   Layers,
   Sparkles
 } from 'lucide-react';
+import { NairaText, NairaSign } from '../../utils/currency';
 
 interface TutorMapLocatorProps {
   tutors: Tutor[];
@@ -259,7 +260,7 @@ export const TutorMapLocator: React.FC<TutorMapLocatorProps> = ({
 
                   <div className="mt-1.5 flex items-center justify-between text-[10px]">
                     <span className="font-bold text-emerald-700">
-                      ₦{selectedTutor.hourlyRateNaira.toLocaleString()}/hr
+                      <NairaText amount={selectedTutor.hourlyRateNaira} />/hr
                     </span>
                     <span className="flex items-center gap-0.5 text-amber-600 font-semibold">
                       <Star className="w-2.5 h-2.5 fill-amber-500 text-amber-500" />
@@ -328,8 +329,8 @@ export const TutorMapLocator: React.FC<TutorMapLocatorProps> = ({
             </div>
 
             <div className="flex items-center justify-between pt-1 border-t border-slate-800">
-              <span className="text-xs font-mono font-bold text-emerald-400">
-                ₦{selectedTutor.hourlyRateNaira.toLocaleString()} / hr
+              <span className="text-xs font-bold text-emerald-400">
+                <NairaText amount={selectedTutor.hourlyRateNaira} /> / hr
               </span>
               <div className="flex items-center gap-1.5">
                 <button

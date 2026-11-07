@@ -20,6 +20,7 @@ import { KnowMorePage } from './components/landing/KnowMorePage';
 import { SignInPage } from './components/auth/SignInPage';
 import { SignUpPage } from './components/auth/SignUpPage';
 import { AiStudyCoach } from './components/student/AiStudyCoach';
+import { GrowthPartnerPortal } from './components/partner/GrowthPartnerPortal';
 
 const AppContent: React.FC = () => {
   const [quotaExceeded, setQuotaExceeded] = React.useState(false);
@@ -203,6 +204,8 @@ const AppContent: React.FC = () => {
             <AIUniformVerificationModal />
           </div>
         )}
+
+        {currentRole === 'growth_partner' && <GrowthPartnerPortal />}
 
         {currentRole === 'parent' && <ParentPortal />}
 

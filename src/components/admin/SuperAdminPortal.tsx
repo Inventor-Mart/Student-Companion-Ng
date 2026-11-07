@@ -26,6 +26,7 @@ import {
   X
 } from 'lucide-react';
 import { SchoolAdminPortal } from './SchoolAdminPortal';
+import { NairaText, NairaSign } from '../../utils/currency';
 
 export const SuperAdminPortal: React.FC = () => {
   const {
@@ -404,7 +405,7 @@ export const SuperAdminPortal: React.FC = () => {
                       <div className="flex items-center justify-between">
                         <span className="text-slate-400">Hourly Rate:</span>
                         <span className="font-bold text-[#84E000]">
-                          ₦{u.tutorData.hourlyRate.toLocaleString()} / hr
+                          <NairaText amount={u.tutorData.hourlyRate} /> / hr
                         </span>
                       </div>
                       <div className="flex items-center justify-between">
@@ -572,7 +573,9 @@ export const SuperAdminPortal: React.FC = () => {
               {selectedUserForEdit.role === 'tutor' && (
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label className="text-slate-400 font-semibold block mb-1">Hourly Rate (₦)</label>
+                    <label className="text-slate-400 font-semibold block mb-1">
+                      Hourly Rate (<NairaSign />)
+                    </label>
                     <input
                       type="number"
                       step={500}

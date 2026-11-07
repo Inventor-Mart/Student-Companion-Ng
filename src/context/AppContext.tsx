@@ -339,9 +339,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [currentUserProfile]);
 
-  // Auth Listener
+  // Auth Listener with robust snapshot listener cleanup
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+    let unsubs: Array<() => void> = [];
+
+    const cleanupListeners = () => {
+      unsubs.forEach((fn) => {
+        try {
+          fn();
+        } catch {}
+      });
+      unsubs = [];
+    };
+
+    const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
+      // Clean up any listeners from previous user sessions immediately
+      cleanupListeners();
+
       setCurrentUser(user);
       setAuthLoading(false);
       setIsFirebaseConnected(!!user);
@@ -472,15 +486,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           }
         );
 
-        return () => {
-          unsubDoc();
-          unsubExams();
-          unsubWallet();
-        };
+        unsubs.push(unsubDoc, unsubExams, unsubWallet);
       }
     });
 
-    return () => unsubscribe();
+    return () => {
+      cleanupListeners();
+      unsubscribeAuth();
+    };
   }, []);
 
   const loginWithGoogle = async () => {

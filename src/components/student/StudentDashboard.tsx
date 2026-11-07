@@ -19,6 +19,7 @@ import {
   Atom,
   GraduationCap
 } from 'lucide-react';
+import { NairaText, NairaSign } from '../../utils/currency';
 
 export const StudentDashboard: React.FC = () => {
   const {
@@ -270,7 +271,7 @@ export const StudentDashboard: React.FC = () => {
                 </span>
               </div>
               <p className="text-[11px] text-slate-300 mt-0.5">
-                Compete weekly for ₦50,000 airtime & termly for inter-school trophies!
+                Compete weekly for <NairaText amount={50000} /> airtime & termly for inter-school trophies!
               </p>
             </div>
           </div>
@@ -285,8 +286,11 @@ export const StudentDashboard: React.FC = () => {
               <span>⚡ Weekly Challenge</span>
               <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
             </div>
-            <p className="text-[10px] text-slate-300">
-              Week 8 Speed Quiz · ₦50k Airtime Pool
+            <p className="text-[10px] text-slate-300 flex items-center gap-1">
+              <span>Week 8 Speed Quiz ·</span>
+              <span className="inline-flex items-center">
+                <NairaSign />50k Airtime Pool
+              </span>
             </p>
           </button>
 
@@ -541,7 +545,9 @@ export const StudentDashboard: React.FC = () => {
               <span>·</span>
               <span>{student.streakDays} Day Streak 🔥</span>
               <span>·</span>
-              <span className="text-emerald-400 font-semibold">₦50k Prize Contender</span>
+              <span className="text-emerald-400 font-semibold inline-flex items-center">
+                <NairaSign />50k Prize Contender
+              </span>
             </div>
           </div>
         </div>

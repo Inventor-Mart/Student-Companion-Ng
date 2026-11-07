@@ -15,7 +15,8 @@ import {
   LogOut,
   ChevronRight,
   BookOpen,
-  Home
+  Home,
+  TrendingUp
 } from 'lucide-react';
 
 interface InAppControlsDrawerProps {
@@ -58,6 +59,13 @@ export const InAppControlsDrawer: React.FC<InAppControlsDrawerProps> = ({
       icon: <GraduationCap className="w-4 h-4 text-[#84E000]" />,
       desc: 'CBT Drills, Lesson Notes & Games',
       badge: 'Active Learner'
+    },
+    {
+      id: 'growth_partner',
+      label: 'Growth Partner',
+      icon: <TrendingUp className="w-4 h-4 text-emerald-400" />,
+      desc: '10% Lifetime RevShare & Referrals',
+      badge: 'Partner'
     },
     {
       id: 'parent',
@@ -140,13 +148,14 @@ export const InAppControlsDrawer: React.FC<InAppControlsDrawerProps> = ({
               <div className="flex items-center gap-2.5">
                 <div className="w-8 h-8 rounded-xl bg-[#15253F] border border-emerald-500/40 flex items-center justify-center text-emerald-400">
                   {currentRole === 'student' && <GraduationCap className="w-4 h-4" />}
+                  {currentRole === 'growth_partner' && <TrendingUp className="w-4 h-4 text-emerald-400" />}
                   {currentRole === 'parent' && <ShieldCheck className="w-4 h-4 text-[#FF5B00]" />}
                   {currentRole === 'tutor' && <Users className="w-4 h-4 text-sky-400" />}
                   {currentRole === 'admin' && <Building2 className="w-4 h-4 text-purple-400" />}
                 </div>
                 <div>
                   <span className="font-bold text-white text-xs block capitalize">
-                    {currentRole === 'student' ? 'Student Learning Portal' : currentRole === 'parent' ? 'Parent Escrow & Wallet' : currentRole === 'tutor' ? 'Verified Tutor Hub' : 'School Admin Portal'}
+                    {currentRole === 'student' ? 'Student Learning Portal' : currentRole === 'growth_partner' ? 'Growth Partner Portal' : currentRole === 'parent' ? 'Parent Escrow & Wallet' : currentRole === 'tutor' ? 'Verified Tutor Hub' : 'School Admin Portal'}
                   </span>
                   <span className="text-[10px] text-emerald-400 font-semibold">
                     ✓ Authenticated Access
@@ -198,7 +207,7 @@ export const InAppControlsDrawer: React.FC<InAppControlsDrawerProps> = ({
               ) : (
                 <>
                   <p className="text-[10px] text-slate-400 leading-relaxed pt-1 border-t border-slate-800">
-                    To access another portal (e.g. as a Parent, Tutor, or School Admin), you must sign in with an account registered for that role.
+                    To access another portal (e.g. as a Student, Parent, Tutor, or School Admin), you must sign in with an account registered for that role.
                   </p>
 
                   <button

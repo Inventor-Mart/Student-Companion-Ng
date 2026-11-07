@@ -20,8 +20,10 @@ import {
   KeyRound,
   AlertCircle,
   CheckCircle2,
-  RefreshCw
+  RefreshCw,
+  TrendingUp
 } from 'lucide-react';
+import { NairaSign } from '../../utils/currency';
 
 interface SignUpPageProps {
   onBackToSignIn: () => void;
@@ -102,7 +104,7 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
   const roleCards: {
     role: UserRole;
     title: string;
-    badge: string;
+    badge: React.ReactNode;
     description: string;
     icon: React.ReactNode;
     color: string;
@@ -126,10 +128,22 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
     {
       role: 'tutor',
       title: 'Educator / Tutor',
-      badge: 'Earn ₦',
+      badge: (
+        <span className="inline-flex items-center gap-0.5">
+          Earn <NairaSign />
+        </span>
+      ),
       description: 'Offer structured 1-on-1 tutoring sessions and track earnings.',
       icon: <Users className="w-6 h-6 text-sky-400" />,
       color: 'border-sky-500/60 hover:border-sky-400'
+    },
+    {
+      role: 'growth_partner',
+      title: 'Growth Partner',
+      badge: '10% RevShare',
+      description: 'Refer schools & students, earn 10% lifetime revenue share on every payment.',
+      icon: <TrendingUp className="w-6 h-6 text-emerald-400" />,
+      color: 'border-emerald-500/60 hover:border-emerald-400'
     },
     {
       role: 'admin',
@@ -269,6 +283,14 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
         qualification: qualification.trim(),
         hourlyRateNaira: parseInt(hourlyRate) || 3500,
         teachingMode
+      });
+    } else if (selectedRole === 'growth_partner') {
+      registerNewUser('growth_partner', {
+        name: computedFullName,
+        firstName: trimmedFirst,
+        lastName: trimmedLast,
+        email: email.trim(),
+        phone: phone.trim()
       });
     } else {
       registerNewUser('admin', {
@@ -721,7 +743,9 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <label className="text-xs font-semibold text-slate-300 block mb-1">Hourly Rate (₦)</label>
+                      <label className="text-xs font-semibold text-slate-300 block mb-1">
+                        Hourly Rate (<NairaSign />)
+                      </label>
                       <input
                         type="number"
                         required
@@ -784,6 +808,33 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
                         <option value="Private College">Private Secondary College</option>
                       </select>
                     </div>
+                  </div>
+                </div>
+              )}
+
+              {/* GROWTH PARTNER SPECIFIC FIELDS */}
+              {selectedRole === 'growth_partner' && (
+                <div className="space-y-3 pt-3 border-t border-[#1E304F]">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 block px-1">
+                    Partner Commission & Payout Information
+                  </span>
+
+                  <div>
+                    <label className="text-xs font-semibold text-slate-300 block mb-1">WhatsApp / Contact Phone</label>
+                    <div className="relative">
+                      <Phone className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="tel"
+                        value={phone}
+                        onChange={(e) => setPhone(e.target.value)}
+                        placeholder="+234 801 234 5678"
+                        className="w-full bg-[#081220] border border-[#1E304F] focus:border-emerald-500 rounded-xl py-2.5 pl-10 pr-4 text-xs text-white placeholder-slate-500 focus:outline-none transition-colors"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-emerald-950/40 border border-emerald-500/30 text-[11px] text-emerald-200">
+                    💡 <strong>10% Lifetime Revenue Share</strong>: Every student registered through your unique partner code or referral link automatically credits 10% of their subscription payments directly to your verified digital wallet with instant bank withdrawal.
                   </div>
                 </div>
               )}

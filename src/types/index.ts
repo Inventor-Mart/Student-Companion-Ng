@@ -1,4 +1,4 @@
-export type UserRole = 'student' | 'parent' | 'tutor' | 'admin';
+export type UserRole = 'student' | 'parent' | 'tutor' | 'admin' | 'growth_partner';
 
 export type NigerianClassLevel =
   | 'JSS 1'
@@ -208,6 +208,73 @@ export interface RegisteredUserProfile {
     schoolName: string;
     schoolType: string;
   };
+  growthPartnerData?: GrowthPartner;
   isSuperAdmin?: boolean;
   isDeveloper?: boolean;
+}
+
+export interface GrowthPartner {
+  id: string;
+  name: string;
+  email: string;
+  phone?: string;
+  referralCode: string;
+  commissionRatePercent: number;
+  totalEarningsNaira: number;
+  totalPaidOutNaira: number;
+  activeReferralsCount: number;
+  bankName?: string;
+  accountNumber?: string;
+  accountName?: string;
+  status: 'active' | 'suspended' | 'pending_approval';
+  createdAt: string;
+}
+
+export interface Referral {
+  id: string;
+  partnerId: string;
+  referredUserId: string;
+  referredUserName?: string;
+  referralCodeUsed: string;
+  status: 'active' | 'churned';
+  totalVolumePaidNaira: number;
+  totalCommissionEarnedNaira: number;
+  lastPaymentDate?: string;
+  createdAt: string;
+}
+
+export interface PartnerWallet {
+  partnerId: string;
+  balanceNaira: number;
+  lifetimeEarnedNaira: number;
+  totalWithdrawnNaira: number;
+  updatedAt: string;
+}
+
+export interface RevenueShareTransaction {
+  id: string;
+  partnerId: string;
+  studentId: string;
+  studentName: string;
+  paymentId: string;
+  subscriptionPlan: string;
+  paymentAmountNaira: number;
+  commissionRatePercent: number;
+  commissionAmountNaira: number;
+  status: 'credited' | 'reversed';
+  createdAt: string;
+}
+
+export interface SubscriptionPayment {
+  id: string;
+  studentId: string;
+  studentName: string;
+  plan: string;
+  amountNaira: number;
+  paymentGateway: 'Paystack' | 'Flutterwave' | 'Direct Escrow';
+  status: 'successful' | 'pending' | 'failed';
+  partnerId?: string | null;
+  partnerCommissionCredited: boolean;
+  commissionAmountNaira?: number;
+  createdAt: string;
 }
