@@ -25,6 +25,7 @@ interface TutorMapLocatorProps {
   tutors: Tutor[];
   onSelectTutorForBooking: (tutor: Tutor) => void;
   onOpenChat: (tutorId: string) => void;
+  onViewProfile?: (tutor: Tutor) => void;
 }
 
 // Nigerian Education Hubs
@@ -55,7 +56,8 @@ function calculateDistanceKm(lat1: number, lon1: number, lat2: number, lon2: num
 export const TutorMapLocator: React.FC<TutorMapLocatorProps> = ({
   tutors,
   onSelectTutorForBooking,
-  onOpenChat
+  onOpenChat,
+  onViewProfile
 }) => {
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
 
@@ -333,9 +335,17 @@ export const TutorMapLocator: React.FC<TutorMapLocatorProps> = ({
                 <NairaText amount={selectedTutor.hourlyRateNaira} /> / hr
               </span>
               <div className="flex items-center gap-1.5">
+                {onViewProfile && (
+                  <button
+                    onClick={() => onViewProfile(selectedTutor)}
+                    className="px-2.5 py-1 text-[11px] rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium transition-colors cursor-pointer"
+                  >
+                    Profile
+                  </button>
+                )}
                 <button
                   onClick={() => onOpenChat(selectedTutor.id)}
-                  className="px-2.5 py-1 text-[11px] rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium transition-colors"
+                  className="px-2.5 py-1 text-[11px] rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium transition-colors cursor-pointer"
                 >
                   Chat
                 </button>

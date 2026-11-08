@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { VETTED_NIGERIAN_TUTORS } from '../../data/tutorsData';
-import { Tutor, BookingType } from '../../types';
+import { Tutor, BookingType, TimetableSlot } from '../../types';
 import {
   Search,
   ShieldCheck,
@@ -15,11 +15,13 @@ import {
   CheckCircle2,
   AlertTriangle,
   Map as MapIcon,
-  List
+  List,
+  Video
 } from 'lucide-react';
 
 import { ParentAddressVerificationModal } from '../auth/VerificationModals';
 import { TutorMapLocator } from '../tutors/TutorMapLocator';
+import { TutorProfileView } from './TutorProfileView';
 import { NairaText, NairaSign } from '../../utils/currency';
 
 export const TutorDiscovery: React.FC = () => {
@@ -28,21 +30,24 @@ export const TutorDiscovery: React.FC = () => {
     setActiveTutorChatId,
     setCurrentRole,
     student,
-    verifiedAddress
+    verifiedAddress,
+    launchVirtualClassroom
   } = useApp();
 
-  const [viewMode, setViewMode] = useState<'map' | 'list'>('map');
+  const [viewMode, setViewMode] = useState<'map' | 'list'>('list');
   const [isAddressModalOpen, setIsAddressModalOpen] = useState(false);
 
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedSubject, setSelectedSubject] = useState<string>('All');
   const [selectedTutorForBooking, setSelectedTutorForBooking] = useState<Tutor | null>(null);
+  const [selectedTutorForProfile, setSelectedTutorForProfile] = useState<Tutor | null>(null);
 
   // Booking Form State
   const [bookingType, setBookingType] = useState<BookingType>('physical');
   const [selectedDate, setSelectedDate] = useState<string>('Upcoming Saturday (10:00 AM - 12:00 PM)');
   const [topicFocus, setTopicFocus] = useState<string>('WAEC & JAMB Problem Solving Drill');
   const [bookingConfirmed, setBookingConfirmed] = useState<boolean>(false);
+  const [confirmedBookingId, setConfirmedBookingId] = useState<string>('');
 
   const subjects = ['All', 'Mathematics', 'Physics', 'Biology', 'Chemistry', 'Economics', 'English Language'];
 
@@ -65,7 +70,7 @@ export const TutorDiscovery: React.FC = () => {
       return;
     }
 
-    createTutorBooking({
+    const newBooking = createTutorBooking({
       tutorId: selectedTutorForBooking.id,
       tutorName: selectedTutorForBooking.name,
       tutorPhoto: selectedTutorForBooking.avatarUrl,
@@ -79,12 +84,31 @@ export const TutorDiscovery: React.FC = () => {
       amountNaira: selectedTutorForBooking.hourlyRateNaira * 2
     });
 
+    if (newBooking?.id) {
+      setConfirmedBookingId(newBooking.id);
+    }
     setBookingConfirmed(true);
   };
 
   return (
-    <div className="flex-1 w-full overflow-y-auto px-4 py-4 space-y-4 touch-pan-y text-slate-100">
-      <div className="flex items-center justify-between gap-2">
+    <div className="flex-1 w-full flex flex-col min-h-0 relative overflow-hidden">
+      {selectedTutorForProfile ? (
+        <TutorProfileView
+          tutor={selectedTutorForProfile}
+          onBack={() => setSelectedTutorForProfile(null)}
+          onBookSession={(tutor, selectedSlot) => {
+            setSelectedTutorForBooking(tutor);
+            setBookingType('online');
+            if (selectedSlot) {
+              setSelectedDate(`${selectedSlot.day} (${selectedSlot.time})`);
+              setTopicFocus(`${tutor.subjects[0]} 1-on-1 Virtual Whiteboard Intensive`);
+            }
+            setBookingConfirmed(false);
+          }}
+        />
+      ) : (
+        <div className="flex-1 w-full overflow-y-auto px-4 py-4 space-y-4 touch-pan-y text-slate-100">
+          <div className="flex items-center justify-between gap-2">
         <div>
           <div className="flex items-center gap-2">
             <h2 className="text-base font-bold text-white tracking-tight">
@@ -126,6 +150,33 @@ export const TutorDiscovery: React.FC = () => {
         </div>
       </div>
 
+      {/* Quick Interactive Whiteboard Classroom Launch Callout */}
+      <div className="bg-gradient-to-r from-emerald-950/80 via-slate-900 to-teal-950/70 border border-emerald-500/50 rounded-2xl p-3.5 flex items-center justify-between gap-3 shadow-md">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shrink-0">
+            <Video className="w-4 h-4 animate-pulse" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-white">Interactive Whiteboard & Audio Classroom</span>
+              <span className="text-[9px] font-bold text-emerald-300 bg-emerald-950 px-1.5 py-0.2 rounded border border-emerald-700 uppercase">
+                Live Board
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-300 mt-0.5">
+              Instant 1-on-1 digital canvas with WAEC/JAMB formula stampers, low-data audio & chat.
+            </p>
+          </div>
+        </div>
+        <button
+          onClick={() => launchVirtualClassroom('demo-classroom-session', 'student')}
+          className="px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs rounded-xl transition-all shadow-md flex items-center gap-1.5 shrink-0 cursor-pointer"
+        >
+          <Video className="w-3.5 h-3.5" />
+          <span>Launch Board</span>
+        </button>
+      </div>
+
       {/* Render Google Map or List */}
       {viewMode === 'map' ? (
         <TutorMapLocator
@@ -137,6 +188,9 @@ export const TutorDiscovery: React.FC = () => {
           onOpenChat={(tutorId) => {
             setActiveTutorChatId(tutorId);
             setCurrentRole('tutor');
+          }}
+          onViewProfile={(tutor) => {
+            setSelectedTutorForProfile(tutor);
           }}
         />
       ) : (
@@ -179,14 +233,29 @@ export const TutorDiscovery: React.FC = () => {
             className="bg-slate-900/90 rounded-2xl p-4 border border-slate-800 hover:border-slate-700 transition-all space-y-3"
           >
             <div className="flex items-start gap-3">
-              <img
-                src={tutor.avatarUrl}
-                alt={tutor.name}
-                className="w-12 h-12 rounded-2xl bg-slate-800 object-cover ring-1 ring-slate-700 shrink-0"
-              />
+              <button
+                type="button"
+                onClick={() => setSelectedTutorForProfile(tutor)}
+                className="cursor-pointer shrink-0 group focus:outline-none"
+                title="View Full Profile"
+              >
+                <img
+                  src={tutor.avatarUrl}
+                  alt={tutor.name}
+                  className="w-12 h-12 rounded-2xl bg-slate-800 object-cover ring-1 ring-slate-700 group-hover:ring-emerald-500/60 transition-all"
+                />
+              </button>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-1.5">
-                  <h3 className="text-sm font-bold text-white truncate">{tutor.name}</h3>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedTutorForProfile(tutor)}
+                    className="text-left group cursor-pointer focus:outline-none"
+                  >
+                    <h3 className="text-sm font-bold text-white group-hover:text-emerald-400 transition-colors truncate">
+                      {tutor.name}
+                    </h3>
+                  </button>
                   {tutor.isNinVerified && (
                     <span
                       className="text-emerald-400 bg-emerald-950/80 p-0.5 rounded-full border border-emerald-800"
@@ -239,11 +308,19 @@ export const TutorDiscovery: React.FC = () => {
 
               <div className="flex items-center gap-2">
                 <button
+                  type="button"
+                  onClick={() => setSelectedTutorForProfile(tutor)}
+                  className="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-colors cursor-pointer"
+                >
+                  View Profile
+                </button>
+
+                <button
                   onClick={() => {
                     setActiveTutorChatId(tutor.id);
                     setCurrentRole('tutor');
                   }}
-                  className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-colors"
+                  className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-colors cursor-pointer"
                   title="In-App Masked Chat"
                 >
                   <MessageSquare className="w-3.5 h-3.5" />
@@ -254,7 +331,7 @@ export const TutorDiscovery: React.FC = () => {
                     setSelectedTutorForBooking(tutor);
                     setBookingConfirmed(false);
                   }}
-                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl transition-colors shadow-sm"
+                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl transition-colors shadow-sm cursor-pointer"
                 >
                   Book Session
                 </button>
@@ -265,6 +342,8 @@ export const TutorDiscovery: React.FC = () => {
       </div>
     </>
   )}
+        </div>
+      )}
 
       {/* Booking Modal */}
       {selectedTutorForBooking && (
@@ -296,24 +375,36 @@ export const TutorDiscovery: React.FC = () => {
                   <p className="text-xs text-slate-400 leading-relaxed max-w-xs mx-auto">
                     {bookingType === 'physical'
                       ? 'Because this is a physical home session, your parent must authorize the booking & escrow payment via their Parent PIN.'
-                      : 'Your online session link will be accessible on your dashboard 15 minutes before start.'}
+                      : 'Your interactive digital classroom with live whiteboard, audio, and chat is ready.'}
                   </p>
 
                   <div className="pt-2 flex flex-col gap-2">
+                    {bookingType === 'online' && confirmedBookingId && (
+                      <button
+                        onClick={() => {
+                          setSelectedTutorForBooking(null);
+                          launchVirtualClassroom(confirmedBookingId, 'student');
+                        }}
+                        className="py-2.5 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
+                      >
+                        <Video className="w-4 h-4" />
+                        <span>Launch Virtual Classroom Now</span>
+                      </button>
+                    )}
                     {bookingType === 'physical' && (
                       <button
                         onClick={() => {
                           setSelectedTutorForBooking(null);
                           setCurrentRole('parent');
                         }}
-                        className="py-2.5 px-4 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold transition-colors shadow-sm"
+                        className="py-2.5 px-4 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold transition-colors shadow-sm cursor-pointer"
                       >
                         Switch to Parent Portal to Authorize
                       </button>
                     )}
                     <button
                       onClick={() => setSelectedTutorForBooking(null)}
-                      className="py-2 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold"
+                      className="py-2 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold cursor-pointer"
                     >
                       Back to Tutors
                     </button>

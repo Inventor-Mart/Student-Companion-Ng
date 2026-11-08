@@ -24,7 +24,8 @@ import {
   TutorVerificationDetails,
   RegisteredUserProfile,
   ChampionshipRegistration,
-  ChampionshipTier
+  ChampionshipTier,
+  VirtualClassroomSession
 } from '../types';
 import {
   getStoredChampionshipRegistrations,
@@ -122,6 +123,13 @@ interface AppContextType {
   chatMessages: Record<string, ChatMessage[]>;
   sendChatMessage: (tutorId: string, text: string, sender: 'student' | 'tutor') => void;
 
+  // Virtual Classroom & Online Teaching
+  activeClassroomSession: VirtualClassroomSession | null;
+  launchVirtualClassroom: (bookingId: string, role?: 'student' | 'tutor') => void;
+  closeVirtualClassroom: () => void;
+  completeVirtualSessionAndReleaseEscrow: (bookingId: string, rating?: number, feedback?: string) => void;
+  toggleVirtualClassroomMic: () => void;
+
   // Termly Championship & Prizes
   championshipRegistrations: ChampionshipRegistration[];
   currentStudentChampionship: ChampionshipRegistration | null;
@@ -199,7 +207,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (parsed.id && !parsed.id.includes('tunde')) return parsed;
       } catch {}
     }
-    return null;
+    return INITIAL_USER_DIRECTORY[1];
   });
 
   // Navigation & Presentation (bound to registered role)
@@ -220,8 +228,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [targetSignUpRole, setTargetSignUpRole] = useState<UserRole | null>(null);
   const [isDeviceFrame, setIsDeviceFrame] = useState<boolean>(false);
   const [isOffline, setIsOffline] = useState<boolean>(false);
-  const [isLandingView, setIsLandingView] = useState<boolean>(true);
-  const [currentScreen, setCurrentScreen] = useState<'landing' | 'signin' | 'signup' | 'know_more' | 'app'>('landing');
+  const [isLandingView, setIsLandingView] = useState<boolean>(false);
+  const [currentScreen, setCurrentScreen] = useState<'landing' | 'signin' | 'signup' | 'know_more' | 'app'>('app');
   const [activeStudentTab, setActiveStudentTab] = useState<'dashboard' | 'syllabus' | 'cbt' | 'competitions' | 'formulas' | 'tutors' | 'games' | 'ai-coach' | 'community'>('dashboard');
   const [activeReadingNote, setActiveReadingNote] = useState<CurriculumTopic | null>(null);
   const [activeExam, setActiveExam] = useState<CBTExam | null>(null);
@@ -1139,6 +1147,125 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  // Virtual Classroom State & Handlers
+  const [activeClassroomSession, setActiveClassroomSession] = useState<VirtualClassroomSession | null>(null);
+
+  const launchVirtualClassroom = (bookingId: string, role?: 'student' | 'tutor') => {
+    let booking = tutorBookings.find(b => b.id === bookingId);
+    if (!booking) {
+      booking = tutorBookings.find(b => b.bookingType === 'online') || tutorBookings[0];
+    }
+
+    const resolvedBooking: TutorBooking = booking || {
+      id: bookingId || 'demo-session-live',
+      tutorId: 'tutor-adewale-math',
+      tutorName: 'Engr. Adewale Bakare',
+      tutorPhoto: 'https://api.dicebear.com/7.x/micah/svg?seed=Adewale&backgroundColor=b6e3f4',
+      studentId: student.id,
+      studentName: student.name || 'Registered Student',
+      subject: 'Mathematics',
+      topic: 'Calculus & Circle Geometry Proofs Drill',
+      bookingType: 'online',
+      date: 'Today (Live Session)',
+      timeSlot: '2 Hours Intensive',
+      status: 'confirmed',
+      amountNaira: 9000,
+      isParentApproved: true,
+      createdAt: new Date().toISOString()
+    };
+
+    const resolvedRole: 'student' | 'tutor' = role || (currentRole === 'tutor' ? 'tutor' : 'student');
+
+    setActiveClassroomSession({
+      bookingId: resolvedBooking.id,
+      tutorId: resolvedBooking.tutorId,
+      tutorName: resolvedBooking.tutorName,
+      tutorPhoto: resolvedBooking.tutorPhoto,
+      studentId: resolvedBooking.studentId,
+      studentName: resolvedBooking.studentName,
+      subject: resolvedBooking.subject,
+      topic: resolvedBooking.topic,
+      amountNaira: resolvedBooking.amountNaira,
+      durationMinutes: 120,
+      remainingSeconds: 7200,
+      status: 'active',
+      isTutorMicActive: true,
+      isStudentMicActive: true,
+      activeRole: resolvedRole
+    });
+  };
+
+  const closeVirtualClassroom = () => {
+    setActiveClassroomSession(null);
+  };
+
+  const toggleVirtualClassroomMic = () => {
+    setActiveClassroomSession(prev => {
+      if (!prev) return null;
+      if (prev.activeRole === 'tutor') {
+        return { ...prev, isTutorMicActive: !prev.isTutorMicActive };
+      }
+      return { ...prev, isStudentMicActive: !prev.isStudentMicActive };
+    });
+  };
+
+  const completeVirtualSessionAndReleaseEscrow = (
+    bookingId: string,
+    rating?: number,
+    feedback?: string
+  ) => {
+    // 1. Mark booking as completed
+    setTutorBookings(prev =>
+      prev.map(b =>
+        b.id === bookingId
+          ? {
+              ...b,
+              status: 'completed' as const
+            }
+          : b
+      )
+    );
+
+    // 2. Record disbursement in parent wallet ledger
+    const targetBooking = tutorBookings.find(b => b.id === bookingId);
+    if (targetBooking) {
+      const releaseTx: any = {
+        id: `tx-rel-${Date.now().toString().slice(-6)}`,
+        type: 'debit',
+        amountNaira: targetBooking.amountNaira,
+        description: `Escrow Disbursed: Online Lesson Completed with ${targetBooking.tutorName} (${targetBooking.subject})`,
+        timestamp: 'Just now',
+        status: 'successful',
+        reference: `RELEASE_${bookingId}`
+      };
+      setParentWallet(prev => ({
+        ...prev,
+        transactions: [releaseTx, ...prev.transactions]
+      }));
+    }
+
+    // 3. Firestore update (only for persistent database bookings, skip demo sessions)
+    if (currentUser && !isOffline && !bookingId.startsWith('demo-')) {
+      const bookingDocRef = doc(db, 'tutorBookings', bookingId);
+      const path = `tutorBookings/${bookingId}`;
+      updateDoc(bookingDocRef, {
+        status: 'completed'
+      }).catch(err => {
+        handleFirestoreError(err, OperationType.UPDATE, path);
+      });
+    }
+
+    // 4. Close classroom session & celebrate
+    setActiveClassroomSession(null);
+    try {
+      confetti({
+        particleCount: 80,
+        spread: 80,
+        origin: { y: 0.5 }
+      });
+    } catch {}
+  };
+
   // Progressive Verification State
   const [verifiedAddress, setVerifiedAddress] = useState<VerifiedAddress | null>(() => {
     const saved = safeGetItem('sc_verified_address');
@@ -1385,6 +1512,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setActiveTutorChatId,
         chatMessages,
         sendChatMessage,
+        activeClassroomSession,
+        launchVirtualClassroom,
+        closeVirtualClassroom,
+        completeVirtualSessionAndReleaseEscrow,
+        toggleVirtualClassroomMic,
         resetDemoData,
         championshipRegistrations,
         currentStudentChampionship,

@@ -12,7 +12,8 @@ import {
   Clock,
   MapPin,
   ArrowUpRight,
-  AlertCircle
+  AlertCircle,
+  Video
 } from 'lucide-react';
 
 import { TutorSecurityVerificationModal } from '../auth/VerificationModals';
@@ -26,7 +27,8 @@ export const TutorPortal: React.FC = () => {
     chatMessages,
     sendChatMessage,
     currentUserProfile,
-    tutorVerification
+    tutorVerification,
+    launchVirtualClassroom
   } = useApp();
 
   const tutorName = currentUserProfile?.fullName || 'Registered Educator';
@@ -216,19 +218,30 @@ export const TutorPortal: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between text-[11px] text-slate-400 pt-2 border-t border-slate-800">
+                <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-400 pt-2 border-t border-slate-800">
                   <span className="flex items-center gap-1">
                     <Clock className="w-3 h-3" /> {b.date} ({b.timeSlot})
                   </span>
-                  <button
-                    onClick={() => {
-                      setActiveTutorChatId(b.studentId);
-                      setActiveTab('chat');
-                    }}
-                    className="text-emerald-400 hover:underline font-semibold"
-                  >
-                    Open Masked Chat
-                  </button>
+                  <div className="flex items-center gap-2">
+                    {b.status === 'confirmed' && b.bookingType === 'online' && (
+                      <button
+                        onClick={() => launchVirtualClassroom(b.id, 'tutor')}
+                        className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] transition-colors cursor-pointer shadow-sm"
+                      >
+                        <Video className="w-3 h-3" />
+                        <span>Launch Virtual Classroom</span>
+                      </button>
+                    )}
+                    <button
+                      onClick={() => {
+                        setActiveTutorChatId(b.studentId);
+                        setActiveTab('chat');
+                      }}
+                      className="text-emerald-400 hover:underline font-semibold"
+                    >
+                      Open Masked Chat
+                    </button>
+                  </div>
                 </div>
               </div>
             ))

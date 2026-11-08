@@ -1,87 +1,89 @@
-# Universal Nigerian Naira (₦) Currency Display & Cross-Platform Font Fallback
+# Interactive Board: Direct On-Board Typing & Movable/Editable Sticky Notes
 
-Standardize currency display across all platform personas (Growth Partner, Parent, Tutor, School Admin, and Student) using the official Nigerian Naira (`₦`) symbol with comma-separated whole numbers and cross-platform font fallbacks to eliminate missing-glyph boxes (`▯`).
+Enable direct in-place typing on the whiteboard just like a native live editor, while preserving stamped notes as interactive stickers that can be dragged to reposition and double-clicked to edit.
 
 ## User Review & Critical Decisions
 
 > [!IMPORTANT]
-> The following product decisions were confirmed during clarification:
-> - **Symbol Formatting**: Direct Naira (`₦`) symbol rendered with a dedicated cross-platform font fallback (`system-ui, -apple-system, Roboto, 'Segoe UI', Arial, sans-serif`) to prevent tofu boxes (`▯`) on Android, iOS, Windows, and mobile Chrome.
-> - **Number Formatting**: Comma-separated whole Naira amounts (e.g., `₦15,000`, `₦1,500`, `₦500`, `₦0`) without trailing decimals across all dashboards, ledgers, and modals.
-
-- **Confirmed Decision 1**: Implement universal `formatNaira`, `<NairaText />`, and `<NairaSign />` components in `src/utils/currency.tsx` with dedicated font isolation so the symbol never inherits fonts lacking glyph U+20A6 (such as `JetBrains Mono`).
-- **Confirmed Decision 2**: Audit and standardize every persona in the app (Growth Partner, Parent, Tutor, Admin, Student) to use this uniform representation.
-
----
+> The following interactions have been confirmed for the text and sticker note experience:
+> - **Direct On-Board Typing**: In Text mode, clicking anywhere on the board places an inline, auto-focusing direct text box right where clicked, allowing teachers and students to type lesson notes seamlessly without awkward popups.
+> - **Sticker / Note Representation**: Placed notes render as interactive sticker cards with clean typography, subtle accent tags, and translucent dark glass styling that sits naturally atop the Cartesian chalkboard grid.
+> - **Movable & Drag-to-Reposition**: Any placed text note or math sticker can be dragged across the board to re-arrange formulas, exercises, and annotations.
+> - **Double-Click to Edit**: Double-clicking (or tapping the edit pencil on touch devices) opens the inline text editor prefilled with existing content for immediate updating.
+> - **Composite Snapshot Export**: "Save Notes" composites both freehand drawing strokes and all positioned sticker notes into a clean, high-resolution downloadable PNG.
 
 ## 1. Overview & Core Concept
 
-- **The Problem**: On Android devices (as seen in the user's screenshot), monospace font stacks like `JetBrains Mono` or default system monospace engines lack the Unicode glyph for the Nigerian Naira (`₦` / `U+20A6`). As a result, Android Chrome displays a rectangular missing-glyph tofu box (`▯0`).
-- **The Solution**:
-  1. Define a font fallback system in `src/index.css` and `index.html` ensuring `Roboto` and system fonts back up custom web fonts.
-  2. Provide a lightweight, reusable `<NairaText />` and `<NairaSign />` utility that forces glyph rendering through standard sans-serif system fonts even within monospace stat numbers.
-  3. Format all values as whole Naira integers with standard locale grouping (`₦15,000`).
-
----
+- **What It Does**: Upgrades the whiteboard from static bitmap text stamps to an interactive object layer. Text notes and formula stickers remain living, movable cards on the board that can be repositioned and edited at any time during the lesson.
+- **Target Persona**: Nigerian tutors explaining complex mathematical proofs or JAMB/WAEC question breakdowns, and students organizing their lecture notes.
+- **Key Value**: Eliminates the frustration of having to erase and re-draw text when reorganizing board space during a live class.
 
 ## 2. User Experience & Visual Design
 
-- **Growth Partner Persona (`GrowthPartnerPortal.tsx`)**:
-  - Primary metric cards: Available Balance (`₦0`), Withdrawn (`₦0`), Lifetime Earnings (`₦0`).
-  - Active Referrals Roster: Total Volume (`₦15,000`), Total Commission (`₦1,500`).
-  - Audit Ledger: Payment Amount (`₦15,000`), Commission Credited (`+₦1,500`).
-  - Test Simulator: Plan prices (`₦15,000`, `₦35,000`, `₦5,000`), custom amount field, expected 10% credit (`₦1,500`).
-  - Bank Withdrawal Modal: Available balance reference (`Max: ₦1,000`), amount input label (`Withdrawal Amount (₦)`).
-- **Parent Persona (`ParentPortal.tsx`)**:
-  - Digital Wallet Balance (`₦35,000`), quick top-up buttons (`₦1,000`, `₦2,500`, `₦5,000`, `₦10,000`), Paystack checkout button, and tutor booking escrow deductions (`-₦3,500`).
-- **Tutor Persona (`TutorPortal.tsx`, `TutorDiscovery.tsx`, `TutorMapLocator.tsx`)**:
-  - Hourly rate display (`₦3,500 / hr`), available payout balance (`₦...`), funds held in escrow, payout request button.
-- **School Admin & Super Admin (`SchoolAdminPortal.tsx`, `SuperAdminPortal.tsx`)**:
-  - Tutor hourly rates in user directory (`₦3,000 / hr`), licensing and institutional quotas.
-- **Sign-Up Flow (`SignUpPage.tsx`)**:
-  - Tutor hourly rate configuration input (`Hourly Rate (₦)`).
-
----
+- **Inline Direct Typing Box**:
+  - When the Text tool is active (`'text'`), a pulsating dashed cursor prompt invites the user to click anywhere.
+  - Clicking spawns an inline text input container directly at the pointer coordinates with:
+    - Auto-resizing textarea with monospace/sans font sizing (`S`, `M`, `L`, `XL`).
+    - Color indicator matching the active chalkboard chalk palette (`#F8FAFC`, Emerald `#10B981`, Sky `#38BDF8`, Amber `#F59E0B`, etc.).
+    - Quick action buttons: **Enter / Stamp** (commits the note) or **Esc / Cancel**.
+- **Interactive Sticker Note Cards**:
+  - Rendered with smooth rounded corners (`rounded-xl`), hairline slate borders (`border-slate-700/80`), and high-contrast readable text.
+  - Features an intuitive hover/touch grip indicator (`grip-vertical`) and a quick edit/delete micro-toolbar that appears on hover or active selection.
+  - Dragging provides real-time cursor feedback (`cursor-grab` $\to$ `cursor-grabbing`) with sub-pixel pointer tracking.
+  - Double-clicking opens the inline editor in-place with the current text selected.
+- **Math & Formula Stickers**:
+  - Quick math symbols (`∫`, `∑`, `√x`, `π`, `d/dx`, etc.) can also be placed as movable stickers that can be repositioned alongside handwritten derivations.
 
 ## 3. Key Product Decisions & Trade-Offs
 
-- **Decision 1: Specialized `<NairaText />` Component vs. Inline CSS Classes**
-  - *Chosen Approach*: Provide both `src/utils/currency.tsx` (with `<NairaSign />`, `<NairaText />`, and `formatNaira()`) and global CSS utility `.naira-symbol`.
-  - *Why*: Enables seamless usage across large numerical displays, small badge metadata, table cells, and string-only alerts or option dropdowns.
-  - *Alternatives Considered*: Pure string interpolation (`₦${val}`) was rejected because Android browsers still fail to render `₦` when wrapped in `font-mono`.
+- **Decision 1: Interactive DOM Overlay Layer vs. Pure Canvas Stamping**
+  - *Chosen Approach*: Render active text stickers as a dedicated, lightweight interactive HTML5 overlay directly positioned over the `<canvas>` viewport, with pointer drag handlers.
+  - *Why*: Allows native mobile virtual keyboard accessibility, selection cursor, drag handles, and smooth text rendering without fuzzy canvas font scaling issues on mobile devices.
+  - *Alternatives Considered*: Pure canvas hit-testing (cumbersome for mobile touch editing and cursor positioning) or modal dialogs (interrupts visual flow).
+- **Decision 2: Seamless Composite PNG Export**
+  - *Chosen Approach*: During "Save Notes", the export function draws all canvas strokes, then iterates over active sticker notes, painting their backgrounds and text directly onto the export canvas before generating the download link.
+  - *Why*: Ensures downloaded lesson summaries contain all student and tutor notes in their exact positions.
 
-- **Decision 2: Global Theme Font Stacks in Tailwind CSS**
-  - *Chosen Approach*: Update `src/index.css` to add `Roboto`, `'Segoe UI'`, and `Arial` immediately after `JetBrains Mono` and `Plus Jakarta Sans`.
-  - *Why*: Provides automatic secondary fallback at the root stylesheet level for standard string usages.
-
----
-
-## 4. Technical Architecture & Component Mapping
+## 4. Technical Architecture & Data Strategy
 
 ```
-┌────────────────────────────────────────────────────────┐
-│                   Currency Subsystem                   │
-│                                                        │
-│  src/utils/currency.tsx                                │
-│  ├─ formatNaira(amount)       -> "₦15,000"             │
-│  ├─ <NairaSign />             -> <span font-sans>₦</span>
-│  └─ <NairaText amount={val}/> -> <span><NairaSign/>val │
-└───────────────────────────┬────────────────────────────┘
-                            │
-            ┌───────────────┼───────────────┬────────────────┐
-            ▼               ▼               ▼                ▼
-    Growth Partner       Parent           Tutor         School Admin
-    ───────────────   ─────────────   ─────────────   ───────────────
-    - Wallet Card     - Wallet Card   - Hourly Rate   - Directory Fee
-    - Ledger Rows     - Top-Up Grid   - Escrow Bal    - Quota Pricing
-    - Simulator       - Booking Fee   - Payout Req    - SuperAdmin Tx
+┌────────────────────────────────────────────────────────────────────────────┐
+│                       CollaborativeWhiteboard.tsx                          │
+│                                                                            │
+│  ┌──────────────────────────────────────────────────────────────────────┐  │
+│  │ Main Canvas Viewport (Chalkboard Grid + Pen/Highlighter/Eraser)      │  │
+│  └───────────────────────────────────┬──────────────────────────────────┘  │
+│                                      │                                     │
+│  ┌───────────────────────────────────▼──────────────────────────────────┐  │
+│  │ Interactive Sticker & Text Overlay Layer (Pointer Drag + Double-Tap) │  │
+│  │ - Movable Note Card: [Drag Grip] Text Content [Edit/Delete]         │  │
+│  │ - Direct Inline Composer: Auto-expanding textarea at (x, y)         │  │
+│  │ - Math Formula Badges: Draggable mathematical stamps                │  │
+│  └──────────────────────────────────────────────────────────────────────┘  │
+│                                                                            │
+│  ┌──────────────────────────────────────────────────────────────────────┐  │
+│  │ Floating Action Bar & Math Symbol Dock                               │  │
+│  └──────────────────────────────────────────────────────────────────────┘  │
+└────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Files to Update
-1. **`src/utils/currency.tsx`** *(New)*: Core currency utilities and font-safe React components.
-2. **`src/index.css`**: Update `--font-mono` and `--font-sans` with robust system fallbacks (`Roboto`, `'Segoe UI'`, `Arial`); add `.naira-symbol` helper.
-3. **`src/components/partner/GrowthPartnerPortal.tsx`**: Replace all `₦` occurrences and `font-mono` containers with `<NairaText />` or safe font wrappers.
-4. **`src/components/parent/ParentPortal.tsx`**: Update wallet balance, top-up buttons, and transaction rows.
-5. **`src/components/tutor/TutorPortal.tsx`** & **`src/components/student/TutorDiscovery.tsx`**: Standardize tutor hourly rates and escrow balances.
-6. **`src/components/admin/SuperAdminPortal.tsx`**: Ensure user directory and tutor rates display formatted Naira amounts.
-7. **Verification**: Co-execute `compile_applet` and `lint_applet` to confirm 0 errors.
+- **Data Model**:
+  ```typescript
+  export interface BoardStickerNote {
+    id: string;
+    type: 'text' | 'formula';
+    x: number;
+    y: number;
+    text: string;
+    color: string;
+    fontSize: number;
+    authorRole: 'tutor' | 'student';
+    updatedAt: number;
+  }
+  ```
+- **Interactive Handlers**:
+  - `handleBoardClick(e)`: Spawns inline composer at `(e.clientX - rect.left, e.clientY - rect.top)` when `'text'` tool is active.
+  - `handleStartDragNote(noteId, e)`: Captures pointer and updates note `x` and `y` on pointer move.
+  - `handleStartEditNote(noteId)`: Opens inline composer loaded with existing note text.
+  - `handleCommitNote(text, noteId?)`: Adds new sticker note or updates existing one.
+  - `handleDeleteNote(noteId)`: Removes note from board state.

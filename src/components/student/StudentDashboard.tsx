@@ -18,7 +18,8 @@ import {
   Trophy,
   Atom,
   GraduationCap,
-  MessageSquare
+  MessageSquare,
+  Video
 } from 'lucide-react';
 import { NairaText, NairaSign } from '../../utils/currency';
 
@@ -31,7 +32,9 @@ export const StudentDashboard: React.FC = () => {
     startExam,
     setIsUniformModalOpen,
     updateStudentAvatar,
-    updateStudentClass
+    updateStudentClass,
+    tutorBookings,
+    launchVirtualClassroom
   } = useApp();
 
   const avatarFileInputRef = useRef<HTMLInputElement>(null);
@@ -117,6 +120,11 @@ export const StudentDashboard: React.FC = () => {
   };
 
   const rankProgress = getRankProgress(student.xp);
+
+  // Active or upcoming confirmed online tutoring session
+  const activeOnlineBooking = tutorBookings.find(
+    b => b.status === 'confirmed' && b.bookingType === 'online'
+  );
 
   return (
     <div className="flex-1 w-full overflow-y-auto px-4 py-4 space-y-4 touch-pan-y text-slate-100">
@@ -254,6 +262,54 @@ export const StudentDashboard: React.FC = () => {
               style={{ width: `${Math.min(100, Math.max(5, rankProgress.percent))}%` }}
             />
           </div>
+        </div>
+      </div>
+
+      {/* 1-on-1 Online Classroom & Whiteboard Banner */}
+      <div className="bg-gradient-to-r from-emerald-950/90 via-slate-900 to-teal-950/70 border border-emerald-500/50 rounded-2xl p-4 shadow-lg space-y-3.5">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shrink-0 shadow-inner">
+              <Video className="w-5 h-5 animate-pulse" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-bold text-white tracking-tight">Interactive Whiteboard Classroom</span>
+                <span className="text-[9px] font-bold text-emerald-300 bg-emerald-950 px-2 py-0.5 rounded border border-emerald-700 uppercase tracking-wide">
+                  Live Board Ready
+                </span>
+              </div>
+              <p className="text-xs text-slate-300 mt-0.5 font-medium">
+                {activeOnlineBooking
+                  ? `${activeOnlineBooking.subject} with ${activeOnlineBooking.tutorName} (Focus: ${activeOnlineBooking.topic})`
+                  : 'Live 1-on-1 digital teaching canvas with WAEC/JAMB formula stampers, low-data audio & chat.'}
+              </p>
+              <div className="flex items-center gap-2 text-[10px] text-slate-400 mt-1">
+                <span>Freehand Pen & Geometry</span>
+                <span>·</span>
+                <span>Cartesian Grid</span>
+                <span>·</span>
+                <span>Save Lesson Notes</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 pt-1">
+          <button
+            onClick={() => launchVirtualClassroom(activeOnlineBooking?.id || 'demo-classroom', 'student')}
+            className="flex-1 py-2.5 px-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold rounded-xl transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
+          >
+            <Video className="w-4 h-4" />
+            <span>{activeOnlineBooking ? 'Enter Booked Classroom' : 'Launch Interactive Whiteboard Now'}</span>
+          </button>
+          <button
+            onClick={() => setActiveStudentTab('tutors')}
+            className="py-2.5 px-3.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-xl border border-slate-700 transition-colors flex items-center gap-1.5 cursor-pointer shrink-0"
+          >
+            <span>Tutor Profiles</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </button>
         </div>
       </div>
 

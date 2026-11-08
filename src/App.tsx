@@ -22,6 +22,7 @@ import { SignUpPage } from './components/auth/SignUpPage';
 import { AiStudyCoach } from './components/student/AiStudyCoach';
 import { StudentCommunityForum } from './components/student/StudentCommunityForum';
 import { GrowthPartnerPortal } from './components/partner/GrowthPartnerPortal';
+import { VirtualClassroomModal } from './components/classroom/VirtualClassroomModal';
 
 const AppContent: React.FC = () => {
   const [quotaExceeded, setQuotaExceeded] = React.useState(false);
@@ -54,22 +55,13 @@ const AppContent: React.FC = () => {
       <LandingPage
         onOpenKnowMore={() => setCurrentScreen('know_more')}
         onGetStarted={() => {
-          setTargetSignUpRole(null);
-          setCurrentScreen('signup');
+          setCurrentRole('student');
+          setCurrentScreen('app');
         }}
         onDiscoverTutors={() => {
-          if (!isAuthenticated) {
-            setTargetSignUpRole('student');
-            setCurrentScreen('signup');
-          } else {
-            if (currentUserProfile?.role === 'student') {
-              setCurrentRole('student');
-              setActiveStudentTab('tutors');
-            } else if (currentUserProfile) {
-              setCurrentRole(currentUserProfile.role);
-            }
-            setCurrentScreen('app');
-          }
+          setCurrentRole('student');
+          setActiveStudentTab('tutors');
+          setCurrentScreen('app');
         }}
         onSelectFeature={(feat) => {
           if (!isAuthenticated) {
@@ -214,6 +206,9 @@ const AppContent: React.FC = () => {
         {currentRole === 'tutor' && <TutorPortal />}
 
         {currentRole === 'admin' && (isSuperAdmin ? <SuperAdminPortal /> : <SchoolAdminPortal />)}
+
+        {/* Real-time In-App Virtual Classroom with Collaborative Whiteboard */}
+        <VirtualClassroomModal />
       </AndroidDeviceFrame>
     </div>
   );

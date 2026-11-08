@@ -82,6 +82,24 @@ export interface CBTExamResult {
   answers: Record<number, number>;
 }
 
+export interface TimetableSlot {
+  id: string;
+  day: string;
+  time: string;
+  period: 'Morning' | 'Afternoon' | 'Evening';
+  isAvailable: boolean;
+}
+
+export interface TutorTestimonial {
+  id: string;
+  studentName: string;
+  school: string;
+  gradeOutcome: string;
+  comment: string;
+  date: string;
+  rating: number;
+}
+
 export interface Tutor {
   id: string;
   name: string;
@@ -99,6 +117,16 @@ export interface Tutor {
   availableDays: string[];
   lat: number;
   lng: number;
+  // Enhanced profile credentials and availability
+  experienceYears?: number;
+  degrees?: string[];
+  certifications?: string[];
+  examSpecializations?: string[];
+  curriculumHighlights?: string[];
+  totalLessonsDelivered?: number;
+  completionRate?: number;
+  timetable?: TimetableSlot[];
+  testimonials?: TutorTestimonial[];
 }
 
 export type BookingType = 'online' | 'physical';
@@ -376,3 +404,68 @@ export interface ChampionshipRegistration {
   rank?: number;
 }
 
+// ==========================================
+// VIRTUAL CLASSROOM & COLLABORATIVE WHITEBOARD
+// ==========================================
+
+export type WhiteboardTool =
+  | 'pen'
+  | 'highlighter'
+  | 'eraser'
+  | 'line'
+  | 'rect'
+  | 'circle'
+  | 'triangle'
+  | 'stamp'
+  | 'text';
+
+export interface WhiteboardStroke {
+  id: string;
+  tool: WhiteboardTool;
+  color: string;
+  width: number;
+  points: { x: number; y: number }[];
+  stampSymbol?: string;
+  text?: string;
+  fontSize?: number;
+}
+
+export interface BoardStickerNote {
+  id: string;
+  type: 'text' | 'stamp';
+  x: number;
+  y: number;
+  text: string;
+  color: string;
+  fontSize: number;
+  authorRole: 'student' | 'tutor';
+  stampSymbol?: string;
+}
+
+export interface ClassroomChatMessage {
+  id: string;
+  senderId: string;
+  senderName: string;
+  senderRole: 'student' | 'tutor';
+  text: string;
+  timestamp: string;
+  isFormula?: boolean;
+}
+
+export interface VirtualClassroomSession {
+  bookingId: string;
+  tutorId: string;
+  tutorName: string;
+  tutorPhoto: string;
+  studentId: string;
+  studentName: string;
+  subject: string;
+  topic: string;
+  amountNaira: number;
+  durationMinutes: number;
+  remainingSeconds: number;
+  status: 'active' | 'completed' | 'cancelled';
+  isTutorMicActive: boolean;
+  isStudentMicActive: boolean;
+  activeRole: 'student' | 'tutor';
+}
