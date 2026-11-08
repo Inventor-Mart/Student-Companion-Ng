@@ -419,6 +419,15 @@ export type WhiteboardTool =
   | 'stamp'
   | 'text';
 
+export type WhiteboardGridMode =
+  | 'graph'
+  | 'green-chalk'
+  | 'whiteboard'
+  | 'dot-grid'
+  | 'blueprint'
+  | 'ruled'
+  | 'blank';
+
 export interface WhiteboardStroke {
   id: string;
   tool: WhiteboardTool;

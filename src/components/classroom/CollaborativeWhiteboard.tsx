@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
-import { WhiteboardTool, WhiteboardStroke, BoardStickerNote } from '../../types';
+import { WhiteboardTool, WhiteboardStroke, BoardStickerNote, WhiteboardGridMode } from '../../types';
 import {
   Pen,
   Highlighter,
@@ -24,8 +24,11 @@ import {
   Plus,
   GripVertical,
   Edit3,
-  Move
+  Move,
+  Layers,
+  ChevronDown
 } from 'lucide-react';
+import { renderFormattedMathText, MATH_SHORTCUTS } from '../../utils/mathRenderer';
 
 interface CollaborativeWhiteboardProps {
   participantRole: 'student' | 'tutor';
@@ -40,6 +43,31 @@ const COLOR_PALETTE = [
   { name: 'Amber Gold', hex: '#F59E0B' },
   { name: 'Coral Red', hex: '#F43F5E' },
   { name: 'Violet', hex: '#A855F7' }
+];
+
+const WHITEBOARD_INK_PALETTE = [
+  { name: 'Midnight Ink', hex: '#0F172A' },
+  { name: 'Royal Blue', hex: '#1D4ED8' },
+  { name: 'Forest Emerald', hex: '#059669' },
+  { name: 'Crimson Red', hex: '#DC2626' },
+  { name: 'Amber Bronze', hex: '#D97706' },
+  { name: 'Deep Purple', hex: '#7C3AED' }
+];
+
+const BOARD_BACKGROUNDS: {
+  id: WhiteboardGridMode;
+  label: string;
+  category: string;
+  previewBg: string;
+  previewBorder: string;
+}[] = [
+  { id: 'graph', label: 'Dark Slate Graph', category: 'STEM & Math', previewBg: '#08101D', previewBorder: '#334155' },
+  { id: 'green-chalk', label: 'Green Chalkboard', category: 'Classic School', previewBg: '#0B2418', previewBorder: '#15803D' },
+  { id: 'whiteboard', label: 'Dry-Erase White', category: 'Presentation', previewBg: '#F8FAFC', previewBorder: '#94A3B8' },
+  { id: 'dot-grid', label: 'Engineering Dots', category: 'Geometry', previewBg: '#09111E', previewBorder: '#475569' },
+  { id: 'blueprint', label: 'Drafting Blueprint', category: 'Physics & Tech', previewBg: '#0A1E38', previewBorder: '#0284C7' },
+  { id: 'ruled', label: 'Ruled Notebook', category: 'Humanities & Text', previewBg: '#08101D', previewBorder: '#475569' },
+  { id: 'blank', label: 'Plain Minimal', category: 'Distraction-Free', previewBg: '#08101D', previewBorder: '#1E293B' }
 ];
 
 const MATH_STAMPS = ['∫', '∑', '√x', 'π', 'θ', 'd/dx', '⇌', 'Δ', 'λ', '∞'];
@@ -57,7 +85,8 @@ const CollaborativeWhiteboardComponent: React.FC<CollaborativeWhiteboardProps> =
   const [activeColor, setActiveColor] = useState<string>('#F8FAFC');
   const [brushSize, setBrushSize] = useState<number>(3);
   const [activeStamp, setActiveStamp] = useState<string>('√x');
-  const [gridMode, setGridMode] = useState<'blank' | 'ruled' | 'graph'>('graph');
+  const [gridMode, setGridMode] = useState<WhiteboardGridMode>('graph');
+  const [isBackgroundMenuOpen, setIsBackgroundMenuOpen] = useState<boolean>(false);
 
   // Stroke History
   const [strokes, setStrokes] = useState<WhiteboardStroke[]>([]);
@@ -70,7 +99,7 @@ const CollaborativeWhiteboardComponent: React.FC<CollaborativeWhiteboardProps> =
       type: 'text',
       x: 36,
       y: 72,
-      text: 'Lesson Objective: Quadratic Equations\n• Formula: x = (-b ± √(b² - 4ac)) / 2a\n• Direct substitution practice',
+      text: 'Lesson Objective: Quadratic Equations\n• Formula: $x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}$\n• Direct substitution practice',
       color: '#38BDF8',
       fontSize: 15,
       authorRole: 'tutor'
@@ -80,7 +109,7 @@ const CollaborativeWhiteboardComponent: React.FC<CollaborativeWhiteboardProps> =
       type: 'text',
       x: 36,
       y: 190,
-      text: 'JAMB Practice Focus:\nSolve 2x² - 5x + 3 = 0\n(💡 Drag note to move · Double-click to edit)',
+      text: 'JAMB Practice Question:\nSolve $2x^2 - 5x + 3 = 0$\nDiscriminant: $\\Delta = b^2 - 4ac$\n(💡 Drag note to move · Double-click to edit)',
       color: '#10B981',
       fontSize: 14,
       authorRole: 'student'
@@ -119,13 +148,117 @@ const CollaborativeWhiteboardComponent: React.FC<CollaborativeWhiteboardProps> =
   const currentPointsRef = useRef<{ x: number; y: number }[]>([]);
   const rafIdRef = useRef<number | null>(null);
 
+  // Background selector helper
+  const handleSelectBackground = (bg: WhiteboardGridMode) => {
+    setGridMode(bg);
+    setIsBackgroundMenuOpen(false);
+    if (bg === 'whiteboard' && (activeColor === '#F8FAFC' || activeColor === '#ffffff')) {
+      setActiveColor('#0F172A');
+    } else if (bg !== 'whiteboard' && activeColor === '#0F172A') {
+      setActiveColor('#F8FAFC');
+    }
+  };
+
   // Renders the background chalkboard & grid onto the canvas
   const drawBackground = useCallback((ctx: CanvasRenderingContext2D, width: number, height: number) => {
-    // Deep chalkboard slate
-    ctx.fillStyle = '#08101D';
-    ctx.fillRect(0, 0, width, height);
+    if (gridMode === 'green-chalk') {
+      // 1. Classic Nigerian Classroom Green Chalkboard
+      ctx.fillStyle = '#0B2418';
+      ctx.fillRect(0, 0, width, height);
 
-    if (gridMode === 'ruled') {
+      // Subtle horizontal chalk guidelines
+      ctx.strokeStyle = 'rgba(74, 222, 128, 0.08)';
+      ctx.lineWidth = 1;
+      const lineSpacing = 36;
+      for (let y = lineSpacing; y < height; y += lineSpacing) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(width, y);
+        ctx.stroke();
+      }
+
+      // Soft chalk border vignette
+      ctx.strokeStyle = 'rgba(20, 83, 45, 0.35)';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(1, 1, width - 2, height - 2);
+    } else if (gridMode === 'whiteboard') {
+      // 2. Modern Dry-Erase Whiteboard
+      ctx.fillStyle = '#F8FAFC';
+      ctx.fillRect(0, 0, width, height);
+
+      // Faint light grey grid
+      ctx.strokeStyle = 'rgba(203, 213, 225, 0.6)';
+      ctx.lineWidth = 1;
+      const gridSpacing = 28;
+      for (let x = gridSpacing; x < width; x += gridSpacing) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, height);
+        ctx.stroke();
+      }
+      for (let y = gridSpacing; y < height; y += gridSpacing) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(width, y);
+        ctx.stroke();
+      }
+
+      // Metal frame border
+      ctx.strokeStyle = '#CBD5E1';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(1, 1, width - 2, height - 2);
+    } else if (gridMode === 'dot-grid') {
+      // 3. Engineering & Geometry Dot Grid Matrix
+      ctx.fillStyle = '#09111E';
+      ctx.fillRect(0, 0, width, height);
+
+      ctx.fillStyle = 'rgba(148, 163, 184, 0.45)';
+      const spacing = 28;
+      for (let x = spacing; x < width; x += spacing) {
+        for (let y = spacing; y < height; y += spacing) {
+          ctx.beginPath();
+          ctx.arc(x, y, 1.25, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    } else if (gridMode === 'blueprint') {
+      // 4. Architectural Drafting Blueprint
+      ctx.fillStyle = '#0A1E38';
+      ctx.fillRect(0, 0, width, height);
+
+      const spacing = 20;
+      for (let x = spacing; x < width; x += spacing) {
+        const isMajor = x % (spacing * 5) === 0;
+        ctx.strokeStyle = isMajor ? 'rgba(56, 189, 248, 0.35)' : 'rgba(56, 189, 248, 0.12)';
+        ctx.lineWidth = isMajor ? 1.2 : 0.8;
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, height);
+        ctx.stroke();
+      }
+      for (let y = spacing; y < height; y += spacing) {
+        const isMajor = y % (spacing * 5) === 0;
+        ctx.strokeStyle = isMajor ? 'rgba(56, 189, 248, 0.35)' : 'rgba(56, 189, 248, 0.12)';
+        ctx.lineWidth = isMajor ? 1.2 : 0.8;
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(width, y);
+        ctx.stroke();
+      }
+    } else if (gridMode === 'ruled') {
+      // 5. Classic Notebook Ruled Paper
+      ctx.fillStyle = '#08101D';
+      ctx.fillRect(0, 0, width, height);
+
+      // Left margin red line
+      ctx.strokeStyle = 'rgba(239, 68, 68, 0.35)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(64, 0);
+      ctx.lineTo(64, height);
+      ctx.stroke();
+
+      // Horizontal ruled lines
       ctx.strokeStyle = 'rgba(51, 65, 85, 0.45)';
       ctx.lineWidth = 1;
       const lineSpacing = 32;
@@ -136,6 +269,10 @@ const CollaborativeWhiteboardComponent: React.FC<CollaborativeWhiteboardProps> =
         ctx.stroke();
       }
     } else if (gridMode === 'graph') {
+      // 6. Dark Slate Cartesian Graph
+      ctx.fillStyle = '#08101D';
+      ctx.fillRect(0, 0, width, height);
+
       ctx.strokeStyle = 'rgba(30, 41, 59, 0.7)';
       ctx.lineWidth = 1;
       const gridSpacing = 28;
@@ -155,7 +292,7 @@ const CollaborativeWhiteboardComponent: React.FC<CollaborativeWhiteboardProps> =
       // Main Cartesian axes in center
       const midX = Math.floor(width / 2);
       const midY = Math.floor(height / 2);
-      ctx.strokeStyle = 'rgba(100, 116, 139, 0.35)';
+      ctx.strokeStyle = 'rgba(100, 116, 139, 0.45)';
       ctx.lineWidth = 1.5;
       ctx.beginPath();
       ctx.moveTo(midX, 0);
@@ -163,14 +300,39 @@ const CollaborativeWhiteboardComponent: React.FC<CollaborativeWhiteboardProps> =
       ctx.moveTo(0, midY);
       ctx.lineTo(width, midY);
       ctx.stroke();
+    } else {
+      // 7. Plain minimal slate
+      ctx.fillStyle = '#08101D';
+      ctx.fillRect(0, 0, width, height);
     }
   }, [gridMode]);
 
   // Renders an individual stroke
   const renderSingleStroke = (ctx: CanvasRenderingContext2D, stroke: WhiteboardStroke) => {
     ctx.save();
-    ctx.strokeStyle = stroke.color;
-    ctx.fillStyle = stroke.color;
+
+    // Dynamically match eraser to current board background
+    if (stroke.tool === 'eraser') {
+      const eraserBg =
+        gridMode === 'whiteboard'
+          ? '#F8FAFC'
+          : gridMode === 'green-chalk'
+          ? '#0B2418'
+          : gridMode === 'blueprint'
+          ? '#0A1E38'
+          : '#08101D';
+      ctx.strokeStyle = eraserBg;
+      ctx.fillStyle = eraserBg;
+    } else {
+      // If whiteboard is active and stroke was white, map to high contrast midnight ink
+      const strokeColor =
+        gridMode === 'whiteboard' && (stroke.color === '#F8FAFC' || stroke.color === '#ffffff')
+          ? '#0F172A'
+          : stroke.color;
+      ctx.strokeStyle = strokeColor;
+      ctx.fillStyle = strokeColor;
+    }
+
     ctx.lineWidth = stroke.width;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
@@ -336,10 +498,24 @@ const CollaborativeWhiteboardComponent: React.FC<CollaborativeWhiteboardProps> =
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
+    const boardBg =
+      gridMode === 'whiteboard'
+        ? '#F8FAFC'
+        : gridMode === 'green-chalk'
+        ? '#0B2418'
+        : gridMode === 'blueprint'
+        ? '#0A1E38'
+        : '#08101D';
+
+    const drawColor =
+      gridMode === 'whiteboard' && (activeColor === '#F8FAFC' || activeColor === '#ffffff')
+        ? '#0F172A'
+        : activeColor;
+
     if (activeTool === 'pen' || activeTool === 'highlighter' || activeTool === 'eraser') {
       ctx.save();
-      ctx.strokeStyle = activeTool === 'eraser' ? '#08101D' : activeColor;
-      ctx.fillStyle = activeTool === 'eraser' ? '#08101D' : activeColor;
+      ctx.strokeStyle = activeTool === 'eraser' ? boardBg : drawColor;
+      ctx.fillStyle = activeTool === 'eraser' ? boardBg : drawColor;
       ctx.lineWidth = activeTool === 'highlighter' ? 18 : activeTool === 'eraser' ? brushSize * 4 : brushSize;
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
@@ -364,11 +540,25 @@ const CollaborativeWhiteboardComponent: React.FC<CollaborativeWhiteboardProps> =
     const lastPos = points[points.length - 1];
     points.push(pos);
 
+    const boardBg =
+      gridMode === 'whiteboard'
+        ? '#F8FAFC'
+        : gridMode === 'green-chalk'
+        ? '#0B2418'
+        : gridMode === 'blueprint'
+        ? '#0A1E38'
+        : '#08101D';
+
+    const drawColor =
+      gridMode === 'whiteboard' && (activeColor === '#F8FAFC' || activeColor === '#ffffff')
+        ? '#0F172A'
+        : activeColor;
+
     // Freehand Drawing: Incremental direct GPU line segment (ZERO React re-renders)
     if (activeTool === 'pen' || activeTool === 'highlighter' || activeTool === 'eraser') {
       if (lastPos) {
         ctx.save();
-        ctx.strokeStyle = activeTool === 'eraser' ? '#08101D' : activeColor;
+        ctx.strokeStyle = activeTool === 'eraser' ? boardBg : drawColor;
         ctx.lineWidth = activeTool === 'highlighter' ? 18 : activeTool === 'eraser' ? brushSize * 4 : brushSize;
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
@@ -671,43 +861,24 @@ const CollaborativeWhiteboardComponent: React.FC<CollaborativeWhiteboardProps> =
     // 1. Draw chalkboard & drawn ink strokes
     ctx.drawImage(canvas, 0, 0);
 
-    // 2. Draw all placed sticker notes with authentic dark card frames
+    // 2. Draw all embedded on-board surface notes directly (no card container)
     stickerNotes.forEach(note => {
       ctx.save();
       const lines = note.text.split('\n');
       const fontSize = note.fontSize || 15;
       ctx.font = `600 ${fontSize}px "Plus Jakarta Sans", sans-serif`;
 
-      let maxLineWidth = 0;
-      lines.forEach(l => {
-        const w = ctx.measureText(l).width;
-        if (w > maxLineWidth) maxLineWidth = w;
-      });
-      const cardW = Math.max(140, maxLineWidth + 32);
-      const cardH = lines.length * (fontSize * 1.45) + 36;
+      let noteTextColor = note.color;
+      if (gridMode === 'whiteboard' && (noteTextColor === '#F8FAFC' || noteTextColor === '#ffffff')) {
+        noteTextColor = '#0F172A';
+      }
 
-      // Dark card container
-      ctx.fillStyle = 'rgba(11, 21, 38, 0.94)';
-      ctx.strokeStyle = '#334155';
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.roundRect(note.x, note.y, cardW, cardH, 10);
-      ctx.fill();
-      ctx.stroke();
-
-      // Top accent indicator line
-      ctx.fillStyle = note.color;
-      ctx.beginPath();
-      ctx.roundRect(note.x + 3, note.y + 3, cardW - 6, 3, 2);
-      ctx.fill();
-
-      // Note text
-      ctx.fillStyle = note.color;
+      ctx.fillStyle = noteTextColor;
       ctx.textAlign = 'left';
       ctx.textBaseline = 'top';
       const lineHeight = fontSize * 1.45;
       lines.forEach((line, idx) => {
-        ctx.fillText(line, note.x + 16, note.y + 16 + idx * lineHeight);
+        ctx.fillText(line, note.x, note.y + idx * lineHeight);
       });
 
       ctx.restore();
@@ -859,19 +1030,62 @@ const CollaborativeWhiteboardComponent: React.FC<CollaborativeWhiteboardProps> =
 
         {/* Right: Board Utilities (Undo, Redo, Grid, Snapshot) */}
         <div className="flex items-center gap-1 bg-slate-900/95 backdrop-blur-md p-1.5 rounded-2xl border border-slate-800 shadow-xl pointer-events-auto">
-          {/* Grid Mode Toggle */}
-          <button
-            type="button"
-            onClick={() => {
-              setGridMode(prev => (prev === 'graph' ? 'ruled' : prev === 'ruled' ? 'blank' : 'graph'));
-            }}
-            className="p-2 rounded-xl text-slate-300 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
-            title={`Current Grid: ${gridMode.toUpperCase()} (Click to toggle)`}
-          >
-            {gridMode === 'graph' && <Grid className="w-4 h-4 text-emerald-400" />}
-            {gridMode === 'ruled' && <FileText className="w-4 h-4 text-sky-400" />}
-            {gridMode === 'blank' && <SquareDashed className="w-4 h-4 text-slate-400" />}
-          </button>
+          {/* Multi-Theme Board Background Picker */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setIsBackgroundMenuOpen(prev => !prev)}
+              className="px-2.5 py-1.5 rounded-xl text-slate-300 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer flex items-center gap-1.5 text-xs font-semibold"
+              title="Change Board Background Theme (7 Available)"
+            >
+              <Layers className="w-3.5 h-3.5 text-emerald-400" />
+              <span className="text-[11px] font-medium hidden sm:inline">
+                {BOARD_BACKGROUNDS.find(b => b.id === gridMode)?.label || 'Background'}
+              </span>
+              <ChevronDown className="w-3 h-3 text-slate-400" />
+            </button>
+
+            {/* Background Picker Dropdown Menu */}
+            {isBackgroundMenuOpen && (
+              <>
+                <div
+                  className="fixed inset-0 z-40 bg-black/10"
+                  onClick={() => setIsBackgroundMenuOpen(false)}
+                />
+                <div className="absolute right-0 top-full mt-2 w-56 bg-slate-900/98 backdrop-blur-xl border border-slate-700/80 rounded-2xl p-2 shadow-2xl z-50 space-y-1">
+                  <div className="px-2 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-800/80">
+                    Select Board Background
+                  </div>
+                {BOARD_BACKGROUNDS.map(bg => (
+                  <button
+                    key={bg.id}
+                    type="button"
+                    onClick={() => handleSelectBackground(bg.id)}
+                    className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs transition-all cursor-pointer ${
+                      gridMode === bg.id
+                        ? 'bg-emerald-600 text-white font-bold shadow-sm'
+                        : 'text-slate-300 hover:text-white hover:bg-slate-800'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="w-3.5 h-3.5 rounded border shrink-0"
+                        style={{ backgroundColor: bg.previewBg, borderColor: bg.previewBorder }}
+                      />
+                      <div className="text-left">
+                        <div className="leading-none text-[11px] font-semibold">{bg.label}</div>
+                        <div className={`text-[9px] ${gridMode === bg.id ? 'text-emerald-100' : 'text-slate-500'}`}>
+                          {bg.category}
+                        </div>
+                      </div>
+                    </div>
+                    {gridMode === bg.id && <Check className="w-3.5 h-3.5 shrink-0" />}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+          </div>
 
           <div className="w-[1px] h-5 bg-slate-800 mx-0.5" />
 
@@ -966,9 +1180,14 @@ const CollaborativeWhiteboardComponent: React.FC<CollaborativeWhiteboardProps> =
         </div>
       )}
 
-      {/* Movable & Editable Sticker Notes Overlay */}
+      {/* Embedded Surface Notes Overlay (Direct text on board, zero card box) */}
       {stickerNotes.map(note => {
         const isDragging = draggingNoteId === note.id;
+        const displayColor =
+          gridMode === 'whiteboard' && (note.color === '#F8FAFC' || note.color === '#ffffff')
+            ? '#0F172A'
+            : note.color;
+
         return (
           <div
             key={note.id}
@@ -980,75 +1199,65 @@ const CollaborativeWhiteboardComponent: React.FC<CollaborativeWhiteboardProps> =
               transform: `translate3d(${note.x}px, ${note.y}px, 0)`,
               touchAction: 'none'
             }}
-            className={`absolute top-0 left-0 z-10 max-w-xs sm:max-w-md bg-slate-900/95 backdrop-blur-md border border-slate-700/80 rounded-xl p-3 shadow-xl select-none group transition-shadow ${
+            className={`absolute top-0 left-0 z-10 max-w-xs sm:max-w-md select-none group transition-all p-1.5 rounded-lg ${
               isDragging
-                ? 'cursor-grabbing shadow-emerald-500/25 ring-2 ring-emerald-500/70 z-30'
-                : 'cursor-grab hover:border-slate-500 hover:shadow-2xl'
+                ? 'cursor-grabbing border border-dashed border-emerald-400/80 bg-emerald-950/20 z-30'
+                : 'cursor-grab bg-transparent border border-transparent hover:border-dashed hover:border-slate-500/50 hover:bg-slate-900/20'
             }`}
           >
-            {/* Top Drag Grip & Note Action Strip */}
-            <div className="flex items-center justify-between gap-2 pb-1.5 mb-1.5 border-b border-slate-800 text-[10px] text-slate-400">
-              <div className="flex items-center gap-1.5">
-                <GripVertical className="w-3.5 h-3.5 text-slate-500" />
-                <span className="font-semibold text-slate-300 capitalize">{note.authorRole} Note</span>
-                {note.type === 'stamp' && (
-                  <span className="text-[9px] bg-emerald-950 text-emerald-400 px-1 rounded font-mono border border-emerald-800">
-                    Sticker
-                  </span>
-                )}
-              </div>
-              <div className="flex items-center gap-1 opacity-80 group-hover:opacity-100 transition-opacity">
-                <button
-                  type="button"
-                  onClick={e => handleStartEditNote(note, e)}
-                  className="p-1 rounded hover:bg-slate-800 text-slate-300 hover:text-emerald-300 transition-colors cursor-pointer"
-                  title="Double-click or click to edit note text"
-                >
-                  <Edit3 className="w-3 h-3" />
-                </button>
-                <button
-                  type="button"
-                  onClick={e => handleDeleteNote(note.id, e)}
-                  className="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-rose-400 transition-colors cursor-pointer"
-                  title="Delete note"
-                >
-                  <Trash2 className="w-3 h-3" />
-                </button>
-              </div>
+            {/* Subtle On-Hover Micro-Toolbar (Revealed on hover/drag only) */}
+            <div className="absolute -top-7 left-0 hidden group-hover:flex items-center gap-1 bg-slate-900/95 backdrop-blur-md px-2 py-0.5 rounded-md border border-slate-700 text-[10px] text-slate-300 shadow-xl pointer-events-auto z-40">
+              <GripVertical className="w-3 h-3 text-slate-400" />
+              <span className="font-semibold text-[9px] uppercase tracking-wider text-slate-400">
+                {note.authorRole}
+              </span>
+              <div className="w-[1px] h-3 bg-slate-700 mx-0.5" />
+              <button
+                type="button"
+                onClick={e => handleStartEditNote(note, e)}
+                className="p-0.5 rounded hover:bg-slate-800 text-slate-300 hover:text-emerald-400 transition-colors cursor-pointer"
+                title="Double-click or click to edit text"
+              >
+                <Edit3 className="w-2.5 h-2.5" />
+              </button>
+              <button
+                type="button"
+                onClick={e => handleDeleteNote(note.id, e)}
+                className="p-0.5 rounded hover:bg-slate-800 text-slate-400 hover:text-rose-400 transition-colors cursor-pointer"
+                title="Delete note"
+              >
+                <Trash2 className="w-2.5 h-2.5" />
+              </button>
             </div>
 
-            {/* Note Content */}
+            {/* Embedded Surface Note Content (Pure text directly on board) */}
             <div
               style={{
-                color: note.color,
+                color: displayColor,
                 fontSize: `${note.fontSize}px`,
-                lineHeight: 1.45
+                lineHeight: 1.45,
+                textShadow: gridMode === 'whiteboard' ? 'none' : '0 1px 2px rgba(0,0,0,0.5)'
               }}
-              className="font-medium whitespace-pre-wrap break-words"
-            >
-              {note.text}
-            </div>
-
-            <div className="mt-1 text-[9px] text-slate-500 font-mono text-right opacity-0 group-hover:opacity-100 transition-opacity">
-              Drag to move · Double-click to edit
-            </div>
+              className="font-semibold whitespace-pre-wrap break-words tracking-normal leading-relaxed"
+              dangerouslySetInnerHTML={{ __html: renderFormattedMathText(note.text) }}
+            />
           </div>
         );
       })}
 
-      {/* Direct In-Place Text Typing Box (Positioned right where clicked) */}
+      {/* Direct In-Place Text Typing Box with KaTeX LaTeX Engine */}
       {activeInlineEditor && (
         <div
           style={{
             left: `${activeInlineEditor.x}px`,
             top: `${activeInlineEditor.y}px`
           }}
-          className="absolute z-30 w-72 sm:w-80 bg-slate-900/98 backdrop-blur-md border border-emerald-500 rounded-2xl p-3 shadow-2xl space-y-2 pointer-events-auto"
+          className="absolute z-30 w-80 sm:w-96 bg-slate-900/98 backdrop-blur-md border border-emerald-500 rounded-2xl p-3 shadow-2xl space-y-2 pointer-events-auto"
         >
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold text-white flex items-center gap-1.5">
               <Type className="w-3.5 h-3.5 text-emerald-400" />
-              <span>{activeInlineEditor.isEditingExisting ? 'Edit Note Text' : 'Type Directly on Board'}</span>
+              <span>{activeInlineEditor.isEditingExisting ? 'Edit Note Text & Math' : 'Type Note & LaTeX Formulas'}</span>
             </span>
             <button
               type="button"
@@ -1059,19 +1268,56 @@ const CollaborativeWhiteboardComponent: React.FC<CollaborativeWhiteboardProps> =
             </button>
           </div>
 
+          {/* Quick Math Shortcuts Ribbon */}
+          <div className="flex items-center gap-1 overflow-x-auto pb-1 scrollbar-none pt-0.5">
+            <span className="text-[9px] uppercase tracking-wider text-slate-500 font-mono shrink-0">Math:</span>
+            {MATH_SHORTCUTS.map(s => (
+              <button
+                key={s.label}
+                type="button"
+                onClick={() => {
+                  setActiveInlineEditor(prev => {
+                    if (!prev) return null;
+                    return {
+                      ...prev,
+                      text: prev.text ? `${prev.text} ${s.template}` : s.template
+                    };
+                  });
+                }}
+                className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-emerald-300 text-[11px] font-mono border border-slate-700 shrink-0 transition-colors cursor-pointer"
+                title={s.description}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
+
           <textarea
             autoFocus
             rows={3}
             value={activeInlineEditor.text}
             onChange={e => setActiveInlineEditor(prev => prev ? { ...prev, text: e.target.value } : null)}
-            placeholder="Type lesson note directly on the board just like chat..."
-            className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 resize-none leading-relaxed"
+            placeholder="Type note or math: e.g. \sqrt{x}, x^2, \frac{a}{b}, or $x = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}$"
+            className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 resize-none leading-relaxed font-mono"
             onKeyDown={e => {
               if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
                 handleCommitInlineNote();
               }
             }}
           />
+
+          {/* Live KaTeX Rendered Preview */}
+          {activeInlineEditor.text && (
+            <div className="bg-slate-950/90 rounded-xl p-2 border border-slate-800 text-xs">
+              <div className="text-[9px] uppercase tracking-wider text-slate-400 font-semibold mb-1">
+                Live Mathematical Preview
+              </div>
+              <div
+                className="text-emerald-300 font-medium overflow-x-auto text-sm py-0.5"
+                dangerouslySetInnerHTML={{ __html: renderFormattedMathText(activeInlineEditor.text) }}
+              />
+            </div>
+          )}
 
           <div className="flex items-center justify-between pt-1">
             {/* Font size toggles */}
@@ -1133,7 +1379,7 @@ const CollaborativeWhiteboardComponent: React.FC<CollaborativeWhiteboardProps> =
       <div className="absolute bottom-3 inset-x-3 z-20 flex flex-wrap items-center justify-between gap-2 pointer-events-none">
         {/* Color Palette */}
         <div className="flex items-center gap-1.5 bg-slate-900/95 backdrop-blur-md p-1.5 rounded-2xl border border-slate-800 shadow-xl pointer-events-auto">
-          {COLOR_PALETTE.map(c => (
+          {(gridMode === 'whiteboard' ? WHITEBOARD_INK_PALETTE : COLOR_PALETTE).map(c => (
             <button
               key={c.hex}
               type="button"

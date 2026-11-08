@@ -24,14 +24,14 @@ import {
 } from 'lucide-react';
 
 const QUICK_MATH_FORMULAS = [
-  'x = (-b ± √(b² - 4ac)) / 2a',
+  'x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}',
   'v = u + at',
   'F = ma',
-  'Area = πr²',
-  'sin²θ + cos²θ = 1',
-  'E = mc²',
+  '\\text{Area} = \\pi r^2',
+  '\\sin^2\\theta + \\cos^2\\theta = 1',
+  'E = mc^2',
   'PV = nRT',
-  'Q = mcΔT'
+  'Q = mc\\Delta T'
 ];
 
 export const VirtualClassroomModal: React.FC = () => {

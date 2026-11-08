@@ -1,6 +1,6 @@
 {
-  "summary":  "Implementation plan for direct on-board inline text typing, sticker notes, and interactive drag-to-move and double-click-to-edit notes on the collaborative whiteboard.",
-  "updatedAt":  "2026-11-08T13:55:50.309128297Z",
+  "summary":  "Implementation plan to integrate KaTeX mathematical formula rendering into the collaborative whiteboard text editor, enabling live rendering of LaTeX shortcuts (like \\\\sqrt{x}, x^2, \\\\frac{a}{b}, and Greek symbols), a quick-insert formula bar, and real-time live preview.",
+  "updatedAt":  "2026-11-08T16:25:24.141007273Z",
   "requestFeedback":  true,
   "userFacing":  true
 }
