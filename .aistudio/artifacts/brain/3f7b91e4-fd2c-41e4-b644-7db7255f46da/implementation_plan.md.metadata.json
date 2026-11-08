@@ -1,6 +1,6 @@
 {
-  "summary":  "Implementation plan to integrate KaTeX mathematical formula rendering into the collaborative whiteboard text editor, enabling live rendering of LaTeX shortcuts (like \\\\sqrt{x}, x^2, \\\\frac{a}{b}, and Greek symbols), a quick-insert formula bar, and real-time live preview.",
-  "updatedAt":  "2026-11-08T16:25:24.141007273Z",
+  "summary":  "Implementation plan for the Interactive STEM Formula Template Library & Visual Slot Editor on the Collaborative Whiteboard, covering General Mathematics, Further Maths, Physics, and Chemistry for secondary school curricula.",
+  "updatedAt":  "2026-11-08T17:07:04.671356109Z",
   "requestFeedback":  true,
   "userFacing":  true
 }
