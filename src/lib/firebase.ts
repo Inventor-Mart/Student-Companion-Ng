@@ -63,14 +63,30 @@ export async function testConnection(): Promise<void> {
   try {
     await getDocFromServer(doc(db, 'test', 'connection'));
   } catch (error) {
+    const errMessage = error instanceof Error ? error.message : String(error);
+    // Transient backend timeouts or network latency should not trigger false-alarm configuration errors
+    if (
+      errMessage.includes("didn't respond within") ||
+      errMessage.includes('timeout') ||
+      errMessage.includes('unavailable')
+    ) {
+      console.warn("Firestore backend delayed; operating in offline persistence mode.");
+      return;
+    }
     if (error instanceof Error && error.message.includes('the client is offline') && (typeof navigator === 'undefined' || navigator.onLine)) {
       console.error("Please check your Firebase configuration.");
     }
   }
 }
 
-// Initial connection boot test
-testConnection();
+// Initial connection boot test with graceful debounce to allow network channel initialization
+if (typeof window !== 'undefined') {
+  setTimeout(() => {
+    testConnection().catch(() => {});
+  }, 1000);
+} else {
+  testConnection().catch(() => {});
+}
 
 export async function signInWithGoogle() {
   try {

@@ -207,6 +207,7 @@ export const SnakeGame: React.FC<SnakeGameProps> = ({ onExit, onAwardXP }) => {
       }
 
       // Standard move (advance head, pop tail)
+      playSound.snakeMove();
       return [nextHead, ...prevSnake.slice(0, prevSnake.length - 1)];
     });
   }, [food, score, bestScore, currentSpeedLevel, onAwardXP]);

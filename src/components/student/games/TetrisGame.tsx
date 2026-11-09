@@ -247,6 +247,7 @@ export const TetrisGame: React.FC<TetrisGameProps> = ({ onExit, onAwardXP }) => 
   const moveLeft = useCallback(() => {
     if (isPaused || isGameOver) return;
     if (!checkCollision(currentPiece, grid, -1, 0)) {
+      playSound.tetrisMove();
       setCurrentPiece(prev => ({ ...prev, x: prev.x - 1 }));
     }
   }, [currentPiece, grid, isPaused, isGameOver, checkCollision]);
@@ -254,6 +255,7 @@ export const TetrisGame: React.FC<TetrisGameProps> = ({ onExit, onAwardXP }) => 
   const moveRight = useCallback(() => {
     if (isPaused || isGameOver) return;
     if (!checkCollision(currentPiece, grid, 1, 0)) {
+      playSound.tetrisMove();
       setCurrentPiece(prev => ({ ...prev, x: prev.x + 1 }));
     }
   }, [currentPiece, grid, isPaused, isGameOver, checkCollision]);
