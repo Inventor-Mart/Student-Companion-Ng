@@ -478,3 +478,61 @@ export interface VirtualClassroomSession {
   isStudentMicActive: boolean;
   activeRole: 'student' | 'tutor';
 }
+
+// ==========================================
+// PREPARE FOR EXAM (AI DAILY STUDY CALENDAR)
+// ==========================================
+
+export interface DiagnosticProfile {
+  classLevel: NigerianClassLevel;
+  stream: AcademicStream;
+  targetExam: 'BECE' | 'WAEC' | 'JAMB_UTME' | 'TERM_MOCK';
+  examDate?: string;
+  weakSubjects: string[];
+  strongSubjects: string[];
+  dailyStudyHours: number; // e.g. 1.5, 2.5, 4
+  preferredTimeOfDay: 'Morning' | 'Afternoon' | 'Evening';
+}
+
+export interface StudyBlock {
+  id: string;
+  timeSlot: string; // e.g. "04:30 PM - 05:45 PM"
+  subject: string;
+  topic: string;
+  keyObjectives: string[];
+  cbtExamId?: string; // links to existing mock exams
+  cbtExamTitle?: string;
+  drillQuestionCount: number;
+  suggestedTutorSubject: string;
+  suggestedTutorTopic: string;
+  isCompleted?: boolean;
+}
+
+export interface StudyDay {
+  dayNumber: number; // 1 to 30
+  title: string;
+  dateLabel: string;
+  focusTheme: string;
+  blocks: StudyBlock[];
+}
+
+export interface StudyCalendar {
+  id: string;
+  title: string;
+  targetExam: string;
+  classLevel: NigerianClassLevel;
+  generatedAt: string;
+  totalDays: number;
+  days: StudyDay[];
+  strategyTips: string[];
+}
+
+export interface ExamPrepState {
+  isUnlocked: boolean;
+  unlockedAt?: string;
+  tutorCreditsNaira: number; // Starts at 4,000 upon unlock
+  diagnosticProfile?: DiagnosticProfile;
+  activeCalendar?: StudyCalendar | null;
+  completedBlockIds: string[];
+}
+

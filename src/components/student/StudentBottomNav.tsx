@@ -1,6 +1,6 @@
 import React from 'react';
 import { useApp } from '../../context/AppContext';
-import { LayoutDashboard, BookOpen, Award, Trophy, Users, Gamepad2, Atom, Sparkles, MessageSquare } from 'lucide-react';
+import { LayoutDashboard, BookOpen, Award, Trophy, Users, Gamepad2, Atom, Sparkles, MessageSquare, Calendar } from 'lucide-react';
 
 export const StudentBottomNav: React.FC = () => {
   const { activeStudentTab, setActiveStudentTab } = useApp();
@@ -10,6 +10,12 @@ export const StudentBottomNav: React.FC = () => {
       id: 'dashboard',
       label: 'Home',
       icon: LayoutDashboard
+    },
+    {
+      id: 'exam-prep',
+      label: 'Exam Prep',
+      icon: Calendar,
+      isHot: true
     },
     {
       id: 'community',
@@ -77,6 +83,9 @@ export const StudentBottomNav: React.FC = () => {
               <Icon className="w-4 h-4" />
               {'isLive' in item && item.isLive && (
                 <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-amber-400 animate-pulse ring-2 ring-slate-950" />
+              )}
+              {'isHot' in item && item.isHot && (
+                <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-400 ring-2 ring-slate-950" />
               )}
             </div>
             <span className="text-[9px] tracking-tight mt-0.5 leading-none">{item.label}</span>

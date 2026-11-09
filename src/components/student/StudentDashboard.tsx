@@ -19,7 +19,10 @@ import {
   Atom,
   GraduationCap,
   MessageSquare,
-  Video
+  Video,
+  Calendar,
+  Lock,
+  Sparkles
 } from 'lucide-react';
 import { NairaText, NairaSign } from '../../utils/currency';
 
@@ -34,7 +37,8 @@ export const StudentDashboard: React.FC = () => {
     updateStudentAvatar,
     updateStudentClass,
     tutorBookings,
-    launchVirtualClassroom
+    launchVirtualClassroom,
+    examPrepState
   } = useApp();
 
   const avatarFileInputRef = useRef<HTMLInputElement>(null);
@@ -262,6 +266,59 @@ export const StudentDashboard: React.FC = () => {
               style={{ width: `${Math.min(100, Math.max(5, rankProgress.percent))}%` }}
             />
           </div>
+        </div>
+      </div>
+
+      {/* 'Prepare For Exam' AI Daily Study Calendar & Tutor Booking Card */}
+      <div className="bg-gradient-to-r from-emerald-950/80 via-slate-900 to-teal-950/80 border border-emerald-500/50 rounded-2xl p-4 shadow-lg space-y-3 relative overflow-hidden">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shrink-0 shadow-inner">
+              <Calendar className="w-5 h-5 text-emerald-400" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-bold text-white tracking-tight">Prepare For Exam</span>
+                {examPrepState?.isUnlocked ? (
+                  <span className="text-[9px] font-bold text-emerald-300 bg-emerald-950 px-2 py-0.5 rounded border border-emerald-700 uppercase tracking-wide flex items-center gap-1">
+                    <Sparkles className="w-2.5 h-2.5" />
+                    <span>Active · ₦4,000 Tutor Credits</span>
+                  </span>
+                ) : (
+                  <span className="text-[9px] font-bold text-amber-300 bg-amber-950 px-2 py-0.5 rounded border border-amber-700 uppercase tracking-wide flex items-center gap-1">
+                    <Lock className="w-2.5 h-2.5" />
+                    <span>Locked · Unlock for ₦15,000</span>
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-slate-300 mt-0.5 font-medium">
+                {examPrepState?.isUnlocked
+                  ? (examPrepState.activeCalendar
+                      ? `Day-by-day timetable active for ${student.classLevel} with CBT drills & tutor booking links.`
+                      : 'Take the quick diagnostic survey to synthesize your daily timetable.')
+                  : `Structured AI daily study calendar for ${student.classLevel} with CBT drill shortcuts & ₦4,000 in included tutor credits.`}
+              </p>
+              <div className="flex items-center gap-2 text-[10px] text-slate-400 mt-1">
+                <span>{student.classLevel} Syllabus</span>
+                <span>·</span>
+                <span>Daily Practice Drills</span>
+                <span>·</span>
+                <span>1-on-1 Topic Tutor Support</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 pt-1">
+          <button
+            type="button"
+            onClick={() => setActiveStudentTab('exam-prep')}
+            className="flex-1 py-2.5 px-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold rounded-xl transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
+          >
+            <Calendar className="w-4 h-4" />
+            <span>{examPrepState?.isUnlocked ? 'Open Daily Study Calendar' : 'Unlock & Get ₦4,000 Tutor Credits'}</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </button>
         </div>
       </div>
 

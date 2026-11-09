@@ -11,7 +11,14 @@ import {
   BookOpen,
   MapPin,
   Dna,
-  Binary
+  Binary,
+  Volume2,
+  Globe,
+  Boxes,
+  Sparkles,
+  Coffee,
+  Flame,
+  Gem
 } from 'lucide-react';
 
 import { MathSprintGame } from './games/MathSprintGame';
@@ -21,9 +28,19 @@ import { WordScrambleGame } from './games/WordScrambleGame';
 import { NigerianGeoGame } from './games/NigerianGeoGame';
 import { FormulaMasterGame } from './games/FormulaMasterGame';
 import { BioSortGame } from './games/BioSortGame';
+import { SpellingBeeGame } from './games/SpellingBeeGame';
+import { CurrentAffairsGame } from './games/CurrentAffairsGame';
+import { TetrisGame } from './games/TetrisGame';
+import { Match3Game } from './games/Match3Game';
+import { SnakeGame } from './games/SnakeGame';
 
 type GameId =
   | 'hub'
+  | 'snake'
+  | 'tetris'
+  | 'match_3'
+  | 'spelling_bee'
+  | 'current_affairs'
   | 'math_sprint'
   | 'periodic_table'
   | 'speed_concord'
@@ -35,7 +52,27 @@ type GameId =
 export const GamesHub: React.FC = () => {
   const { student, addStudentXP } = useApp();
   const [activeGame, setActiveGame] = useState<GameId>('hub');
-  const [filterCategory, setFilterCategory] = useState<'ALL' | 'STEM' | 'ARTS' | 'CIVICS'>('ALL');
+  const [filterCategory, setFilterCategory] = useState<'ALL' | 'RELAX' | 'STEM' | 'ARTS' | 'CIVICS'>('ALL');
+
+  if (activeGame === 'snake') {
+    return <SnakeGame onExit={() => setActiveGame('hub')} onAwardXP={addStudentXP} />;
+  }
+
+  if (activeGame === 'tetris') {
+    return <TetrisGame onExit={() => setActiveGame('hub')} onAwardXP={addStudentXP} />;
+  }
+
+  if (activeGame === 'match_3') {
+    return <Match3Game onExit={() => setActiveGame('hub')} onAwardXP={addStudentXP} />;
+  }
+
+  if (activeGame === 'spelling_bee') {
+    return <SpellingBeeGame onExit={() => setActiveGame('hub')} onAwardXP={addStudentXP} />;
+  }
+
+  if (activeGame === 'current_affairs') {
+    return <CurrentAffairsGame onExit={() => setActiveGame('hub')} onAwardXP={addStudentXP} />;
+  }
 
   if (activeGame === 'math_sprint') {
     return <MathSprintGame onExit={() => setActiveGame('hub')} onAwardXP={addStudentXP} />;
@@ -66,6 +103,71 @@ export const GamesHub: React.FC = () => {
   }
 
   const allGames = [
+    {
+      id: 'snake' as GameId,
+      title: 'Classic Arcade Snake',
+      subject: 'Relaxation & Reflex Training',
+      category: 'RELAX',
+      description: 'Classic slither action with speed-scaling difficulty, touch gestures, thumb D-pad & high-score tracking',
+      duration: 'Endless Slither',
+      xpReward: 150,
+      icon: Flame,
+      accentColor: 'text-emerald-400',
+      bgBorder: 'border-emerald-500/40 from-slate-900 via-slate-900 to-emerald-950/40',
+      btnColor: 'bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 font-black'
+    },
+    {
+      id: 'tetris' as GameId,
+      title: 'Block Drop: Tetris',
+      subject: 'Relaxation & Spatial Logic',
+      category: 'RELAX',
+      description: 'Stack and rotate classic falling bricks, complete lines, hold pieces, and unwind from intense study sessions',
+      duration: 'Endless Run',
+      xpReward: 150,
+      icon: Boxes,
+      accentColor: 'text-cyan-400',
+      bgBorder: 'border-cyan-500/40 from-slate-900 via-slate-900 to-cyan-950/40',
+      btnColor: 'bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400 text-slate-950 font-black'
+    },
+    {
+      id: 'match_3' as GameId,
+      title: 'Match-3 Gem Blitz',
+      subject: 'Relaxation & Jewel Strategy',
+      category: 'RELAX',
+      description: 'Endless chill jewel matching puzzle with chain cascades, laser power gems, rainbow stars & hint finder',
+      duration: 'Endless Chill',
+      xpReward: 150,
+      icon: Gem,
+      accentColor: 'text-pink-400',
+      bgBorder: 'border-pink-500/40 from-slate-900 via-slate-900 to-pink-950/40',
+      btnColor: 'bg-gradient-to-r from-pink-500 to-rose-400 hover:from-pink-400 hover:to-rose-300 text-slate-950 font-black'
+    },
+    {
+      id: 'spelling_bee' as GameId,
+      title: 'National Spelling Bee',
+      subject: 'English & Vocabulary',
+      category: 'ARTS',
+      description: 'Infinite-level spelling tournament with speech pronunciation, definitions & progressive difficulty',
+      duration: 'Endless Run (3 Lives)',
+      xpReward: 300,
+      icon: Volume2,
+      accentColor: 'text-amber-400',
+      bgBorder: 'border-amber-500/40 from-slate-900 via-slate-900 to-amber-950/40',
+      btnColor: 'bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-slate-950 font-black'
+    },
+    {
+      id: 'current_affairs' as GameId,
+      title: 'Endless Current Affairs',
+      subject: 'Civics, History & Global Affairs',
+      category: 'CIVICS',
+      description: 'Infinite quiz stream: choose Nigeria (36 states, leaders, history) or The World (geopolitics, capitals)',
+      duration: 'Endless Run (3 Lives)',
+      xpReward: 300,
+      icon: Globe,
+      accentColor: 'text-emerald-400',
+      bgBorder: 'border-emerald-500/40 from-slate-900 via-slate-900 to-teal-950/40',
+      btnColor: 'bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 font-black'
+    },
     {
       id: 'math_sprint' as GameId,
       title: 'WAEC Math Sprint',
@@ -168,22 +270,26 @@ export const GamesHub: React.FC = () => {
     <div className="flex-1 w-full overflow-y-auto px-4 py-4 space-y-4 touch-pan-y text-slate-100">
       <div>
         <div className="flex items-center justify-between">
-          <h2 className="text-base font-bold text-white tracking-tight">
-            Educational Games Hub
+          <h2 className="text-base font-bold text-white tracking-tight flex items-center gap-2">
+            <span>Games & Relaxation Hub</span>
+            <span className="text-[10px] text-cyan-400 font-normal px-2 py-0.5 rounded-full bg-cyan-950/80 border border-cyan-800/60 flex items-center gap-1">
+              <Coffee className="w-3 h-3" /> Study Breaks
+            </span>
           </h2>
           <span className="text-[11px] font-semibold text-emerald-400 bg-emerald-950 px-2 py-0.5 rounded border border-emerald-800">
-            7 Interactive Games
+            {allGames.length} Games Available
           </span>
         </div>
         <p className="text-xs text-slate-400 mt-0.5">
-          Reinforce mental math, grammar concord, periodic elements & formulas through fast-paced mini-games
+          Reinforce academic mastery or refresh your brain with addictive casual relaxation games
         </p>
       </div>
 
       {/* Category Filter Tabs */}
       <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
         {[
-          { id: 'ALL', label: 'All 7 Games' },
+          { id: 'ALL', label: `All (${allGames.length})` },
+          { id: 'RELAX', label: 'Relax & Breaks ☕' },
           { id: 'STEM', label: 'STEM & Science' },
           { id: 'ARTS', label: 'English & Literature' },
           { id: 'CIVICS', label: 'Civics & Geography' }

@@ -23,6 +23,7 @@ import { AiStudyCoach } from './components/student/AiStudyCoach';
 import { StudentCommunityForum } from './components/student/StudentCommunityForum';
 import { GrowthPartnerPortal } from './components/partner/GrowthPartnerPortal';
 import { VirtualClassroomModal } from './components/classroom/VirtualClassroomModal';
+import { PrepareForExamHub } from './components/student/exam-prep/PrepareForExamHub';
 
 const AppContent: React.FC = () => {
   const [quotaExceeded, setQuotaExceeded] = React.useState(false);
@@ -179,6 +180,7 @@ const AppContent: React.FC = () => {
               <>
                 <div className="flex-1 w-full overflow-hidden flex flex-col">
                   {activeStudentTab === 'dashboard' && <StudentDashboard />}
+                  {activeStudentTab === 'exam-prep' && <PrepareForExamHub />}
                   {activeStudentTab === 'ai-coach' && <AiStudyCoach />}
                   {activeStudentTab === 'syllabus' && <SchemeOfWorkHub />}
                   {activeStudentTab === 'cbt' && <CBTEngine />}

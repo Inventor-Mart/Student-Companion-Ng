@@ -29,14 +29,16 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = Number(process.env.PORT) || 3000;
+// Environment constraint: Dev server must always run on port 3000.
+// Cloud Run injects PORT=8080 where nginx runs; binding to 8080 causes EADDRINUSE.
+const PORT = 3000;
 
 app.use(express.json());
 
 // Initialize server-side Firestore
 const serverApps = getServerApps();
 const serverApp = serverApps.length > 0 ? serverApps[0] : initServerFirebase(firebaseConfig, 'companion-server');
-const serverDb = getServerFirestore(serverApp, firebaseConfig.firestoreDatabaseId);
+const serverDb = getServerFirestore(serverApp, (firebaseConfig as any).firestoreDatabaseId);
 
 // Initialize GoogleGenAI server-side with required User-Agent
 const apiKey = process.env.GEMINI_API_KEY;
@@ -151,6 +153,132 @@ Please provide:
     });
   }
 });
+
+// 2b. AI-Generated Exam Preparation Study Calendar Endpoint
+app.post('/api/gemini/generate-exam-calendar', async (req, res) => {
+  try {
+    const { classLevel, stream, targetExam, weakSubjects, strongSubjects, dailyStudyHours, preferredTimeOfDay } = req.body;
+
+    const systemInstruction = `You are the Chief Academic Strategist and Director of Curriculum for Nigerian Secondary Schools.
+You specialize in designing high-yield study timetables aligned with the NERDC curriculum, WAEC (WASSCE), JAMB UTME, and NECO/BECE syllabi.
+Your role is to generate a comprehensive, structured daily study calendar for Nigerian secondary school students that eliminates exam anxiety through disciplined daily practice and integrated tutor support.`;
+
+    const promptText = `Generate a structured 14-day intensive daily study calendar for:
+- Class Level: ${classLevel || 'SS 3'}
+- Academic Stream: ${stream || 'Science'}
+- Target Exam: ${targetExam || 'WAEC / JAMB UTME'}
+- Priority Weak Subjects (require extra reinforcement & tutor booking recommendations): ${Array.isArray(weakSubjects) && weakSubjects.length > 0 ? weakSubjects.join(', ') : 'Mathematics, English'}
+- Strong Subjects (reinforce with speed drills): ${Array.isArray(strongSubjects) && strongSubjects.length > 0 ? strongSubjects.join(', ') : 'Biology, Economics'}
+- Daily Study Allocation: ${dailyStudyHours || 2.5} hours per day
+- Preferred Study Time: ${preferredTimeOfDay || 'Evening'}
+
+Instructions:
+1. Provide a comprehensive strategy breakdown.
+2. For each day (Day 1 through Day 14), provide:
+   - dayNumber: integer
+   - title: concise title (e.g., "Day 1: Algebraic Foundations & Speed Drill")
+   - dateLabel: string (e.g., "Day 1")
+   - focusTheme: encouraging pedagogical focus (e.g., "Mastering Fractional Indices & Concord")
+   - blocks: an array of 2 to 3 study blocks. Each block must have:
+     - id: unique string (e.g., "d1-b1")
+     - timeSlot: display time (e.g., "04:30 PM - 05:45 PM")
+     - subject: subject name matching Nigerian curriculum
+     - topic: high-yield syllabus topic
+     - keyObjectives: array of 2-3 specific learning outcomes
+     - drillQuestionCount: 10, 15, or 20
+     - suggestedTutorSubject: relevant subject for 1-on-1 tutoring
+     - suggestedTutorTopic: specific difficult subtopic where a student may need tutor help (eligible for ₦4,000 credit)
+3. Return valid JSON only.`;
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-3.8-flash',
+      contents: promptText,
+      config: {
+        systemInstruction,
+        responseMimeType: 'application/json',
+      },
+    });
+
+    const rawText = (response.text || '{}').trim();
+    let parsedCalendar;
+    try {
+      parsedCalendar = JSON.parse(rawText);
+    } catch {
+      // In case of markdown formatting
+      const cleanJson = rawText.replace(/^```json\n?/, '').replace(/\n?```$/, '').trim();
+      parsedCalendar = JSON.parse(cleanJson);
+    }
+
+    return res.json({
+      success: true,
+      calendar: parsedCalendar,
+    });
+  } catch (error: any) {
+    console.error('Gemini Exam Calendar Error:', error);
+    return res.status(500).json({
+      success: false,
+      error: error?.message || 'Failed to generate study calendar with Gemini AI',
+    });
+  }
+});
+
+// 2c. AI Endless Current Affairs Questions Generator Endpoint
+app.post('/api/gemini/current-affairs-questions', async (req, res) => {
+  try {
+    const { scope = 'nigeria', count = 10, excludeTitles = [] } = req.body;
+    const isNigeria = scope === 'nigeria';
+
+    const systemInstruction = `You are the Lead Quizmaster and Chief Examiner for Secondary School General Knowledge and Current Affairs competitions in Nigeria and across the globe.
+You produce high-quality, unambiguous 4-option multiple choice questions with accurate historical and contemporary facts, accompanied by concise educational explanations.`;
+
+    const promptText = `Generate ${count} engaging, factually verified multiple-choice questions for the category: "${isNigeria ? 'Nigeria: Governance, History, Geography, Leaders, Constitution, Culture & Landmarks' : 'World: Geopolitics, World Capitals, International Bodies, Landmarks, Science & History'}".
+Ensure questions have clear single-line options, exactly one correct option, and an informative 1-2 sentence explanation.
+
+Instructions:
+Return valid JSON only formatted as an array of objects with the following schema:
+[
+  {
+    "id": "q-unique-id",
+    "question": "The question prompt text",
+    "options": ["Option A", "Option B", "Option C", "Option D"],
+    "correctIndex": 0,
+    "explanation": "Clear educational explanation of why this option is correct.",
+    "category": "${isNigeria ? 'Nigeria Current Affairs' : 'World Current Affairs'}"
+  }
+]`;
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-3.8-flash',
+      contents: promptText,
+      config: {
+        systemInstruction,
+        responseMimeType: 'application/json',
+      },
+    });
+
+    const rawText = (response.text || '[]').trim();
+    let questions = [];
+    try {
+      questions = JSON.parse(rawText);
+    } catch {
+      const cleanJson = rawText.replace(/^```json\n?/, '').replace(/\n?```$/, '').trim();
+      questions = JSON.parse(cleanJson);
+    }
+
+    return res.json({
+      success: true,
+      questions: Array.isArray(questions) ? questions : [],
+    });
+  } catch (error: any) {
+    console.error('Gemini Current Affairs Error:', error);
+    return res.status(500).json({
+      success: false,
+      error: error?.message || 'Failed to generate current affairs questions with Gemini AI',
+    });
+  }
+});
+
+
 
 // 3. Email Service Status Endpoint
 app.get('/api/email-status', (_req, res) => {
@@ -844,7 +972,7 @@ async function startServer() {
     const vite = await createViteServer({
       server: {
         middlewareMode: true,
-        hmr: process.env.DISABLE_HMR !== 'true',
+        hmr: false,
       },
       appType: 'spa',
     });

@@ -26,13 +26,18 @@ import {
   Edit3,
   Move,
   Layers,
-  ChevronDown
+  ChevronDown,
+  Video
 } from 'lucide-react';
 import { renderFormattedMathText, MATH_SHORTCUTS } from '../../utils/mathRenderer';
+import { InteractiveStemFormulaDrawer } from './InteractiveStemFormulaDrawer';
+import { SessionRecordingModal } from './SessionRecordingModal';
 
 interface CollaborativeWhiteboardProps {
   participantRole: 'student' | 'tutor';
   topic: string;
+  subject?: string;
+  tutorName?: string;
   onStrokeDrawn?: (stroke: WhiteboardStroke) => void;
 }
 
@@ -75,6 +80,8 @@ const MATH_STAMPS = ['∫', '∑', '√x', 'π', 'θ', 'd/dx', '⇌', 'Δ', 'λ'
 const CollaborativeWhiteboardComponent: React.FC<CollaborativeWhiteboardProps> = ({
   participantRole,
   topic,
+  subject,
+  tutorName,
   onStrokeDrawn
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -126,6 +133,7 @@ const CollaborativeWhiteboardComponent: React.FC<CollaborativeWhiteboardProps> =
     color: string;
     isEditingExisting: boolean;
   } | null>(null);
+  const [isStemDrawerOpen, setIsStemDrawerOpen] = useState<boolean>(false);
 
   // Dragging state for sticker notes
   const [draggingNoteId, setDraggingNoteId] = useState<string | null>(null);
@@ -143,10 +151,38 @@ const CollaborativeWhiteboardComponent: React.FC<CollaborativeWhiteboardProps> =
   const [speechError, setSpeechError] = useState<string | null>(null);
   const recognitionRef = useRef<any>(null);
 
+  // ==========================================
+  // LIVE SESSION RECORDING & CLOUD DISPATCH STATE
+  // Target Account: studentcompanion.ng@gmail.com
+  // ==========================================
+  const [isRecording, setIsRecording] = useState<boolean>(false);
+  const [recordingDuration, setRecordingDuration] = useState<number>(0);
+  const [capturedVideoBlob, setCapturedVideoBlob] = useState<Blob | null>(null);
+  const [isRecordingModalOpen, setIsRecordingModalOpen] = useState<boolean>(false);
+  const [recordingError, setRecordingError] = useState<string | null>(null);
+
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordedChunksRef = useRef<Blob[]>([]);
+  const audioStreamRef = useRef<MediaStream | null>(null);
+  const recordingTimerRef = useRef<any>(null);
+
   // High Performance Drawing Refs (Bypasses React State during mouse move for 60FPS)
   const isDrawingRef = useRef<boolean>(false);
   const currentPointsRef = useRef<{ x: number; y: number }[]>([]);
   const rafIdRef = useRef<number | null>(null);
+
+  // Clean up recording on unmount
+  useEffect(() => {
+    return () => {
+      if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+      if (audioStreamRef.current) {
+        audioStreamRef.current.getTracks().forEach(t => t.stop());
+      }
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+        try { mediaRecorderRef.current.stop(); } catch {}
+      }
+    };
+  }, []);
 
   // Background selector helper
   const handleSelectBackground = (bg: WhiteboardGridMode) => {
@@ -740,6 +776,7 @@ const CollaborativeWhiteboardComponent: React.FC<CollaborativeWhiteboardProps> =
     }
 
     setActiveInlineEditor(null);
+    setIsStemDrawerOpen(false);
   };
 
   // ==========================================
@@ -823,6 +860,119 @@ const CollaborativeWhiteboardComponent: React.FC<CollaborativeWhiteboardProps> =
     setStickerNotes(prev => [...prev, newNote]);
     setSpeechTranscript('');
     setIsSpeechListening(false);
+  };
+
+  // ==========================================
+  // LIVE WHITEBOARD + AUDIO RECORDING CONTROLS
+  // ==========================================
+  const formatRecordingTime = (sec: number) => {
+    const m = Math.floor(sec / 60).toString().padStart(2, '0');
+    const s = (sec % 60).toString().padStart(2, '0');
+    return `${m}:${s}`;
+  };
+
+  const handleStartRecording = async () => {
+    setRecordingError(null);
+    recordedChunksRef.current = [];
+    const canvas = canvasRef.current;
+
+    if (!canvas) {
+      setRecordingError('Whiteboard canvas not ready');
+      return;
+    }
+
+    try {
+      // 1. Capture microphone audio stream
+      const audioStream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        }
+      });
+      audioStreamRef.current = audioStream;
+
+      // 2. Capture canvas 30FPS video stream
+      const canvasStream = (canvas as any).captureStream
+        ? (canvas as any).captureStream(30)
+        : (canvas as any).mozCaptureStream
+        ? (canvas as any).mozCaptureStream(30)
+        : null;
+
+      if (!canvasStream) {
+        throw new Error('Canvas recording is not supported in this browser.');
+      }
+
+      // 3. Combine canvas visual stream + teacher microphone audio stream
+      const combinedTracks = [
+        ...canvasStream.getVideoTracks(),
+        ...audioStream.getAudioTracks()
+      ];
+      const combinedStream = new MediaStream(combinedTracks);
+
+      // 4. Determine supported codec
+      const mimeTypes = [
+        'video/webm;codecs=vp9,opus',
+        'video/webm;codecs=vp8,opus',
+        'video/webm',
+        'video/mp4'
+      ];
+      const selectedMime = mimeTypes.find(m => MediaRecorder.isTypeSupported(m)) || 'video/webm';
+
+      const recorder = new MediaRecorder(combinedStream, {
+        mimeType: selectedMime,
+        videoBitsPerSecond: 1500000 // 1.5 Mbps crisp notation
+      });
+
+      recorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) {
+          recordedChunksRef.current.push(e.data);
+        }
+      };
+
+      recorder.onstop = () => {
+        const finalBlob = new Blob(recordedChunksRef.current, { type: selectedMime });
+        setCapturedVideoBlob(finalBlob);
+        setIsRecordingModalOpen(true);
+        setIsRecording(false);
+        if (recordingTimerRef.current) {
+          clearInterval(recordingTimerRef.current);
+          recordingTimerRef.current = null;
+        }
+      };
+
+      recorder.start(1000);
+      mediaRecorderRef.current = recorder;
+      setIsRecording(true);
+      setRecordingDuration(0);
+
+      recordingTimerRef.current = setInterval(() => {
+        setRecordingDuration(prev => prev + 1);
+      }, 1000);
+    } catch (err: any) {
+      console.error('Failed to start recording:', err);
+      setRecordingError(err?.message || 'Microphone access denied or recording not supported.');
+    }
+  };
+
+  const handleStopRecording = () => {
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
+
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+      try {
+        mediaRecorderRef.current.stop();
+      } catch (err) {
+        console.error('Error stopping recorder:', err);
+      }
+    }
+
+    if (audioStreamRef.current) {
+      audioStreamRef.current.getTracks().forEach(track => track.stop());
+      audioStreamRef.current = null;
+    }
   };
 
   // Undo / Redo / Clear
@@ -1129,6 +1279,36 @@ const CollaborativeWhiteboardComponent: React.FC<CollaborativeWhiteboardProps> =
             <Download className="w-3.5 h-3.5 text-emerald-400" />
             <span className="hidden sm:inline text-[11px]">Save Notes</span>
           </button>
+
+          <div className="w-[1px] h-5 bg-slate-800 mx-0.5" />
+
+          {/* Live Recording HUD & Dispatch Control */}
+          {!isRecording ? (
+            <button
+              type="button"
+              onClick={handleStartRecording}
+              className="px-2.5 py-1.5 rounded-xl bg-red-950/70 hover:bg-red-900/90 text-red-200 border border-red-800/80 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm"
+              title="Record lesson video & audio (Auto-sends to Google Drive & YouTube)"
+            >
+              <Video className="w-3.5 h-3.5 text-red-400" />
+              <span className="hidden sm:inline text-[11px]">Record Lesson</span>
+            </button>
+          ) : (
+            <div className="flex items-center gap-1.5 bg-red-950/95 border border-red-500/90 rounded-xl px-2.5 py-1 shadow-lg">
+              <span className="w-2 h-2 rounded-full bg-red-500 animate-ping" />
+              <span className="text-[11px] font-bold text-red-100 font-mono tracking-wider">
+                REC {formatRecordingTime(recordingDuration)}
+              </span>
+              <button
+                type="button"
+                onClick={handleStopRecording}
+                className="ml-1 px-2 py-0.5 rounded-lg bg-red-600 hover:bg-red-500 text-white text-[10px] font-bold transition-colors cursor-pointer shadow-sm"
+                title="Finish recording and dispatch to Google Drive & YouTube"
+              >
+                Stop & Send
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -1249,24 +1429,81 @@ const CollaborativeWhiteboardComponent: React.FC<CollaborativeWhiteboardProps> =
       {activeInlineEditor && (
         <div
           style={{
-            left: `${activeInlineEditor.x}px`,
-            top: `${activeInlineEditor.y}px`
+            left: `${Math.max(12, Math.min((containerRef.current?.clientWidth || 1000) - (isStemDrawerOpen ? 580 : 390), activeInlineEditor.x))}px`,
+            top: `${Math.max(12, Math.min((containerRef.current?.clientHeight || 800) - (isStemDrawerOpen ? 520 : 360), activeInlineEditor.y))}px`
           }}
-          className="absolute z-30 w-80 sm:w-96 bg-slate-900/98 backdrop-blur-md border border-emerald-500 rounded-2xl p-3 shadow-2xl space-y-2 pointer-events-auto"
+          className={`absolute z-30 ${isStemDrawerOpen ? 'w-[94vw] max-w-xl' : 'w-80 sm:w-96'} bg-slate-900/98 backdrop-blur-md border border-emerald-500 rounded-2xl p-3 shadow-2xl space-y-2 pointer-events-auto transition-all`}
         >
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-white flex items-center gap-1.5">
-              <Type className="w-3.5 h-3.5 text-emerald-400" />
-              <span>{activeInlineEditor.isEditingExisting ? 'Edit Note Text & Math' : 'Type Note & LaTeX Formulas'}</span>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[11px] font-bold text-white flex items-center gap-1.5 truncate">
+              <Type className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+              <span className="truncate">{activeInlineEditor.isEditingExisting ? 'Edit Note Text & Math' : 'Type Note & LaTeX'}</span>
             </span>
-            <button
-              type="button"
-              onClick={() => setActiveInlineEditor(null)}
-              className="p-1 rounded-lg text-slate-400 hover:text-white cursor-pointer"
-            >
-              <X className="w-3 h-3" />
-            </button>
+
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button
+                type="button"
+                onClick={() => setIsStemDrawerOpen(prev => !prev)}
+                className={`px-2 py-1 rounded-lg text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer ${
+                  isStemDrawerOpen
+                    ? 'bg-emerald-600 text-white shadow-sm ring-1 ring-emerald-400'
+                    : 'bg-slate-800 text-emerald-400 hover:bg-slate-700 hover:text-white border border-emerald-500/40'
+                }`}
+                title="Browse and customize secondary school interactive STEM formulas (General Maths, Further Maths, Physics, Chemistry)"
+              >
+                <Sparkles className="w-3 h-3 text-amber-400" />
+                <span>STEM Formulas</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveInlineEditor(null);
+                  setIsStemDrawerOpen(false);
+                }}
+                className="p-1 rounded-lg text-slate-400 hover:text-white cursor-pointer"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </div>
           </div>
+
+          {/* Interactive Secondary School STEM Formula Drawer */}
+          {isStemDrawerOpen && (
+            <InteractiveStemFormulaDrawer
+              onInsertLatex={(latex) => {
+                setActiveInlineEditor(prev => {
+                  if (!prev) return null;
+                  const currentText = prev.text || '';
+                  const newText = currentText ? `${currentText}\n${latex}` : latex;
+                  return {
+                    ...prev,
+                    text: newText
+                  };
+                });
+                setIsStemDrawerOpen(false);
+              }}
+              onStampFormula={(latex) => {
+                const canvas = canvasRef.current;
+                const posX = activeInlineEditor ? activeInlineEditor.x : (canvas ? canvas.width * 0.15 : 40);
+                const posY = activeInlineEditor ? activeInlineEditor.y : (canvas ? canvas.height * 0.15 : 70);
+                const newNote: BoardStickerNote = {
+                  id: `sn-stem-${Date.now()}`,
+                  type: 'text',
+                  x: posX,
+                  y: posY,
+                  text: latex,
+                  color: activeColor,
+                  fontSize: activeInlineEditor?.fontSize || 18,
+                  authorRole: participantRole
+                };
+                setStickerNotes(prev => [...prev, newNote]);
+                setIsStemDrawerOpen(false);
+                setActiveInlineEditor(null);
+              }}
+              onClose={() => setIsStemDrawerOpen(false)}
+            />
+          )}
 
           {/* Quick Math Shortcuts Ribbon */}
           <div className="flex items-center gap-1 overflow-x-auto pb-1 scrollbar-none pt-0.5">
@@ -1442,8 +1679,58 @@ const CollaborativeWhiteboardComponent: React.FC<CollaborativeWhiteboardProps> =
               {stamp}
             </button>
           ))}
+
+          <button
+            type="button"
+            onClick={() => {
+              const canvas = canvasRef.current;
+              setActiveInlineEditor({
+                x: canvas ? Math.max(30, canvas.width * 0.15) : 40,
+                y: canvas ? Math.max(60, canvas.height * 0.15) : 70,
+                text: '',
+                fontSize: 18,
+                color: activeColor,
+                isEditingExisting: false
+              });
+              setIsStemDrawerOpen(true);
+            }}
+            className="px-2.5 py-1 rounded-xl text-xs font-semibold bg-emerald-950/70 text-emerald-300 hover:text-white hover:bg-emerald-800 border border-emerald-700/60 transition-all cursor-pointer whitespace-nowrap shrink-0 flex items-center gap-1 shadow-sm"
+            title="Open Interactive STEM Formula Library"
+          >
+            <Plus className="w-3 h-3 text-emerald-400" />
+            <span>Custom Formula...</span>
+          </button>
         </div>
       </div>
+
+      {/* Recording Error Notification */}
+      {recordingError && (
+        <div className="absolute top-16 right-4 z-40 bg-red-950/95 border border-red-500/80 rounded-xl p-3 shadow-xl max-w-sm text-xs text-red-200 flex items-start justify-between gap-2">
+          <span>{recordingError}</span>
+          <button
+            type="button"
+            onClick={() => setRecordingError(null)}
+            className="text-red-400 hover:text-white"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
+      {/* Post-Session Cloud Dispatch Modal (Google Drive & YouTube) */}
+      {capturedVideoBlob && (
+        <SessionRecordingModal
+          isOpen={isRecordingModalOpen}
+          videoBlob={capturedVideoBlob}
+          metadata={{
+            topic,
+            subject: subject || 'STEM Interactive Whiteboard',
+            level: 'Secondary (WAEC / JAMB / NECO)',
+            tutorName: tutorName || (participantRole === 'tutor' ? 'Host Tutor' : 'Student Scholar')
+          }}
+          onClose={() => setIsRecordingModalOpen(false)}
+        />
+      )}
     </div>
   );
 };

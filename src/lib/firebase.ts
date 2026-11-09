@@ -4,7 +4,7 @@ import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId); /* CRITICAL: The app will break without this line */
+export const db = getFirestore(app, (firebaseConfig as any).firestoreDatabaseId); /* CRITICAL: The app will break without this line */
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 
@@ -84,11 +84,61 @@ export async function signInWithGoogle() {
   }
 }
 
+// ==========================================
+// GOOGLE DRIVE & YOUTUBE OAUTH MEDIA SCOPES
+// ==========================================
+export const MEDIA_SCOPES = [
+  'https://www.googleapis.com/auth/drive.file',
+  'https://www.googleapis.com/auth/youtube.upload'
+];
+
+export const mediaGoogleProvider = new GoogleAuthProvider();
+MEDIA_SCOPES.forEach(scope => mediaGoogleProvider.addScope(scope));
+
+// In-memory token storage (Do NOT store in localStorage per Google Workspace guidelines)
+let cachedMediaAccessToken: string | null = null;
+let cachedMediaEmail: string | null = null;
+
+export const getMediaAccessToken = (): string | null => cachedMediaAccessToken;
+export const getMediaEmail = (): string | null => cachedMediaEmail;
+
+export async function signInWithGoogleMediaScopes(): Promise<{ user: any; accessToken: string }> {
+  try {
+    const result = await signInWithPopup(auth, mediaGoogleProvider);
+    const credential = GoogleAuthProvider.credentialFromResult(result);
+    if (!credential?.accessToken) {
+      throw new Error('Google OAuth access token not found in authentication result');
+    }
+    cachedMediaAccessToken = credential.accessToken;
+    cachedMediaEmail = result.user.email || null;
+    return {
+      user: result.user,
+      accessToken: cachedMediaAccessToken
+    };
+  } catch (error: any) {
+    if (error?.code === 'auth/unauthorized-domain' || error?.message?.includes('unauthorized-domain')) {
+      const err = new Error('auth/unauthorized-domain');
+      (err as any).code = 'auth/unauthorized-domain';
+      (err as any).domain = typeof window !== 'undefined' ? window.location.hostname : '';
+      throw err;
+    }
+    console.error('Google Drive & YouTube Media Auth Error:', error?.message || error);
+    throw error;
+  }
+}
+
+export function disconnectGoogleMedia() {
+  cachedMediaAccessToken = null;
+  cachedMediaEmail = null;
+}
+
 export async function logOut() {
   try {
     await signOut(auth);
+    disconnectGoogleMedia();
   } catch (error) {
     console.error('Sign Out Error:', error);
     throw error;
   }
 }
+

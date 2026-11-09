@@ -240,6 +240,8 @@ export const VirtualClassroomModal: React.FC = () => {
           <CollaborativeWhiteboard
             participantRole={activeClassroomSession.activeRole}
             topic={activeClassroomSession.topic}
+            subject={activeClassroomSession.subject}
+            tutorName={activeClassroomSession.tutorName}
           />
         </div>
 

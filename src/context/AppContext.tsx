@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import confetti from 'canvas-confetti';
 import { User, onAuthStateChanged } from 'firebase/auth';
 import {
@@ -25,8 +25,16 @@ import {
   RegisteredUserProfile,
   ChampionshipRegistration,
   ChampionshipTier,
-  VirtualClassroomSession
+  VirtualClassroomSession,
+  ExamPrepState,
+  DiagnosticProfile,
+  StudyCalendar
 } from '../types';
+import {
+  generateCuratedStudyCalendar,
+  UNLOCK_FEE_NAIRA,
+  INCLUDED_TUTOR_CREDITS_NAIRA
+} from '../data/examPrepCurriculumData';
 import {
   getStoredChampionshipRegistrations,
   saveStoredChampionshipRegistrations,
@@ -85,8 +93,8 @@ interface AppContextType {
   isFirebaseConnected: boolean;
 
   // Student Navigation
-  activeStudentTab: 'dashboard' | 'syllabus' | 'cbt' | 'competitions' | 'formulas' | 'tutors' | 'games' | 'ai-coach' | 'community';
-  setActiveStudentTab: (tab: 'dashboard' | 'syllabus' | 'cbt' | 'competitions' | 'formulas' | 'tutors' | 'games' | 'ai-coach' | 'community') => void;
+  activeStudentTab: 'dashboard' | 'syllabus' | 'cbt' | 'competitions' | 'formulas' | 'tutors' | 'games' | 'ai-coach' | 'community' | 'exam-prep';
+  setActiveStudentTab: (tab: 'dashboard' | 'syllabus' | 'cbt' | 'competitions' | 'formulas' | 'tutors' | 'games' | 'ai-coach' | 'community' | 'exam-prep') => void;
   activeReadingNote: CurriculumTopic | null;
   openNoteReader: (topic: CurriculumTopic) => void;
   closeNoteReader: () => void;
@@ -95,6 +103,14 @@ interface AppContextType {
   closeExam: () => void;
   isUniformModalOpen: boolean;
   setIsUniformModalOpen: (open: boolean) => void;
+
+  // Prepare For Exam (AI Daily Study Calendar & Tutor Credits)
+  examPrepState: ExamPrepState;
+  unlockExamPrep: (method?: 'wallet' | 'paystack') => boolean;
+  useTutorCredit: (amountNaira: number) => number;
+  generateExamPrepCalendar: (profile: DiagnosticProfile) => Promise<void>;
+  toggleStudyBlockCompleted: (blockId: string) => void;
+  resetExamPrepPlan: () => void;
 
   // Student State & Actions
   student: StudentProfile;
@@ -230,10 +246,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isOffline, setIsOffline] = useState<boolean>(false);
   const [isLandingView, setIsLandingView] = useState<boolean>(false);
   const [currentScreen, setCurrentScreen] = useState<'landing' | 'signin' | 'signup' | 'know_more' | 'app'>('app');
-  const [activeStudentTab, setActiveStudentTab] = useState<'dashboard' | 'syllabus' | 'cbt' | 'competitions' | 'formulas' | 'tutors' | 'games' | 'ai-coach' | 'community'>('dashboard');
+  const [activeStudentTab, setActiveStudentTab] = useState<'dashboard' | 'syllabus' | 'cbt' | 'competitions' | 'formulas' | 'tutors' | 'games' | 'ai-coach' | 'community' | 'exam-prep'>('dashboard');
   const [activeReadingNote, setActiveReadingNote] = useState<CurriculumTopic | null>(null);
   const [activeExam, setActiveExam] = useState<CBTExam | null>(null);
   const [isUniformModalOpen, setIsUniformModalOpen] = useState<boolean>(false);
+
+  // Prepare For Exam (AI Daily Study Calendar & ₦4,000 Tutor Credits)
+  const [examPrepState, setExamPrepState] = useState<ExamPrepState>(() => {
+    const saved = safeGetItem('sc_exam_prep');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch {}
+    }
+    return {
+      isUnlocked: false,
+      tutorCreditsNaira: 0,
+      completedBlockIds: []
+    };
+  });
+
+  useEffect(() => {
+    safeSetItem('sc_exam_prep', JSON.stringify(examPrepState));
+  }, [examPrepState]);
 
   const isAuthenticated = Boolean(currentUserProfile);
 
@@ -550,11 +585,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const addStudentXP = (amount: number, reason?: string) => {
+  const addStudentXP = useCallback((amount: number, reason?: string) => {
     setTimeout(() => {
       setStudent(prev => {
         const newXP = prev.xp + amount;
         const newRank = calculateRank(newXP);
+        const rankChanged = newRank !== prev.rank;
         const updated = {
           ...prev,
           xp: newXP,
@@ -574,18 +610,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           });
         }
 
+        // Only fire confetti celebration on actual rank level-up
+        if (rankChanged) {
+          try {
+            confetti({
+              particleCount: 50,
+              spread: 60,
+              origin: { y: 0.7 }
+            });
+          } catch {}
+        }
+
         return updated;
       });
-
-      try {
-        confetti({
-          particleCount: 45,
-          spread: 60,
-          origin: { y: 0.7 }
-        });
-      } catch {}
     }, 0);
-  };
+  }, [currentUser, isOffline]);
 
   const updateStudentClass = (classLevel: any, stream?: any) => {
     const finalStream = stream || (typeof classLevel === 'string' && classLevel.startsWith('JSS') ? 'Junior' : 'Science');
@@ -976,6 +1015,141 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     confetti({ particleCount: 70, spread: 70, origin: { y: 0.5 } });
     return true;
+  };
+
+  // ==========================================
+  // PREPARE FOR EXAM METHODS
+  // ==========================================
+  const unlockExamPrep = (method: 'wallet' | 'paystack' = 'wallet'): boolean => {
+    const currentBalance = parentWallet.balanceNaira;
+    const requiredAmount = UNLOCK_FEE_NAIRA;
+
+    if (method === 'paystack' || currentBalance < requiredAmount) {
+      const topUpDeficit = Math.max(requiredAmount - currentBalance, requiredAmount);
+      fundParentWallet(topUpDeficit);
+    }
+
+    const debitTx: any = {
+      id: `tx-exam-${Date.now().toString().slice(-6)}`,
+      type: 'debit',
+      amountNaira: UNLOCK_FEE_NAIRA,
+      description: "Unlocked 'Prepare For Exam' + ₦4,000 Tutor Credits",
+      timestamp: 'Just now',
+      status: 'successful',
+      reference: `PSTK_EXAM_${Math.floor(Math.random() * 900000 + 100000)}`
+    };
+
+    setParentWallet(prev => {
+      const updatedBalance = Math.max(0, prev.balanceNaira - UNLOCK_FEE_NAIRA);
+      const updated = {
+        ...prev,
+        balanceNaira: updatedBalance,
+        transactions: [debitTx, ...prev.transactions]
+      };
+
+      if (currentUser && !isOffline) {
+        const walletDocRef = doc(db, 'wallets', currentUser.uid);
+        const path = `wallets/${currentUser.uid}`;
+        updateDoc(walletDocRef, {
+          balanceNaira: updatedBalance,
+          updatedAt: new Date().toISOString()
+        }).catch(err => {
+          handleFirestoreError(err, OperationType.UPDATE, path);
+        });
+      }
+
+      return updated;
+    });
+
+    setExamPrepState(prev => ({
+      ...prev,
+      isUnlocked: true,
+      unlockedAt: new Date().toISOString(),
+      tutorCreditsNaira: (prev.tutorCreditsNaira || 0) + INCLUDED_TUTOR_CREDITS_NAIRA
+    }));
+
+    try {
+      confetti({
+        particleCount: 80,
+        spread: 80,
+        origin: { y: 0.6 }
+      });
+    } catch {}
+    addStudentXP(150, "Unlocked 'Prepare For Exam'");
+
+    return true;
+  };
+
+  const useTutorCredit = (amountNaira: number): number => {
+    const available = examPrepState.tutorCreditsNaira || 0;
+    if (available <= 0) return 0;
+    const applied = Math.min(amountNaira, available);
+    setExamPrepState(prev => ({
+      ...prev,
+      tutorCreditsNaira: Math.max(0, (prev.tutorCreditsNaira || 0) - applied)
+    }));
+    return applied;
+  };
+
+  const generateExamPrepCalendar = async (profile: DiagnosticProfile): Promise<void> => {
+    setExamPrepState(prev => ({
+      ...prev,
+      diagnosticProfile: profile
+    }));
+
+    try {
+      const response = await fetch('/api/gemini/generate-exam-calendar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(profile)
+      });
+      const data = await response.json();
+      if (data?.success && data?.calendar && Array.isArray(data.calendar.days) && data.calendar.days.length > 0) {
+        const finalCalendar: StudyCalendar = {
+          id: `prep-cal-${Date.now()}`,
+          title: data.calendar.title || `${profile.classLevel} ${profile.targetExam} Success Blueprint`,
+          targetExam: data.calendar.targetExam || profile.targetExam,
+          classLevel: profile.classLevel,
+          generatedAt: new Date().toISOString(),
+          totalDays: data.calendar.days.length,
+          days: data.calendar.days,
+          strategyTips: data.calendar.strategyTips || [
+            'Revise key concepts for 15 minutes before practice drills.',
+            'Target at least 70% accuracy on all past-question CBT sessions.',
+            'Apply your ₦4,000 tutor credit for personalized 1-on-1 review on difficult topics.'
+          ]
+        };
+        setExamPrepState(prev => ({ ...prev, activeCalendar: finalCalendar }));
+        return;
+      }
+    } catch (err) {
+      console.warn('Gemini calendar generation failed, falling back to curated curriculum data:', err);
+    }
+
+    const fallbackCal = generateCuratedStudyCalendar(profile);
+    setExamPrepState(prev => ({ ...prev, activeCalendar: fallbackCal }));
+  };
+
+  const toggleStudyBlockCompleted = (blockId: string) => {
+    setExamPrepState(prev => {
+      const exists = prev.completedBlockIds.includes(blockId);
+      const next = exists
+        ? prev.completedBlockIds.filter(id => id !== blockId)
+        : [...prev.completedBlockIds, blockId];
+      if (!exists) {
+        addStudentXP(50, 'Completed Study Block');
+      }
+      return { ...prev, completedBlockIds: next };
+    });
+  };
+
+  const resetExamPrepPlan = () => {
+    setExamPrepState(prev => ({
+      ...prev,
+      diagnosticProfile: undefined,
+      activeCalendar: null,
+      completedBlockIds: []
+    }));
   };
 
   const submitChampionshipStageResult = (
@@ -1499,6 +1673,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         toggleDownloadNote,
         examResults,
         saveExamResult,
+        examPrepState,
+        unlockExamPrep,
+        useTutorCredit,
+        generateExamPrepCalendar,
+        toggleStudyBlockCompleted,
+        resetExamPrepPlan,
         parentWallet,
         isParentPinUnlocked,
         unlockParentPin,
