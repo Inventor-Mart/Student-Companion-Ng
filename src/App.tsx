@@ -56,13 +56,22 @@ const AppContent: React.FC = () => {
       <LandingPage
         onOpenKnowMore={() => setCurrentScreen('know_more')}
         onGetStarted={() => {
-          setCurrentRole('student');
-          setCurrentScreen('app');
+          setTargetSignUpRole(null);
+          setCurrentScreen('signup');
         }}
         onDiscoverTutors={() => {
-          setCurrentRole('student');
-          setActiveStudentTab('tutors');
-          setCurrentScreen('app');
+          if (!isAuthenticated) {
+            setTargetSignUpRole('student');
+            setCurrentScreen('signup');
+          } else {
+            if (currentUserProfile?.role === 'student') {
+              setCurrentRole('student');
+              setActiveStudentTab('tutors');
+            } else if (currentUserProfile) {
+              setCurrentRole(currentUserProfile.role);
+            }
+            setCurrentScreen('app');
+          }
         }}
         onSelectFeature={(feat) => {
           if (!isAuthenticated) {
@@ -180,7 +189,6 @@ const AppContent: React.FC = () => {
               <>
                 <div className="flex-1 w-full overflow-hidden flex flex-col">
                   {activeStudentTab === 'dashboard' && <StudentDashboard />}
-                  {activeStudentTab === 'exam-prep' && <PrepareForExamHub />}
                   {activeStudentTab === 'ai-coach' && <AiStudyCoach />}
                   {activeStudentTab === 'syllabus' && <SchemeOfWorkHub />}
                   {activeStudentTab === 'cbt' && <CBTEngine />}
@@ -189,6 +197,7 @@ const AppContent: React.FC = () => {
                   {activeStudentTab === 'tutors' && <TutorDiscovery />}
                   {activeStudentTab === 'games' && <GamesHub />}
                   {activeStudentTab === 'community' && <StudentCommunityForum />}
+                  {activeStudentTab === 'exam-prep' && <PrepareForExamHub />}
                 </div>
 
                 {/* Fixed Thumb-Zone Bottom Nav */}
@@ -207,9 +216,11 @@ const AppContent: React.FC = () => {
 
         {currentRole === 'tutor' && <TutorPortal />}
 
+        {currentRole === 'school_admin' && <SchoolAdminPortal />}
+
         {currentRole === 'admin' && (isSuperAdmin ? <SuperAdminPortal /> : <SchoolAdminPortal />)}
 
-        {/* Real-time In-App Virtual Classroom with Collaborative Whiteboard */}
+        {/* Global Virtual Classroom Modal Overlay */}
         <VirtualClassroomModal />
       </AndroidDeviceFrame>
     </div>

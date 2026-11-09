@@ -1,4 +1,4 @@
-export type UserRole = 'student' | 'parent' | 'tutor' | 'admin' | 'growth_partner';
+export type UserRole = 'student' | 'parent' | 'tutor' | 'admin' | 'growth_partner' | 'school_admin';
 
 export type NigerianClassLevel =
   | 'JSS 1'

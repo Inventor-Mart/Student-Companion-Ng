@@ -17,7 +17,7 @@ import {
   BookOpen,
   Home,
   TrendingUp,
-  Video
+  Sparkles
 } from 'lucide-react';
 
 interface InAppControlsDrawerProps {
@@ -48,9 +48,7 @@ export const InAppControlsDrawer: React.FC<InAppControlsDrawerProps> = ({
     impersonatedUser,
     stopImpersonation,
     switchRole,
-    updateStudentClass,
-    launchVirtualClassroom,
-    setActiveStudentTab
+    updateStudentClass
   } = useApp();
 
   if (!isOpen) return null;
@@ -85,11 +83,18 @@ export const InAppControlsDrawer: React.FC<InAppControlsDrawerProps> = ({
       badge: 'Verified Educator'
     },
     {
-      id: 'admin',
+      id: 'school_admin',
       label: 'School Admin',
       icon: <Building2 className="w-4 h-4 text-purple-400" />,
       desc: 'Inter-School Standings & Metrics',
       badge: 'Institution'
+    },
+    {
+      id: 'admin',
+      label: 'Super Admin',
+      icon: <Sparkles className="w-4 h-4 text-amber-400" />,
+      desc: 'Platform Management & Directory',
+      badge: 'Full Access'
     }
   ];
 
@@ -154,11 +159,22 @@ export const InAppControlsDrawer: React.FC<InAppControlsDrawerProps> = ({
                   {currentRole === 'growth_partner' && <TrendingUp className="w-4 h-4 text-emerald-400" />}
                   {currentRole === 'parent' && <ShieldCheck className="w-4 h-4 text-[#FF5B00]" />}
                   {currentRole === 'tutor' && <Users className="w-4 h-4 text-sky-400" />}
-                  {currentRole === 'admin' && <Building2 className="w-4 h-4 text-purple-400" />}
+                  {currentRole === 'school_admin' && <Building2 className="w-4 h-4 text-purple-400" />}
+                  {currentRole === 'admin' && <Sparkles className="w-4 h-4 text-amber-400" />}
                 </div>
                 <div>
                   <span className="font-bold text-white text-xs block capitalize">
-                    {currentRole === 'student' ? 'Student Learning Portal' : currentRole === 'growth_partner' ? 'Growth Partner Portal' : currentRole === 'parent' ? 'Parent Escrow & Wallet' : currentRole === 'tutor' ? 'Verified Tutor Hub' : 'School Admin Portal'}
+                    {currentRole === 'student'
+                      ? 'Student Learning Portal'
+                      : currentRole === 'growth_partner'
+                      ? 'Growth Partner Portal'
+                      : currentRole === 'parent'
+                      ? 'Parent Escrow & Wallet'
+                      : currentRole === 'tutor'
+                      ? 'Verified Tutor Hub'
+                      : currentRole === 'school_admin'
+                      ? 'School Admin Portal'
+                      : 'Super Admin Console'}
                   </span>
                   <span className="text-[10px] text-emerald-400 font-semibold">
                     ✓ Authenticated Access
@@ -258,47 +274,6 @@ export const InAppControlsDrawer: React.FC<InAppControlsDrawerProps> = ({
               </div>
             </div>
           )}
-
-          {/* Quick Classroom & Tutor Actions */}
-          <div>
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-2 px-1">
-              Virtual Classroom & Tutoring Hub
-            </span>
-            <div className="p-3 rounded-2xl bg-gradient-to-br from-[#101C31] to-[#0A1220] border border-emerald-500/40 space-y-2.5">
-              <div className="flex items-center gap-2">
-                <Video className="w-4 h-4 text-emerald-400 animate-pulse" />
-                <span className="text-xs font-bold text-white">Live Whiteboard & Tutors</span>
-              </div>
-              <p className="text-[11px] text-slate-300 leading-snug">
-                Test the collaborative math whiteboard canvas or inspect verified Nigerian tutor profiles with 7-day timetables.
-              </p>
-              <div className="grid grid-cols-2 gap-2 pt-1">
-                <button
-                  type="button"
-                  onClick={() => {
-                    onClose();
-                    launchVirtualClassroom('demo-session-menu', 'student');
-                  }}
-                  className="py-2 px-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-md cursor-pointer"
-                >
-                  <Video className="w-3.5 h-3.5" />
-                  <span>Launch Whiteboard</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    onClose();
-                    setCurrentRole('student');
-                    setActiveStudentTab('tutors');
-                  }}
-                  className="py-2 px-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs border border-slate-700 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-                >
-                  <Users className="w-3.5 h-3.5 text-sky-400" />
-                  <span>Tutor Profiles</span>
-                </button>
-              </div>
-            </div>
-          </div>
 
           {/* Section 2: Environment & Network Simulator */}
           <div>

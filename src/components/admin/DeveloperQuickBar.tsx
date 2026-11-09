@@ -35,7 +35,7 @@ export const DeveloperQuickBar: React.FC<DeveloperQuickBarProps> = ({ onOpenDire
     { id: 'student', label: 'Student', icon: GraduationCap, color: 'text-[#84E000] bg-emerald-950/80 border-emerald-600/60' },
     { id: 'parent', label: 'Parent', icon: ShieldCheck, color: 'text-[#FF5B00] bg-orange-950/80 border-orange-600/60' },
     { id: 'tutor', label: 'Tutor', icon: Users, color: 'text-sky-400 bg-sky-950/80 border-sky-600/60' },
-    { id: 'admin', label: 'School Admin', icon: Building2, color: 'text-purple-400 bg-purple-950/80 border-purple-600/60' }
+    { id: 'school_admin', label: 'School Admin', icon: Building2, color: 'text-purple-400 bg-purple-950/80 border-purple-600/60' }
   ];
 
   return (
