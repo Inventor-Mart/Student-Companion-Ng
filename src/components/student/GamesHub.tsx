@@ -104,43 +104,17 @@ export const GamesHub: React.FC = () => {
 
   const allGames = [
     {
-      id: 'snake' as GameId,
-      title: 'Classic Arcade Snake',
-      subject: 'Relaxation & Reflex Training',
-      category: 'RELAX',
-      description: 'Classic slither action with speed-scaling difficulty, touch gestures, thumb D-pad & high-score tracking',
-      duration: 'Endless Slither',
+      id: 'math_sprint' as GameId,
+      title: 'WAEC Math Sprint',
+      subject: 'Mathematics',
+      category: 'STEM',
+      description: '60-second rapid mental arithmetic, powers & linear equations',
+      duration: '60 Seconds',
       xpReward: 150,
-      icon: Flame,
-      accentColor: 'text-emerald-400',
-      bgBorder: 'border-emerald-500/40 from-slate-900 via-slate-900 to-emerald-950/40',
-      btnColor: 'bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 font-black'
-    },
-    {
-      id: 'tetris' as GameId,
-      title: 'Block Drop: Tetris',
-      subject: 'Relaxation & Spatial Logic',
-      category: 'RELAX',
-      description: 'Stack and rotate classic falling bricks, complete lines, hold pieces, and unwind from intense study sessions',
-      duration: 'Endless Run',
-      xpReward: 150,
-      icon: Boxes,
-      accentColor: 'text-cyan-400',
-      bgBorder: 'border-cyan-500/40 from-slate-900 via-slate-900 to-cyan-950/40',
-      btnColor: 'bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400 text-slate-950 font-black'
-    },
-    {
-      id: 'match_3' as GameId,
-      title: 'Match-3 Gem Blitz',
-      subject: 'Relaxation & Jewel Strategy',
-      category: 'RELAX',
-      description: 'Endless chill jewel matching puzzle with chain cascades, laser power gems, rainbow stars & hint finder',
-      duration: 'Endless Chill',
-      xpReward: 150,
-      icon: Gem,
-      accentColor: 'text-pink-400',
-      bgBorder: 'border-pink-500/40 from-slate-900 via-slate-900 to-pink-950/40',
-      btnColor: 'bg-gradient-to-r from-pink-500 to-rose-400 hover:from-pink-400 hover:to-rose-300 text-slate-950 font-black'
+      icon: Zap,
+      accentColor: 'text-purple-400',
+      bgBorder: 'border-purple-800/40 from-slate-900 to-purple-950/40',
+      btnColor: 'bg-purple-600 hover:bg-purple-500'
     },
     {
       id: 'spelling_bee' as GameId,
@@ -154,32 +128,6 @@ export const GamesHub: React.FC = () => {
       accentColor: 'text-amber-400',
       bgBorder: 'border-amber-500/40 from-slate-900 via-slate-900 to-amber-950/40',
       btnColor: 'bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-slate-950 font-black'
-    },
-    {
-      id: 'current_affairs' as GameId,
-      title: 'Endless Current Affairs',
-      subject: 'Civics, History & Global Affairs',
-      category: 'CIVICS',
-      description: 'Infinite quiz stream: choose Nigeria (36 states, leaders, history) or The World (geopolitics, capitals)',
-      duration: 'Endless Run (3 Lives)',
-      xpReward: 300,
-      icon: Globe,
-      accentColor: 'text-emerald-400',
-      bgBorder: 'border-emerald-500/40 from-slate-900 via-slate-900 to-teal-950/40',
-      btnColor: 'bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 font-black'
-    },
-    {
-      id: 'math_sprint' as GameId,
-      title: 'WAEC Math Sprint',
-      subject: 'Mathematics',
-      category: 'STEM',
-      description: '60-second rapid mental arithmetic, powers & linear equations',
-      duration: '60 Seconds',
-      xpReward: 150,
-      icon: Zap,
-      accentColor: 'text-purple-400',
-      bgBorder: 'border-purple-800/40 from-slate-900 to-purple-950/40',
-      btnColor: 'bg-purple-600 hover:bg-purple-500'
     },
     {
       id: 'periodic_table' as GameId,
@@ -258,6 +206,58 @@ export const GamesHub: React.FC = () => {
       accentColor: 'text-teal-400',
       bgBorder: 'border-teal-800/40 from-slate-900 to-teal-950/40',
       btnColor: 'bg-teal-600 hover:bg-teal-500'
+    },
+    {
+      id: 'current_affairs' as GameId,
+      title: 'Endless Current Affairs',
+      subject: 'Civics, History & Global Affairs',
+      category: 'CIVICS',
+      description: 'Infinite quiz stream: choose Nigeria (36 states, leaders, history) or The World (geopolitics, capitals)',
+      duration: 'Endless Run (3 Lives)',
+      xpReward: 300,
+      icon: Globe,
+      accentColor: 'text-emerald-400',
+      bgBorder: 'border-emerald-500/40 from-slate-900 via-slate-900 to-teal-950/40',
+      btnColor: 'bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 font-black'
+    },
+    {
+      id: 'snake' as GameId,
+      title: 'Classic Arcade Snake',
+      subject: 'Relaxation & Reflex Training',
+      category: 'RELAX',
+      description: 'Classic slither action with speed-scaling difficulty, touch gestures, thumb D-pad & high-score tracking',
+      duration: 'Endless Slither',
+      xpReward: 150,
+      icon: Flame,
+      accentColor: 'text-emerald-400',
+      bgBorder: 'border-emerald-500/40 from-slate-900 via-slate-900 to-emerald-950/40',
+      btnColor: 'bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 font-black'
+    },
+    {
+      id: 'tetris' as GameId,
+      title: 'Block Drop: Tetris',
+      subject: 'Relaxation & Spatial Logic',
+      category: 'RELAX',
+      description: 'Stack and rotate classic falling bricks, complete lines, hold pieces, and unwind from intense study sessions',
+      duration: 'Endless Run',
+      xpReward: 150,
+      icon: Boxes,
+      accentColor: 'text-cyan-400',
+      bgBorder: 'border-cyan-500/40 from-slate-900 via-slate-900 to-cyan-950/40',
+      btnColor: 'bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400 text-slate-950 font-black'
+    },
+    {
+      id: 'match_3' as GameId,
+      title: 'Match-3 Gem Blitz',
+      subject: 'Relaxation & Jewel Strategy',
+      category: 'RELAX',
+      description: 'Endless chill jewel matching puzzle with chain cascades, laser power gems, rainbow stars & hint finder',
+      duration: 'Endless Chill',
+      xpReward: 150,
+      icon: Gem,
+      accentColor: 'text-pink-400',
+      bgBorder: 'border-pink-500/40 from-slate-900 via-slate-900 to-pink-950/40',
+      btnColor: 'bg-gradient-to-r from-pink-500 to-rose-400 hover:from-pink-400 hover:to-rose-300 text-slate-950 font-black'
     }
   ];
 
