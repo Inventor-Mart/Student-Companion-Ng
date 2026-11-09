@@ -247,6 +247,31 @@ export const PrepareForExamHub: React.FC = () => {
         </div>
       </div>
 
+      {/* Pinned Responsive Bottom Bar for Seamless 1-Tap Pay & Unlock */}
+      <div className="sticky bottom-0 z-20 w-full -mx-4 px-4 py-3 bg-slate-950/95 backdrop-blur-md border-t border-emerald-500/40 flex items-center justify-between gap-3 shadow-2xl">
+        <div className="min-w-0">
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs font-bold text-white tracking-tight">Prepare For Exam Pass</span>
+            <span className="text-[10px] font-semibold text-emerald-300 bg-emerald-950/90 px-1.5 py-0.2 rounded border border-emerald-800">
+              + ₦4,000 Credit
+            </span>
+          </div>
+          <div className="text-sm font-black text-emerald-400 font-mono mt-0.5">
+            ₦15,000 <span className="text-[10px] text-slate-400 font-normal">one-time access</span>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setIsUnlockModalOpen(true)}
+          className="py-2.5 px-4 sm:px-5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 font-black text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-emerald-500/25 active:scale-95 transition-all cursor-pointer shrink-0"
+        >
+          <Lock className="w-3.5 h-3.5 text-slate-950" />
+          <span>Pay & Unlock</span>
+          <ArrowRight className="w-3.5 h-3.5" />
+        </button>
+      </div>
+
       {/* Unlock Modal */}
       <ExamPrepUnlockModal
         isOpen={isUnlockModalOpen}

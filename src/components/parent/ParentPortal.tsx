@@ -21,10 +21,13 @@ import {
   MessageSquare,
   LayoutDashboard,
   Trophy,
-  Smartphone
+  Smartphone,
+  Sparkles,
+  ArrowRight
 } from 'lucide-react';
 import { NairaText, NairaSign } from '../../utils/currency';
 import { ParentCommunityForum } from './ParentCommunityForum';
+import { ExamPrepUnlockModal } from '../student/exam-prep/ExamPrepUnlockModal';
 
 export const ParentPortal: React.FC = () => {
   const {
@@ -40,7 +43,8 @@ export const ParentPortal: React.FC = () => {
     examResults,
     currentUserProfile,
     championshipRegistrations,
-    approveChampionshipRegistration
+    approveChampionshipRegistration,
+    examPrepState
   } = useApp();
 
   const parentName = currentUserProfile?.fullName || 'Registered Parent';
@@ -52,6 +56,7 @@ export const ParentPortal: React.FC = () => {
   const [topUpAmount, setTopUpAmount] = useState<number>(10000);
   const [isProcessingPaystack, setIsProcessingPaystack] = useState<boolean>(false);
   const [parentTab, setParentTab] = useState<'overview' | 'community'>('overview');
+  const [isExamPrepModalOpen, setIsExamPrepModalOpen] = useState<boolean>(false);
 
   // If locked, render PIN Gate
   if (!isParentPinUnlocked) {
@@ -208,6 +213,68 @@ export const ParentPortal: React.FC = () => {
             <span>Fund Wallet</span>
           </button>
         </div>
+      </div>
+
+      {/* Prepare For Exam · AI Daily Timetable & ₦4,000 Tutor Credits Pass */}
+      <div className="bg-gradient-to-r from-emerald-950/80 via-slate-900 to-teal-950/70 rounded-3xl p-4 border border-emerald-500/50 space-y-3 shadow-md relative overflow-hidden">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shrink-0 shadow-inner">
+              <Calendar className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-xs font-bold text-white uppercase tracking-wider">
+                  Prepare For Exam Pass
+                </h3>
+                {examPrepState?.isUnlocked ? (
+                  <span className="text-[10px] font-bold text-emerald-300 bg-emerald-950 px-2 py-0.5 rounded border border-emerald-700 uppercase tracking-wide flex items-center gap-1">
+                    <Sparkles className="w-2.5 h-2.5" />
+                    <span>Active · ₦4,000 Tutor Credits</span>
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-bold text-amber-300 bg-amber-950 px-2 py-0.5 rounded border border-amber-700 uppercase tracking-wide flex items-center gap-1">
+                    <Lock className="w-2.5 h-2.5" />
+                    <span>Locked · ₦15,000</span>
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] text-slate-300 mt-0.5">
+                Ward: <strong className="text-slate-100">{wardName}</strong> ({student.classLevel}) · NERDC curriculum roadmap + ₦4,000 1-on-1 tutoring voucher.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {examPrepState?.isUnlocked ? (
+          <div className="bg-slate-950/80 p-3 rounded-2xl border border-emerald-800/40 flex items-center justify-between text-xs">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              <div>
+                <span className="text-slate-200 font-semibold block">Full Access Unlocked</span>
+                <span className="text-[11px] text-slate-400">
+                  ₦4,000 tutor credits available for {wardName}'s verified sessions.
+                </span>
+              </div>
+            </div>
+            <span className="text-xs font-mono font-bold text-emerald-400">₦4,000 Credits</span>
+          </div>
+        ) : (
+          <div className="pt-1 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setIsExamPrepModalOpen(true)}
+              className="flex-1 py-2.5 px-4 bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 text-xs font-black rounded-xl transition-all shadow-md shadow-emerald-500/20 flex items-center justify-center gap-2 cursor-pointer active:scale-98"
+            >
+              <Lock className="w-3.5 h-3.5 text-slate-950" />
+              <span>Unlock for {wardName} (₦15,000)</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+            <span className="text-[11px] text-slate-400 text-center sm:text-right px-1">
+              Includes ₦4,000 tutor voucher
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Termly Championship Registrations Queue */}
@@ -565,6 +632,13 @@ export const ParentPortal: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Exam Prep Unlock Modal for Parent */}
+      <ExamPrepUnlockModal
+        isOpen={isExamPrepModalOpen}
+        onClose={() => setIsExamPrepModalOpen(false)}
+        targetStudentName={wardName}
+      />
     </div>
   );
 };

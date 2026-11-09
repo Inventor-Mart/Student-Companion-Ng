@@ -106,7 +106,7 @@ interface AppContextType {
 
   // Prepare For Exam (AI Daily Study Calendar & Tutor Credits)
   examPrepState: ExamPrepState;
-  unlockExamPrep: (method?: 'wallet' | 'paystack') => boolean;
+  unlockExamPrep: (method?: 'wallet' | 'paystack' | 'bank_transfer') => boolean;
   useTutorCredit: (amountNaira: number) => number;
   generateExamPrepCalendar: (profile: DiagnosticProfile) => Promise<void>;
   toggleStudyBlockCompleted: (blockId: string) => void;
@@ -1020,11 +1020,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // ==========================================
   // PREPARE FOR EXAM METHODS
   // ==========================================
-  const unlockExamPrep = (method: 'wallet' | 'paystack' = 'wallet'): boolean => {
+  const unlockExamPrep = (method: 'wallet' | 'paystack' | 'bank_transfer' = 'wallet'): boolean => {
     const currentBalance = parentWallet.balanceNaira;
     const requiredAmount = UNLOCK_FEE_NAIRA;
 
-    if (method === 'paystack' || currentBalance < requiredAmount) {
+    if (method === 'paystack' || method === 'bank_transfer' || currentBalance < requiredAmount) {
       const topUpDeficit = Math.max(requiredAmount - currentBalance, requiredAmount);
       fundParentWallet(topUpDeficit);
     }
@@ -1033,10 +1033,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       id: `tx-exam-${Date.now().toString().slice(-6)}`,
       type: 'debit',
       amountNaira: UNLOCK_FEE_NAIRA,
-      description: "Unlocked 'Prepare For Exam' + ₦4,000 Tutor Credits",
+      description: `Unlocked 'Prepare For Exam' + ₦4,000 Tutor Credits (${method === 'bank_transfer' ? 'Bank Transfer' : method === 'paystack' ? 'Paystack' : 'Escrow Wallet'})`,
       timestamp: 'Just now',
       status: 'successful',
-      reference: `PSTK_EXAM_${Math.floor(Math.random() * 900000 + 100000)}`
+      reference: `${method === 'bank_transfer' ? 'WEMA_TRF_' : 'PSTK_EXAM_'}${Math.floor(Math.random() * 900000 + 100000)}`
     };
 
     setParentWallet(prev => {

@@ -1,9 +1,10 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { NIGERIAN_CURRICULUM_TOPICS } from '../../data/curriculumData';
 import { CBT_EXAMS_DATABASE } from '../../data/cbtExamData';
 import { compressImage } from '../../lib/storage';
 import { NigerianClassLevel } from '../../types';
+import { ExamPrepUnlockModal } from './exam-prep/ExamPrepUnlockModal';
 import {
   Flame,
   Award,
@@ -42,6 +43,7 @@ export const StudentDashboard: React.FC = () => {
   } = useApp();
 
   const avatarFileInputRef = useRef<HTMLInputElement>(null);
+  const [isExamPrepModalOpen, setIsExamPrepModalOpen] = useState(false);
 
   const displayName = student.name || currentUserProfile?.fullName || 'Registered Student';
   const displaySchool = student.school || 'Secondary School';
@@ -309,16 +311,37 @@ export const StudentDashboard: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex items-center gap-2 pt-1">
-          <button
-            type="button"
-            onClick={() => setActiveStudentTab('exam-prep')}
-            className="flex-1 py-2.5 px-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold rounded-xl transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
-          >
-            <Calendar className="w-4 h-4" />
-            <span>{examPrepState?.isUnlocked ? 'Open Daily Study Calendar' : 'Unlock & Get ₦4,000 Tutor Credits'}</span>
-            <ArrowRight className="w-3.5 h-3.5" />
-          </button>
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-1">
+          {examPrepState?.isUnlocked ? (
+            <button
+              type="button"
+              onClick={() => setActiveStudentTab('exam-prep')}
+              className="flex-1 py-2.5 px-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold rounded-xl transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <Calendar className="w-4 h-4" />
+              <span>Open Daily Study Calendar</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={() => setIsExamPrepModalOpen(true)}
+                className="flex-1 py-2.5 px-4 bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 text-xs font-black rounded-xl transition-all shadow-md shadow-emerald-500/20 flex items-center justify-center gap-2 cursor-pointer active:scale-98"
+              >
+                <Lock className="w-3.5 h-3.5 text-slate-950" />
+                <span>Pay & Unlock (₦15,000)</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveStudentTab('exam-prep')}
+                className="py-2.5 px-3.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <span>Preview Syllabus</span>
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -711,6 +734,13 @@ export const StudentDashboard: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Pay & Unlock Modal */}
+      <ExamPrepUnlockModal
+        isOpen={isExamPrepModalOpen}
+        onClose={() => setIsExamPrepModalOpen(false)}
+        onSuccess={() => setActiveStudentTab('exam-prep')}
+      />
     </div>
   );
 };
