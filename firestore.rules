@@ -354,5 +354,10 @@ service cloud.firestore {
       allow create: if isVerified() && isValidId(reportId) && incoming().id == reportId && incoming().reporterUserId == request.auth.uid && isValidForumReport(incoming());
       allow update, delete: if isAdmin();
     }
+
+    // 14. Connection Test Collection
+    match /test/{docId} {
+      allow read: if true;
+    }
   }
 }

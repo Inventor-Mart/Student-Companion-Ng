@@ -628,9 +628,23 @@
         "status": { "type": "string", "enum": ["pending", "resolved", "dismissed"] }
       },
       "required": ["id", "messageId", "channelId", "reportedUserId", "reporterUserId", "messageText", "reason", "status"]
+    },
+    "TestConnection": {
+      "title": "TestConnection",
+      "description": "Health check document for testing Firestore connectivity on boot",
+      "type": "object",
+      "properties": {
+        "status": { "type": "string" }
+      }
     }
   },
   "firestore": {
+    "/test/{docId}": {
+      "schema": {
+        "$ref": "#/entities/TestConnection"
+      },
+      "description": "Connectivity test probe"
+    },
     "/students/{studentId}": {
       "schema": {
         "$ref": "#/entities/StudentProfile"

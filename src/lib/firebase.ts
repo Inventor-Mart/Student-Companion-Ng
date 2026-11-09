@@ -56,10 +56,14 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
 }
 
 export async function testConnection(): Promise<void> {
+  // If browser is in offline mode, skip server probe to allow smooth offline operations
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    return;
+  }
   try {
     await getDocFromServer(doc(db, 'test', 'connection'));
   } catch (error) {
-    if (error instanceof Error && error.message.includes('the client is offline')) {
+    if (error instanceof Error && error.message.includes('the client is offline') && (typeof navigator === 'undefined' || navigator.onLine)) {
       console.error("Please check your Firebase configuration.");
     }
   }
