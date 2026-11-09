@@ -101,7 +101,7 @@ export const CurrentAffairsGame: React.FC<CurrentAffairsGameProps> = ({ onExit, 
       });
       onAwardXP(points, `Current Affairs: ${selectedScope === 'nigeria' ? 'Nigeria' : 'World'} Streak`);
     } else {
-      playSound.incorrect();
+      playSound.buzz();
       const remainingLives = lives - 1;
       setLives(remainingLives);
       setStreak(0);

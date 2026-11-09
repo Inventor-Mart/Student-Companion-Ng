@@ -103,7 +103,7 @@ export const SpellingBeeGame: React.FC<SpellingBeeGameProps> = ({ onExit, onAwar
         setGameState('PLAYING');
       }, 1400);
     } else {
-      playSound.incorrect();
+      playSound.buzz();
       const remainingLives = lives - 1;
       setLives(remainingLives);
       setStreak(0);
@@ -119,7 +119,7 @@ export const SpellingBeeGame: React.FC<SpellingBeeGameProps> = ({ onExit, onAwar
 
   const handlePass = () => {
     if (gameState !== 'PLAYING') return;
-    playSound.incorrect();
+    playSound.buzz();
     const remainingLives = lives - 1;
     setLives(remainingLives);
     setStreak(0);

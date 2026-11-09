@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Trophy, Timer, Flame, RotateCcw, ArrowLeft } from 'lucide-react';
+import { Trophy, Timer, Flame, RotateCcw, ArrowLeft, Volume2, VolumeX } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import { playSound, getSoundMuted, toggleSoundMuted } from '../../../utils/audioSynthesis';
 
 interface MathQuestion {
   question: string;
@@ -17,6 +18,7 @@ export const MathSprintGame: React.FC<{
   const [streak, setStreak] = useState<number>(0);
   const [currentQ, setCurrentQ] = useState<MathQuestion | null>(null);
   const [isGameOver, setIsGameOver] = useState<boolean>(false);
+  const [isMuted, setIsMuted] = useState<boolean>(getSoundMuted());
 
   // Generate question
   const generateQuestion = (): MathQuestion => {
@@ -70,6 +72,7 @@ export const MathSprintGame: React.FC<{
 
   const handleGameOver = useCallback(() => {
     setIsGameOver(true);
+    playSound.gameOver();
     const xpReward = Math.max(50, scoreRef.current * 15);
     setTimeout(() => {
       onAwardXP(xpReward, 'WAEC Math Sprint');
@@ -79,7 +82,7 @@ export const MathSprintGame: React.FC<{
     } catch {}
   }, [onAwardXP]);
 
-  // Timer loop
+  // Timer loop with soft ticking & 5-second urgency beep
   useEffect(() => {
     if (isGameOver) return;
 
@@ -89,7 +92,17 @@ export const MathSprintGame: React.FC<{
     }
 
     const interval = setInterval(() => {
-      setTimeLeft(prev => Math.max(0, prev - 1));
+      setTimeLeft(prev => {
+        const next = Math.max(0, prev - 1);
+        if (next > 0) {
+          if (next <= 5) {
+            playSound.timerBeep(next);
+          } else {
+            playSound.timerTick();
+          }
+        }
+        return next;
+      });
     }, 1000);
 
     return () => clearInterval(interval);
@@ -99,9 +112,11 @@ export const MathSprintGame: React.FC<{
     if (!currentQ || isGameOver) return;
 
     if (selected === currentQ.answer) {
+      playSound.correct();
       setScore(prev => prev + 1);
       setStreak(prev => prev + 1);
     } else {
+      playSound.buzz();
       setStreak(0);
     }
 
@@ -172,18 +187,27 @@ export const MathSprintGame: React.FC<{
         </button>
 
         {/* Time Remaining */}
-        <div className="flex items-center gap-1.5 px-3 py-1 bg-purple-950 border border-purple-700 rounded-xl text-xs font-mono font-bold text-purple-300">
+        <div className={`flex items-center gap-1.5 px-3 py-1 border rounded-xl text-xs font-mono font-bold transition-all ${
+          timeLeft <= 5 ? 'bg-amber-950 border-amber-500 text-amber-300 animate-pulse' : 'bg-purple-950 border-purple-700 text-purple-300'
+        }`}>
           <Timer className="w-3.5 h-3.5" />
           <span>{timeLeft}s</span>
         </div>
 
-        {/* Score & Streak */}
+        {/* Score, Streak & Audio Toggle */}
         <div className="flex items-center gap-2 text-xs font-mono">
+          <button
+            onClick={() => setIsMuted(toggleSoundMuted())}
+            className="p-1 text-slate-400 hover:text-white rounded transition-colors cursor-pointer"
+            title={isMuted ? 'Unmute Sound FX' : 'Mute Sound FX'}
+          >
+            {isMuted ? <VolumeX className="w-3.5 h-3.5 text-rose-400" /> : <Volume2 className="w-3.5 h-3.5 text-emerald-400" />}
+          </button>
           <span className="text-white font-bold">{score} pts</span>
           {streak >= 3 && (
             <span className="flex items-center gap-0.5 text-amber-400 text-[11px] font-bold">
               <Flame className="w-3 h-3 fill-amber-400" />
-              {streak}x
+              <span>{streak}x</span>
             </span>
           )}
         </div>

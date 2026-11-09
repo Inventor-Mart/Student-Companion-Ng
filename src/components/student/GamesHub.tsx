@@ -33,6 +33,7 @@ import { CurrentAffairsGame } from './games/CurrentAffairsGame';
 import { TetrisGame } from './games/TetrisGame';
 import { Match3Game } from './games/Match3Game';
 import { SnakeGame } from './games/SnakeGame';
+import { getSoundMuted, toggleSoundMuted } from '../../utils/audioSynthesis';
 
 type GameId =
   | 'hub'
@@ -53,6 +54,7 @@ export const GamesHub: React.FC = () => {
   const { student, addStudentXP } = useApp();
   const [activeGame, setActiveGame] = useState<GameId>('hub');
   const [filterCategory, setFilterCategory] = useState<'ALL' | 'RELAX' | 'STEM' | 'ARTS' | 'CIVICS'>('ALL');
+  const [isMuted, setIsMuted] = useState<boolean>(getSoundMuted());
 
   if (activeGame === 'snake') {
     return <SnakeGame onExit={() => setActiveGame('hub')} onAwardXP={addStudentXP} />;
@@ -276,9 +278,23 @@ export const GamesHub: React.FC = () => {
               <Coffee className="w-3 h-3" /> Study Breaks
             </span>
           </h2>
-          <span className="text-[11px] font-semibold text-emerald-400 bg-emerald-950 px-2 py-0.5 rounded border border-emerald-800">
-            {allGames.length} Games Available
-          </span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setIsMuted(toggleSoundMuted())}
+              className={`flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded border transition-colors cursor-pointer ${
+                isMuted
+                  ? 'bg-rose-950/80 text-rose-300 border-rose-800'
+                  : 'bg-emerald-950/80 text-emerald-300 border-emerald-800'
+              }`}
+              title={isMuted ? 'Game Audio Muted' : 'Game Audio Active'}
+            >
+              <Volume2 className={`w-3 h-3 ${isMuted ? 'text-rose-400' : 'text-emerald-400'}`} />
+              <span>{isMuted ? 'Muted' : 'Audio On'}</span>
+            </button>
+            <span className="text-[11px] font-semibold text-emerald-400 bg-emerald-950 px-2 py-0.5 rounded border border-emerald-800">
+              {allGames.length} Games Available
+            </span>
+          </div>
         </div>
         <p className="text-xs text-slate-400 mt-0.5">
           Reinforce academic mastery or refresh your brain with addictive casual relaxation games

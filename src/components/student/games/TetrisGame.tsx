@@ -272,6 +272,8 @@ export const TetrisGame: React.FC<TetrisGameProps> = ({ onExit, onAwardXP }) => 
         return;
       }
     }
+    // Blocked rotation: play tactile buzz
+    playSound.buzz();
   }, [currentPiece, grid, isPaused, isGameOver, checkCollision]);
 
   const softDrop = useCallback(() => {
@@ -296,7 +298,11 @@ export const TetrisGame: React.FC<TetrisGameProps> = ({ onExit, onAwardXP }) => 
   }, [currentPiece, grid, isPaused, isGameOver, checkCollision, lockPiece]);
 
   const holdPiece = useCallback(() => {
-    if (isPaused || isGameOver || !canHold) return;
+    if (isPaused || isGameOver) return;
+    if (!canHold) {
+      playSound.buzz();
+      return;
+    }
     playSound.tetrisRotate();
     const currentType = currentPiece.type;
 

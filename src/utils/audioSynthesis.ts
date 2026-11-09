@@ -1,6 +1,27 @@
 // Web Audio API Synthesizer for tactile game feedback without external audio assets
 
 let audioCtx: AudioContext | null = null;
+let isSoundMuted = false;
+
+export const getSoundMuted = (): boolean => isSoundMuted;
+export const setSoundMuted = (muted: boolean) => {
+  isSoundMuted = muted;
+};
+export const toggleSoundMuted = (): boolean => {
+  isSoundMuted = !isSoundMuted;
+  return isSoundMuted;
+};
+
+export const triggerHaptic = (type: 'tick' | 'light' | 'medium' | 'heavy' | 'buzz' = 'light') => {
+  if (typeof window === 'undefined' || !('vibrate' in navigator)) return;
+  try {
+    if (type === 'tick') navigator.vibrate(12);
+    else if (type === 'light') navigator.vibrate(25);
+    else if (type === 'medium') navigator.vibrate([20, 25, 30]);
+    else if (type === 'heavy') navigator.vibrate([45, 30, 60]);
+    else if (type === 'buzz') navigator.vibrate([40, 30, 40]);
+  } catch {}
+};
 
 function getAudioContext(): AudioContext | null {
   if (typeof window === 'undefined') return null;
@@ -17,7 +38,86 @@ function getAudioContext(): AudioContext | null {
 }
 
 export const playSound = {
+  timerTick: () => {
+    if (isSoundMuted) return;
+    try {
+      const ctx = getAudioContext();
+      if (!ctx) return;
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(950, now);
+      osc.frequency.exponentialRampToValueAtTime(400, now + 0.025);
+      gain.gain.setValueAtTime(0.04, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.025);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.025);
+    } catch {}
+  },
+
+  timerBeep: (secondsLeft: number = 5) => {
+    triggerHaptic('light');
+    if (isSoundMuted) return;
+    try {
+      const ctx = getAudioContext();
+      if (!ctx) return;
+      const now = ctx.currentTime;
+      const baseFreq = secondsLeft <= 2 ? 1046.5 : secondsLeft <= 3 ? 987.77 : 880;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(baseFreq, now);
+      gain.gain.setValueAtTime(0.09, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+
+      const filter = ctx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(1600, now);
+
+      osc.connect(filter);
+      filter.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.08);
+    } catch {}
+  },
+
+  buzz: () => {
+    triggerHaptic('buzz');
+    if (isSoundMuted) return;
+    try {
+      const ctx = getAudioContext();
+      if (!ctx) return;
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(130, now);
+      osc.frequency.setValueAtTime(90, now + 0.08);
+
+      const filter = ctx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(450, now);
+
+      gain.gain.setValueAtTime(0.14, now);
+      gain.gain.setValueAtTime(0.02, now + 0.07);
+      gain.gain.setValueAtTime(0.14, now + 0.08);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+
+      osc.connect(filter);
+      filter.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.2);
+    } catch {}
+  },
+
   correct: () => {
+    triggerHaptic('light');
+    if (isSoundMuted) return;
     try {
       const ctx = getAudioContext();
       if (!ctx) return;

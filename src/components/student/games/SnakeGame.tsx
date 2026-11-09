@@ -158,7 +158,7 @@ export const SnakeGame: React.FC<SnakeGameProps> = ({ onExit, onAwardXP }) => {
         nextHead.y >= GRID_ROWS
       ) {
         setGameState('GAME_OVER');
-        playSound.incorrect();
+        playSound.buzz();
         if (!hasAwardedXPRef.current) {
           hasAwardedXPRef.current = true;
           const earnedXP = Math.min(150, Math.max(30, Math.floor(score * 1.5)));
@@ -171,7 +171,7 @@ export const SnakeGame: React.FC<SnakeGameProps> = ({ onExit, onAwardXP }) => {
       const bodySegments = prevSnake.slice(0, prevSnake.length - 1);
       if (bodySegments.some(seg => seg.x === nextHead.x && seg.y === nextHead.y)) {
         setGameState('GAME_OVER');
-        playSound.incorrect();
+        playSound.buzz();
         if (!hasAwardedXPRef.current) {
           hasAwardedXPRef.current = true;
           const earnedXP = Math.min(150, Math.max(30, Math.floor(score * 1.5)));
