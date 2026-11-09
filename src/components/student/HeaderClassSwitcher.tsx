@@ -90,7 +90,7 @@ export const HeaderClassSwitcher: React.FC = () => {
           </div>
 
           {/* Senior Section */}
-          <div>
+          <div className="mb-2">
             <div className="px-2 py-0.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
               Senior Secondary (WAEC / JAMB)
             </div>
@@ -116,6 +116,37 @@ export const HeaderClassSwitcher: React.FC = () => {
                 );
               })}
             </div>
+          </div>
+
+          {/* School Leavers / Aspirant Section */}
+          <div className="pt-2 border-t border-slate-800/80">
+            <div className="px-2 py-0.5 text-[10px] font-bold text-amber-400 uppercase tracking-wider flex items-center justify-between">
+              <span>Post-Secondary / Aspirant</span>
+              <span className="text-[8px] bg-amber-500/20 text-amber-300 px-1 rounded font-black">NEW</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => handleSelect('University Aspirant')}
+              className={`w-full mt-1 py-2 px-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-between cursor-pointer ${
+                student.classLevel === 'University Aspirant'
+                  ? 'bg-gradient-to-r from-[#FF5B00] to-amber-500 text-slate-950 shadow-md shadow-orange-500/30 ring-1 ring-white'
+                  : 'bg-[#14233D] hover:bg-[#1C3257] text-white border border-amber-500/40 hover:border-amber-400'
+              }`}
+            >
+              <div className="flex flex-col text-left">
+                <span className="font-black text-[12px]">University Aspirant</span>
+                <span className={`text-[9px] ${student.classLevel === 'University Aspirant' ? 'text-slate-950 font-semibold' : 'text-slate-300'}`}>
+                  WAEC, NECO &amp; JAMB Leavers
+                </span>
+              </div>
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
+                student.classLevel === 'University Aspirant'
+                  ? 'bg-slate-950/20 text-slate-950'
+                  : 'bg-[#FF5B00]/20 text-[#FF5B00]'
+              }`}>
+                Aspirant Hub
+              </span>
+            </button>
           </div>
         </div>
       )}

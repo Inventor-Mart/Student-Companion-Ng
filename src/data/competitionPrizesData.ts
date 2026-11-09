@@ -219,6 +219,20 @@ const CLASS_QUESTION_BANKS: Record<NigerianClassLevel, ClassCurriculumBank> = {
       { q: 'Which compound represents an alkyne in organic chemistry?', o: ['C₂H₆', 'C₂H₄', 'C₂H₂', 'CH₄'], a: 2, exp: 'Ethyne (C₂H₂) has a carbon-carbon triple bond fitting formula CnH2n-2.' },
       { q: 'In Nigeria\'s federal system, exclusive legislative powers are reserved for:', o: ['Local Governments', 'State Houses of Assembly', 'The National Assembly (Federal)', 'Customary Courts'], a: 2, exp: 'Exclusive list matters (defense, currency, foreign affairs) belong solely to the Federal Government.' }
     ]
+  },
+  'University Aspirant': {
+    englishBase: [
+      { q: 'Select the option that best conveys the meaning of the idiom: "To burn the midnight oil":', o: ['To waste fuel', 'To work or study late into the night', 'To cause a fire hazard', 'To cook dinner late'], a: 1, exp: 'It means working or studying vigorously late at night.' },
+      { q: 'Identify the sentence with an dangling participle modifier:', o: ['Walking through the campus gates, the principal greeted the students.', 'Walking through the campus gates, the bell began to toll.', 'Having finished the test, we submitted our papers.', 'Running quickly, she caught the morning bus.'], a: 1, exp: 'The bell cannot walk through campus gates; the participle clause lacks a logical subject.' }
+    ],
+    mathBase: [
+      { q: 'Evaluate the definite integral ∫ (6x² + 2x) dx from x = 1 to x = 3:', o: ['56', '60', '52', '64'], a: 1, exp: 'Antiderivative = 2x³ + x². At x=3: 2(27) + 9 = 63. At x=1: 2(1) + 1 = 3. 63 - 3 = 60.' },
+      { q: 'A committee of 4 is to be chosen from 7 boys and 5 girls. In how many ways can this be done if it must contain exactly 2 boys and 2 girls?', o: ['210', '105', '350', '420'], a: 0, exp: '⁷C₂ × ⁵C₂ = (21) × (10) = 210 ways.' }
+    ],
+    generalBase: [
+      { q: 'Which compound represents an alkyne in organic chemistry?', o: ['C₂H₆', 'C₂H₄', 'C₂H₂', 'CH₄'], a: 2, exp: 'Ethyne (C₂H₂) has a carbon-carbon triple bond fitting formula CnH2n-2.' },
+      { q: 'In Nigeria\'s federal system, exclusive legislative powers are reserved for:', o: ['Local Governments', 'State Houses of Assembly', 'The National Assembly (Federal)', 'Customary Courts'], a: 2, exp: 'Exclusive list matters (defense, currency, foreign affairs) belong solely to the Federal Government.' }
+    ]
   }
 };
 

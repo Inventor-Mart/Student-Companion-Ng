@@ -46,7 +46,7 @@ service cloud.firestore {
              data.id is string && isValidId(data.id) &&
              data.name is string && data.name.size() >= 1 && data.name.size() <= 100 &&
              data.school is string && data.school.size() <= 150 &&
-             data.classLevel in ['JSS 1', 'JSS 2', 'JSS 3', 'SS 1', 'SS 2', 'SS 3'] &&
+             data.classLevel in ['JSS 1', 'JSS 2', 'JSS 3', 'SS 1', 'SS 2', 'SS 3', 'University Aspirant'] &&
              data.stream in ['Junior', 'Science', 'Non-Science'] &&
              data.xp is number && data.xp >= 0 &&
              data.rank in ['Fresher', 'Scholar', 'Prefect', 'Senior Boy', 'Senior Girl', 'Senior Prefect'] &&

@@ -1,89 +1,124 @@
-# Implementation Plan: SS 1 (2nd Term) English Language Curriculum
+# University Aspirant Hub (WAEC, NECO & JAMB School Leavers)
 
-This plan outlines the generation and integration of the exhaustive **SS 1 (2nd Term) English Language** curriculum based on the verified 12-week NERDC / WAEC / NECO scheme of work.
+A dedicated, goal-oriented learning class and countdown dashboard tailored specifically for secondary school leavers preparing for **JAMB UTME, WAEC (WASSCE), and NECO SSCE** to secure university admission in Nigeria.
 
----
+## User Review & Critical Decisions
 
-## 1. Curriculum Architecture & Content Scope
-
-The lessons will be created in a dedicated module file: **`src/data/ss1EnglishData.ts`** implementing the `CurriculumTopic` interface with full pedagogical depth:
-
-### Week-by-Week Curriculum Roadmap:
-1. **Week 1:**
-   - **Speech Work:** Revision of Diphthongs (/eɪ/, /aɪ/, /ɔɪ/, /aʊ/, /əʊ/, /ɪə/, /eə/, /ʊə/) with phonetic transcription charts.
-   - **Grammar:** Phrasal Verbs (intransitive vs. transitive, separable vs. inseparable, idiomatic meanings).
-   - **Comprehension:** Reading to identify the writer's mood and tone (satirical, melancholic, reverent, indignant).
-   - **Composition:** Expository Essay ("The Causes and Effects of Drug Abuse" with structured statistical and clinical breakdown).
-   - **Literature:** African Prose — *Second Class Citizen* by Buchi Emecheta (Historical context, racial and gender discrimination in 1960s London, patriarchal oppression in Nigeria, themes and setting).
-
-2. **Week 2:**
-   - **Speech Work:** Consonant Fricatives (/f/, /v/, /θ/, /ð/, /s/, /z/, /ʃ/, /ʒ/, /h/) with minimal pairs and pronunciation drills.
-   - **Grammar:** Clauses (Main / Independent clauses vs. Subordinate / Dependent clauses).
-   - **Comprehension:** Skimming and scanning techniques for rapid retrieval of thesis points.
-   - **Composition:** Formal Letter Writing (Letter of Complaint to a Municipal or School Authority with two addresses, reference line, formal heading, and complimentary close).
-   - **Literature:** *Second Class Citizen* — In-depth characterization (Adah's resilience vs. Francis Obi's patriarchal indolence and domestic violence) and plot progression.
-
-3. **Week 3:**
-   - **Speech Work:** Consonant Affricates (/tʃ/ and /dʒ/) contrasting voiceless vs. voiced palato-alveolar articulation.
-   - **Grammar:** Adjectival Clauses (Relative pronouns: *who, whom, whose, which, that*; defining / restrictive vs. non-defining clauses, grammatical function of qualifying nouns).
-   - **Comprehension:** Reading to make valid logical inferences and deduce contextual word meanings.
-   - **Composition:** Argumentative Essay ("Day Schools are Better than Boarding Schools" with balanced refutations).
-   - **Literature:** Non-African Prose — *Lord of the Flies* by William Golding (Civilization vs. savagery, the beast within, symbolism of the conch shell and Piggy's glasses).
-
-4. **Week 4:**
-   - **Speech Work:** Sound Discrimination (Minimal pairs: /ɪ/ vs. /iː/, /ɒ/ vs. /ɔː/, /p/ vs. /b/, /t/ vs. /θ/).
-   - **Grammar:** Adverbial Clauses (Time: *when, while, as soon as*; Condition: *if, unless, provided*; Reason: *because, since, as*).
-   - **Comprehension:** Vocabulary development in Government and Politics (bicameral, constituency, gerrymandering, suffrage, separation of powers).
-   - **Composition:** Narrative Essay ("An Unforgettable Experience" utilizing sensory imagery and chronological suspense).
-   - **Literature:** African Drama — *The Lion and the Jewel* by Wole Soyinka (Yoruba village of Ilujinle, conflict between Western modernity and African tradition).
-
-5. **Week 5:**
-   - **Speech Work:** Syllables and Word Stress (Primary stress in 2-syllable noun-verb accent shifts like *'OB-ject* vs. *ob-'JECT*; 3-syllable stress rules).
-   - **Grammar:** Noun Phrases (Structure: determiners, pre-modifiers, head noun, post-modifiers; grammatical functions: Subject, Object of transitive verb, Subject complement, Prepositional complement).
-   - **Comprehension:** Critical evaluation of argumentative passages.
-   - **Composition:** Article Writing for National Dailies ("The Role of the Youth in Nation Building").
-   - **Literature:** *The Lion and the Jewel* — Thematic critique of vanity, Baroka's sexual cunning, and Lakunle's superficial mimicry of European civilization.
-
-6. **Week 6:**
-   - **Mid-Term Continuous Assessment:** 25 WAEC SSCE style questions covering Oral English, Lexis & Structure, and Comprehension.
-
-7. **Week 7:**
-   - **Speech Work:** Emphatic / Contrastive Stress in sentences (identifying implied questions).
-   - **Grammar:** Active and Passive Voice (structural agent transformation across present, past, perfect, and continuous tenses).
-   - **Comprehension:** Vocabulary development in Religion (monotheism, liturgy, theology, ecumenical, pilgrimage).
-   - **Composition:** Speech Writing ("Valedictory Speech for Outgoing School Prefects" with formal address protocols).
-   - **Literature:** Non-African Drama — *Look Back in Anger* by John Osborne or *Fences* by August Wilson.
-
-8. **Week 8:**
-   - **Speech Work:** Intonation Patterns (Tune 1: Falling tone for declarative statements and Wh-questions; Tune 2: Rising tone for Yes/No questions and polite requests).
-   - **Grammar:** Direct and Indirect / Reported Speech (tense backshifting rules, pronoun modifications, spatial/temporal adverb transformations).
-   - **Comprehension:** Summary Writing Mastery (identifying topic sentences, stripping illustrative padding, writing concise grammatically complete summary sentences).
-   - **Composition:** Debate Writing (formal debate protocol, vocatives, point rebuttal).
-   - **Literature:** Recommended African Poetry — *The Leader and the Led* by Niyi Osundare (Animal allegory on Nigerian political leadership) and *Black Woman* by Léopold Sédar Senghor.
-
-9. **Week 9:**
-   - **Speech Work:** Consonant Clusters (Initial 2- and 3-consonant clusters like /spl-/, /str-/; final clusters like /-kts/, /-sks/, /-mpts/).
-   - **Grammar:** Question Tags (Negative statements + positive tags, positive statements + negative tags, modal auxiliary rules, irregular exceptions like *"I am", "Let's"*).
-   - **Comprehension:** Intensive reading and passage analysis.
-   - **Composition:** Formal Report Writing (structure of an administrative or science excursion report, impersonal passive tone).
-   - **Literature:** Non-African Poetry — *The Journey of the Magi* by T.S. Eliot (Spiritual transformation and disillusionment) or *Caged Bird* by Maya Angelou.
-
-10. **Week 10:**
-    - **Termly Revision:** Comprehensive synoptic review tables of English phonetics, clause parsing trees, and WAEC literary glossaries.
-
-11. **Weeks 11 & 12:**
-    - **Termly WAEC/NECO SSCE Mock Examination:**
-      - Paper 1 Section 1: Objective Lexis and Structure (Vocabulary, Idioms, Antonyms, Synonyms).
-      - Paper 1 Section 2: Oral English Test (Vowels, Consonants, Rhymes, Stress, Intonation).
-      - Paper 1 Section 3: Unseen Reading Comprehension and Summary.
-      - Paper 2: Essay Writing & Continuous Composition Guidelines.
+> [!IMPORTANT]
+> - **New Class Classification**: Added as a first-class selection (`University Aspirant`) in the class level switcher, transforming the student interface into a countdown-driven **Aspirant Hub**.
+> - **Countdown Architecture**: Shifts from traditional 13-week secondary school terms to backward-counting exam timelines (`Days left until JAMB UTME / WAEC / NECO`).
+> - **Three-Tier Subscription Model**:
+>   - **Free (The Hook)**: 2 recent years of past questions, formulas unlocked, leaderboard view-only.
+>   - **Aspirant Basic (₦5,000/mo)**: 15+ years past questions (2008–present), full topic notes, unlimited topical CBT simulator.
+>   - **Aspirant Elite (₦10,000/mo)**: 24/7 AI Coach, "Prepare for Exam" AI drill sergeant daily timetable, National Weekend Mock Tournaments with cash/airtime prizes.
 
 ---
 
-## 2. Integration & Verification
+## 1. Overview & Core Concept
 
-1. **Create Module:** Write `src/data/ss1EnglishData.ts`.
-2. **Register in Curriculum Data:**
-   - Update `src/data/curriculumData.ts` to import `SS1_ENGLISH_TOPICS`, export it, and spread it into `NIGERIAN_CURRICULUM_TOPICS`.
-3. **Verify Build:** Run `compile_applet` and `lint_applet` (`tsc --noEmit`).
-4. **Git Sync:** Commit and push the new SS 1 English data directly to the user's GitHub repository.
+- **What It Does**: Provides Nigerian school leavers who have graduated secondary school but haven't yet gained university admission with a high-stakes, time-sensitive prep ecosystem.
+- **Target Persona**: Aspirants retaking or aiming for top scores in JAMB UTME (280+ target), WAEC GCE/WASSCE, or NECO, competing for competitive courses (Medicine, Law, Engineering, Nursing, Computer Science) across Nigerian federal and state universities.
+- **Core Loop**:
+  $$\text{Select 4 UTME Subjects} \longrightarrow \text{Read Summary Note} \longrightarrow \text{Topical CBT Practice} \longrightarrow \text{Review AI Explanations} \longrightarrow \text{National Weekend Mock}$$
+
+---
+
+## 2. User Experience & Visual Design
+
+### Key User Flows
+
+1. **Aspirant Onboarding & Goal Setup**:
+   - Aspirant selects `University Aspirant` from class options.
+   - Sets target exams: **JAMB UTME** (Official Date: April 2026), **WAEC** (May 2026), **NECO** (June 2026).
+   - Inputs target Nigerian university (e.g., UNILAG, UI, OAU, ABU, UNN, UNIBEN) and desired course (e.g., Medicine & Surgery, Law, Mechanical Engineering, Software Engineering).
+   - Selects 4 JAMB subject combination (English + 3 electives).
+
+2. **Goal-Oriented Countdown Dashboard**:
+   - Giant backward-counting digital calendar showing exact days, hours, and minutes remaining until the first target exam.
+   - Target Score Tracker (e.g. `Current Average: 245 / Target: 310`).
+   - Daily "Drill Sergeant" Study Blocks: 2 reading sessions, 1 topical CBT drill, 1 past question speed test.
+
+3. **JAMB CBT Simulator Engine**:
+   - Strict reproduction of actual JAMB Computer Based Test interface:
+     - Top timer counting down from 2 hours.
+     - 4-subject navigation tabs (Use of English 60 questions, Subjects 2–4 with 40 questions each = 180 total questions).
+     - Color-coded question matrix grid: Green (Answered), Slate (Unanswered), Purple (Flagged for Review), Amber (Active).
+     - Muscle-memory keyboard hotkeys (`A, B, C, D` for options, `N` for Next, `P` for Previous, `R` for Review, `S` for Submit).
+
+4. **Admission & University Guide Hub**:
+   - Searchable directory of Nigerian Federal, State, and accredited private universities.
+   - Departmental cut-off marks (Merit, Catchment, ELDS) for top courses.
+   - Official JAMB Brochure subject combination checker (prevents disqualification mistakes).
+   - Post-UTME screening formats and past format drill links.
+
+5. **National Weekend Mock Tournaments**:
+   - Replacing termly school competitions for aspirants.
+   - Every Saturday/Sunday: Timed 4-subject UTME mock taken simultaneously by aspirants nationwide.
+   - Live national leaderboard with state and university faculty filters.
+   - Top 10 scorers win airtime (₦2,000–₦5,000) or cash data subsidies.
+
+6. **Tiered Monthly Subscription Switcher**:
+   - Clean Nigerian checkout (Paystack, Bank Transfer, Parent Wallet) for:
+     - **Free Tier**
+     - **Aspirant Basic (₦5,000/month)**
+     - **Aspirant Elite (₦10,000/month)**
+   - Includes feature comparison table with zero-pill visual discipline.
+
+---
+
+## 3. Key Product Decisions & Trade-Offs
+
+- **Decision 1: Integration with Existing Class Architecture vs Separate App**
+  - *Chosen Approach*: Add `University Aspirant` directly into `NigerianClassLevel` (`JSS 1` - `SS 3` + `University Aspirant`).
+  - *Why*: Allows seamless switching without data loss. Students finishing SS 3 naturally transition to Aspirant with their XP, streak, and wallet intact.
+- **Decision 2: 4-Subject UTME Architecture**
+  - *Chosen Approach*: Aspirant profiles store `targetJambSubjects: [string, string, string, string]`, automatically configuring their daily drills and full 180-question mock exams.
+- **Decision 3: Drill Sergeant AI Persona**
+  - *Chosen Approach*: The AI coach adopts a focused, disciplined tone calibrated for competitive exam success (identifying weak topics like Organic Chemistry, Coordinate Geometry, Concord).
+
+---
+
+## 4. Technical Architecture & Data Strategy
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                             AppContext.tsx                                  │
+│  - student.classLevel: 'University Aspirant'                                │
+│  - aspirantProfile: { targetUniversity, targetCourse, targetJambSubjects,   │
+│                       examDates: { jamb, waec, neco }, tier: 'free'|'basic'|'elite' }│
+│  - aspirantMocks: WeekendMockTournament[]                                   │
+└──────────────────────────────────────┬──────────────────────────────────────┘
+                                       │
+        ┌──────────────────────────────┼──────────────────────────────┐
+        ▼                              ▼                              ▼
+┌───────────────────────┐   ┌───────────────────────┐   ┌───────────────────────┐
+│  AspirantDashboard    │   │  AspirantCBTEngine    │   │   UniversityGuideHub  │
+│  - Countdown Timer    │   │  - Real JAMB Matrix   │   │  - Cut-Off Marks      │
+│  - Drill Sergeant AI  │   │  - 4-Subject Tabs     │   │  - Subject Combinator │
+│  - Daily Plan Blocks  │   │  - 15+ Yrs Database   │   │  - Post-UTME Tips     │
+└───────────────────────┘   └───────────────────────┘   └───────────────────────┘
+        │                              │                              │
+        └──────────────────────────────┼──────────────────────────────┘
+                                       ▼
+                    ┌───────────────────────────────────────┐
+                    │       AspirantTierModal.tsx           │
+                    │  - Free vs Basic vs Elite             │
+                    │  - Monthly Paystack / Bank Transfer   │
+                    └───────────────────────────────────────┘
+```
+
+### Affected Components & Modules
+1. `src/types/index.ts`: Extend `NigerianClassLevel` with `'University Aspirant'`, add `AspirantProfile`, `AspirantTier`, `UniversityAdmissionInfo`.
+2. `src/data/universityAdmissionData.ts`: Database of Nigerian universities (UNILAG, UI, OAU, ABU, UNN, UNIBEN, LASU, FUTA, etc.), cut-off marks, and JAMB subject combinations.
+3. `src/data/cbtExamData.ts`: Expand 15+ years of WAEC, NECO, and JAMB past questions across core subjects.
+4. `src/components/student/aspirant/AspirantDashboard.tsx`: Goal-oriented countdown dashboard and Drill Sergeant daily study plan.
+5. `src/components/student/aspirant/AspirantCBTSimulator.tsx`: Genuine 4-subject JAMB UTME exam engine with question matrix and timer.
+6. `src/components/student/aspirant/UniversityAdmissionGuide.tsx`: Cut-off marks and subject combination verification.
+7. `src/components/student/aspirant/NationalMockTournaments.tsx`: High-stakes weekend mock tournament with live leaderboard.
+8. `src/components/student/aspirant/AspirantSubscriptionModal.tsx`: Monthly plan selection (Free, Basic ₦5k, Elite ₦10k) with Paystack and Bank Transfer.
+9. `src/components/student/ClassSelectorModal.tsx` & `src/components/student/StudentDashboard.tsx`: Support Aspirant class switching and dynamic hub rendering.
+
+## Implementation Complete
+- [x] All 10 phases successfully implemented, integrated, and verified.
+- [x] Compilation and TypeScript linting passed with 0 errors.
+- [x] Dev server restarted and fully operational.

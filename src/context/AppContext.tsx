@@ -28,7 +28,9 @@ import {
   VirtualClassroomSession,
   ExamPrepState,
   DiagnosticProfile,
-  StudyCalendar
+  StudyCalendar,
+  AspirantGoal,
+  AspirantTier
 } from '../types';
 import {
   generateCuratedStudyCalendar,
@@ -93,8 +95,8 @@ interface AppContextType {
   isFirebaseConnected: boolean;
 
   // Student Navigation
-  activeStudentTab: 'dashboard' | 'syllabus' | 'cbt' | 'competitions' | 'formulas' | 'tutors' | 'games' | 'ai-coach' | 'community' | 'exam-prep';
-  setActiveStudentTab: (tab: 'dashboard' | 'syllabus' | 'cbt' | 'competitions' | 'formulas' | 'tutors' | 'games' | 'ai-coach' | 'community' | 'exam-prep') => void;
+  activeStudentTab: 'dashboard' | 'syllabus' | 'cbt' | 'competitions' | 'formulas' | 'tutors' | 'games' | 'ai-coach' | 'community' | 'exam-prep' | 'aspirant-cbt' | 'admission-guide' | 'mock-tournaments';
+  setActiveStudentTab: (tab: 'dashboard' | 'syllabus' | 'cbt' | 'competitions' | 'formulas' | 'tutors' | 'games' | 'ai-coach' | 'community' | 'exam-prep' | 'aspirant-cbt' | 'admission-guide' | 'mock-tournaments') => void;
   activeReadingNote: CurriculumTopic | null;
   openNoteReader: (topic: CurriculumTopic) => void;
   closeNoteReader: () => void;
@@ -111,6 +113,13 @@ interface AppContextType {
   generateExamPrepCalendar: (profile: DiagnosticProfile) => Promise<void>;
   toggleStudyBlockCompleted: (blockId: string) => void;
   resetExamPrepPlan: () => void;
+
+  // University Aspirant State & Methods
+  aspirantGoal: AspirantGoal;
+  updateAspirantGoal: (goal: Partial<AspirantGoal>) => void;
+  subscribeAspirantTier: (tier: AspirantTier, method?: 'wallet' | 'paystack' | 'bank_transfer') => boolean;
+  completedAspirantDrillIds: string[];
+  toggleAspirantDrillCompleted: (drillId: string) => void;
 
   // Student State & Actions
   student: StudentProfile;
@@ -246,7 +255,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isOffline, setIsOffline] = useState<boolean>(false);
   const [isLandingView, setIsLandingView] = useState<boolean>(false);
   const [currentScreen, setCurrentScreen] = useState<'landing' | 'signin' | 'signup' | 'know_more' | 'app'>('app');
-  const [activeStudentTab, setActiveStudentTab] = useState<'dashboard' | 'syllabus' | 'cbt' | 'competitions' | 'formulas' | 'tutors' | 'games' | 'ai-coach' | 'community' | 'exam-prep'>('dashboard');
+  const [activeStudentTab, setActiveStudentTab] = useState<'dashboard' | 'syllabus' | 'cbt' | 'competitions' | 'formulas' | 'tutors' | 'games' | 'ai-coach' | 'community' | 'exam-prep' | 'aspirant-cbt' | 'admission-guide' | 'mock-tournaments'>('dashboard');
   const [activeReadingNote, setActiveReadingNote] = useState<CurriculumTopic | null>(null);
   const [activeExam, setActiveExam] = useState<CBTExam | null>(null);
   const [isUniformModalOpen, setIsUniformModalOpen] = useState<boolean>(false);
@@ -269,6 +278,42 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     safeSetItem('sc_exam_prep', JSON.stringify(examPrepState));
   }, [examPrepState]);
+
+  // University Aspirant Hub State
+  const [aspirantGoal, setAspirantGoal] = useState<AspirantGoal>(() => {
+    const saved = safeGetItem('sc_aspirant_goal');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch {}
+    }
+    return {
+      targetExams: ['JAMB_UTME', 'WAEC'],
+      examDates: {
+        jamb: '2026-04-18',
+        waec: '2026-05-08',
+        neco: '2026-06-15'
+      },
+      targetUniversity: 'University of Lagos (UNILAG)',
+      targetCourse: 'Medicine and Surgery',
+      targetScore: 310,
+      subjectCombination: ['Use of English', 'Biology', 'Chemistry', 'Physics'],
+      tier: 'free'
+    };
+  });
+
+  const [completedAspirantDrillIds, setCompletedAspirantDrillIds] = useState<string[]>(() => {
+    const saved = safeGetItem('sc_aspirant_drills');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  useEffect(() => {
+    safeSetItem('sc_aspirant_goal', JSON.stringify(aspirantGoal));
+  }, [aspirantGoal]);
+
+  useEffect(() => {
+    safeSetItem('sc_aspirant_drills', JSON.stringify(completedAspirantDrillIds));
+  }, [completedAspirantDrillIds]);
 
   const isAuthenticated = Boolean(currentUserProfile);
 
@@ -1152,6 +1197,71 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }));
   };
 
+  // University Aspirant Methods
+  const updateAspirantGoal = (goalUpdate: Partial<AspirantGoal>) => {
+    setAspirantGoal(prev => ({
+      ...prev,
+      ...goalUpdate
+    }));
+  };
+
+  const toggleAspirantDrillCompleted = (drillId: string) => {
+    setCompletedAspirantDrillIds(prev =>
+      prev.includes(drillId) ? prev.filter(id => id !== drillId) : [...prev, drillId]
+    );
+    addStudentXP(25, 'Completed Aspirant Daily Drill');
+  };
+
+  const subscribeAspirantTier = (
+    tier: AspirantTier,
+    method: 'wallet' | 'paystack' | 'bank_transfer' = 'wallet'
+  ): boolean => {
+    const feeNaira = tier === 'elite' ? 10000 : tier === 'basic' ? 5000 : 0;
+    if (feeNaira > 0) {
+      const currentBalance = parentWallet.balanceNaira;
+      if (method === 'paystack' || method === 'bank_transfer' || currentBalance < feeNaira) {
+        const topUpDeficit = Math.max(feeNaira - currentBalance, feeNaira);
+        fundParentWallet(topUpDeficit);
+      }
+
+      const debitTx: any = {
+        id: `tx-asp-${Date.now().toString().slice(-6)}`,
+        type: 'debit',
+        amountNaira: feeNaira,
+        description: `Subscribed to Aspirant ${tier.toUpperCase()} Monthly Pass (${method === 'bank_transfer' ? 'Bank Transfer' : method === 'paystack' ? 'Paystack' : 'Escrow Wallet'})`,
+        timestamp: 'Just now',
+        status: 'successful',
+        reference: `ASP_${tier.toUpperCase()}_${Math.floor(Math.random() * 900000 + 100000)}`
+      };
+
+      setParentWallet(prev => ({
+        ...prev,
+        balanceNaira: Math.max(0, prev.balanceNaira - feeNaira),
+        transactions: [debitTx, ...prev.transactions]
+      }));
+    }
+
+    const nextMonth = new Date();
+    nextMonth.setDate(nextMonth.getDate() + 30);
+
+    setAspirantGoal(prev => ({
+      ...prev,
+      tier,
+      subscribedUntil: nextMonth.toISOString()
+    }));
+
+    try {
+      confetti({
+        particleCount: 75,
+        spread: 70,
+        origin: { y: 0.6 }
+      });
+    } catch {}
+    addStudentXP(100, `Upgraded to Aspirant ${tier.toUpperCase()}`);
+
+    return true;
+  };
+
   const submitChampionshipStageResult = (
     day: 1 | 2 | 3,
     score: number,
@@ -1679,6 +1789,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         generateExamPrepCalendar,
         toggleStudyBlockCompleted,
         resetExamPrepPlan,
+        aspirantGoal,
+        updateAspirantGoal,
+        subscribeAspirantTier,
+        completedAspirantDrillIds,
+        toggleAspirantDrillCompleted,
         parentWallet,
         isParentPinUnlocked,
         unlockParentPin,

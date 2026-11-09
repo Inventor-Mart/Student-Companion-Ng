@@ -26,6 +26,7 @@ import {
   Sparkles
 } from 'lucide-react';
 import { NairaText, NairaSign } from '../../utils/currency';
+import { AspirantDashboard } from './aspirant/AspirantDashboard';
 
 export const StudentDashboard: React.FC = () => {
   const {
@@ -132,6 +133,11 @@ export const StudentDashboard: React.FC = () => {
     b => b.status === 'confirmed' && b.bookingType === 'online'
   );
 
+  // Dedicated Aspirant Hub for School Leavers (WAEC, NECO & JAMB)
+  if (student.classLevel === 'University Aspirant') {
+    return <AspirantDashboard />;
+  }
+
   return (
     <div className="flex-1 w-full overflow-y-auto px-4 py-4 space-y-4 touch-pan-y text-slate-100">
       {/* Student Profile & Rank Header */}
@@ -219,14 +225,20 @@ export const StudentDashboard: React.FC = () => {
           </div>
         </div>
 
-        {/* Quick Class Switcher (JSS 1 to SS 3) */}
+        {/* Quick Class Switcher (JSS 1 to SS 3 + University Aspirant) */}
         <div className="mt-3.5 pt-3 border-t border-slate-800/80">
           <div className="flex items-center justify-between mb-1.5">
             <span className="text-[11px] font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
               <GraduationCap className="w-3.5 h-3.5 text-[#84E000]" />
               <span>Select Active Class</span>
             </span>
-            <span className="text-[10px] text-[#84E000] font-semibold">Tap to switch class</span>
+            <button
+              type="button"
+              onClick={() => updateStudentClass('University Aspirant', 'Science')}
+              className="text-[10px] text-amber-400 hover:text-amber-300 font-bold flex items-center gap-1 cursor-pointer bg-amber-500/10 hover:bg-amber-500/20 px-2 py-0.5 rounded border border-amber-500/30 transition-colors"
+            >
+              ★ Switch to Aspirant Hub
+            </button>
           </div>
           <div className="grid grid-cols-6 gap-1 p-1 bg-slate-950/80 border border-slate-800/90 rounded-xl">
             {(['JSS 1', 'JSS 2', 'JSS 3', 'SS 1', 'SS 2', 'SS 3'] as NigerianClassLevel[]).map((lvl) => {

@@ -1,11 +1,63 @@
 import React from 'react';
 import { useApp } from '../../context/AppContext';
-import { LayoutDashboard, BookOpen, Award, Trophy, Users, Gamepad2, Atom, Sparkles, MessageSquare, Calendar } from 'lucide-react';
+import { LayoutDashboard, BookOpen, Award, Trophy, Users, Gamepad2, Atom, Sparkles, MessageSquare, Calendar, GraduationCap } from 'lucide-react';
 
 export const StudentBottomNav: React.FC = () => {
-  const { activeStudentTab, setActiveStudentTab } = useApp();
+  const { activeStudentTab, setActiveStudentTab, student } = useApp();
 
-  const navItems = [
+  const isAspirant = student.classLevel === 'University Aspirant';
+
+  const aspirantNavItems = [
+    {
+      id: 'dashboard',
+      label: 'Aspirant Hub',
+      icon: LayoutDashboard
+    },
+    {
+      id: 'aspirant-cbt',
+      label: 'JAMB CBT',
+      icon: Award,
+      isHot: true
+    },
+    {
+      id: 'mock-tournaments',
+      label: 'Mocks',
+      icon: Trophy,
+      isLive: true
+    },
+    {
+      id: 'admission-guide',
+      label: 'Unis & Cut-off',
+      icon: GraduationCap
+    },
+    {
+      id: 'exam-prep',
+      label: 'AI Drill',
+      icon: Calendar
+    },
+    {
+      id: 'ai-coach',
+      label: 'AI Coach',
+      icon: Sparkles
+    },
+    {
+      id: 'tutors',
+      label: 'Tutors',
+      icon: Users
+    },
+    {
+      id: 'community',
+      label: 'Forum',
+      icon: MessageSquare
+    },
+    {
+      id: 'formulas',
+      label: 'Formulas',
+      icon: Atom
+    }
+  ] as const;
+
+  const defaultNavItems = [
     {
       id: 'dashboard',
       label: 'Home',
@@ -59,6 +111,8 @@ export const StudentBottomNav: React.FC = () => {
       icon: Gamepad2
     }
   ] as const;
+
+  const navItems = isAspirant ? aspirantNavItems : defaultNavItems;
 
   return (
     <nav className="w-full bg-slate-950/95 backdrop-blur-md border-t border-slate-800/80 px-1 py-1.5 flex items-center justify-around shrink-0 z-30 select-none">

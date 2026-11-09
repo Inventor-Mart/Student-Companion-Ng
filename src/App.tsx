@@ -24,6 +24,9 @@ import { StudentCommunityForum } from './components/student/StudentCommunityForu
 import { GrowthPartnerPortal } from './components/partner/GrowthPartnerPortal';
 import { VirtualClassroomModal } from './components/classroom/VirtualClassroomModal';
 import { PrepareForExamHub } from './components/student/exam-prep/PrepareForExamHub';
+import { AspirantCBTSimulator } from './components/student/aspirant/AspirantCBTSimulator';
+import { UniversityAdmissionGuide } from './components/student/aspirant/UniversityAdmissionGuide';
+import { NationalMockTournaments } from './components/student/aspirant/NationalMockTournaments';
 
 const AppContent: React.FC = () => {
   const [quotaExceeded, setQuotaExceeded] = React.useState(false);
@@ -189,6 +192,9 @@ const AppContent: React.FC = () => {
               <>
                 <div className="flex-1 w-full overflow-hidden flex flex-col">
                   {activeStudentTab === 'dashboard' && <StudentDashboard />}
+                  {activeStudentTab === 'aspirant-cbt' && <AspirantCBTSimulator />}
+                  {activeStudentTab === 'admission-guide' && <UniversityAdmissionGuide />}
+                  {activeStudentTab === 'mock-tournaments' && <NationalMockTournaments />}
                   {activeStudentTab === 'ai-coach' && <AiStudyCoach />}
                   {activeStudentTab === 'syllabus' && <SchemeOfWorkHub />}
                   {activeStudentTab === 'cbt' && <CBTEngine />}

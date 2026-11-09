@@ -6,7 +6,8 @@ export type NigerianClassLevel =
   | 'JSS 3'
   | 'SS 1'
   | 'SS 2'
-  | 'SS 3';
+  | 'SS 3'
+  | 'University Aspirant';
 
 export type AcademicStream = 'Junior' | 'Science' | 'Non-Science';
 
@@ -535,4 +536,85 @@ export interface ExamPrepState {
   activeCalendar?: StudyCalendar | null;
   completedBlockIds: string[];
 }
+
+// ==========================================
+// UNIVERSITY ASPIRANT HUB & ADMISSION TYPES
+// ==========================================
+
+export type AspirantTier = 'free' | 'basic' | 'elite';
+
+export interface AspirantGoal {
+  targetExams: ('JAMB_UTME' | 'WAEC' | 'NECO')[];
+  examDates: {
+    jamb: string;
+    waec: string;
+    neco: string;
+  };
+  targetUniversity: string;
+  targetCourse: string;
+  targetScore: number;
+  subjectCombination: [string, string, string, string];
+  tier: AspirantTier;
+  subscribedUntil?: string;
+  targetExamDate?: string;
+  jambSubjects?: string[];
+}
+
+export interface NationalMockParticipant {
+  rank: number;
+  studentId: string;
+  studentName: string;
+  state: string;
+  targetUniversity: string;
+  targetCourse: string;
+  score: number;
+  subjectScores: Record<string, number>;
+  timeSpentMinutes: number;
+  badge?: string;
+}
+
+export interface NationalMockTournament {
+  id: string;
+  title: string;
+  seriesName: string;
+  examType: 'JAMB_UTME' | 'WAEC' | 'NECO';
+  scheduledDate: string;
+  scheduledTime: string;
+  durationMinutes: number;
+  totalQuestions: number;
+  prizePoolNaira: number;
+  prizes: { rankRange: string; reward: string }[];
+  participantsCount: number;
+  status: 'upcoming' | 'live' | 'completed';
+  subjects: string[];
+  leaderboard: NationalMockParticipant[];
+}
+
+export interface UniversityCourseEntry {
+  name: string;
+  faculty: string;
+  meritCutOff: number;
+  catchmentCutOff?: number;
+  jambSubjects: string[];
+  oLevelReqs: string;
+  postUtmeFormat: string;
+  competitiveness: 'Extremely High' | 'High' | 'Moderate';
+  tips: string;
+}
+
+export interface UniversityAdmissionInfo {
+  id: string;
+  name: string;
+  shortName: string;
+  type: 'Federal' | 'State' | 'Private';
+  state: string;
+  city: string;
+  establishedYear: number;
+  generalCutOff: number;
+  screeningMethod: 'Post-UTME CBT Exam' | 'Online Document Screening (O\'Level + JAMB)';
+  portalUrl: string;
+  overview: string;
+  courses: UniversityCourseEntry[];
+}
+
 

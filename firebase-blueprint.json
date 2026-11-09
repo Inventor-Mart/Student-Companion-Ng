@@ -24,7 +24,7 @@
         },
         "classLevel": {
           "type": "string",
-          "enum": ["JSS 1", "JSS 2", "JSS 3", "SS 1", "SS 2", "SS 3"],
+          "enum": ["JSS 1", "JSS 2", "JSS 3", "SS 1", "SS 2", "SS 3", "University Aspirant"],
           "description": "Nigerian curriculum class level"
         },
         "stream": {

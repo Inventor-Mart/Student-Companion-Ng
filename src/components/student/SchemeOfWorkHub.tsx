@@ -221,18 +221,19 @@ export const SchemeOfWorkHub: React.FC = () => {
 
   // Determine official subjects list for current selection in class view
   const getOfficialSubjects = (): { subject: string; stream: AcademicStream }[] => {
-    if (selectedClass === 'JSS 1' || selectedClass === 'JSS 2' || selectedClass === 'JSS 3') {
-      return OFFICIAL_SUBJECTS_BY_CLASS[selectedClass].map(s => ({ subject: s, stream: 'Junior' as AcademicStream }));
+    const targetClass = selectedClass === 'University Aspirant' ? 'SS 3' : selectedClass;
+    if (targetClass === 'JSS 1' || targetClass === 'JSS 2' || targetClass === 'JSS 3') {
+      return OFFICIAL_SUBJECTS_BY_CLASS[targetClass].map((s: string) => ({ subject: s, stream: 'Junior' as AcademicStream }));
     } else {
-      const seniorConfig = OFFICIAL_SUBJECTS_BY_CLASS[selectedClass];
+      const seniorConfig = OFFICIAL_SUBJECTS_BY_CLASS[targetClass as 'SS 1' | 'SS 2' | 'SS 3'];
       if (selectedStream === 'Science') {
-        return seniorConfig.Science.map(s => ({ subject: s, stream: 'Science' as AcademicStream }));
+        return seniorConfig.Science.map((s: string) => ({ subject: s, stream: 'Science' as AcademicStream }));
       } else if (selectedStream === 'Non-Science') {
-        return seniorConfig['Non-Science'].map(s => ({ subject: s, stream: 'Non-Science' as AcademicStream }));
+        return seniorConfig['Non-Science'].map((s: string) => ({ subject: s, stream: 'Non-Science' as AcademicStream }));
       } else {
         const combined: { subject: string; stream: AcademicStream }[] = [];
-        seniorConfig.Science.forEach(s => combined.push({ subject: s, stream: 'Science' }));
-        seniorConfig['Non-Science'].forEach(s => {
+        seniorConfig.Science.forEach((s: string) => combined.push({ subject: s, stream: 'Science' }));
+        seniorConfig['Non-Science'].forEach((s: string) => {
           if (!combined.some(item => item.subject === s)) {
             combined.push({ subject: s, stream: 'Non-Science' });
           }

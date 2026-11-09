@@ -1,6 +1,6 @@
 {
-  "summary": "Implementation plan for generating the complete SS 1 (2nd Term) English Language curriculum notes, phonetics charts, grammar clause architectures, WAEC literature analysis (Second Class Citizen, The Lion and the Jewel), and standardized SSCE mock examinations.",
-  "updatedAt": "2026-11-05T19:03:31.938922196Z",
-  "requestFeedback": true,
-  "userFacing": true
+  "summary":  "Complete architectural implementation plan for the new 'University Aspirant' class (Aspirant Hub) catering to WAEC, NECO, and JAMB school leavers, featuring countdown architecture, JAMB CBT simulator, 15+ years past questions, AI drill sergeant study plan, National Weekend Mock Tournaments, Admission & University Guide, and tiered monthly pricing (Free, Aspirant Basic ₦5,000/mo, Aspirant Elite ₦10,000/mo).",
+  "updatedAt":  "2026-11-09T20:20:36.490185145Z",
+  "requestFeedback":  true,
+  "userFacing":  true
 }
