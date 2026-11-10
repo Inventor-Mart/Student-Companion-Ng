@@ -313,7 +313,7 @@ export const AspirantDashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* The "Prepare for Exam" AI Drill Sergeant (Daily Schedule) */}
+      {/* The "Prepare for Exam" SC AI Drill Sergeant (Daily Schedule) */}
       <div className="bg-[#0A1424] border border-[#1E3354] rounded-2xl p-4 md:p-5 shadow-lg space-y-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 border-b border-slate-800/80 pb-3">
           <div>
@@ -323,10 +323,10 @@ export const AspirantDashboard: React.FC = () => {
               </div>
               <div>
                 <h3 className="text-base font-bold text-white flex items-center gap-1.5">
-                  AI Drill Sergeant: Today's High-Yield Schedule
+                  SC AI Drill Sergeant: Today's High-Yield Schedule
                 </h3>
                 <p className="text-xs text-slate-400">
-                  Topic Mastery Cycle: Summary Note ➔ Topical CBT Quiz ➔ AI Explanation Review
+                  Topic Mastery Cycle: Summary Note ➔ Topical CBT Quiz ➔ SC AI Explanation Review
                 </p>
               </div>
             </div>
@@ -349,7 +349,7 @@ export const AspirantDashboard: React.FC = () => {
                 className="px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/30 text-[10px] font-bold text-amber-300 flex items-center gap-1 cursor-pointer"
               >
                 <Lock className="w-3 h-3" />
-                Unlock 24/7 AI Drill Plan
+                Unlock 24/7 SC AI Drill Plan
               </button>
             )}
           </div>
@@ -422,7 +422,7 @@ export const AspirantDashboard: React.FC = () => {
                       className="px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs flex items-center gap-1 cursor-pointer transition-colors"
                     >
                       {aspirantGoal.tier === 'free' ? <Lock className="w-3 h-3" /> : <Sparkles className="w-3 h-3" />}
-                      AI Review
+                      SC AI Review
                     </button>
                   )}
                 </div>
@@ -623,10 +623,10 @@ export const AspirantDashboard: React.FC = () => {
               ? 'You are on the Aspirant Elite Plan'
               : aspirantGoal.tier === 'basic'
               ? 'You are on the Aspirant Basic Plan'
-              : 'Upgrade to Aspirant Elite for Full AI Coaching & Mock Tournaments'}
+              : 'Upgrade to Aspirant Elite for Full SC AI Coaching & Mock Tournaments'}
           </h3>
           <p className="text-xs text-slate-300 mt-1 max-w-xl">
-            Choose from Free (2 yrs past questions), Basic (₦5,000/mo - 15+ yrs past questions &amp; full notes), or Elite (₦10,000/mo - 24/7 AI Drill Sergeant &amp; Weekend Tournaments).
+            Choose from Free (2 yrs past questions), Basic (₦5,000/mo - 15+ yrs past questions &amp; full notes), or Elite (₦10,000/mo - 24/7 SC AI Drill Sergeant &amp; Weekend Tournaments).
           </p>
         </div>
 

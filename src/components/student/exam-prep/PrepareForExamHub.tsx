@@ -104,7 +104,7 @@ export const PrepareForExamHub: React.FC = () => {
         </div>
 
         <h1 className="text-xl sm:text-2xl font-black text-slate-50 mt-1 leading-tight tracking-tight">
-          AI Daily Study Calendar & Tutor Booking
+          SC AI Daily Study Calendar & Tutor Booking
         </h1>
 
         <p className="text-xs text-slate-300 mt-2 leading-relaxed">

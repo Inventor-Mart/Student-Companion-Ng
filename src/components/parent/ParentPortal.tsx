@@ -215,7 +215,7 @@ export const ParentPortal: React.FC = () => {
         </div>
       </div>
 
-      {/* Prepare For Exam · AI Daily Timetable & ₦4,000 Tutor Credits Pass */}
+      {/* Prepare For Exam · SC AI Daily Timetable & ₦4,000 Tutor Credits Pass */}
       <div className="bg-gradient-to-r from-emerald-950/80 via-slate-900 to-teal-950/70 rounded-3xl p-4 border border-emerald-500/50 space-y-3 shadow-md relative overflow-hidden">
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-3">

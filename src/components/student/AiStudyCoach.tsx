@@ -150,7 +150,7 @@ export const AiStudyCoach: React.FC<AiStudyCoachProps> = ({
       const data = await res.json();
 
       if (!res.ok) {
-        throw new Error(data.error || 'Failed to get answer from AI Study Coach');
+        throw new Error(data.error || 'Failed to get answer from SC AI Study Coach');
       }
 
       const reply = data.text || 'No response generated.';
@@ -194,7 +194,7 @@ export const AiStudyCoach: React.FC<AiStudyCoachProps> = ({
             <div>
               <div className="flex items-center gap-1.5">
                 <h2 className="text-base font-bold text-white tracking-tight">
-                  Gemini AI Study Coach
+                  SC AI Study Coach
                 </h2>
                 <span className="text-[10px] bg-emerald-500 text-slate-950 font-black px-1.5 py-0.2 rounded-full uppercase tracking-wider">
                   Live
@@ -355,7 +355,7 @@ export const AiStudyCoach: React.FC<AiStudyCoachProps> = ({
             ) : (
               <>
                 <Sparkles className="w-3.5 h-3.5" />
-                <span>Ask AI Coach</span>
+                <span>Ask SC AI Coach</span>
               </>
             )}
           </button>

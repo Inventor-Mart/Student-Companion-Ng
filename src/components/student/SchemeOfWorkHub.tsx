@@ -938,10 +938,10 @@ This digital module is aligned with the Nigerian Educational Research and Develo
                         <button
                           onClick={() => setActiveStudentTab('ai-coach')}
                           className="flex items-center gap-1 px-2.5 py-1.5 bg-emerald-950/80 hover:bg-emerald-900 text-emerald-300 border border-emerald-800/60 text-xs font-semibold rounded-xl transition-colors cursor-pointer"
-                          title="Ask Gemini AI Study Coach to explain this topic"
+                          title="Ask SC AI Study Coach to explain this topic"
                         >
                           <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
-                          <span>AI Coach</span>
+                          <span>SC AI Coach</span>
                         </button>
 
                         <button

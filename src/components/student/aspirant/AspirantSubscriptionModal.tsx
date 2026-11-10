@@ -122,7 +122,7 @@ export const AspirantSubscriptionModal: React.FC<AspirantSubscriptionModalProps>
                   </li>
                   <li className="flex items-center gap-1.5 text-slate-500 line-through">
                     <X className="w-3.5 h-3.5 shrink-0" />
-                    <span>AI Study Coach 24/7</span>
+                    <span>SC AI Study Coach 24/7</span>
                   </li>
                   <li className="flex items-center gap-1.5 text-slate-500 line-through">
                     <X className="w-3.5 h-3.5 shrink-0" />
@@ -178,7 +178,7 @@ export const AspirantSubscriptionModal: React.FC<AspirantSubscriptionModalProps>
                   </li>
                   <li className="flex items-center gap-1.5 text-slate-500 line-through">
                     <X className="w-3.5 h-3.5 shrink-0" />
-                    <span>AI Drill Sergeant Plan</span>
+                    <span>SC AI Drill Sergeant Plan</span>
                   </li>
                   <li className="flex items-center gap-1.5 text-slate-500 line-through">
                     <X className="w-3.5 h-3.5 shrink-0" />
@@ -213,7 +213,7 @@ export const AspirantSubscriptionModal: React.FC<AspirantSubscriptionModalProps>
                 <div className="text-lg font-black text-amber-400 font-mono mt-1">
                   ₦10,000 <span className="text-xs text-slate-400 font-normal">/ month</span>
                 </div>
-                <div className="text-[10px] text-slate-400 mb-3">Full AI drill sergeant & mock prizes</div>
+                <div className="text-[10px] text-slate-400 mb-3">Full SC AI drill sergeant & mock prizes</div>
 
                 <ul className="space-y-1.5 text-[11px] text-slate-300">
                   <li className="flex items-center gap-1.5">
@@ -222,11 +222,11 @@ export const AspirantSubscriptionModal: React.FC<AspirantSubscriptionModalProps>
                   </li>
                   <li className="flex items-center gap-1.5">
                     <CheckCircle2 className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                    <span><strong>24/7 AI Study Coach</strong></span>
+                    <span><strong>24/7 SC AI Study Coach</strong></span>
                   </li>
                   <li className="flex items-center gap-1.5">
                     <CheckCircle2 className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                    <span><strong>Prepare for Exam Plan</strong> (Drill Sergeant based on days left)</span>
+                    <span><strong>Prepare for Exam Plan</strong> (SC AI Drill Sergeant based on days left)</span>
                   </li>
                   <li className="flex items-center gap-1.5">
                     <CheckCircle2 className="w-3.5 h-3.5 text-amber-400 shrink-0" />

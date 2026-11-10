@@ -93,7 +93,7 @@ export const DiagnosticQuizModal: React.FC<DiagnosticQuizModalProps> = ({
               <Sparkles className="w-4 h-4" />
             </div>
             <div>
-              <h2 className="text-sm font-bold text-slate-100">AI Diagnostic Profiler</h2>
+              <h2 className="text-sm font-bold text-slate-100">SC AI Diagnostic Profiler</h2>
               <p className="text-[10px] text-slate-400">Step {step} of 3 · Personalizing your curriculum roadmap</p>
             </div>
           </div>

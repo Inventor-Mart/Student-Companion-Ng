@@ -283,7 +283,7 @@ export const StudentDashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* 'Prepare For Exam' AI Daily Study Calendar & Tutor Booking Card */}
+      {/* 'Prepare For Exam' SC AI Daily Study Calendar & Tutor Booking Card */}
       <div className="bg-gradient-to-r from-emerald-950/80 via-slate-900 to-teal-950/80 border border-emerald-500/50 rounded-2xl p-4 shadow-lg space-y-3 relative overflow-hidden">
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-3">
@@ -310,7 +310,7 @@ export const StudentDashboard: React.FC = () => {
                   ? (examPrepState.activeCalendar
                       ? `Day-by-day timetable active for ${student.classLevel} with CBT drills & tutor booking links.`
                       : 'Take the quick diagnostic survey to synthesize your daily timetable.')
-                  : `Structured AI daily study calendar for ${student.classLevel} with CBT drill shortcuts & ₦4,000 in included tutor credits.`}
+                  : `Structured SC AI daily study calendar for ${student.classLevel} with CBT drill shortcuts & ₦4,000 in included tutor credits.`}
               </p>
               <div className="flex items-center gap-2 text-[10px] text-slate-400 mt-1">
                 <span>{student.classLevel} Syllabus</span>
@@ -512,7 +512,7 @@ export const StudentDashboard: React.FC = () => {
             </div>
             <div>
               <div className="flex items-center gap-1.5">
-                <span className="text-xs font-bold text-white">AI Uniform Verification</span>
+                <span className="text-xs font-bold text-white">SC AI Uniform Verification</span>
                 <span className="text-[10px] font-bold text-amber-400 bg-amber-950/80 border border-amber-800/60 rounded px-1.5 py-0.2">
                   +500 XP
                 </span>

@@ -220,7 +220,7 @@ const AppContent: React.FC = () => {
               </>
             )}
 
-            {/* AI Uniform Verification Camera / Scanner Modal */}
+            {/* SC AI Uniform Verification Camera / Scanner Modal */}
             <AIUniformVerificationModal />
           </div>
         )}

@@ -57,7 +57,7 @@ export const CurrentAffairsGame: React.FC<CurrentAffairsGameProps> = ({ onExit, 
     setHasAnswered(false);
     setGameState('PLAYING');
 
-    // Background prefetch from Gemini AI to ensure endless stream
+    // Background prefetch from SC AI to ensure endless stream
     prefetchMore(scope, shuffled.map(q => q.id));
   };
 

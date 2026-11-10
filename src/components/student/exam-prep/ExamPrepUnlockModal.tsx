@@ -152,7 +152,7 @@ export const ExamPrepUnlockModal: React.FC<ExamPrepUnlockModalProps> = ({
               <div className="flex items-start gap-2 p-2 rounded-xl bg-slate-950/40 border border-slate-800/70">
                 <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
                 <span>
-                  <strong className="text-slate-100 font-medium">Daily AI Timetable</strong> — syllabus pacing for {student.classLevel}
+                  <strong className="text-slate-100 font-medium">Daily SC AI Timetable</strong> — syllabus pacing for {student.classLevel}
                 </span>
               </div>
               <div className="flex items-start gap-2 p-2 rounded-xl bg-slate-950/40 border border-slate-800/70">

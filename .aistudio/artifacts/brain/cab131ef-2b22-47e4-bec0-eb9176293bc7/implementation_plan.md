@@ -1,216 +1,133 @@
-# Cloud Firestore Past Questions Storage & Educator Past Question Importer
+# Unified SC AI Brand Identity Across All Application Features
 
-Architecture and implementation plan to store thousands of authentic JAMB, WAEC, and NECO past questions in Cloud Firestore with on-demand client streaming, hybrid offline fallback caching for the CBT Simulator, and a dedicated PIN-gated Educator/Admin Importer Portal supporting bulk JSON uploads and smart text auto-parsing.
+Comprehensive brand alignment replacing all generic "AI" mentions, "Ask AI", and external "Gemini" references with Student Companion's native **"SC AI"** brand across all navigation bars, dashboards, exam preparation hubs, uniform verification modals, and marketing pages.
 
 ## User Review & Critical Decisions
 
 > [!IMPORTANT]
-> The following architectural decisions were confirmed through Phase 1 clarification:
-> - **Portal Location**: Dedicated Educator & Admin Portal tab accessible from the navigation bar, secured with a customizable security PIN gate (default `2026` or administrator email).
-> - **Bulk Ingestion Formats**: Dual-engine ingestion supporting both structured **JSON file uploads** and **Structured Text Paste with Auto-Parser** (smart extraction of question stems, options A–D, answer keys, and Chief Examiner explanations).
-> - **CBT Streaming & Resilience**: **Hybrid Caching Architecture** where the CBT simulator queries Cloud Firestore on-demand with local LRU caching and seamlessly falls back to the curated offline bank if network is degraded or offline.
+> The following brand guidelines were confirmed through Phase 1 clarification:
+> - **Compact Label Standardization**: Use **"SC AI Coach"** and **"SC AI Drill"** consistently across all bottom navigation tabs, quick action buttons, and mobile chips to guarantee zero layout wrapping or truncation.
+> - **100% Proprietary Brand Identity**: Eradicate all user-facing mentions of "Gemini", "Gemini AI", or "Powered by Gemini". Every intelligent capability is presented strictly under the proprietary **"SC AI"** umbrella.
 
 ---
 
 ## 1. Overview & Core Concept
 
 ### What It Does
-1. **Cloud Firestore Storage**: Establishes a scalable Firestore schema (`/pastQuestions` and `/pastQuestionPapers`) capable of holding thousands of past exam questions across 15+ years for all JAMB UTME, WAEC SSCE, and NECO subjects, complete with comprehension passages, topics, options, and step-by-step Chief Examiner explanations.
-2. **On-Demand CBT Streaming Engine**: Enhances the 4-subject JAMB CBT Simulator to dynamically fetch and stream authentic questions for any selected subject and examination year from Firestore with intelligent local memory/IndexedDB caching and instant zero-latency offline fallback.
-3. **Dedicated Educator & Admin Importer**: An intuitive, high-efficiency teacher portal guarded by a secure PIN gate. Enables secondary school educators and administrators to:
-   - Paste raw past examination text (from past booklets, Word documents, or PDFs) and let the auto-parser regex engine extract questions, options (A–D), correct answer tags, and explanations.
-   - Upload full JSON papers directly.
-   - Preview, edit, and fine-tune questions live in an interactive card carousel.
-   - Batch-commit 40 to 60 questions per paper directly to Cloud Firestore in atomic batches.
-   - Inspect, search, and manage existing papers in the live Firestore archive.
-
-### Target Audience & Persona
-- **Educators & Content Curators**: School teachers, JAMB CBT center administrators, and content reviewers uploading authentic past examination papers.
-- **University Aspirants & Candidates**: Students preparing for JAMB UTME, WAEC, and NECO who need access to realistic, multi-year exam papers with instant question loading and zero downtime.
+Audits and refactors every user-facing label, header, tooltip, button, and description across the application to project an authoritative, unified Nigerian educational technology brand:
+1. **SC AI Study Coach**: Replaces "Gemini AI Study Coach" and "AI Coach" across the chat interface, curriculum reader, and syllabus explainers.
+2. **SC AI Drill Sergeant**: Replaces "AI Drill Sergeant" and "AI Drill" across the University Aspirant Dashboard, daily high-yield schedules, and subscription tiers.
+3. **SC AI Daily Study Calendar**: Replaces "AI Daily Study Calendar" and "Daily AI Timetable" across the JSS 1–SS 3 Exam Prep Hub, diagnostic quiz, and parent payment cards.
+4. **SC AI Uniform Verification**: Replaces generic "AI Uniform Verification" and "Our AI verifies..." in the camera badge scanner.
+5. **SC AI Diagnostic Profiler**: Replaces "AI Diagnostic Profiler" in syllabus diagnostic tests.
+6. **SC AI Powered**: Replaces "Gemini AI Powered" in landing pages, growth partner invitations, and footer badges.
 
 ---
 
 ## 2. User Experience & Visual Design
 
-### A. Key User Flows
+### Feature Branding Matrix
 
 ```
-┌────────────────────────────────────────────────────────────────────────┐
-│                        EDUCATOR / ADMIN WORKFLOW                       │
-│                                                                        │
-│   [Aspirant / Top Nav]                                                 │
-│            │                                                           │
-│            ▼                                                           │
-│   ┌──────────────────┐      Valid PIN                                  │
-│   │  PIN Access Gate │ ──────────────────► ┌─────────────────────────┐ │
-│   │ (4-digit keypad) │                     │ Educator Importer Hub   │ │
-│   └──────────────────┘                     │ - Metadata Setup        │ │
-│                                            │ - Upload / Paste Mode   │ │
-│                                            └────────────┬────────────┘ │
-│                                                         │              │
-│       ┌─────────────────────────────────────────────────┴────────┐     │
-│       ▼                                                          ▼     │
-│  [JSON Upload]                                            [Smart Text] │
-│  Drop .json paper                                         Paste raw Qs │
-│       │                                                          │     │
-│       └─────────────────────────┬────────────────────────────────┘     │
-│                                 ▼                                      │
-│                  ┌─────────────────────────────┐                       │
-│                  │  Live Validation & Preview  │                       │
-│                  │  - Edit question & options  │                       │
-│                  │  - Verify answer keys       │                       │
-│                  └──────────────┬──────────────┘                       │
-│                                 ▼                                      │
-│                  ┌─────────────────────────────┐                       │
-│                  │ Batch Commit to Cloud       │                       │
-│                  │ Firestore (Atomic Chunks)   │                       │
-│                  └─────────────────────────────┘                       │
-└────────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────┬───────────────────────────────┬─────────────────────────────┐
+│ Current Generic / Model Label   │ Target SC AI Unified Brand    │ Primary Locations           │
+├─────────────────────────────────┼───────────────────────────────┼─────────────────────────────┤
+│ Gemini AI Study Coach           │ SC AI Study Coach             │ AiStudyCoach, SchemeOfWork  │
+│ AI Coach (Nav / Button)         │ SC AI Coach                   │ StudentBottomNav, Hubs      │
+│ AI Drill Sergeant / AI Drill    │ SC AI Drill Sergeant / Drill  │ AspirantDashboard, BottomNav│
+│ AI Daily Study Calendar         │ SC AI Daily Study Calendar    │ PrepareForExamHub, Parent   │
+│ AI Uniform Verification         │ SC AI Uniform Verification    │ StudentDashboard, Camera    │
+│ AI Diagnostic Profiler          │ SC AI Diagnostic Profiler     │ DiagnosticQuizModal         │
+│ Gemini AI Powered (Badge)       │ SC AI Powered                 │ KnowMorePage, Landing       │
+│ Ask AI Coach                    │ Ask SC AI Coach               │ AiStudyCoach action button  │
+└─────────────────────────────────┴───────────────────────────────┴─────────────────────────────┘
 ```
 
-1. **Educator Entry Flow**:
-   - Educator clicks **"Educator Portal"** in the navigation header or Aspirant dashboard.
-   - If not authenticated as admin, a sleek PIN keypad appears requesting the 4-digit master PIN (`2026`). Upon verification, the portal unlocks and remembers session authorization.
-2. **Importing Past Questions**:
-   - **Step 1: Paper Header**: Select Exam (`JAMB UTME`, `WAEC SSCE`, `NECO`), Subject (`Mathematics`, `Use of English`, `Physics`, etc.), Year (`2008`–`2026`), and default time limit.
-   - **Step 2: Source Input**:
-     - *Text Paste Mode*: Paste raw exam booklet text. The smart parser automatically handles typical Nigerian past question formatting:
-       `1. The SI unit of electric flux is... A. Weber B. Henry C. Volt-meter D. Tesla ANSWER: C EXPLANATION: ... TOPIC: ...`
-     - *JSON Upload Mode*: Select a `.json` file formatted with question arrays.
-   - **Step 3: Interactive Verification**: The UI renders a structured questions list showing parsed items, color-coded answer selections, detected topics, and warnings for missing fields. Educators can click any item to edit text inline.
-   - **Step 4: Publish**: Single click triggers a Firestore batch write with real-time progress indicator (`15/40 uploaded... 100% complete`).
-3. **CBT Candidate Streaming Flow**:
-   - Student selects target year (e.g., `2023`) and 4 exam subjects in `AspirantCBTSimulator.tsx`.
-   - The engine queries the Firestore `pastQuestions` collection.
-   - A discreet status chip indicates `Cloud Streamed (40 questions)` or `Cached Offline`.
-   - If offline or network lags, questions instantly fall back to the bundled question bank without interrupting the student's exam timer.
-
-### B. Visual Identity & Theme
-- **Color Palette**:
-  - Dominant Surfaces: Emerald Deep Slate (`#064e3b` / `emerald-950`), Clean Card White (`#ffffff`), and Muted Slate (`#f8fafc`).
-  - Accent Highlights: Nigerian Emerald Green (`#059669` / `emerald-600`), Amber Warning (`#d97706`), and Cobalt Blue (`#2563eb`).
-- **Zero-Pill Discipline**: All question tags, years, and metadata render as clean, unboxed typography with dot separators (`JAMB UTME · 2024 · Calculus · 40 Questions`).
-- **Educator Layout**: Generous two-column workbench on desktop ($1200\text{px}$ container) with source input on the left and live parsed card preview on the right.
+### Visual & Layout Discipline
+- **Zero Pill / No Candy Badges**: Labels integrate seamlessly into the domain typography using clean unboxed text and subtle typographic dividers (`SC AI Study Coach · 24/7 Syllabus Solver`).
+- **Touch Targets & Single-Line Navigation**: Bottom navigation item labels (`SC AI Coach`, `SC AI Drill`) remain compact to preserve 48px touch targets without horizontal text wrapping on small mobile viewports.
 
 ---
 
 ## 3. Key Product Decisions & Trade-Offs
 
-### Decision 1: Hybrid Client-Side Storage with Firestore Streaming
-- **Approach**: Combine Cloud Firestore collection queries with an in-memory/localStorage cache layer and instant fallback to `jambPastQuestionsData.ts`.
-- **Why**: Many Nigerian students experience intermittent 3G/4G connectivity. A purely cloud-dependent CBT engine would fail if a student's network drops during a 120-minute timed mock. Hybrid caching gives 100% uninterrupted exam reliability while allowing cloud updates.
-- **Alternatives Considered**: Pure offline storage (cannot scale past a few years without bloating bundle size) vs Pure Firestore streaming (fails during network loss).
+### Decision 1: Proprietary "SC AI" Brand Over Generic AI or External Models
+- **Chosen Approach**: All features use "SC AI" (e.g. SC AI Coach, SC AI Drill, SC AI Profiler).
+- **Why**: White-labeling the intelligence engine under Student Companion builds strong brand equity, institutional trust among Nigerian secondary schools and parents, and eliminates generic "AI slop" or confusion about external vendors.
+- **Alternatives Considered**: Retaining "Gemini AI" branding (risks looking like a raw tech wrapper rather than an end-to-end Nigerian educational platform).
 
-### Decision 2: Dual-Input Auto-Parser (Regex + JSON)
-- **Approach**: Build a resilient client-side regex parser that extracts question stems, multi-line options (A/B/C/D), answer keys, and explanations from unformatted pasted text.
-- **Why**: Teachers and exam centers usually possess past questions in Microsoft Word, PDF, or text files. Forcing them to convert everything to JSON manually creates friction. The auto-parser lets them paste directly from standard Nigerian past question booklet formats.
-
-### Decision 3: PIN-Gated Educator Access
-- **Approach**: Dedicated PIN modal (`2026`) with administrative email checks (`wowrealities@gmail.com` / `martorefe@gmail.com`).
-- **Why**: Allows teachers and administrators to rapidly manage past questions on school lab computers or mobile devices without requiring complex OAuth logins for every quick question update, while maintaining administrative control.
+### Decision 2: Dual Full/Compact Label Hierarchy
+- **Chosen Approach**: Full descriptive titles in page headers and modal banners (e.g., *SC AI Study Coach*, *SC AI Drill Sergeant*), with succinct labels on mobile tabs and buttons (*SC AI Coach*, *SC AI Drill*).
+- **Why**: Maximizes cognitive clarity without crowding high-density thumb-zone navigation.
 
 ---
 
-## 4. Technical Architecture & Data Strategy
-
-### System Architecture Diagram
+## 4. Technical Architecture & File Modification Scope
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
-│                        TECHNICAL ARCHITECTURE                          │
+│                        SC AI BRAND REFACTOR SCOPE                      │
 │                                                                        │
 │   ┌──────────────────────────────────────────────────────────────┐     │
-│   │                      Cloud Firestore                         │     │
-│   │                                                              │     │
-│   │   /pastQuestions/{id}                                        │     │
-│   │   - examType: "JAMB" | "WAEC" | "NECO"                       │     │
-│   │   - subject: "Mathematics"                                   │     │
-│   │   - year: 2024                                               │     │
-│   │   - question, options, correctAnswer, explanation, topic     │     │
-│   │                                                              │     │
-│   │   /pastQuestionPapers/{id}                                   │     │
-│   │   - paperTitle, examType, subject, year, totalQuestions      │     │
-│   └──────────────────────────────┬───────────────────────────────┘     │
+│   │ Student Core Navigation & Header                             │     │
+│   │ - StudentBottomNav.tsx ('SC AI Coach', 'SC AI Drill')        │     │
+│   │ - StudentDashboard.tsx ('SC AI Uniform', 'SC AI Calendar')   │     │
+│   │ - SchemeOfWorkHub.tsx ('SC AI Coach' explainer button)       │     │
+│   └──────────────────────────────────────────────────────────────┘     │
 │                                  │                                     │
-│                     read/query   │   write/batch (Admin)               │
-│                                  ▼                                     │
-│   ┌──────────────────────────────────────────────────────────────┐     │
-│   │                   Question Service Layer                     │     │
-│   │                 (src/services/questionService.ts)            │     │
-│   │  - streamQuestionsBySubjectAndYear()                         │     │
-│   │  - batchUploadQuestions()                                    │     │
-│   │  - fetchAvailableCloudPapers()                               │     │
-│   │  - Local Memory & Storage Cache                              │     │
-│   │  - Fallback to bundled jambPastQuestionsData.ts              │     │
-│   └──────────────────────┬───────────────────────┬───────────────┘     │
-│                          │                       │                     │
-│                          ▼                       ▼                     │
-│   ┌──────────────────────────────┐   ┌───────────────────────────┐     │
-│   │   AspirantCBTSimulator.tsx   │   │  EducatorQuestionPortal   │     │
-│   │  - On-demand streaming      │   │  - PIN Gate               │     │
-│   │  - 4-subject 120-min test    │   │  - Smart Text Parser      │     │
-│   │  - Solution Review mode      │   │  - JSON Upload            │     │
-│   │  - Connection status chip    │   │  - Paper Archive Manager  │     │
-│   └──────────────────────────────┘   └───────────────────────────┘     │
+│   ┌──────────────────────────────┴───────────────────────────────┐     │
+│   │                                                              │     │
+│   ▼                                                              ▼     │
+│ ┌─────────────────────────────┐    ┌─────────────────────────────────┐ │
+│ │ University Aspirant Hub     │    │ Exam Prep & Diagnostic Modules  │ │
+│ │ - AspirantDashboard.tsx     │    │ - PrepareForExamHub.tsx         │ │
+│ │   ('SC AI Drill Sergeant')  │    │   ('SC AI Daily Study Calendar')│ │
+│ │ - AspirantSubscriptionModal │    │ - DiagnosticQuizModal.tsx       │ │
+│ │   ('SC AI 24/7 Coaching')   │    │   ('SC AI Diagnostic Profiler') │ │
+│ └─────────────────────────────┘    │ - ExamPrepUnlockModal.tsx       │ │
+│                                    │ - AIUniformVerification.tsx     │ │
+│                                    │   ('SC AI Uniform Verification')│ │
+│                                    └─────────────────────────────────┘ │
+│                                  │                                     │
+│   ┌──────────────────────────────┴───────────────────────────────┐     │
+│   │ Portals & Public Pages                                       │     │
+│   │ - AiStudyCoach.tsx ('SC AI Study Coach', 'Ask SC AI Coach')  │     │
+│   │ - KnowMorePage.tsx ('SC AI Powered', 'SC AI Study Coach')    │     │
+│   │ - ParentPortal.tsx ('SC AI Daily Timetable')                 │     │
+│   │ - GrowthPartnerPortal.tsx ('SC AI tutoring')                 │     │
+│   └──────────────────────────────────────────────────────────────┘     │
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Data Models & Schema (`firebase-blueprint.json` & `firestore.rules`)
-
-1. **`PastQuestion` Entity**:
-   - `id`: string (e.g. `jamb_mathematics_2024_q1`)
-   - `examType`: string (`JAMB`, `WAEC`, `NECO`)
-   - `subject`: string (max 100 chars)
-   - `year`: number (2000–2030)
-   - `question`: string (max 5000 chars)
-   - `options`: array of strings (exactly 4 options, each $\le 500$ chars)
-   - `correctAnswer`: number (0 to 3)
-   - `explanation`: string (max 3000 chars)
-   - `topic`: string (max 150 chars)
-   - `passage`: string (optional, max 5000 chars)
-   - `createdAt`: string
-   - `uploadedBy`: string
-
-2. **`PastQuestionPaper` Entity**:
-   - `id`: string (e.g. `jamb_mathematics_2024`)
-   - `examType`: string
-   - `subject`: string
-   - `year`: number
-   - `title`: string
-   - `questionCount`: number
-   - `updatedAt`: string
-
-3. **Security Rules (`firestore.rules`)**:
-   - `allow read`: Public or authenticated student reads allowed for `/pastQuestions` and `/pastQuestionPapers` (read-only for candidates).
-   - `allow write`: Restricted to `isAdmin()` (`wowrealities@gmail.com` or admin record in Firestore) to prevent unauthorized database tampering.
-
 ---
 
-## 5. Implementation Steps (Execution Phase)
+## 5. Execution Steps
 
-1. **Database & Security Blueprint**:
-   - Add `PastQuestion` and `PastQuestionPaper` schemas to `firebase-blueprint.json`.
-   - Update `firestore.rules` with strict entity validation functions (`isValidPastQuestion`, `isValidPastQuestionPaper`), allow reads for students, and enforce admin-only write permissions.
-2. **Service Layer (`src/services/questionService.ts`)**:
-   - Implement `streamQuestionsBySubjectAndYear(examType, subject, year)`.
-   - Implement client caching layer with fallback to `jambPastQuestionsData.ts`.
-   - Implement `uploadPastQuestionsBatch(paper, questions)`.
-   - Implement smart text parser with robust regex handling multiple Nigerian past paper text formats.
-3. **Educator & Admin Importer Component (`src/components/admin/EducatorQuestionImporter.tsx`)**:
-   - Secure PIN authentication modal (`2026`).
-   - Paper metadata configuration (Exam, Subject, Year, Duration).
-   - Dual upload controls: Bulk JSON file dropper and raw text paste area.
-   - Interactive live preview workbench with inline question/option editing.
-   - Batch progress uploader writing in chunks of 500 documents.
-   - Existing paper inventory list with count badges and delete/test actions.
-4. **CBT Simulator Integration (`src/components/student/aspirant/AspirantCBTSimulator.tsx`)**:
-   - Wire `streamQuestionsBySubjectAndYear` into the exam startup sequence.
-   - Add cloud-sync status indicator to the exam header.
-   - Update the subject selector to show available cloud years alongside bundled years.
-5. **Navigation & Global Routing**:
-   - Add "Educator Portal" button in the Aspirant Dashboard and Header.
-   - Mount portal in `App.tsx` routing.
-6. **Verification & Quality Gate**:
-   - Run `compile_applet` and `lint_applet`.
-   - Test text parsing with sample JAMB past question snippets.
-   - Verify dev server health and responsiveness.
+1. **AI Study Coach Module (`src/components/student/AiStudyCoach.tsx`)**:
+   - Replace "Gemini AI Study Coach" title with **"SC AI Study Coach"**.
+   - Update prompt placeholder and action button to **"Ask SC AI Coach"**.
+   - Update error states and loading tips to reference SC AI.
+2. **Navigation Tabs (`src/components/student/StudentBottomNav.tsx`)**:
+   - Update `label: 'AI Coach'` $\to$ **`label: 'SC AI Coach'`** (for both Senior and Aspirant navigation).
+   - Update `label: 'AI Drill'` $\to$ **`label: 'SC AI Drill'`**.
+3. **University Aspirant Hub (`AspirantDashboard.tsx` & `AspirantSubscriptionModal.tsx`)**:
+   - Update "AI Drill Sergeant: Today's High-Yield Schedule" $\to$ **"SC AI Drill Sergeant: Today's High-Yield Schedule"**.
+   - Update "Unlock 24/7 AI Drill Plan" $\to$ **"Unlock 24/7 SC AI Drill Plan"**.
+   - Update "AI Explanation Review" $\to$ **"SC AI Explanation Review"**.
+   - Update subscription modal benefit bullets to reference "SC AI Study Coach 24/7" and "SC AI Drill Sergeant".
+4. **Exam Prep Hub & Diagnostic Profiler (`PrepareForExamHub.tsx`, `DiagnosticQuizModal.tsx`, `ExamPrepUnlockModal.tsx`)**:
+   - Update header and benefit cards to **"SC AI Daily Study Calendar & Tutor Booking"**.
+   - Update "AI Diagnostic Profiler" $\to$ **"SC AI Diagnostic Profiler"**.
+   - Update "Daily AI Timetable" $\to$ **"Daily SC AI Timetable"**.
+5. **AI Uniform Verification Scanner (`AIUniformVerification.tsx` & `StudentDashboard.tsx`)**:
+   - Update title and prompt to **"SC AI Uniform Verification"** and "Our SC AI verifies your school uniform...".
+   - Update scanning overlay status text to reference SC AI verification.
+6. **Curriculum Scheme of Work (`SchemeOfWorkHub.tsx`)**:
+   - Update topic explanation button: "Ask SC AI Study Coach to explain this topic" / **"SC AI Coach"**.
+7. **Parent & Partner Portals & Landing Pages (`ParentPortal.tsx`, `GrowthPartnerPortal.tsx`, `KnowMorePage.tsx`)**:
+   - Update "Prepare For Exam · AI Daily Timetable" $\to$ **"Prepare For Exam · SC AI Daily Timetable"**.
+   - Update growth partner invite copy to reference **"SC AI tutoring"**.
+   - Update KnowMorePage feature cards: "Gemini AI Study Coach" $\to$ **"SC AI Study Coach"**, "Gemini AI Powered" $\to$ **"SC AI Powered"**.
+8. **Verification & Quality Gate**:
+   - Run `compile_applet` and `lint_applet` together to verify zero syntax/type regressions.
+   - Verify all viewports render single-line labels without overflow.

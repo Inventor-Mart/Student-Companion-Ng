@@ -37,12 +37,12 @@ export const StudentBottomNav: React.FC = () => {
     },
     {
       id: 'exam-prep',
-      label: 'AI Drill',
+      label: 'SC AI Drill',
       icon: Calendar
     },
     {
       id: 'ai-coach',
-      label: 'AI Coach',
+      label: 'SC AI Coach',
       icon: Sparkles
     },
     {
@@ -82,7 +82,7 @@ export const StudentBottomNav: React.FC = () => {
     },
     {
       id: 'ai-coach',
-      label: 'AI Coach',
+      label: 'SC AI Coach',
       icon: Sparkles
     },
     {

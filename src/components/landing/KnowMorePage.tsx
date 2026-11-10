@@ -59,13 +59,13 @@ export const KnowMorePage: React.FC<KnowMorePageProps> = ({ onBackToLanding, onL
       subtitle: 'JSS 1 – SS 3 Academic Companion',
       icon: <GraduationCap className="w-5 h-5 text-emerald-400" />,
       features: [
-        'Gemini AI Study Coach: WAEC/JAMB past question solver & exam traps',
+        'SC AI Study Coach: WAEC/JAMB past question solver & exam traps',
         'Full NERDC Scheme of Work with downloadable offline notes',
         'Realistic WAEC, JAMB UTME & NECO CBT drills with timers',
         'Science formulas bank & interactive Periodic Table Rush'
       ],
       actionLabel: 'Enter Student Portal',
-      badge: 'Gemini AI Powered'
+      badge: 'SC AI Powered'
     },
     {
       id: 'parent',

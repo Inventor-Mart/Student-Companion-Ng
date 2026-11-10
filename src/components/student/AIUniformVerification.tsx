@@ -162,7 +162,7 @@ export const AIUniformVerificationModal: React.FC = () => {
               <Camera className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="text-xs font-bold text-white">AI Uniform Verification</h3>
+              <h3 className="text-xs font-bold text-white">SC AI Uniform Verification</h3>
               <p className="text-[10px] text-slate-400">Nigerian School Uniform Check · Earn +500 XP</p>
             </div>
           </div>
@@ -185,7 +185,7 @@ export const AIUniformVerificationModal: React.FC = () => {
           <div className="text-xs text-slate-300 bg-slate-950/70 p-3 rounded-2xl border border-slate-800 space-y-1">
             <span className="font-semibold text-emerald-400 block">Authenticate Your Student Identity</span>
             <p className="text-[11px] text-slate-400 leading-relaxed">
-              Take a selfie or upload a photo wearing your secondary school uniform (crest, collar or necktie visible). Our AI verifies the school uniform to award you <strong className="text-amber-400">500 Bonus XP</strong> and your verified badge.
+              Take a selfie or upload a photo wearing your secondary school uniform (crest, collar or necktie visible). Our SC AI verifies the school uniform to award you <strong className="text-amber-400">500 Bonus XP</strong> and your verified badge.
             </p>
           </div>
 
@@ -243,12 +243,12 @@ export const AIUniformVerificationModal: React.FC = () => {
                 </div>
                 <span className="text-xs font-semibold text-slate-300">No Photo Selected</span>
                 <p className="text-[11px] text-slate-500 mt-1 max-w-[220px]">
-                  Take a photo or upload an image from your device to begin AI verification.
+                  Take a photo or upload an image from your device to begin SC AI verification.
                 </p>
               </div>
             )}
 
-            {/* AI Scanning Overlay */}
+            {/* SC AI Scanning Overlay */}
             {isScanning && (
               <div className="absolute inset-0 bg-indigo-950/60 backdrop-blur-xs flex flex-col items-center justify-center p-4">
                 <div className="w-12 h-12 rounded-2xl bg-indigo-600/90 border border-indigo-400 flex items-center justify-center text-white animate-spin mb-3 shadow-lg">

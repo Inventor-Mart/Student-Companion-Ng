@@ -178,7 +178,7 @@ export const GrowthPartnerPortal: React.FC = () => {
   const handleWhatsAppShare = () => {
     if (!data?.partner?.referralCode) return;
     const text = encodeURIComponent(
-      `Hello! Accelerate your secondary school and WAEC/JAMB exam preparation on Student Companion. Register using my official Growth Partner code: *${data.partner.referralCode}* to unlock verified schemes of work, CBT mock drills, and AI tutoring: ${window.location.origin}/?ref=${data.partner.referralCode}`
+      `Hello! Accelerate your secondary school and WAEC/JAMB exam preparation on Student Companion. Register using my official Growth Partner code: *${data.partner.referralCode}* to unlock verified schemes of work, CBT mock drills, and SC AI tutoring: ${window.location.origin}/?ref=${data.partner.referralCode}`
     );
     window.open(`https://wa.me/?text=${text}`, '_blank');
   };
