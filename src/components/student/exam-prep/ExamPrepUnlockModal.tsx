@@ -1,22 +1,27 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../../../context/AppContext';
-import { UNLOCK_FEE_NAIRA, INCLUDED_TUTOR_CREDITS_NAIRA } from '../../../data/examPrepCurriculumData';
+import {
+  UNLOCK_FEE_NAIRA,
+  SINGLE_SUBJECT_EXAM_FEE_NAIRA,
+  INCLUDED_TUTOR_CREDITS_NAIRA,
+  SECONDARY_SUBJECT_CATALOG
+} from '../../../data/examPrepCurriculumData';
 import { NairaText } from '../../../utils/currency';
 import { playSound } from '../../../utils/audioSynthesis';
 import {
-  X,
   Lock,
   Sparkles,
   CheckCircle2,
-  Wallet,
+  X,
   CreditCard,
   Building2,
+  Wallet,
+  Clock,
   Copy,
   Check,
-  Clock,
+  AlertCircle,
   ArrowRight,
-  ShieldCheck,
-  AlertCircle
+  BookOpen
 } from 'lucide-react';
 
 interface ExamPrepUnlockModalProps {
@@ -24,19 +29,39 @@ interface ExamPrepUnlockModalProps {
   onClose: () => void;
   onSuccess?: () => void;
   targetStudentName?: string;
+  initialPlanType?: 'full' | 'single_subject';
+  initialSubject?: string;
 }
 
 export const ExamPrepUnlockModal: React.FC<ExamPrepUnlockModalProps> = ({
   isOpen,
   onClose,
   onSuccess,
-  targetStudentName
+  targetStudentName,
+  initialPlanType = 'full',
+  initialSubject
 }) => {
-  const { parentWallet, unlockExamPrep, student } = useApp();
+  const { parentWallet, unlockExamPrep, unlockSingleSubjectExam, student } = useApp();
+
+  const [planType, setPlanType] = useState<'full' | 'single_subject'>(initialPlanType);
+  const [selectedSubject, setSelectedSubject] = useState<string>(() => {
+    if (initialSubject) return initialSubject;
+    const isJunior = student.classLevel.startsWith('JSS');
+    return isJunior ? 'Mathematics' : 'General Mathematics';
+  });
+
   const [isProcessing, setIsProcessing] = useState(false);
   const [selectedMethod, setSelectedMethod] = useState<'wallet' | 'paystack' | 'bank_transfer'>('wallet');
   const [hasCopiedAccount, setHasCopiedAccount] = useState(false);
   const [transferTimer, setTransferTimer] = useState(1795); // 29m 55s countdown
+
+  // Sync initial props when opened
+  useEffect(() => {
+    if (isOpen) {
+      if (initialPlanType) setPlanType(initialPlanType);
+      if (initialSubject) setSelectedSubject(initialSubject);
+    }
+  }, [isOpen, initialPlanType, initialSubject]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -48,11 +73,17 @@ export const ExamPrepUnlockModal: React.FC<ExamPrepUnlockModalProps> = ({
 
   if (!isOpen) return null;
 
+  const activeFee = planType === 'full' ? UNLOCK_FEE_NAIRA : SINGLE_SUBJECT_EXAM_FEE_NAIRA;
   const currentBalance = parentWallet.balanceNaira;
-  const hasSufficientWalletBalance = currentBalance >= UNLOCK_FEE_NAIRA;
-  const deficit = Math.max(0, UNLOCK_FEE_NAIRA - currentBalance);
-
+  const hasSufficientWalletBalance = currentBalance >= activeFee;
+  const deficit = Math.max(0, activeFee - currentBalance);
   const wardDisplayName = targetStudentName || student.name || 'Your Ward';
+
+  // Gather secondary subjects list for student stream
+  const isJunior = student.classLevel.startsWith('JSS');
+  const classSubjects = isJunior
+    ? SECONDARY_SUBJECT_CATALOG['Junior']
+    : Array.from(new Set([...SECONDARY_SUBJECT_CATALOG['Science'], ...SECONDARY_SUBJECT_CATALOG['Non-Science']]));
 
   const formatTimer = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -75,10 +106,17 @@ export const ExamPrepUnlockModal: React.FC<ExamPrepUnlockModalProps> = ({
   const handleConfirmUnlock = async () => {
     setIsProcessing(true);
     try {
-      // Simulate real Nigerian gateway roundtrip
-      await new Promise(r => setTimeout(r, 1100));
-      const ok = unlockExamPrep(selectedMethod);
-      if (ok) {
+      // Simulate gateway roundtrip
+      await new Promise(r => setTimeout(r, 1000));
+
+      let success = false;
+      if (planType === 'full') {
+        success = unlockExamPrep(selectedMethod);
+      } else {
+        success = unlockSingleSubjectExam(selectedSubject, selectedMethod);
+      }
+
+      if (success) {
         playSound.levelUp();
         setIsProcessing(false);
         if (onSuccess) onSuccess();
@@ -105,9 +143,11 @@ export const ExamPrepUnlockModal: React.FC<ExamPrepUnlockModalProps> = ({
             </div>
             <div>
               <div className="flex items-center gap-1.5">
-                <h2 className="text-base font-bold text-slate-100 leading-tight">Unlock 'Prepare For Exam'</h2>
+                <h2 className="text-base font-bold text-slate-100 leading-tight">
+                  {planType === 'full' ? "Unlock 'Prepare For Exam'" : 'Take Exam · Single Subject Pass'}
+                </h2>
                 <span className="text-[10px] font-semibold text-emerald-400 bg-emerald-950/80 px-1.5 py-0.5 rounded border border-emerald-800/80">
-                  Full Pass
+                  {planType === 'full' ? 'Full Pass' : '₦1,000 / Subj'}
                 </span>
               </div>
               <p className="text-xs text-slate-400 mt-0.5">
@@ -125,54 +165,171 @@ export const ExamPrepUnlockModal: React.FC<ExamPrepUnlockModalProps> = ({
 
         {/* Scrollable Body */}
         <div className="overflow-y-auto py-3.5 space-y-4 pr-1">
+          {/* Plan Tier Selector */}
+          <div>
+            <div className="flex items-center justify-between text-xs text-slate-300 font-semibold mb-2">
+              <span>Choose Your Exam Access:</span>
+              <span className="text-[11px] text-emerald-400">Term Pass Guaranteed</span>
+            </div>
+            <div className="grid grid-cols-2 gap-2 bg-slate-950 p-1.5 rounded-2xl border border-slate-800">
+              <button
+                type="button"
+                onClick={() => setPlanType('full')}
+                className={`p-2.5 rounded-xl text-left transition-all cursor-pointer ${
+                  planType === 'full'
+                    ? 'bg-emerald-950/80 border border-emerald-500/80 shadow-md text-white'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-100">Full Prepare Plan</span>
+                  <span className="text-[10px] font-mono font-bold text-emerald-400">₦15,000</span>
+                </div>
+                <p className="text-[10px] text-slate-400 mt-0.5">All subjects + SC AI Timetable + ₦4k tutor credits</p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setPlanType('single_subject')}
+                className={`p-2.5 rounded-xl text-left transition-all cursor-pointer ${
+                  planType === 'single_subject'
+                    ? 'bg-emerald-950/80 border border-emerald-500/80 shadow-md text-white'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-100">Single Subject Pass</span>
+                  <span className="text-[10px] font-mono font-bold text-emerald-400">₦1,000</span>
+                </div>
+                <p className="text-[10px] text-slate-400 mt-0.5">Pick any 1 subject with unlimited CBT retakes</p>
+              </button>
+            </div>
+          </div>
+
+          {/* Single Subject Selection Dropdown (Only when in single_subject mode) */}
+          {planType === 'single_subject' && (
+            <div className="bg-slate-950/70 border border-emerald-500/40 rounded-2xl p-3.5 space-y-2 animate-in fade-in duration-150">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
+                  <BookOpen className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Select Subject to Unlock (₦1,000):</span>
+                </label>
+                <span className="text-[10px] text-emerald-400 font-medium">Unlimited Retakes</span>
+              </div>
+
+              <select
+                value={selectedSubject}
+                onChange={(e) => setSelectedSubject(e.target.value)}
+                className="w-full text-xs font-medium bg-slate-900 border border-slate-700 text-slate-100 rounded-xl p-2.5 focus:border-emerald-500 focus:outline-none"
+              >
+                {classSubjects.map((sub) => (
+                  <option key={sub} value={sub}>{sub}</option>
+                ))}
+              </select>
+
+              <p className="text-[11px] text-slate-400 leading-relaxed">
+                Unlocks full term access for <strong className="text-emerald-300 font-semibold">{selectedSubject}</strong> CBT exams with timer, question matrix, and Chief Examiner explanations.
+              </p>
+            </div>
+          )}
+
           {/* Price & Value Banner */}
           <div className="p-4 rounded-2xl bg-gradient-to-b from-slate-800/90 to-slate-900/90 border border-emerald-500/40 flex items-center justify-between shadow-inner">
             <div>
-              <span className="text-[10px] font-bold tracking-wider uppercase text-emerald-400">One-Time Lifetime Access</span>
+              <span className="text-[10px] font-bold tracking-wider uppercase text-emerald-400">
+                {planType === 'full' ? 'One-Time Lifetime Access' : 'Full Term Single Subject Pass'}
+              </span>
               <div className="flex items-baseline gap-1 mt-0.5">
                 <span className="text-2xl font-black text-slate-50 font-mono tracking-tight">
-                  <NairaText amount={UNLOCK_FEE_NAIRA} />
+                  <NairaText amount={activeFee} />
                 </span>
-                <span className="text-xs text-slate-400">/ student</span>
+                <span className="text-xs text-slate-400">
+                  {planType === 'full' ? '/ all subjects' : `/ ${selectedSubject}`}
+                </span>
               </div>
             </div>
             <div className="text-right">
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs font-bold shadow-sm">
-                <Sparkles className="w-3.5 h-3.5" />
-                <span>+ ₦4,000 Tutor Credits</span>
-              </div>
-              <p className="text-[10px] text-slate-400 mt-1">Included free for 1-on-1 sessions</p>
+              {planType === 'full' ? (
+                <>
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs font-bold shadow-sm">
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>+ ₦4,000 Tutor Credits</span>
+                  </div>
+                  <p className="text-[10px] text-slate-400 mt-1">Included free for 1-on-1 sessions</p>
+                </>
+              ) : (
+                <>
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs font-bold shadow-sm">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>Unlimited CBT Retakes</span>
+                  </div>
+                  <p className="text-[10px] text-slate-400 mt-1">Full term access & explanations</p>
+                </>
+              )}
             </div>
           </div>
 
           {/* Included Features */}
           <div className="space-y-2 text-xs">
-            <h3 className="text-slate-300 font-bold text-xs tracking-wide uppercase">Included in this unlock:</h3>
+            <h3 className="text-slate-300 font-bold text-xs tracking-wide uppercase">
+              {planType === 'full' ? 'Included in Full Plan:' : `Included for ${selectedSubject}:`}
+            </h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-slate-300">
-              <div className="flex items-start gap-2 p-2 rounded-xl bg-slate-950/40 border border-slate-800/70">
-                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                <span>
-                  <strong className="text-slate-100 font-medium">Daily SC AI Timetable</strong> — syllabus pacing for {student.classLevel}
-                </span>
-              </div>
-              <div className="flex items-start gap-2 p-2 rounded-xl bg-slate-950/40 border border-slate-800/70">
-                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                <span>
-                  <strong className="text-slate-100 font-medium">₦4,000 Tutor Voucher</strong> — applied to vetted 1-on-1 classes
-                </span>
-              </div>
-              <div className="flex items-start gap-2 p-2 rounded-xl bg-slate-950/40 border border-slate-800/70">
-                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                <span>
-                  <strong className="text-slate-100 font-medium">CBT Drill Shortcuts</strong> — instant question launch on each day
-                </span>
-              </div>
-              <div className="flex items-start gap-2 p-2 rounded-xl bg-slate-950/40 border border-slate-800/70">
-                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                <span>
-                  <strong className="text-slate-100 font-medium">Weakness Profiler</strong> — target Maths, English, Sciences
-                </span>
-              </div>
+              {planType === 'full' ? (
+                <>
+                  <div className="flex items-start gap-2 p-2 rounded-xl bg-slate-950/40 border border-slate-800/70">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                    <span>
+                      <strong className="text-slate-100 font-medium">Daily SC AI Timetable</strong> — syllabus pacing for {student.classLevel}
+                    </span>
+                  </div>
+                  <div className="flex items-start gap-2 p-2 rounded-xl bg-slate-950/40 border border-slate-800/70">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                    <span>
+                      <strong className="text-slate-100 font-medium">₦4,000 Tutor Voucher</strong> — applied to vetted 1-on-1 classes
+                    </span>
+                  </div>
+                  <div className="flex items-start gap-2 p-2 rounded-xl bg-slate-950/40 border border-slate-800/70">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                    <span>
+                      <strong className="text-slate-100 font-medium">CBT Drill Shortcuts</strong> — instant question launch on each day
+                    </span>
+                  </div>
+                  <div className="flex items-start gap-2 p-2 rounded-xl bg-slate-950/40 border border-slate-800/70">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                    <span>
+                      <strong className="text-slate-100 font-medium">Weakness Profiler</strong> — target Maths, English, Sciences
+                    </span>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-start gap-2 p-2 rounded-xl bg-slate-950/40 border border-slate-800/70">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                    <span>
+                      <strong className="text-slate-100 font-medium">Full Term Retakes</strong> — practice {selectedSubject} without limits
+                    </span>
+                  </div>
+                  <div className="flex items-start gap-2 p-2 rounded-xl bg-slate-950/40 border border-slate-800/70">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                    <span>
+                      <strong className="text-slate-100 font-medium">Step-by-Step Solutions</strong> — Chief Examiner verified working
+                    </span>
+                  </div>
+                  <div className="flex items-start gap-2 p-2 rounded-xl bg-slate-950/40 border border-slate-800/70">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                    <span>
+                      <strong className="text-slate-100 font-medium">Authentic CBT Timer</strong> — build exam hall speed & accuracy
+                    </span>
+                  </div>
+                  <div className="flex items-start gap-2 p-2 rounded-xl bg-slate-950/40 border border-slate-800/70">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                    <span>
+                      <strong className="text-slate-100 font-medium">Score Analytics</strong> — track improvements in student profile
+                    </span>
+                  </div>
+                </>
+              )}
             </div>
           </div>
 
@@ -299,7 +456,7 @@ export const ExamPrepUnlockModal: React.FC<ExamPrepUnlockModalProps> = ({
               </div>
 
               <p className="text-[11px] text-slate-400">
-                Transfer exactly <strong className="text-slate-100 font-mono">₦15,000</strong> to the account above. Verification is automatic.
+                Transfer exactly <strong className="text-slate-100 font-mono">₦{activeFee.toLocaleString()}</strong> to the account above. Verification is automatic.
               </p>
             </div>
           )}
@@ -341,12 +498,12 @@ export const ExamPrepUnlockModal: React.FC<ExamPrepUnlockModalProps> = ({
               </>
             ) : selectedMethod === 'bank_transfer' ? (
               <>
-                <span>I Have Sent ₦15,000</span>
+                <span>I Have Sent ₦{activeFee.toLocaleString()}</span>
                 <ArrowRight className="w-3.5 h-3.5" />
               </>
             ) : (
               <>
-                <span>Pay ₦15,000 & Unlock</span>
+                <span>Pay ₦{activeFee.toLocaleString()} &amp; Unlock</span>
                 <ArrowRight className="w-3.5 h-3.5" />
               </>
             )}

@@ -1,6 +1,7 @@
 import { StudyCalendar, NigerianClassLevel, DiagnosticProfile, StudyDay } from '../types';
 
 export const UNLOCK_FEE_NAIRA = 15000;
+export const SINGLE_SUBJECT_EXAM_FEE_NAIRA = 1000;
 export const INCLUDED_TUTOR_CREDITS_NAIRA = 4000;
 
 export const SECONDARY_SUBJECT_CATALOG: Record<string, string[]> = {

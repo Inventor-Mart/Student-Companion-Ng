@@ -26,6 +26,7 @@ export const PrepareForExamHub: React.FC = () => {
   const { student, examPrepState } = useApp();
 
   const [isUnlockModalOpen, setIsUnlockModalOpen] = useState(false);
+  const [modalInitialPlanType, setModalInitialPlanType] = useState<'full' | 'single_subject'>('full');
   const [isDiagnosticModalOpen, setIsDiagnosticModalOpen] = useState(false);
 
   const isUnlocked = examPrepState?.isUnlocked || false;
@@ -131,13 +132,32 @@ export const PrepareForExamHub: React.FC = () => {
         {/* Primary CTA */}
         <button
           type="button"
-          onClick={() => setIsUnlockModalOpen(true)}
+          onClick={() => {
+            setModalInitialPlanType('full');
+            setIsUnlockModalOpen(true);
+          }}
           className="w-full mt-4 py-3 px-5 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 font-black text-xs flex items-center justify-center gap-2 shadow-xl shadow-emerald-500/25 transition-all cursor-pointer"
         >
           <Lock className="w-4 h-4" />
-          <span>Unlock Feature for ₦15,000 (+ ₦4,000 Credit)</span>
+          <span>Unlock Full Plan for ₦15,000 (+ ₦4,000 Credit)</span>
           <ArrowRight className="w-4 h-4 ml-1" />
         </button>
+
+        {/* Affordable Single Subject Alternative */}
+        <div className="mt-3 pt-3 border-t border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+          <span className="text-slate-400">Can't pay for the full plan right now?</span>
+          <button
+            type="button"
+            onClick={() => {
+              setModalInitialPlanType('single_subject');
+              setIsUnlockModalOpen(true);
+            }}
+            className="text-amber-400 hover:text-amber-300 font-bold inline-flex items-center gap-1 cursor-pointer transition-colors"
+          >
+            <span>Take Exam per subject (₦1,000)</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
       </div>
 
       {/* 2. Key Pillars of 'Prepare For Exam' */}
@@ -263,7 +283,10 @@ export const PrepareForExamHub: React.FC = () => {
 
         <button
           type="button"
-          onClick={() => setIsUnlockModalOpen(true)}
+          onClick={() => {
+            setModalInitialPlanType('full');
+            setIsUnlockModalOpen(true);
+          }}
           className="py-2.5 px-4 sm:px-5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 font-black text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-emerald-500/25 active:scale-95 transition-all cursor-pointer shrink-0"
         >
           <Lock className="w-3.5 h-3.5 text-slate-950" />
@@ -276,6 +299,7 @@ export const PrepareForExamHub: React.FC = () => {
       <ExamPrepUnlockModal
         isOpen={isUnlockModalOpen}
         onClose={() => setIsUnlockModalOpen(false)}
+        initialPlanType={modalInitialPlanType}
         onSuccess={() => {
           setIsUnlockModalOpen(false);
           setIsDiagnosticModalOpen(true);

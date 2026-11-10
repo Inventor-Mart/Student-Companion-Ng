@@ -535,6 +535,7 @@ export interface ExamPrepState {
   diagnosticProfile?: DiagnosticProfile;
   activeCalendar?: StudyCalendar | null;
   completedBlockIds: string[];
+  unlockedSubjectExams?: string[]; // Array of subject names unlocked via the ₦1,000 single-subject pass
 }
 
 // ==========================================

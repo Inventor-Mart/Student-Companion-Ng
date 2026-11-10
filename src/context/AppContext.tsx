@@ -35,6 +35,7 @@ import {
 import {
   generateCuratedStudyCalendar,
   UNLOCK_FEE_NAIRA,
+  SINGLE_SUBJECT_EXAM_FEE_NAIRA,
   INCLUDED_TUTOR_CREDITS_NAIRA
 } from '../data/examPrepCurriculumData';
 import {
@@ -109,6 +110,8 @@ interface AppContextType {
   // Prepare For Exam (AI Daily Study Calendar & Tutor Credits)
   examPrepState: ExamPrepState;
   unlockExamPrep: (method?: 'wallet' | 'paystack' | 'bank_transfer') => boolean;
+  unlockSingleSubjectExam: (subject: string, method?: 'wallet' | 'paystack' | 'bank_transfer') => boolean;
+  isSubjectExamUnlocked: (subject: string) => boolean;
   useTutorCredit: (amountNaira: number) => number;
   generateExamPrepCalendar: (profile: DiagnosticProfile) => Promise<void>;
   toggleStudyBlockCompleted: (blockId: string) => void;
@@ -1125,6 +1128,78 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return true;
   };
 
+  const unlockSingleSubjectExam = (subject: string, method: 'wallet' | 'paystack' | 'bank_transfer' = 'wallet'): boolean => {
+    const currentBalance = parentWallet.balanceNaira;
+    const requiredAmount = SINGLE_SUBJECT_EXAM_FEE_NAIRA;
+
+    if (method === 'paystack' || method === 'bank_transfer' || currentBalance < requiredAmount) {
+      const topUpDeficit = Math.max(requiredAmount - currentBalance, requiredAmount);
+      fundParentWallet(topUpDeficit);
+    }
+
+    const debitTx: any = {
+      id: `tx-subj-${Date.now().toString().slice(-6)}`,
+      type: 'debit',
+      amountNaira: SINGLE_SUBJECT_EXAM_FEE_NAIRA,
+      description: `Unlocked '${subject}' CBT Exam Pass (Full Term Access) via ${method === 'bank_transfer' ? 'Bank Transfer' : method === 'paystack' ? 'Paystack' : 'Escrow Wallet'}`,
+      timestamp: 'Just now',
+      status: 'successful',
+      reference: `${method === 'bank_transfer' ? 'WEMA_SUBJ_' : 'PSTK_SUBJ_'}${Math.floor(Math.random() * 900000 + 100000)}`
+    };
+
+    setParentWallet(prev => {
+      const updatedBalance = Math.max(0, prev.balanceNaira - SINGLE_SUBJECT_EXAM_FEE_NAIRA);
+      const updated = {
+        ...prev,
+        balanceNaira: updatedBalance,
+        transactions: [debitTx, ...prev.transactions]
+      };
+
+      if (currentUser && !isOffline) {
+        const walletDocRef = doc(db, 'wallets', currentUser.uid);
+        const path = `wallets/${currentUser.uid}`;
+        updateDoc(walletDocRef, {
+          balanceNaira: updatedBalance,
+          updatedAt: new Date().toISOString()
+        }).catch(err => {
+          handleFirestoreError(err, OperationType.UPDATE, path);
+        });
+      }
+
+      return updated;
+    });
+
+    setExamPrepState(prev => {
+      const existing = prev.unlockedSubjectExams || [];
+      const updated = Array.from(new Set([...existing, subject]));
+      return {
+        ...prev,
+        unlockedSubjectExams: updated
+      };
+    });
+
+    try {
+      confetti({
+        particleCount: 60,
+        spread: 60,
+        origin: { y: 0.6 }
+      });
+    } catch {}
+    addStudentXP(50, `Unlocked '${subject}' Exam Pass`);
+
+    return true;
+  };
+
+  const isSubjectExamUnlocked = (subject: string): boolean => {
+    if (examPrepState.isUnlocked) return true; // Full plan unlocks all subjects
+    const unlocked = examPrepState.unlockedSubjectExams || [];
+    const cleanTarget = subject.trim().toLowerCase();
+    return unlocked.some(s => {
+      const cleanS = s.trim().toLowerCase();
+      return cleanS === cleanTarget || cleanTarget.includes(cleanS) || cleanS.includes(cleanTarget);
+    });
+  };
+
   const useTutorCredit = (amountNaira: number): number => {
     const available = examPrepState.tutorCreditsNaira || 0;
     if (available <= 0) return 0;
@@ -1785,6 +1860,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         saveExamResult,
         examPrepState,
         unlockExamPrep,
+        unlockSingleSubjectExam,
+        isSubjectExamUnlocked,
         useTutorCredit,
         generateExamPrepCalendar,
         toggleStudyBlockCompleted,

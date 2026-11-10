@@ -3,6 +3,7 @@ import { useApp } from '../../context/AppContext';
 import { CBT_EXAMS_DATABASE } from '../../data/cbtExamData';
 import { CBTExam, CBTExamResult } from '../../types';
 import { renderFormattedSpan } from '../../utils/mathFormatter';
+import { ExamPrepUnlockModal } from './exam-prep/ExamPrepUnlockModal';
 import {
   Timer,
   Flag,
@@ -19,7 +20,9 @@ import {
   Check,
   Search,
   BookOpen,
-  Atom
+  Atom,
+  Lock,
+  Sparkles
 } from 'lucide-react';
 
 export const CBTEngine: React.FC = () => {
@@ -41,11 +44,37 @@ export const CBTEngine: React.FC = () => {
 
 // Exam Catalog Component
 const CBTExamCatalog: React.FC<{ onSelectExam: (exam: CBTExam) => void; onOpenFormulas: () => void }> = ({ onSelectExam, onOpenFormulas }) => {
-  const { student } = useApp();
+  const { student, examPrepState, isSubjectExamUnlocked } = useApp();
   const [filterType, setFilterType] = useState<string>('ALL');
   const [selectedSubject, setSelectedSubject] = useState<string>('ALL');
   const [selectedClassFilter, setSelectedClassFilter] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [unlockModalOpen, setUnlockModalOpen] = useState(false);
+  const [targetSubjectToUnlock, setTargetSubjectToUnlock] = useState<string | undefined>(undefined);
+
+  const isSecondaryStudent = student?.classLevel
+    ? (student.classLevel.startsWith('JSS') || student.classLevel.startsWith('SS'))
+    : true;
+
+  const isSecondaryExam = (exam: CBTExam) => {
+    if (exam.classLevel && (exam.classLevel.startsWith('JSS') || exam.classLevel.startsWith('SS'))) return true;
+    if (['BECE', 'WAEC', 'JAMB_UTME', 'NECO'].includes(exam.examType)) return true;
+    return isSecondaryStudent;
+  };
+
+  const checkExamUnlocked = (exam: CBTExam) => {
+    if (!isSecondaryExam(exam)) return true;
+    return isSubjectExamUnlocked(exam.subject);
+  };
+
+  const handleStartExam = (exam: CBTExam) => {
+    if (!checkExamUnlocked(exam)) {
+      setTargetSubjectToUnlock(exam.subject);
+      setUnlockModalOpen(true);
+      return;
+    }
+    onSelectExam(exam);
+  };
 
   const classLevels: string[] = ['ALL', 'JSS 1', 'JSS 2', 'JSS 3', 'SS 1', 'SS 2', 'SS 3'];
 
@@ -104,6 +133,31 @@ const CBTExamCatalog: React.FC<{ onSelectExam: (exam: CBTExam) => void; onOpenFo
           {catalogSubtitle}
         </p>
       </div>
+
+      {/* ₦1,000 Single-Subject Exam Banner for Secondary Classes */}
+      {!examPrepState?.isUnlocked && (
+        <div className="bg-gradient-to-r from-emerald-950/80 via-slate-900 to-amber-950/40 border border-emerald-500/30 rounded-2xl p-3.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-lg">
+          <div className="space-y-0.5">
+            <div className="flex items-center gap-1.5 text-[11px] font-bold text-emerald-400">
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Affordable Single-Subject CBT Access</span>
+            </div>
+            <p className="text-xs text-slate-300">
+              Can't pay for the full ₦15,000 plan right now? Choose <strong className="text-white">Take Exam</strong> for any secondary subject at just <strong className="text-emerald-400">₦1,000 per subject</strong> with unlimited full-term retakes!
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setTargetSubjectToUnlock(undefined);
+              setUnlockModalOpen(true);
+            }}
+            className="py-1.5 px-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs shrink-0 cursor-pointer shadow-sm transition-all"
+          >
+            Take Exam · ₦1,000
+          </button>
+        </div>
+      )}
 
       {/* Search Input */}
       <div className="relative">
@@ -258,18 +312,39 @@ const CBTExamCatalog: React.FC<{ onSelectExam: (exam: CBTExam) => void; onOpenFo
                   )}
                 </div>
 
-                <button
-                  onClick={() => onSelectExam(exam)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl transition-colors shadow-sm"
-                >
-                  <Play className="w-3 h-3 fill-white" />
-                  <span>Start CBT</span>
-                </button>
+                {checkExamUnlocked(exam) ? (
+                  <button
+                    onClick={() => handleStartExam(exam)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl transition-colors shadow-sm cursor-pointer"
+                  >
+                    <Play className="w-3 h-3 fill-white" />
+                    <span>Start CBT</span>
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => {
+                      setTargetSubjectToUnlock(exam.subject);
+                      setUnlockModalOpen(true);
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-white text-xs font-bold rounded-xl transition-all shadow-sm cursor-pointer"
+                  >
+                    <Lock className="w-3 h-3" />
+                    <span>Take Exam · ₦1,000</span>
+                  </button>
+                )}
               </div>
             </div>
           ))
         )}
       </div>
+
+      {/* Unlock Modal for Single Subject or Full Plan */}
+      <ExamPrepUnlockModal
+        isOpen={unlockModalOpen}
+        onClose={() => setUnlockModalOpen(false)}
+        initialPlanType="single_subject"
+        initialSubject={targetSubjectToUnlock}
+      />
     </div>
   );
 };
