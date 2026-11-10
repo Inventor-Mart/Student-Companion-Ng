@@ -90,7 +90,7 @@ export const GrowthPartnerPortal: React.FC = () => {
   const [copiedLink, setCopiedLink] = useState<boolean>(false);
 
   // Tab navigation
-  const [activeTab, setActiveTab] = useState<'overview' | 'referrals' | 'transactions' | 'simulator'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'referrals' | 'transactions' | 'marketing'>('overview');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
   // Withdrawal modal state
@@ -520,15 +520,15 @@ export const GrowthPartnerPortal: React.FC = () => {
             </span>
           </button>
           <button
-            onClick={() => setActiveTab('simulator')}
+            onClick={() => setActiveTab('marketing')}
             className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 ${
-              activeTab === 'simulator'
+              activeTab === 'marketing'
                 ? 'bg-emerald-500 text-slate-950 shadow-sm'
                 : 'text-slate-400 hover:text-white hover:bg-slate-800'
             }`}
           >
-            <PlayCircle className="w-3.5 h-3.5 text-amber-400" />
-            <span>Test Trigger Simulator</span>
+            <Share2 className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Marketing & Share Hub</span>
           </button>
         </div>
 
@@ -589,7 +589,7 @@ export const GrowthPartnerPortal: React.FC = () => {
 
               {transactions.length === 0 ? (
                 <div className="p-6 text-center text-xs text-slate-400 border border-dashed border-slate-800 rounded-lg">
-                  No revenue share payments recorded yet. Run the Test Trigger Simulator tab to test a live 10% commission credit!
+                  No revenue share payments recorded yet. Share your partner code in the Marketing & Share tab to start earning 10% instant commissions!
                 </div>
               ) : (
                 <div className="overflow-x-auto">
@@ -717,7 +717,7 @@ export const GrowthPartnerPortal: React.FC = () => {
 
             {transactions.length === 0 ? (
               <div className="p-8 text-center text-xs text-slate-400 border border-dashed border-slate-800 rounded-lg">
-                No revenue share transactions found. Test the trigger in the Simulator tab!
+                No revenue share transactions found yet. Share your referral link with schools and parents to track live enrollments and commissions here!
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -762,137 +762,104 @@ export const GrowthPartnerPortal: React.FC = () => {
           </div>
         )}
 
-        {/* TAB 4: TEST TRIGGER SIMULATOR */}
-        {activeTab === 'simulator' && (
-          <div className="p-5 rounded-xl bg-slate-900 border border-slate-800 space-y-4">
-            <div className="border-b border-slate-800 pb-3">
-              <div className="flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-amber-400" />
-                <h4 className="text-sm font-bold text-white">
-                  Payment & Revenue Share Trigger Simulator
-                </h4>
+        {/* TAB 4: LIVE MARKETING & SHARE HUB */}
+        {activeTab === 'marketing' && (
+          <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-4">
+            <div className="border-b border-slate-800 pb-3 flex items-start justify-between">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Share2 className="w-4 h-4 text-emerald-400" />
+                  <h4 className="text-sm font-bold text-white">
+                    Live Marketing & Enrollment Toolkit
+                  </h4>
+                </div>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Share your unique referral link with secondary schools, parents, tutors, and student communities across Nigeria.
+                </p>
               </div>
-              <p className="text-xs text-slate-400 mt-0.5">
-                Test the backend trigger function. Simulates a student completing a subscription payment, verifies the referral link, calculates 10% commission, and executes an atomic Firestore transaction.
-              </p>
+
+              <span className="text-[10px] font-mono text-emerald-300 bg-emerald-950 px-2.5 py-1 rounded-full border border-emerald-800">
+                10% Lifetime RevShare
+              </span>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-3">
-                <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1">
-                    Student ID
-                  </label>
+              {/* Direct Referral Link Card */}
+              <div className="space-y-3 bg-slate-950 p-4 rounded-xl border border-slate-800">
+                <span className="text-xs font-bold text-white block">
+                  Your Live Referral Link
+                </span>
+                <p className="text-[11px] text-slate-400 leading-relaxed">
+                  Students and parents who click your link automatically have your 6-character partner code pre-applied at registration.
+                </p>
+
+                <div className="flex items-center gap-2">
                   <input
                     type="text"
-                    value={simStudentId}
-                    onChange={(e) => setSimStudentId(e.target.value)}
-                    className="w-full px-3 py-2 text-xs rounded-lg bg-slate-950 border border-slate-800 text-white focus:outline-none focus:border-emerald-500 font-mono"
-                    placeholder="student-user-id"
+                    readOnly
+                    value={`https://studentcompanion.ng/signup?ref=${partner?.referralCode || 'GROW82'}`}
+                    className="flex-1 px-3 py-2 text-xs rounded-lg bg-slate-900 border border-slate-800 text-white font-mono focus:outline-none select-all"
                   />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1">
-                    Student Full Name
-                  </label>
-                  <input
-                    type="text"
-                    value={simStudentName}
-                    onChange={(e) => setSimStudentName(e.target.value)}
-                    className="w-full px-3 py-2 text-xs rounded-lg bg-slate-950 border border-slate-800 text-white focus:outline-none focus:border-emerald-500"
-                    placeholder="e.g. Amina Bello"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1">
-                    Subscription Plan
-                  </label>
-                  <select
-                    value={simPlan}
-                    onChange={(e) => {
-                      setSimPlan(e.target.value);
-                      if (e.target.value === 'WAEC & JAMB Termly Pass') setSimAmount(15000);
-                      else if (e.target.value === 'Annual Secondary Scholar Pass') setSimAmount(35000);
-                      else if (e.target.value === 'Monthly Revision Pack') setSimAmount(5000);
-                    }}
-                    className="w-full px-3 py-2 text-xs rounded-lg bg-slate-950 border border-slate-800 text-white focus:outline-none focus:border-emerald-500"
+                  <button
+                    onClick={handleCopyLink}
+                    className="py-2 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
                   >
-                    <option value="WAEC & JAMB Termly Pass">WAEC & JAMB Termly Pass (₦15,000)</option>
-                    <option value="Annual Secondary Scholar Pass">Annual Secondary Scholar Pass (₦35,000)</option>
-                    <option value="Monthly Revision Pack">Monthly Revision Pack (₦5,000)</option>
-                  </select>
+                    {copiedLink ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                    <span>{copiedLink ? 'Copied' : 'Copy'}</span>
+                  </button>
                 </div>
 
+                <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
+                  <span>Assigned Partner Code:</span>
+                  <span className="font-mono font-black text-emerald-400 tracking-wider">
+                    {partner?.referralCode || 'GROW82'}
+                  </span>
+                </div>
+              </div>
+
+              {/* One-Tap WhatsApp Promo Card */}
+              <div className="space-y-3 bg-slate-950 p-4 rounded-xl border border-slate-800 flex flex-col justify-between">
                 <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1">
-                    Payment Amount (<NairaSign /> Naira)
-                  </label>
-                  <input
-                    type="number"
-                    value={simAmount}
-                    onChange={(e) => setSimAmount(Number(e.target.value))}
-                    className="w-full px-3 py-2 text-xs rounded-lg bg-slate-950 border border-slate-800 text-white focus:outline-none focus:border-emerald-500 font-mono"
-                  />
-                  <p className="text-[11px] text-emerald-400 mt-1 flex items-center gap-1 font-medium font-sans">
-                    <span>Expected 10% Partner Credit:</span>
-                    <NairaText amount={Math.round((simAmount * 10) / 100)} />
+                  <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                    <Send className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>WhatsApp Community & Parent Blast</span>
+                  </span>
+                  <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">
+                    Instantly broadcast this approved promotional copy to your PTA groups, schools, and tutoring hubs.
                   </p>
-                </div>
-
-                <button
-                  onClick={handleSimulatePayment}
-                  disabled={simLoading || !simAmount || simAmount <= 0}
-                  className="w-full py-2.5 px-4 rounded-lg bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-slate-950 font-bold text-xs flex items-center justify-center gap-2 transition-colors shadow-lg"
-                >
-                  {simLoading ? (
-                    <>
-                      <RefreshCw className="w-4 h-4 animate-spin" />
-                      Executing Backend Trigger Function...
-                    </>
-                  ) : (
-                    <>
-                      <PlayCircle className="w-4 h-4" />
-                      Simulate Successful Payment Trigger
-                    </>
-                  )}
-                </button>
-              </div>
-
-              {/* Execution Console Output */}
-              <div className="rounded-lg bg-slate-950 border border-slate-800 p-4 font-mono text-xs flex flex-col justify-between">
-                <div>
-                  <div className="flex items-center justify-between pb-2 border-b border-slate-800 text-[11px] text-slate-400">
-                    <span>Server Trigger Response</span>
-                    <span className="text-emerald-400">POST /api/partners/process-subscription-payment</span>
+                  <div className="mt-2.5 p-2.5 rounded-lg bg-slate-900/90 border border-slate-800 text-[11px] text-slate-300 font-sans leading-relaxed">
+                    "🚀 Master WAEC, JAMB & Junior BECE exams with Nigeria's #1 Student Companion! Access verified notes, CBT past questions, and vetted 1-on-1 tutors. Register with my official partner code *{partner?.referralCode || 'GROW82'}* for instant access: https://studentcompanion.ng/signup?ref={partner?.referralCode || 'GROW82'}"
                   </div>
-
-                  {simResult ? (
-                    <div className="mt-3 space-y-2">
-                      <div className="flex items-center gap-2 text-emerald-400 font-bold">
-                        <CheckCircle2 className="w-4 h-4" />
-                        <span>Transaction Processed Successfully</span>
-                      </div>
-                      <pre className="text-[11px] text-slate-300 bg-slate-900/80 p-2.5 rounded border border-slate-800 overflow-x-auto">
-                        {JSON.stringify(simResult, null, 2)}
-                      </pre>
-                      <div className="p-2.5 rounded bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-[11px]">
-                        {simResult.message}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="mt-8 text-center text-slate-600 text-xs">
-                      Click the simulate button to dispatch a payment and inspect the atomic Firestore execution logs.
-                    </div>
-                  )}
                 </div>
 
-                <div className="text-[10px] text-slate-500 pt-3 border-t border-slate-800/80 mt-4 flex items-center justify-between">
-                  <span>Current Partner Code: {partner?.referralCode}</span>
-                  <span>Commission: 10%</span>
-                </div>
+                <a
+                  href={`https://wa.me/?text=${encodeURIComponent(
+                    `🚀 Master WAEC, JAMB & Junior BECE exams with Nigeria's #1 Student Companion! Access verified notes, CBT past questions, and vetted 1-on-1 tutors. Register with my official partner code *${partner?.referralCode || 'GROW82'}* for instant access: https://studentcompanion.ng/signup?ref=${partner?.referralCode || 'GROW82'}`
+                  )}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-slate-950 font-black text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-950/40 transition-all cursor-pointer"
+                >
+                  <Share2 className="w-3.5 h-3.5" />
+                  <span>Share on WhatsApp PTA / School Groups</span>
+                </a>
               </div>
+            </div>
+
+            {/* Commission Settlement Account Notice */}
+            <div className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800 flex items-center justify-between text-xs text-slate-300">
+              <div className="flex items-center gap-2">
+                <Building className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span>
+                  Settlement Account: <strong>{partner?.bankName || 'Guaranty Trust Bank'}</strong> ({partner?.accountNumber ? `${partner.accountNumber.slice(0, 3)}••••${partner.accountNumber.slice(-3)}` : '012••••789'}) · {partner?.accountName || partnerName}
+                </span>
+              </div>
+              <button
+                onClick={() => setShowWithdrawModal(true)}
+                className="text-emerald-400 hover:underline font-bold text-xs cursor-pointer shrink-0 ml-2"
+              >
+                Withdraw Funds →
+              </button>
             </div>
           </div>
         )}

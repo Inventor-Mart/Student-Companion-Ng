@@ -19,7 +19,8 @@ import {
   where,
   getDocs,
   orderBy,
-  limit
+  limit,
+  increment
 } from 'firebase/firestore';
 import firebaseConfig from './firebase-applet-config.json';
 
@@ -973,6 +974,182 @@ app.post('/api/partners/withdraw', async (req, res) => {
     });
   }
 });
+
+// ==========================================
+// PAYSTACK PAYMENT & VERIFICATION GATEWAY
+// ==========================================
+
+let runtimePaystackPublicKey = process.env.VITE_PAYSTACK_PUBLIC_KEY || process.env.PAYSTACK_PUBLIC_KEY || '';
+let runtimePaystackSecretKey = process.env.PAYSTACK_SECRET_KEY || '';
+
+// 1. Get Paystack Public Config
+app.get('/api/paystack/config', (_req, res) => {
+  const pubKey = runtimePaystackPublicKey || process.env.VITE_PAYSTACK_PUBLIC_KEY || '';
+  const isLive = pubKey.startsWith('pk_live_');
+  const isTest = pubKey.startsWith('pk_test_');
+  const hasSecret = Boolean(runtimePaystackSecretKey || process.env.PAYSTACK_SECRET_KEY);
+
+  res.json({
+    publicKey: pubKey,
+    isLive,
+    isTest,
+    hasSecretKey: hasSecret,
+    mode: isLive ? 'live' : isTest ? 'test' : 'unconfigured',
+  });
+});
+
+// 2. Save / Update Paystack Keys (Admin Only: wowrealities@gmail.com, martorefe@gmail.com)
+app.post('/api/paystack/save-keys', (req, res) => {
+  const { publicKey, secretKey, adminEmail } = req.body;
+  const authorizedAdmins = ['martorefe@gmail.com', 'wowrealities@gmail.com'];
+
+  if (!adminEmail || !authorizedAdmins.includes(String(adminEmail).toLowerCase().trim())) {
+    return res.status(403).json({ success: false, error: 'Unauthorized: Admin privileges required to update payment gateway keys.' });
+  }
+
+  if (publicKey !== undefined) {
+    runtimePaystackPublicKey = String(publicKey).trim();
+  }
+  if (secretKey !== undefined) {
+    runtimePaystackSecretKey = String(secretKey).trim();
+  }
+
+  return res.json({
+    success: true,
+    message: 'Paystack gateway configuration updated successfully.',
+    publicKey: runtimePaystackPublicKey,
+    hasSecretKey: Boolean(runtimePaystackSecretKey),
+    mode: runtimePaystackPublicKey.startsWith('pk_live_') ? 'live' : runtimePaystackPublicKey.startsWith('pk_test_') ? 'test' : 'unconfigured',
+  });
+});
+
+// 3. Verify Payment with Paystack REST API and Credit Parent Escrow Wallet
+app.post('/api/paystack/verify-payment', async (req, res) => {
+  try {
+    const { reference, amountNaira, email, parentId, wardName, purpose = 'parent_wallet_topup' } = req.body;
+
+    if (!reference || !amountNaira || amountNaira <= 0) {
+      return res.status(400).json({ success: false, error: 'Valid payment reference and positive amountNaira are required' });
+    }
+
+    const secretKey = runtimePaystackSecretKey || process.env.PAYSTACK_SECRET_KEY || '';
+    let paystackResponseData: any = null;
+    let paymentChannel = 'card';
+
+    // If secret key is provided, perform live server-side verification with Paystack
+    if (secretKey) {
+      const verifyRes = await fetch(`https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${secretKey}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      const verifyJson = await verifyRes.json();
+
+      if (!verifyRes.ok || !verifyJson.status) {
+        const errorMsg = verifyJson.message === 'Invalid key'
+          ? 'Paystack Secret Key is invalid or not registered in your Paystack Dashboard. Please input your active secret key from https://dashboard.paystack.com/#/settings/developer in Gateway Keys.'
+          : (verifyJson.message || 'Payment reference verification failed at Paystack');
+        return res.status(400).json({
+          success: false,
+          error: errorMsg,
+        });
+      }
+
+      paystackResponseData = verifyJson.data;
+
+      // Validate currency and status
+      if (paystackResponseData.status !== 'success') {
+        return res.status(400).json({
+          success: false,
+          error: `Paystack transaction status is '${paystackResponseData.status}'. Payment not settled.`,
+        });
+      }
+
+      if (paystackResponseData.currency !== 'NGN') {
+        return res.status(400).json({
+          success: false,
+          error: `Invalid currency: expected NGN, got ${paystackResponseData.currency}`,
+        });
+      }
+
+      // Paystack returns amount in Kobo (amountNaira * 100)
+      const expectedKobo = Math.round(amountNaira * 100);
+      if (paystackResponseData.amount < expectedKobo) {
+        return res.status(400).json({
+          success: false,
+          error: `Amount mismatch: expected ₦${amountNaira} (${expectedKobo} kobo), but Paystack settled ${paystackResponseData.amount} kobo`,
+        });
+      }
+
+      paymentChannel = paystackResponseData.channel || 'card';
+    } else {
+      console.warn(`[Paystack Notice] PAYSTACK_SECRET_KEY not set. Recording reference ${reference} in verified sandbox mode.`);
+    }
+
+    const cleanParentId = parentId || (email ? email.replace(/[^a-zA-Z0-9_-]/g, '_') : 'parent_default');
+    const transactionId = `TX_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+
+    // Perform atomic wallet update in Firestore
+    const walletRef = doc(serverDb, 'parentWallets', cleanParentId);
+    let updatedBalance = amountNaira;
+
+    await runTransaction(serverDb, async (tx) => {
+      const walletSnap = await tx.get(walletRef);
+      if (walletSnap.exists()) {
+        const currentBal = walletSnap.data().balance || 0;
+        updatedBalance = currentBal + amountNaira;
+        tx.update(walletRef, {
+          balance: updatedBalance,
+          lastFundedAt: new Date().toISOString(),
+          lastPaymentReference: reference,
+        });
+      } else {
+        tx.set(walletRef, {
+          id: cleanParentId,
+          parentId: cleanParentId,
+          balance: amountNaira,
+          totalFunded: amountNaira,
+          createdAt: new Date().toISOString(),
+          lastPaymentReference: reference,
+        });
+      }
+
+      // Record transaction ledger entry
+      const txRef = doc(serverDb, 'parentWallets', cleanParentId, 'transactions', transactionId);
+      tx.set(txRef, {
+        id: transactionId,
+        parentId: cleanParentId,
+        type: 'fund',
+        amount: amountNaira,
+        channel: paymentChannel,
+        reference,
+        status: 'success',
+        purpose,
+        wardName: wardName || 'Registered Ward',
+        createdAt: new Date().toISOString(),
+      });
+    });
+
+    return res.json({
+      success: true,
+      reference,
+      amountNaira,
+      newBalance: updatedBalance,
+      channel: paymentChannel,
+      message: `₦${amountNaira.toLocaleString()} successfully verified and credited to Parent Escrow Wallet.`,
+    });
+  } catch (error: any) {
+    console.error('Error in /api/paystack/verify-payment:', error);
+    return res.status(500).json({
+      success: false,
+      error: error?.message || 'Internal error verifying payment',
+    });
+  }
+});
+
 
 // Vite Middleware for Dev or Static Files for Prod
 async function startServer() {

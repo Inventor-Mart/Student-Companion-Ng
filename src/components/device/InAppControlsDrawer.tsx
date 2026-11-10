@@ -275,10 +275,10 @@ export const InAppControlsDrawer: React.FC<InAppControlsDrawerProps> = ({
             </div>
           )}
 
-          {/* Section 2: Environment & Network Simulator */}
+          {/* Section 2: Device & Network Settings */}
           <div>
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-2 px-1">
-              Environment & Simulator
+              Device & Network Settings
             </span>
             <div className="space-y-2">
               {/* Offline Mode Toggle */}
@@ -299,7 +299,7 @@ export const InAppControlsDrawer: React.FC<InAppControlsDrawerProps> = ({
                       {isOffline ? 'Offline Mode (Active)' : 'Online Mode'}
                     </span>
                     <span className="text-[10px] text-slate-400">
-                      {isOffline ? 'Testing cached lesson notes & CBT' : 'Connected to cloud network'}
+                      {isOffline ? 'Cached offline curriculum & CBT access' : 'Connected to high-speed cloud network'}
                     </span>
                   </div>
                 </div>

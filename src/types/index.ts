@@ -210,6 +210,49 @@ export interface TutorVerificationDetails {
   isVerified: boolean;
 }
 
+export interface TutorGuarantor {
+  name: string;
+  phone: string;
+  relationship: string;
+}
+
+export interface TutorDigitalReadiness {
+  hasDevice: boolean;
+  hasInternet: boolean;
+  comfortableWithTools: boolean;
+}
+
+export interface RegisteredTutorData {
+  subjectSpecialization: string;
+  qualification: string;
+  hourlyRate: number;
+  teachingMode: 'both' | 'online' | 'physical';
+  verification?: TutorVerificationDetails;
+  phone?: string;
+  gender?: 'Male' | 'Female' | 'Prefer not to say';
+  highestEducation?: 'NCE' | 'B.Sc.' | 'B.Ed.' | 'M.Sc.' | 'Ph.D.' | 'Other';
+  institution?: string;
+  courseOfStudy?: string;
+  experienceYearsRange?: '0-1 years' | '1-3 years' | '3-5 years' | '5+ years';
+  targetClasses?: string[];
+  proficientSubjects?: string[];
+  bio?: string;
+  tagline?: string;
+  city?: string;
+  state?: string;
+  nin?: string;
+  idDocumentUrl?: string;
+  cvResumeUrl?: string;
+  guarantors?: TutorGuarantor[];
+  digitalReadiness?: TutorDigitalReadiness;
+  degrees?: string[];
+  certifications?: string[];
+  examSpecializations?: string[];
+  curriculumHighlights?: string[];
+  timetable?: TimetableSlot[];
+  onboardingStage?: 1 | 2 | 3;
+}
+
 export interface RegisteredUserProfile {
   id: string;
   role: UserRole;
@@ -226,13 +269,7 @@ export interface RegisteredUserProfile {
     pin: string;
     address?: VerifiedAddress;
   };
-  tutorData?: {
-    subjectSpecialization: string;
-    qualification: string;
-    hourlyRate: number;
-    teachingMode: 'both' | 'online' | 'physical';
-    verification?: TutorVerificationDetails;
-  };
+  tutorData?: RegisteredTutorData;
   adminData?: {
     schoolName: string;
     schoolType: string;
@@ -617,5 +654,98 @@ export interface UniversityAdmissionInfo {
   overview: string;
   courses: UniversityCourseEntry[];
 }
+
+// ==========================================
+// OVER-THE-AIR (OTA) BROADCASTS & COMPETITION
+// ==========================================
+
+export type OTABroadcastCategory = 'championship' | 'academic' | 'urgent' | 'spotlight' | 'general';
+
+export interface OTABroadcastItem {
+  id: string;
+  text: string;
+  category: OTABroadcastCategory;
+  isActive: boolean;
+  priority: number; // Higher number displays first
+  actionTab?: string; // Optional tab to open when clicked (e.g. 'competitions', 'cbt')
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface OTAPopupAnnouncement {
+  id: string;
+  title: string;
+  subtitle?: string;
+  imageUrl: string;
+  badge?: string;
+  body: string;
+  ctaText: string;
+  ctaTargetTab: string; // e.g. 'competitions'
+  isActive: boolean;
+  startDate?: string;
+  endDate?: string;
+  updatedAt: string;
+}
+
+export interface OTACompetitionConfig {
+  id: 'termly_championship';
+  registrationFeeNaira: number;
+  termTitle: string; // e.g. "Term 1 National Secondary School Championship"
+  academicSession: string; // e.g. "2024/2025 Academic Session"
+  registrationDeadline: string; // e.g. "November 30, 2024"
+  tournamentStartDate: string; // e.g. "December 5, 2024"
+  tournamentEndDate: string; // e.g. "December 7, 2024"
+  prizes: ChampionshipPrize[];
+  daysConfig: Record<1 | 2 | 3, {
+    day: 1 | 2 | 3;
+    title: string;
+    subject: 'English Language' | 'Mathematics' | 'General Paper';
+    totalQuestions: number;
+    durationMinutes: number;
+    durationSeconds: number;
+    description: string;
+  }>;
+  updatedAt: string;
+  updatedBy: string;
+}
+
+export interface OTAWeeklyCompetitionConfig {
+  id: 'weekly_challenge';
+  title: string;
+  weekLabel: string;
+  countdownLabel: string;
+  description: string;
+  totalPrizePoolNaira: number;
+  firstPrize: { title: string; valueNaira: number; extra?: string };
+  secondPrize: { title: string; valueNaira: number; extra?: string };
+  thirdPrize: { title: string; valueNaira: number; extra?: string };
+  featuredExamId: string;
+  featuredExamTitle?: string;
+  rules: string[];
+  updatedAt: string;
+  updatedBy: string;
+}
+
+export interface OTASchoolLeagueSchool {
+  id: string;
+  name: string;
+  state: string;
+  points: number;
+  rank: number;
+  studentCount: number;
+  badge?: string;
+}
+
+export interface OTASchoolLeagueConfig {
+  id: 'school_league';
+  seasonTitle: string;
+  roundLabel: string;
+  grandAwardDescription: string;
+  schools: OTASchoolLeagueSchool[];
+  updatedAt: string;
+  updatedBy: string;
+}
+
+
 
 

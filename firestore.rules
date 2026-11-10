@@ -408,5 +408,23 @@ service cloud.firestore {
       allow create, update: if isValidId(paperId) && isValidPastQuestionPaper(incoming());
       allow delete: if isAdmin();
     }
+
+    // 17. OTA Ticker Broadcasts (Public read; Admin publish & edit)
+    match /otaBroadcasts/{broadcastId} {
+      allow get, list: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    // 18. OTA Pop-Up Image Announcements (Public read; Admin publish & edit)
+    match /otaAnnouncements/{announcementId} {
+      allow get, list: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    // 19. OTA Student Competition Arena Configurations (Public read; Admin manage)
+    match /otaCompetitions/{competitionId} {
+      allow get, list: if true;
+      allow create, update, delete: if isAdmin();
+    }
   }
 }

@@ -33,3 +33,23 @@
 .touch-pan-y {
   touch-action: pan-y;
 }
+
+/* TV Broadcast Horizontal Marquee Animation */
+@keyframes broadcastScroll {
+  0% {
+    transform: translateX(0%);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+.animate-broadcast-scroll {
+  display: inline-flex;
+  animation: broadcastScroll 35s linear infinite;
+}
+
+.animate-broadcast-scroll:hover {
+  animation-play-state: paused;
+}
+

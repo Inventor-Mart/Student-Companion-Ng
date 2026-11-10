@@ -31,7 +31,8 @@ export const TutorDiscovery: React.FC = () => {
     setCurrentRole,
     student,
     verifiedAddress,
-    launchVirtualClassroom
+    launchVirtualClassroom,
+    currentUserProfile
   } = useApp();
 
   const [viewMode, setViewMode] = useState<'map' | 'list'>('list');
@@ -49,9 +50,47 @@ export const TutorDiscovery: React.FC = () => {
   const [bookingConfirmed, setBookingConfirmed] = useState<boolean>(false);
   const [confirmedBookingId, setConfirmedBookingId] = useState<string>('');
 
-  const subjects = ['All', 'Mathematics', 'Physics', 'Biology', 'Chemistry', 'Economics', 'English Language'];
+  const subjects = ['All', 'Mathematics', 'Physics', 'Biology', 'Chemistry', 'Economics', 'English Language', 'Further Mathematics'];
 
-  const filteredTutors = VETTED_NIGERIAN_TUTORS.filter(t => {
+  // Combine default verified tutors with registered user profile if role is tutor
+  const allTutors: Tutor[] = React.useMemo(() => {
+    if (currentUserProfile?.role === 'tutor' && currentUserProfile.tutorData) {
+      const td = currentUserProfile.tutorData;
+      const registeredTutorEntry: Tutor = {
+        id: currentUserProfile.id,
+        name: currentUserProfile.fullName,
+        tagline: td.tagline || `${td.subjectSpecialization} Specialist`,
+        subjects: td.proficientSubjects && td.proficientSubjects.length > 0 ? td.proficientSubjects : [td.subjectSpecialization],
+        rating: 5.0,
+        reviewCount: 1,
+        hourlyRateNaira: td.hourlyRate || 3500,
+        location: `${td.city || 'Ikeja'}, ${td.state || 'Lagos'}`,
+        state: td.state || 'Lagos',
+        isNinVerified: Boolean(td.nin || td.verification?.isVerified),
+        education: td.qualification || `${td.highestEducation || 'B.Sc.'} (${td.institution || 'Unilag'})`,
+        avatarUrl: currentUserProfile.avatarUrl || 'https://api.dicebear.com/7.x/micah/svg?seed=Educator&backgroundColor=b6e3f4',
+        bio: td.bio || 'Verified Nigerian educator dedicated to secondary school excellence.',
+        availableDays: ['Mondays', 'Wednesdays', 'Saturdays'],
+        lat: 6.6018,
+        lng: 3.3515,
+        experienceYears: td.experienceYearsRange === '5+ years' ? 6 : td.experienceYearsRange === '3-5 years' ? 4 : 2,
+        degrees: td.degrees || [`${td.highestEducation || 'B.Sc.'} in ${td.courseOfStudy || 'Education'}`],
+        certifications: td.certifications || ['TRCN Certified Secondary Educator'],
+        examSpecializations: td.examSpecializations || ['WAEC Prep', 'JAMB Prep'],
+        curriculumHighlights: td.curriculumHighlights || ['Interactive Whiteboard Drills'],
+        totalLessonsDelivered: 12,
+        completionRate: 100,
+        timetable: td.timetable || []
+      };
+
+      // Put the registered tutor first if not already present
+      const withoutDup = VETTED_NIGERIAN_TUTORS.filter(t => t.id !== registeredTutorEntry.id);
+      return [registeredTutorEntry, ...withoutDup];
+    }
+    return VETTED_NIGERIAN_TUTORS;
+  }, [currentUserProfile]);
+
+  const filteredTutors = allTutors.filter(t => {
     const matchesSubject = selectedSubject === 'All' || t.subjects.includes(selectedSubject);
     const matchesSearch =
       searchQuery.trim() === '' ||

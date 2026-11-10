@@ -13,11 +13,21 @@ import {
   MapPin,
   ArrowUpRight,
   AlertCircle,
-  Video
+  Video,
+  UserCog,
+  GraduationCap,
+  Award,
+  BookOpen,
+  Save,
+  Plus,
+  Trash2,
+  Check
 } from 'lucide-react';
 
 import { TutorSecurityVerificationModal } from '../auth/VerificationModals';
 import { NairaText, NairaSign, formatNaira } from '../../utils/currency';
+import { DeviceImageUploader } from '../admin/DeviceImageUploader';
+import { TimetableSlot } from '../../types';
 
 export const TutorPortal: React.FC = () => {
   const {
@@ -28,7 +38,8 @@ export const TutorPortal: React.FC = () => {
     sendChatMessage,
     currentUserProfile,
     tutorVerification,
-    launchVirtualClassroom
+    launchVirtualClassroom,
+    updateTutorProfile
   } = useApp();
 
   const tutorName = currentUserProfile?.fullName || 'Registered Educator';
@@ -40,9 +51,95 @@ export const TutorPortal: React.FC = () => {
   const isVerified = Boolean(tutorVerification?.isVerified || tutorData?.verification?.isVerified);
 
   const [chatInput, setChatInput] = useState<string>('');
-  const [activeTab, setActiveTab] = useState<'sessions' | 'earnings' | 'chat'>('sessions');
+  const [activeTab, setActiveTab] = useState<'sessions' | 'profile' | 'earnings' | 'chat'>('sessions');
   const [isVerificationModalOpen, setIsVerificationModalOpen] = useState(false);
   const [payoutStatusMessage, setPayoutStatusMessage] = useState<string>('');
+  const [profileSaveSuccess, setProfileSaveSuccess] = useState<boolean>(false);
+
+  // Editable Profile States (Matching Sample Vetted Tutors)
+  const [editTagline, setEditTagline] = useState<string>(
+    tutorData?.tagline || `${tutorSpecialization} (10+ Yrs Prep Specialist)`
+  );
+  const [editBio, setEditBio] = useState<string>(
+    tutorData?.bio || 'Former Olympiad coach preparing secondary school candidates for Distinction grades in WAEC and 300+ in JAMB UTME. Patient, step-by-step problem solver specializing in interactive digital whiteboard drills.'
+  );
+  const [editHourlyRate, setEditHourlyRate] = useState<number>(tutorHourlyRate);
+  const [editTeachingMode, setEditTeachingMode] = useState<'both' | 'online' | 'physical'>(
+    tutorData?.teachingMode || 'both'
+  );
+  const [editDegrees, setEditDegrees] = useState<string[]>(
+    tutorData?.degrees && tutorData.degrees.length > 0
+      ? tutorData.degrees
+      : [
+          'B.Eng Mechanical Engineering, University of Lagos (First Class Honours, GPA 4.88/5.00)',
+          'National Mathematics Olympiad Gold Mentor (Lagos State Chapter)'
+        ]
+  );
+  const [editCertifications, setEditCertifications] = useState<string[]>(
+    tutorData?.certifications && tutorData.certifications.length > 0
+      ? tutorData.certifications
+      : [
+          'Registered Engineer (COREN Reg. No. R.52841)',
+          'TRCN Certified Secondary Educator (Teachers Registration Council of Nigeria)',
+          'Verified National ID: NIMC NIN Verified'
+        ]
+  );
+  const [editExamSpecs, setEditExamSpecs] = useState<string[]>(
+    tutorData?.examSpecializations && tutorData.examSpecializations.length > 0
+      ? tutorData.examSpecializations
+      : [
+          'WAEC / WASSCE General Mathematics (Target: A1 Distinction)',
+          'JAMB UTME Mathematics & Physics Speed Drills (Target: 85+ / 100)',
+          'Further Mathematics: Calculus, Vectors & Mechanics',
+          'Cowbellpedia Secondary School Mathematics TV Quiz Prep'
+        ]
+  );
+  const [editHighlights, setEditHighlights] = useState<string[]>(
+    tutorData?.curriculumHighlights && tutorData.curriculumHighlights.length > 0
+      ? tutorData.curriculumHighlights
+      : [
+          'Differentiation & Integration from First Principles',
+          'Trigonometric Identities & 3D Bearing Calculations',
+          'Newtonian Mechanics & Projectile Motion Trajectories',
+          'Simultaneous & Quadratic Equation Graphic Visualizations'
+        ]
+  );
+  const [editTimetable, setEditTimetable] = useState<TimetableSlot[]>(
+    tutorData?.timetable && tutorData.timetable.length > 0
+      ? tutorData.timetable
+      : [
+          { id: 'slot-1', day: 'Monday', time: '10:00 AM - 12:00 PM', period: 'Morning', isAvailable: true },
+          { id: 'slot-2', day: 'Monday', time: '04:00 PM - 06:00 PM', period: 'Afternoon', isAvailable: true },
+          { id: 'slot-3', day: 'Wednesday', time: '04:00 PM - 06:00 PM', period: 'Afternoon', isAvailable: true },
+          { id: 'slot-4', day: 'Wednesday', time: '06:30 PM - 08:30 PM', period: 'Evening', isAvailable: false },
+          { id: 'slot-5', day: 'Friday', time: '04:00 PM - 06:00 PM', period: 'Afternoon', isAvailable: true },
+          { id: 'slot-6', day: 'Saturday', time: '09:00 AM - 11:00 AM', period: 'Morning', isAvailable: true },
+          { id: 'slot-7', day: 'Saturday', time: '02:00 PM - 04:00 PM', period: 'Afternoon', isAvailable: true }
+        ]
+  );
+
+  const handleSaveProfile = (e: React.FormEvent) => {
+    e.preventDefault();
+    updateTutorProfile({
+      tagline: editTagline,
+      bio: editBio,
+      hourlyRate: editHourlyRate,
+      teachingMode: editTeachingMode,
+      degrees: editDegrees,
+      certifications: editCertifications,
+      examSpecializations: editExamSpecs,
+      curriculumHighlights: editHighlights,
+      timetable: editTimetable
+    });
+    setProfileSaveSuccess(true);
+    setTimeout(() => setProfileSaveSuccess(false), 3000);
+  };
+
+  const toggleSlotAvailability = (slotId: string) => {
+    setEditTimetable(prev =>
+      prev.map(slot => (slot.id === slotId ? { ...slot, isAvailable: !slot.isAvailable } : slot))
+    );
+  };
 
   // Filter bookings strictly for this registered tutor
   const myBookings = tutorBookings.filter(b => b.tutorId === tutorId);
@@ -141,6 +238,7 @@ export const TutorPortal: React.FC = () => {
         <div className="flex items-center bg-slate-950 p-1 rounded-xl border border-slate-800">
           {[
             { id: 'sessions', label: 'My Sessions', icon: Calendar },
+            { id: 'profile', label: 'Marketplace Profile', icon: UserCog },
             { id: 'earnings', label: 'Earnings & Payout', icon: Wallet },
             { id: 'chat', label: 'Masked Chat', icon: MessageSquare }
           ].map(tab => {
@@ -249,7 +347,301 @@ export const TutorPortal: React.FC = () => {
         </div>
       )}
 
-      {/* Tab 2: Earnings & Payout */}
+      {/* Tab 2: Marketplace Profile & Sample Fields Editor */}
+      {activeTab === 'profile' && (
+        <form onSubmit={handleSaveProfile} className="space-y-4">
+          <div className="bg-slate-900 rounded-2xl p-4 border border-slate-800 space-y-3.5">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                  <UserCog className="w-4 h-4 text-sky-400" />
+                  <span>Public Marketplace Profile</span>
+                </h3>
+                <p className="text-[11px] text-slate-400">
+                  Customize the attributes that students and parents see on your public profile.
+                </p>
+              </div>
+
+              {profileSaveSuccess && (
+                <span className="text-emerald-400 text-xs font-semibold flex items-center gap-1 animate-in fade-in">
+                  <Check className="w-3.5 h-3.5 stroke-[3]" />
+                  <span>Saved!</span>
+                </span>
+              )}
+            </div>
+
+            {/* Tagline & Hourly Rate */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="sm:col-span-2">
+                <label className="text-[11px] font-semibold text-slate-300 block mb-1">
+                  Profile Tagline (Displays under your name)
+                </label>
+                <input
+                  type="text"
+                  value={editTagline}
+                  onChange={e => setEditTagline(e.target.value)}
+                  placeholder="e.g. WAEC & JAMB Mathematics/Physics Specialist (10+ Yrs)"
+                  className="w-full bg-slate-950 border border-slate-800 focus:border-sky-400 rounded-xl py-2 px-3 text-xs text-white placeholder-slate-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="text-[11px] font-semibold text-slate-300 block mb-1">
+                  Hourly Rate (<NairaSign />)
+                </label>
+                <input
+                  type="number"
+                  value={editHourlyRate}
+                  onChange={e => setEditHourlyRate(Number(e.target.value))}
+                  className="w-full bg-slate-950 border border-slate-800 focus:border-sky-400 rounded-xl py-2 px-3 text-xs text-white font-mono focus:outline-none"
+                />
+              </div>
+            </div>
+
+            {/* Bio / Introduction */}
+            <div>
+              <label className="text-[11px] font-semibold text-slate-300 block mb-1">
+                Detailed Biography & Methodology
+              </label>
+              <textarea
+                rows={3}
+                value={editBio}
+                onChange={e => setEditBio(e.target.value)}
+                placeholder="Share your pedagogy, past results, university background, and coaching style..."
+                className="w-full bg-slate-950 border border-slate-800 focus:border-sky-400 rounded-xl py-2 px-3 text-xs text-white placeholder-slate-500 focus:outline-none"
+              />
+            </div>
+
+            {/* Teaching Mode */}
+            <div>
+              <label className="text-[11px] font-semibold text-slate-300 block mb-1">
+                Lesson Mode Offered
+              </label>
+              <div className="flex gap-2">
+                {[
+                  { id: 'both', label: 'Online & In-Person' },
+                  { id: 'online', label: 'Online Only' },
+                  { id: 'physical', label: 'In-Person Only' }
+                ].map(m => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => setEditTeachingMode(m.id as any)}
+                    className={`flex-1 py-1.5 px-2 rounded-xl text-xs font-semibold transition-colors cursor-pointer ${
+                      editTeachingMode === m.id
+                        ? 'bg-sky-500 text-slate-950 font-bold'
+                        : 'bg-slate-950 text-slate-400 border border-slate-800 hover:text-white'
+                    }`}
+                  >
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Degrees & Certifications Section (Matching Sample Vetted Tutors) */}
+          <div className="bg-slate-900 rounded-2xl p-4 border border-slate-800 space-y-3.5">
+            <h4 className="text-xs font-bold text-white flex items-center gap-2">
+              <GraduationCap className="w-4 h-4 text-emerald-400" />
+              <span>Degrees, Academic Honors & Certifications</span>
+            </h4>
+
+            {/* Degrees List */}
+            <div className="space-y-2">
+              <label className="text-[11px] text-slate-400 block">Degrees & Diplomas</label>
+              {editDegrees.map((deg, idx) => (
+                <div key={idx} className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={deg}
+                    onChange={e => {
+                      const updated = [...editDegrees];
+                      updated[idx] = e.target.value;
+                      setEditDegrees(updated);
+                    }}
+                    className="flex-1 bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded-xl py-1.5 px-3 text-xs text-white focus:outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setEditDegrees(editDegrees.filter((_, i) => i !== idx))}
+                    className="p-1.5 text-slate-500 hover:text-red-400 cursor-pointer"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+              <button
+                type="button"
+                onClick={() => setEditDegrees([...editDegrees, 'B.Sc. Education (University of Lagos)'])}
+                className="text-[11px] text-emerald-400 hover:underline flex items-center gap-1 font-semibold cursor-pointer"
+              >
+                <Plus className="w-3 h-3" />
+                <span>Add Another Degree</span>
+              </button>
+            </div>
+
+            {/* Certifications List */}
+            <div className="space-y-2 pt-2 border-t border-slate-800">
+              <label className="text-[11px] text-slate-400 block">Professional Licenses & Certifications</label>
+              {editCertifications.map((cert, idx) => (
+                <div key={idx} className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={cert}
+                    onChange={e => {
+                      const updated = [...editCertifications];
+                      updated[idx] = e.target.value;
+                      setEditCertifications(updated);
+                    }}
+                    className="flex-1 bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded-xl py-1.5 px-3 text-xs text-white focus:outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setEditCertifications(editCertifications.filter((_, i) => i !== idx))}
+                    className="p-1.5 text-slate-500 hover:text-red-400 cursor-pointer"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+              <button
+                type="button"
+                onClick={() => setEditCertifications([...editCertifications, 'TRCN Certified Secondary Educator'])}
+                className="text-[11px] text-emerald-400 hover:underline flex items-center gap-1 font-semibold cursor-pointer"
+              >
+                <Plus className="w-3 h-3" />
+                <span>Add Certification</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Exam Specializations & Curriculum Highlights */}
+          <div className="bg-slate-900 rounded-2xl p-4 border border-slate-800 space-y-3.5">
+            <h4 className="text-xs font-bold text-white flex items-center gap-2">
+              <Award className="w-4 h-4 text-amber-400" />
+              <span>Exam Specializations & Core Curriculum Highlights</span>
+            </h4>
+
+            {/* Exam Specializations */}
+            <div className="space-y-2">
+              <label className="text-[11px] text-slate-400 block">Exam Specializations</label>
+              {editExamSpecs.map((spec, idx) => (
+                <div key={idx} className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={spec}
+                    onChange={e => {
+                      const updated = [...editExamSpecs];
+                      updated[idx] = e.target.value;
+                      setEditExamSpecs(updated);
+                    }}
+                    className="flex-1 bg-slate-950 border border-slate-800 focus:border-amber-500 rounded-xl py-1.5 px-3 text-xs text-white focus:outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setEditExamSpecs(editExamSpecs.filter((_, i) => i !== idx))}
+                    className="p-1.5 text-slate-500 hover:text-red-400 cursor-pointer"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+              <button
+                type="button"
+                onClick={() => setEditExamSpecs([...editExamSpecs, 'WAEC Mathematics Prep (Target: A1)'])}
+                className="text-[11px] text-amber-400 hover:underline flex items-center gap-1 font-semibold cursor-pointer"
+              >
+                <Plus className="w-3 h-3" />
+                <span>Add Exam Specialization</span>
+              </button>
+            </div>
+
+            {/* Curriculum Highlights */}
+            <div className="space-y-2 pt-2 border-t border-slate-800">
+              <label className="text-[11px] text-slate-400 block">Curriculum Highlights</label>
+              {editHighlights.map((hi, idx) => (
+                <div key={idx} className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={hi}
+                    onChange={e => {
+                      const updated = [...editHighlights];
+                      updated[idx] = e.target.value;
+                      setEditHighlights(updated);
+                    }}
+                    className="flex-1 bg-slate-950 border border-slate-800 focus:border-amber-500 rounded-xl py-1.5 px-3 text-xs text-white focus:outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setEditHighlights(editHighlights.filter((_, i) => i !== idx))}
+                    className="p-1.5 text-slate-500 hover:text-red-400 cursor-pointer"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+              <button
+                type="button"
+                onClick={() => setEditHighlights([...editHighlights, 'Trigonometric Identities & 3D Bearing'])}
+                className="text-[11px] text-amber-400 hover:underline flex items-center gap-1 font-semibold cursor-pointer"
+              >
+                <Plus className="w-3 h-3" />
+                <span>Add Curriculum Highlight</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Interactive Weekly Timetable Slots */}
+          <div className="bg-slate-900 rounded-2xl p-4 border border-slate-800 space-y-3">
+            <div className="flex items-center justify-between">
+              <h4 className="text-xs font-bold text-white flex items-center gap-2">
+                <Clock className="w-4 h-4 text-sky-400" />
+                <span>Weekly Timetable Availability</span>
+              </h4>
+              <span className="text-[10px] text-slate-400">Click slot to toggle availability</span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {editTimetable.map(slot => (
+                <button
+                  key={slot.id}
+                  type="button"
+                  onClick={() => toggleSlotAvailability(slot.id)}
+                  className={`p-2.5 rounded-xl border flex items-center justify-between text-xs transition-all cursor-pointer ${
+                    slot.isAvailable
+                      ? 'bg-emerald-950/40 border-emerald-500/70 text-emerald-300'
+                      : 'bg-slate-950 border-slate-800 text-slate-500 opacity-60'
+                  }`}
+                >
+                  <div className="text-left">
+                    <span className="font-bold text-white block">{slot.day}</span>
+                    <span className="text-[10px]">{slot.time} ({slot.period})</span>
+                  </div>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+                    slot.isAvailable
+                      ? 'bg-emerald-500 text-slate-950'
+                      : 'bg-slate-800 text-slate-400'
+                  }`}>
+                    {slot.isAvailable ? 'Available' : 'Unavailable'}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Save Profile Button */}
+          <button
+            type="submit"
+            className="w-full py-3 rounded-2xl bg-gradient-to-r from-sky-500 to-emerald-500 hover:from-sky-400 hover:to-emerald-400 text-slate-950 font-black text-xs uppercase tracking-wider shadow-lg shadow-sky-950/50 flex items-center justify-center gap-2 transition-all cursor-pointer"
+          >
+            <Save className="w-4 h-4" />
+            <span>Save & Publish Marketplace Profile</span>
+          </button>
+        </form>
+      )}
+
+      {/* Tab 3: Earnings & Payout */}
       {activeTab === 'earnings' && (
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3">

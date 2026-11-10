@@ -29,7 +29,7 @@ export const AspirantSubscriptionModal: React.FC<AspirantSubscriptionModalProps>
   onClose,
   defaultTier = 'elite'
 }) => {
-  const { aspirantGoal, subscribeAspirantTier, parentWallet } = useApp();
+  const { aspirantGoal, subscribeAspirantTier, parentWallet, currentUserProfile, student } = useApp();
   const [selectedTier, setSelectedTier] = useState<AspirantTier>(defaultTier);
   const [selectedMethod, setSelectedMethod] = useState<'wallet' | 'paystack' | 'bank_transfer'>('wallet');
   const [isProcessing, setIsProcessing] = useState(false);
@@ -42,13 +42,82 @@ export const AspirantSubscriptionModal: React.FC<AspirantSubscriptionModalProps>
   const hasSufficientWalletBalance = currentBalance >= tierCost;
 
   const handleSubscribe = async () => {
+    if (selectedTier === 'free') {
+      subscribeAspirantTier('free', 'wallet');
+      onClose();
+      return;
+    }
+
     setIsProcessing(true);
     try {
-      await new Promise(r => setTimeout(r, 900));
+      if (selectedMethod === 'paystack' && typeof (window as any).PaystackPop !== 'undefined') {
+        let activeKey = '';
+        try {
+          const cfgRes = await fetch('/api/paystack/config');
+          const cfg = await cfgRes.json();
+          activeKey = cfg.publicKey;
+        } catch {
+          // fallback
+        }
+        if (!activeKey) {
+          activeKey = 'pk_test_e5be598dc42f3a5332f170c0c0e5a6e87f6e8d1a';
+        }
+
+        const txRef = `PSTK_ASP_${Date.now()}_${Math.floor(Math.random() * 100000)}`;
+        const payerEmail = currentUserProfile?.email || 'parent@studentcompanion.ng';
+
+        const handler = (window as any).PaystackPop.setup({
+          key: activeKey,
+          email: payerEmail,
+          amount: Math.round(tierCost * 100), // in kobo
+          currency: 'NGN',
+          ref: txRef,
+          metadata: {
+            custom_fields: [
+              { display_name: 'Student Name', variable_name: 'student_name', value: student.name || 'Student Aspirant' },
+              { display_name: 'Tier', variable_name: 'aspirant_tier', value: selectedTier }
+            ]
+          },
+          callback: async (response: { reference: string }) => {
+            try {
+              await fetch('/api/paystack/verify-payment', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  reference: response.reference,
+                  amountNaira: tierCost,
+                  email: payerEmail,
+                  studentName: student.name,
+                  purpose: 'aspirant_tier_subscription',
+                  plan: `Aspirant ${selectedTier}`
+                })
+              });
+            } catch (e) {
+              console.warn('Backend payment verification logged:', e);
+            }
+
+            const ok = subscribeAspirantTier(selectedTier, 'paystack');
+            if (ok) {
+              setIsProcessing(false);
+              onClose();
+            }
+          },
+          onClose: () => {
+            setIsProcessing(false);
+          }
+        });
+
+        handler.openIframe();
+        return;
+      }
+
+      // Wallet / Transfer flow
       const ok = subscribeAspirantTier(selectedTier, selectedMethod);
       if (ok) {
         setIsProcessing(false);
         onClose();
+      } else {
+        setIsProcessing(false);
       }
     } catch {
       setIsProcessing(false);

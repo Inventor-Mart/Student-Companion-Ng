@@ -28,6 +28,8 @@ import { AspirantCBTSimulator } from './components/student/aspirant/AspirantCBTS
 import { UniversityAdmissionGuide } from './components/student/aspirant/UniversityAdmissionGuide';
 import { NationalMockTournaments } from './components/student/aspirant/NationalMockTournaments';
 import { EducatorQuestionImporter } from './components/admin/EducatorQuestionImporter';
+import { BroadcastNewsTicker } from './components/student/BroadcastNewsTicker';
+import { PopupAnnouncementModal } from './components/student/PopupAnnouncementModal';
 
 const AppContent: React.FC = () => {
   const [quotaExceeded, setQuotaExceeded] = React.useState(false);
@@ -191,6 +193,9 @@ const AppContent: React.FC = () => {
             ) : (
               /* Core Student Tabs */
               <>
+                {/* Over-The-Air TV Broadcast-Style Scrolling News Ticker */}
+                <BroadcastNewsTicker />
+
                 <div className="flex-1 w-full overflow-hidden flex flex-col">
                   {activeStudentTab === 'dashboard' && <StudentDashboard />}
                   {activeStudentTab === 'aspirant-cbt' && <AspirantCBTSimulator />}
@@ -222,6 +227,9 @@ const AppContent: React.FC = () => {
 
             {/* SC AI Uniform Verification Camera / Scanner Modal */}
             <AIUniformVerificationModal />
+
+            {/* Over-The-Air Pop-Up Promotional Image Announcement Modal */}
+            <PopupAnnouncementModal />
           </div>
         )}
 

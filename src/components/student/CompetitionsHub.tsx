@@ -9,7 +9,20 @@ import {
   getClassChampionshipQuestions,
   ChampionshipExamQuestion
 } from '../../data/competitionPrizesData';
-import { NigerianClassLevel } from '../../types';
+import {
+  subscribeToOTACompetition,
+  subscribeToOTAWeeklyCompetition,
+  subscribeToOTASchoolLeague,
+  DEFAULT_OTA_COMPETITION_CONFIG,
+  DEFAULT_OTA_WEEKLY_CONFIG,
+  DEFAULT_OTA_SCHOOL_LEAGUE_CONFIG
+} from '../../services/otaService';
+import {
+  NigerianClassLevel,
+  OTACompetitionConfig,
+  OTAWeeklyCompetitionConfig,
+  OTASchoolLeagueConfig
+} from '../../types';
 import {
   Trophy,
   Flame,
@@ -53,6 +66,26 @@ export const CompetitionsHub: React.FC = () => {
     setCurrentRole
   } = useApp();
 
+  const [otaConfig, setOtaConfig] = useState<OTACompetitionConfig>(DEFAULT_OTA_COMPETITION_CONFIG);
+  const [weeklyConfig, setWeeklyConfig] = useState<OTAWeeklyCompetitionConfig>(DEFAULT_OTA_WEEKLY_CONFIG);
+  const [leagueConfig, setLeagueConfig] = useState<OTASchoolLeagueConfig>(DEFAULT_OTA_SCHOOL_LEAGUE_CONFIG);
+
+  useEffect(() => {
+    const unsubComp = subscribeToOTACompetition(setOtaConfig);
+    const unsubWeekly = subscribeToOTAWeeklyCompetition(setWeeklyConfig);
+    const unsubLeague = subscribeToOTASchoolLeague(setLeagueConfig);
+
+    return () => {
+      unsubComp();
+      unsubWeekly();
+      unsubLeague();
+    };
+  }, []);
+
+  const championshipPrizes = otaConfig.prizes && otaConfig.prizes.length > 0 ? otaConfig.prizes : TERMLY_CHAMPIONSHIP_PRIZES;
+  const registrationFee = otaConfig.registrationFeeNaira || TERMLY_REGISTRATION_FEE_NAIRA;
+  const daysConfig = otaConfig.daysConfig || CHAMPIONSHIP_DAYS_CONFIG;
+
   const [activeTab, setActiveTab] = useState<'termly' | 'schools' | 'weekly' | 'spotlight' | 'prizes'>('termly');
   const [hasEnteredThisWeek, setHasEnteredThisWeek] = useState<boolean>(false);
 
@@ -87,16 +120,14 @@ export const CompetitionsHub: React.FC = () => {
     return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
   };
 
-  // Find a high stakes exam for the weekly challenge
-  const weeklyChallengeExam = CBT_EXAMS_DATABASE[0];
-
   const handleEnterWeeklyChallenge = () => {
     confetti({
       particleCount: 50,
       spread: 60,
       origin: { y: 0.8 }
     });
-    startExam(weeklyChallengeExam);
+    const featuredExam = CBT_EXAMS_DATABASE.find(e => e.id === weeklyConfig.featuredExamId) || CBT_EXAMS_DATABASE[0];
+    startExam(featuredExam);
   };
 
   const handleQuickClaimBonus = () => {
@@ -128,7 +159,7 @@ export const CompetitionsHub: React.FC = () => {
 
   // Launch a specific stage exam
   const handleLaunchStageExam = (day: 1 | 2 | 3) => {
-    const config = CHAMPIONSHIP_DAYS_CONFIG[day];
+    const config = daysConfig[day] || CHAMPIONSHIP_DAYS_CONFIG[day];
     const qList = getClassChampionshipQuestions(studentClass, day);
 
     setActiveExamDay(day);
@@ -150,7 +181,7 @@ export const CompetitionsHub: React.FC = () => {
     if (isExamSubmitted || activeQuestions.length === 0) return;
     setIsExamSubmitted(true);
 
-    const config = CHAMPIONSHIP_DAYS_CONFIG[activeExamDay];
+    const config = daysConfig[activeExamDay] || CHAMPIONSHIP_DAYS_CONFIG[activeExamDay];
     const timeSpent = Math.max(10, config.durationSeconds - examSecondsLeft);
     let correctCount = 0;
 
@@ -290,70 +321,38 @@ export const CompetitionsHub: React.FC = () => {
               </p>
             </div>
 
-            {/* 3 Tangible Physical Prizes Showcase */}
+            {/* Dynamic Physical Prizes Showcase */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-              {/* 1st Prize */}
-              <div className="bg-gradient-to-b from-amber-500/20 to-slate-950/90 border border-amber-500/60 rounded-2xl p-3.5 flex flex-col justify-between">
-                <div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-black uppercase tracking-wider text-amber-300 bg-amber-950 px-2 py-0.5 rounded-full border border-amber-700">
-                      1st Prize 🥇
-                    </span>
-                    <Smartphone className="w-5 h-5 text-amber-400" />
-                  </div>
-                  <h4 className="text-sm font-black text-white mt-2">Brand New Android Phone</h4>
-                  <p className="text-[11px] text-slate-300 mt-1 leading-snug">
-                    6.5" HD+ Octa-core Android smartphone, 5000mAh battery, 4GB RAM + 64GB storage, preloaded with syllabus apps.
-                  </p>
-                </div>
-                <div className="mt-3 pt-2 border-t border-amber-500/20 flex items-center justify-between text-[10px] font-mono text-amber-400">
-                  <span>Prize Value</span>
-                  <span className="font-bold"><NairaText amount={150000} /></span>
-                </div>
-              </div>
-
-              {/* 2nd Prize */}
-              <div className="bg-gradient-to-b from-slate-800/40 to-slate-950/90 border border-slate-700/60 rounded-2xl p-3.5 flex flex-col justify-between">
-                <div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-200 bg-slate-800 px-2 py-0.5 rounded-full border border-slate-600">
-                      2nd Prize 🥈
-                    </span>
-                    <Shirt className="w-5 h-5 text-indigo-400" />
-                  </div>
-                  <h4 className="text-sm font-black text-white mt-2">Custom Scholar Hoodie</h4>
-                  <p className="text-[11px] text-slate-300 mt-1 leading-snug">
-                    320 GSM premium heavyweight fleece custom embroidered with your official school crest and scholar title.
-                  </p>
-                </div>
-                <div className="mt-3 pt-2 border-t border-slate-700/40 flex items-center justify-between text-[10px] font-mono text-slate-300">
-                  <span>Prize Value</span>
-                  <span className="font-bold"><NairaText amount={35000} /></span>
-                </div>
-              </div>
-
-              {/* 3rd Prize */}
-              <div className="bg-gradient-to-b from-amber-900/30 to-slate-950/90 border border-amber-800/60 rounded-2xl p-3.5 flex flex-col justify-between">
-                <div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-black uppercase tracking-wider text-amber-400 bg-amber-950 px-2 py-0.5 rounded-full border border-amber-800">
-                      3rd Prize 🥉
-                    </span>
-                    <div className="flex items-center gap-1 text-amber-400">
-                      <Backpack className="w-4 h-4" />
-                      <Calculator className="w-4 h-4" />
+              {championshipPrizes.map((prize) => (
+                <div
+                  key={prize.rank}
+                  className="bg-gradient-to-b from-amber-500/15 via-slate-900/80 to-slate-950 border border-amber-500/40 rounded-2xl p-3.5 flex flex-col justify-between"
+                >
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-black uppercase tracking-wider text-amber-300 bg-amber-950 px-2 py-0.5 rounded-full border border-amber-700">
+                        {prize.badge}
+                      </span>
+                      {prize.rank === 1 && <Smartphone className="w-5 h-5 text-amber-400" />}
+                      {prize.rank === 2 && <Shirt className="w-5 h-5 text-indigo-400" />}
+                      {prize.rank === 3 && (
+                        <div className="flex items-center gap-1 text-amber-400">
+                          <Backpack className="w-4 h-4" />
+                          <Calculator className="w-4 h-4" />
+                        </div>
+                      )}
                     </div>
+                    <h4 className="text-sm font-black text-white mt-2">{prize.title}</h4>
+                    <p className="text-[11px] text-slate-300 mt-1 leading-snug">
+                      {prize.subtitle}
+                    </p>
                   </div>
-                  <h4 className="text-sm font-black text-white mt-2">School Bag & Calculator</h4>
-                  <p className="text-[11px] text-slate-300 mt-1 leading-snug">
-                    Durable Oxford waterproof student backpack plus official Casio FX-991EX approved scientific calculator.
-                  </p>
+                  <div className="mt-3 pt-2 border-t border-amber-500/20 flex items-center justify-between text-[10px] font-mono text-amber-400">
+                    <span>Prize Value</span>
+                    <span className="font-bold"><NairaText amount={prize.valueNaira} /></span>
+                  </div>
                 </div>
-                <div className="mt-3 pt-2 border-t border-amber-800/30 flex items-center justify-between text-[10px] font-mono text-amber-300">
-                  <span>Prize Value</span>
-                  <span className="font-bold"><NairaText amount={30000} /></span>
-                </div>
-              </div>
+              ))}
             </div>
 
             {/* Registration Banner & Escrow Fee */}
@@ -365,7 +364,7 @@ export const CompetitionsHub: React.FC = () => {
                   </span>
                   <div className="flex items-baseline gap-2 mt-0.5">
                     <span className="text-xl font-black text-white">
-                      <NairaText amount={TERMLY_REGISTRATION_FEE_NAIRA} />
+                      <NairaText amount={registrationFee} />
                     </span>
                     <span className="text-xs text-slate-400">
                       (One-Time Entry for All 3 Days · Parent Escrow Wallet)
@@ -384,14 +383,14 @@ export const CompetitionsHub: React.FC = () => {
               {!regStatus ? (
                 <div className="space-y-2 pt-1">
                   <p className="text-xs text-slate-300 leading-relaxed">
-                    Parents authorize the <NairaText amount={10000} /> registration fee securely from their escrow wallet. Once approved, all 3 competition papers are unlocked in progressive order.
+                    Parents authorize the <NairaText amount={registrationFee} /> registration fee securely from their escrow wallet. Once approved, all 3 competition papers are unlocked in progressive order.
                   </p>
                   <button
                     onClick={requestChampionshipEntry}
                     className="w-full py-3 px-4 bg-gradient-to-r from-amber-600 via-amber-500 to-amber-600 hover:from-amber-500 hover:to-amber-400 text-white font-bold text-xs rounded-xl shadow-lg shadow-amber-950/50 flex items-center justify-center gap-2 cursor-pointer transition-all"
                   >
                     <Trophy className="w-4 h-4 fill-white" />
-                    <span>Request Parent Approval for 3-Day Championship (<NairaText amount={10000} />)</span>
+                    <span>Request Parent Approval for 3-Day Championship (<NairaText amount={registrationFee} />)</span>
                   </button>
                 </div>
               ) : regStatus === 'pending_parent' ? (
@@ -401,7 +400,7 @@ export const CompetitionsHub: React.FC = () => {
                     <span>Awaiting Parent Escrow Approval</span>
                   </div>
                   <p className="text-xs text-slate-300 leading-relaxed">
-                    Your request was recorded! Your guardian needs to log into the <strong>Parent Portal</strong> and authorize the <NairaText amount={10000} /> escrow payment.
+                    Your request was recorded! Your guardian needs to log into the <strong>Parent Portal</strong> and authorize the <NairaText amount={registrationFee} /> escrow payment.
                   </p>
                   <div className="flex items-center gap-2 pt-1">
                     <button
@@ -750,14 +749,14 @@ export const CompetitionsHub: React.FC = () => {
               <div>
                 <h3 className="text-base font-bold text-white flex items-center gap-2">
                   <School className="w-5 h-5 text-indigo-400" />
-                  <span>Term 2 National Inter-School Championship</span>
+                  <span>{leagueConfig.seasonTitle || 'Term 2 National Inter-School Championship'}</span>
                 </h3>
                 <p className="text-xs text-slate-300 mt-1 leading-relaxed">
                   Secondary schools across Nigeria battle for the prestigious Termly Gold Cup and STEM Lab Grants based on the aggregate XP points and quiz accuracies of their registered students.
                 </p>
               </div>
               <span className="text-[10px] font-mono text-indigo-300 bg-indigo-950 px-2.5 py-1 rounded-full border border-indigo-800 shrink-0 self-start">
-                Term 2 Week 8
+                {leagueConfig.roundLabel || 'Term 2 Week 8'}
               </span>
             </div>
 
@@ -780,7 +779,11 @@ export const CompetitionsHub: React.FC = () => {
                 </div>
                 <div className="bg-slate-900/90 px-3 py-1.5 rounded-xl border border-slate-800">
                   <span className="text-[10px] text-slate-400 block">Aggregate Points</span>
-                  <span className="text-sm font-black text-emerald-400 font-mono">42,850 pts</span>
+                  <span className="text-sm font-black text-emerald-400 font-mono">
+                    {leagueConfig.schools && leagueConfig.schools.length > 0
+                      ? `${leagueConfig.schools[0].points.toLocaleString()} pts`
+                      : '42,850 pts'}
+                  </span>
                 </div>
               </div>
             </div>
@@ -793,9 +796,26 @@ export const CompetitionsHub: React.FC = () => {
               </div>
 
               <div className="space-y-2">
-                {SCHOOL_LEADERBOARD_DATA.map(sch => {
+                {(leagueConfig.schools && leagueConfig.schools.length > 0
+                  ? leagueConfig.schools.map(s => ({
+                      rank: s.rank,
+                      name: s.name,
+                      state: s.state,
+                      points: s.points,
+                      studentCount: s.studentCount,
+                      accuracy: 88,
+                    }))
+                  : SCHOOL_LEADERBOARD_DATA.map(s => ({
+                      rank: s.rank,
+                      name: s.schoolName,
+                      state: s.state,
+                      points: s.totalPoints,
+                      studentCount: s.studentCount,
+                      accuracy: s.averageAccuracy,
+                    }))
+                ).map(sch => {
                   const isUserSchool =
-                    sch.schoolName.toLowerCase().includes(studentSchool.toLowerCase()) ||
+                    sch.name.toLowerCase().includes(studentSchool.toLowerCase()) ||
                     (studentSchool === 'Secondary School' && sch.rank === 1);
 
                   return (
@@ -826,7 +846,7 @@ export const CompetitionsHub: React.FC = () => {
 
                         <div>
                           <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="font-bold text-white text-xs">{sch.schoolName}</span>
+                            <span className="font-bold text-white text-xs">{sch.name}</span>
                             {isUserSchool && (
                               <span className="text-[9px] font-bold text-indigo-300 bg-indigo-950 px-1.5 rounded border border-indigo-700">
                                 Your School
@@ -839,14 +859,14 @@ export const CompetitionsHub: React.FC = () => {
                             )}
                           </div>
                           <p className="text-[10px] text-slate-400 mt-0.5">
-                            {sch.state} State · {sch.studentCount} Contributing Scholars · {sch.averageAccuracy}% Avg Accuracy
+                            {sch.state} State · {sch.studentCount} Contributing Scholars · {sch.accuracy}% Avg Accuracy
                           </p>
                         </div>
                       </div>
 
                       <div className="text-right font-mono shrink-0 ml-2">
                         <span className="font-bold text-emerald-400 text-sm block">
-                          {sch.totalPoints.toLocaleString()}
+                          {sch.points.toLocaleString()}
                         </span>
                         <span className="text-[10px] text-slate-400">Total Points</span>
                       </div>
@@ -878,7 +898,9 @@ export const CompetitionsHub: React.FC = () => {
               </div>
               <div className="flex justify-between items-center text-slate-300">
                 <span>Inter-Class Grand Reward:</span>
-                <span className="text-emerald-400 font-semibold">Gold Cup Trophy & ₦500,000 School STEM Lab Grant</span>
+                <span className="text-emerald-400 font-semibold">
+                  {leagueConfig.grandAwardDescription || 'Gold Cup Trophy & ₦500,000 School STEM Lab Grant'}
+                </span>
               </div>
             </div>
           </div>
@@ -893,40 +915,49 @@ export const CompetitionsHub: React.FC = () => {
           <div className="bg-gradient-to-br from-amber-950/80 via-slate-900 to-slate-900 border border-amber-600/60 rounded-3xl p-4 shadow-md space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 bg-amber-950 px-2 py-0.5 rounded border border-amber-800">
-                Week 8 National Challenge
+                {weeklyConfig.weekLabel || 'Week 8 National Challenge'}
               </span>
               <div className="flex items-center gap-1 text-xs text-amber-300 font-mono">
                 <Timer className="w-3.5 h-3.5" />
-                <span>Closes in 2d 14h 20m</span>
+                <span>{weeklyConfig.countdownLabel || 'Closes in 2d 14h 20m'}</span>
               </div>
             </div>
 
             <div>
               <h3 className="text-base font-bold text-white leading-tight">
-                All-Nigeria Secondary School Speed Championship
+                {weeklyConfig.title || 'All-Nigeria Secondary School Speed Championship'}
               </h3>
               <p className="text-xs text-slate-300 mt-1 leading-relaxed">
-                10-question timed speed drill covering General Mathematics, English Concord & Natural Sciences. Top 3 students win airtime credited immediately to registered parent line!
+                {weeklyConfig.description || '10-question timed speed drill covering General Mathematics, English Concord & Natural Sciences. Top 3 students win airtime credited immediately to registered parent line!'}
               </p>
             </div>
 
             <div className="bg-slate-950/80 rounded-2xl p-3 border border-amber-800/40 space-y-1.5">
               <span className="text-[11px] font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
                 <Gift className="w-3.5 h-3.5" />
-                <span>Weekly Prize Pool: <NairaText amount={50000} /> Airtime + Swag</span>
+                <span>Weekly Prize Pool: <NairaText amount={weeklyConfig.totalPrizePoolNaira || 50000} /> Airtime + Swag</span>
               </span>
               <div className="grid grid-cols-3 gap-2 text-center text-xs">
                 <div className="bg-slate-900/80 p-2 rounded-xl border border-slate-800">
                   <span className="text-amber-400 font-bold block text-xs">🥇 1st Place</span>
-                  <span className="text-[11px] text-white"><NairaText amount={30000} /> + Hoodie</span>
+                  <span className="text-[11px] text-white">
+                    <NairaText amount={weeklyConfig.firstPrize?.valueNaira || 30000} />
+                    {weeklyConfig.firstPrize?.extra ? ` + ${weeklyConfig.firstPrize.extra}` : ' + Hoodie'}
+                  </span>
                 </div>
                 <div className="bg-slate-900/80 p-2 rounded-xl border border-slate-800">
                   <span className="text-slate-300 font-bold block text-xs">🥈 2nd Place</span>
-                  <span className="text-[11px] text-white"><NairaText amount={15000} /> Airtime</span>
+                  <span className="text-[11px] text-white">
+                    <NairaText amount={weeklyConfig.secondPrize?.valueNaira || 15000} />
+                    {weeklyConfig.secondPrize?.extra ? ` + ${weeklyConfig.secondPrize.extra}` : ' Airtime'}
+                  </span>
                 </div>
                 <div className="bg-slate-900/80 p-2 rounded-xl border border-slate-800">
                   <span className="text-amber-600 font-bold block text-xs">🥉 3rd Place</span>
-                  <span className="text-[11px] text-white"><NairaText amount={5000} /> Airtime</span>
+                  <span className="text-[11px] text-white">
+                    <NairaText amount={weeklyConfig.thirdPrize?.valueNaira || 5000} />
+                    {weeklyConfig.thirdPrize?.extra ? ` + ${weeklyConfig.thirdPrize.extra}` : ' Airtime'}
+                  </span>
                 </div>
               </div>
             </div>
@@ -960,7 +991,7 @@ export const CompetitionsHub: React.FC = () => {
               className="w-full py-3 px-4 bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-white text-xs font-bold rounded-2xl transition-all shadow-lg shadow-amber-950/60 flex items-center justify-center gap-2 cursor-pointer"
             >
               <Play className="w-4 h-4 fill-white" />
-              <span>Take Week 8 Competition Quiz Now (+700 XP)</span>
+              <span>Take {weeklyConfig.weekLabel || 'Week 8'} Competition Quiz Now (+700 XP)</span>
             </button>
           </div>
         </div>
@@ -1034,7 +1065,7 @@ export const CompetitionsHub: React.FC = () => {
             </div>
 
             <div className="space-y-3">
-              {TERMLY_CHAMPIONSHIP_PRIZES.map(prize => (
+              {championshipPrizes.map(prize => (
                 <div
                   key={prize.rank}
                   className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-2 relative"

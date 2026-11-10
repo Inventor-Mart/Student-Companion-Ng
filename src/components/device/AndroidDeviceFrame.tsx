@@ -2,11 +2,10 @@ import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Wifi, WifiOff, BatteryCharging, Signal, SlidersHorizontal } from 'lucide-react';
 import { InAppControlsDrawer } from './InAppControlsDrawer';
-import { DeveloperQuickBar } from '../admin/DeveloperQuickBar';
 import { HeaderClassSwitcher } from '../student/HeaderClassSwitcher';
 
 export const AndroidDeviceFrame: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { isDeviceFrame, isOffline, currentRole, isSuperAdmin, switchRole } = useApp();
+  const { isDeviceFrame, isOffline, currentRole, isSuperAdmin } = useApp();
   const [isControlsOpen, setIsControlsOpen] = useState(false);
 
   const roleLabelMap: Record<string, string> = {

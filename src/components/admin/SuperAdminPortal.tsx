@@ -27,9 +27,11 @@ import {
   MessageSquare,
   AlertTriangle,
   Trash2,
-  ShieldAlert
+  ShieldAlert,
+  Radio
 } from 'lucide-react';
 import { SchoolAdminPortal } from './SchoolAdminPortal';
+import { OTACompetitionManager } from './OTACompetitionManager';
 import { NairaText, NairaSign } from '../../utils/currency';
 import { ForumReport, ForumMessage } from '../../types';
 import {
@@ -49,7 +51,7 @@ export const SuperAdminPortal: React.FC = () => {
     currentRole
   } = useApp();
 
-  const [portalView, setPortalView] = useState<'directory' | 'school_admin' | 'forum_moderation'>('directory');
+  const [portalView, setPortalView] = useState<'directory' | 'school_admin' | 'forum_moderation' | 'ota_competitions'>('directory');
   const [roleFilter, setRoleFilter] = useState<'all' | UserRole>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedUserForEdit, setSelectedUserForEdit] = useState<RegisteredUserProfile | null>(null);
@@ -337,6 +339,27 @@ export const SuperAdminPortal: React.FC = () => {
     );
   }
 
+  if (portalView === 'ota_competitions') {
+    return (
+      <div className="flex-1 w-full flex flex-col overflow-y-auto px-3 sm:px-6 py-4 space-y-4 touch-pan-y text-slate-100 pb-16">
+        <div className="bg-[#0B1526] px-4 py-3 rounded-2xl border border-slate-800 flex items-center justify-between text-xs">
+          <div className="flex items-center gap-2">
+            <Radio className="w-4 h-4 text-[#84E000]" />
+            <span className="font-bold text-white text-sm">Over-The-Air (OTA) & Competition Arena Studio</span>
+          </div>
+          <button
+            onClick={() => setPortalView('directory')}
+            className="text-amber-400 hover:text-amber-300 font-bold flex items-center gap-1 cursor-pointer bg-slate-900 px-3 py-1.5 rounded-xl border border-slate-700"
+          >
+            &larr; Return to Super Admin User Directory
+          </button>
+        </div>
+
+        <OTACompetitionManager />
+      </div>
+    );
+  }
+
   if (portalView === 'school_admin') {
     return (
       <div className="flex-1 w-full flex flex-col overflow-hidden">
@@ -389,7 +412,16 @@ export const SuperAdminPortal: React.FC = () => {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => setPortalView('ota_competitions')}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-600/60 text-[#84E000] text-xs font-bold transition-all cursor-pointer shadow-sm"
+              title="Manage Live Tickers, Pop-Up Announcements & Competition Arena"
+            >
+              <Radio className="w-3.5 h-3.5 text-[#84E000]" />
+              <span>OTA & Competitions</span>
+            </button>
+
             <button
               onClick={() => setPortalView('forum_moderation')}
               className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-950/70 hover:bg-amber-900 border border-amber-700/60 text-amber-300 text-xs font-bold transition-all cursor-pointer shadow-sm relative"

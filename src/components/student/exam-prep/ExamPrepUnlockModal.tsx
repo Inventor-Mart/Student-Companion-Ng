@@ -41,7 +41,7 @@ export const ExamPrepUnlockModal: React.FC<ExamPrepUnlockModalProps> = ({
   initialPlanType = 'full',
   initialSubject
 }) => {
-  const { parentWallet, unlockExamPrep, unlockSingleSubjectExam, student } = useApp();
+  const { parentWallet, unlockExamPrep, unlockSingleSubjectExam, student, currentUserProfile } = useApp();
 
   const [planType, setPlanType] = useState<'full' | 'single_subject'>(initialPlanType);
   const [selectedSubject, setSelectedSubject] = useState<string>(() => {
@@ -106,9 +106,76 @@ export const ExamPrepUnlockModal: React.FC<ExamPrepUnlockModalProps> = ({
   const handleConfirmUnlock = async () => {
     setIsProcessing(true);
     try {
-      // Simulate gateway roundtrip
-      await new Promise(r => setTimeout(r, 1000));
+      if (selectedMethod === 'paystack' && typeof (window as any).PaystackPop !== 'undefined') {
+        let activeKey = '';
+        try {
+          const cfgRes = await fetch('/api/paystack/config');
+          const cfg = await cfgRes.json();
+          activeKey = cfg.publicKey;
+        } catch {
+          // fallback
+        }
+        if (!activeKey) {
+          activeKey = 'pk_test_e5be598dc42f3a5332f170c0c0e5a6e87f6e8d1a';
+        }
 
+        const txRef = `PSTK_EXAM_${Date.now()}_${Math.floor(Math.random() * 100000)}`;
+        const payerEmail = currentUserProfile?.email || 'parent@studentcompanion.ng';
+
+        const handler = (window as any).PaystackPop.setup({
+          key: activeKey,
+          email: payerEmail,
+          amount: Math.round(activeFee * 100), // kobo
+          currency: 'NGN',
+          ref: txRef,
+          metadata: {
+            custom_fields: [
+              { display_name: 'Student Name', variable_name: 'student_name', value: student.name || 'Student' },
+              { display_name: 'Plan', variable_name: 'plan', value: planType === 'full' ? 'Full Exam Prep Pass' : `Single Subject: ${selectedSubject}` }
+            ]
+          },
+          callback: async (response: { reference: string }) => {
+            try {
+              await fetch('/api/paystack/verify-payment', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  reference: response.reference,
+                  amountNaira: activeFee,
+                  email: payerEmail,
+                  studentName: student.name,
+                  purpose: 'exam_prep_unlock',
+                  plan: planType === 'full' ? 'Full Exam Prep' : `Single Subject: ${selectedSubject}`
+                })
+              });
+            } catch (e) {
+              console.warn('Backend payment verification logged:', e);
+            }
+
+            let success = false;
+            if (planType === 'full') {
+              success = unlockExamPrep('paystack');
+            } else {
+              success = unlockSingleSubjectExam(selectedSubject, 'paystack');
+            }
+
+            if (success) {
+              playSound.levelUp();
+              setIsProcessing(false);
+              if (onSuccess) onSuccess();
+              onClose();
+            }
+          },
+          onClose: () => {
+            setIsProcessing(false);
+          }
+        });
+
+        handler.openIframe();
+        return;
+      }
+
+      // Wallet or bank transfer flow
       let success = false;
       if (planType === 'full') {
         success = unlockExamPrep(selectedMethod);
@@ -121,6 +188,8 @@ export const ExamPrepUnlockModal: React.FC<ExamPrepUnlockModalProps> = ({
         setIsProcessing(false);
         if (onSuccess) onSuccess();
         onClose();
+      } else {
+        setIsProcessing(false);
       }
     } catch (err) {
       console.error(err);

@@ -23,6 +23,9 @@ import {
   VerifiedAddress,
   TutorVerificationDetails,
   RegisteredUserProfile,
+  RegisteredTutorData,
+  GrowthPartner,
+  TimetableSlot,
   ChampionshipRegistration,
   ChampionshipTier,
   VirtualClassroomSession,
@@ -85,6 +88,7 @@ interface AppContextType {
   tutorVerification: TutorVerificationDetails | null;
   saveTutorVerification: (data: TutorVerificationDetails) => void;
   registerNewUser: (role: UserRole, profileData: any) => void;
+  updateTutorProfile: (tutorData: Partial<RegisteredTutorData>) => void;
   signOutApp: () => void;
   deleteAccount: (userId?: string) => Promise<void>;
 
@@ -1696,12 +1700,108 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setParentWallet(freshWallet);
       safeSetItem('sc_wallet', JSON.stringify(freshWallet));
     } else if (role === 'tutor') {
+      const defaultSlots: TimetableSlot[] = [
+        { id: `slot-${newId}-1`, day: 'Monday', time: '10:00 AM - 12:00 PM', period: 'Morning', isAvailable: true },
+        { id: `slot-${newId}-2`, day: 'Monday', time: '04:00 PM - 06:00 PM', period: 'Afternoon', isAvailable: true },
+        { id: `slot-${newId}-3`, day: 'Wednesday', time: '04:00 PM - 06:00 PM', period: 'Afternoon', isAvailable: true },
+        { id: `slot-${newId}-4`, day: 'Friday', time: '04:00 PM - 06:00 PM', period: 'Afternoon', isAvailable: true },
+        { id: `slot-${newId}-5`, day: 'Saturday', time: '10:00 AM - 12:00 PM', period: 'Morning', isAvailable: true },
+        { id: `slot-${newId}-6`, day: 'Saturday', time: '02:00 PM - 04:00 PM', period: 'Afternoon', isAvailable: true }
+      ];
+
       newProfile.tutorData = {
-        subjectSpecialization: profileData.subjectSpecialization || 'General Subjects',
-        qualification: profileData.qualification || '',
-        hourlyRate: Number(profileData.hourlyRate) || 3000,
-        teachingMode: profileData.teachingMode || 'both'
+        subjectSpecialization: profileData.subjectSpecialization || profileData.subjects?.[0] || 'General Mathematics',
+        qualification: profileData.qualification || profileData.highestEducation || 'B.Sc. (First Class Honours)',
+        hourlyRate: Number(profileData.hourlyRate) || Number(profileData.hourlyRateNaira) || 3500,
+        teachingMode: profileData.teachingMode || 'both',
+        phone: profileData.phone || '',
+        gender: profileData.gender || 'Prefer not to say',
+        highestEducation: profileData.highestEducation || 'B.Sc.',
+        institution: profileData.institution || 'University of Lagos',
+        courseOfStudy: profileData.courseOfStudy || 'Education & Science',
+        experienceYearsRange: profileData.experienceYearsRange || '3-5 years',
+        targetClasses: profileData.targetClasses || ['JSS 3', 'SS 3', 'WAEC/NECO Prep', 'JAMB Prep'],
+        proficientSubjects: profileData.proficientSubjects || profileData.subjects || ['Mathematics', 'Physics'],
+        bio: profileData.bio || 'Dedicated Nigerian educator specializing in WAEC distinctions, JAMB speed drills, and student-centered conceptual learning.',
+        tagline: profileData.tagline || `${profileData.subjectSpecialization || 'WAEC & JAMB'} Specialist Educator`,
+        city: profileData.city || 'Ikeja',
+        state: profileData.state || 'Lagos',
+        nin: profileData.nin || '',
+        idDocumentUrl: profileData.idDocumentUrl || '',
+        cvResumeUrl: profileData.cvResumeUrl || '',
+        guarantors: profileData.guarantors || [
+          { name: 'Dr. Joseph Adeleke', phone: '+234 803 111 2233', relationship: 'Former Principal' },
+          { name: 'Mrs. Folake Bello', phone: '+234 802 444 5566', relationship: 'Head of Department' }
+        ],
+        digitalReadiness: profileData.digitalReadiness || {
+          hasDevice: true,
+          hasInternet: true,
+          comfortableWithTools: true
+        },
+        degrees: profileData.degrees || [
+          `${profileData.highestEducation || 'B.Sc.'} ${profileData.courseOfStudy || 'Education'}, ${profileData.institution || 'University of Lagos'}`
+        ],
+        certifications: profileData.certifications || [
+          'TRCN Certified Secondary Educator (Teachers Registration Council of Nigeria)',
+          'National Educational Excellence Mentor'
+        ],
+        examSpecializations: profileData.examSpecializations || [
+          'WAEC / WASSCE Grade Distinction Prep',
+          'JAMB UTME High-Yield Speed Drills',
+          'Junior Secondary BECE Certificate Exams'
+        ],
+        curriculumHighlights: profileData.curriculumHighlights || [
+          'Step-by-step digital whiteboard problem solving',
+          'Weekly past question mock diagnostics',
+          'Paced exam time management techniques'
+        ],
+        timetable: profileData.timetable || defaultSlots,
+        onboardingStage: profileData.onboardingStage || 3
       };
+
+      if (profileData.nin) {
+        setTutorVerification({
+          nin: profileData.nin,
+          bankName: 'Guaranty Trust Bank (GTBank)',
+          accountNumber: '0123456789',
+          accountName: fullName,
+          isVerified: true
+        });
+      }
+    } else if (role === 'growth_partner') {
+      const generatedCode = profileData.referralCode || `GROW${Math.floor(10 + Math.random() * 90)}`;
+      const partnerObj: GrowthPartner = {
+        id: newId,
+        name: fullName,
+        email,
+        phone: profileData.phone || '',
+        referralCode: generatedCode,
+        commissionRatePercent: 10,
+        totalEarningsNaira: 0,
+        totalPaidOutNaira: 0,
+        activeReferralsCount: 0,
+        bankName: profileData.bankName || 'Guaranty Trust Bank (GTBank)',
+        accountNumber: profileData.accountNumber || '',
+        accountName: profileData.accountName || fullName,
+        status: 'active',
+        createdAt: new Date().toISOString()
+      };
+      newProfile.growthPartnerData = partnerObj;
+
+      // Sync with server Firestore partner endpoint asynchronously
+      fetch('/api/partners/onboard', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: fullName,
+          email,
+          phone: profileData.phone || '',
+          bankName: profileData.bankName || 'Guaranty Trust Bank (GTBank)',
+          accountNumber: profileData.accountNumber || '',
+          accountName: profileData.accountName || fullName,
+          referralCode: generatedCode
+        })
+      }).catch(err => console.warn('Could not sync partner with server:', err));
     } else if (role === 'admin') {
       newProfile.adminData = {
         schoolName: profileData.schoolName || 'Secondary School',
@@ -1713,6 +1813,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     safeSetItem('sc_user_profile', JSON.stringify(newProfile));
     setTargetSignUpRole(null);
     setCurrentScreen('app');
+  };
+
+  const updateTutorProfile = (updatedTutorData: Partial<RegisteredTutorData>) => {
+    if (!currentUserProfile || currentUserProfile.role !== 'tutor') return;
+    const currentTutor = currentUserProfile.tutorData || {
+      subjectSpecialization: 'General Subjects',
+      qualification: 'B.Sc.',
+      hourlyRate: 3500,
+      teachingMode: 'both'
+    };
+    const merged: RegisteredUserProfile = {
+      ...currentUserProfile,
+      avatarUrl: updatedTutorData.idDocumentUrl || currentUserProfile.avatarUrl,
+      tutorData: {
+        ...currentTutor,
+        ...updatedTutorData
+      }
+    };
+    setCurrentUserProfile(merged);
+    safeSetItem('sc_user_profile', JSON.stringify(merged));
   };
 
   const deleteAccount = async (userId?: string) => {
@@ -1833,6 +1953,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         tutorVerification,
         saveTutorVerification,
         registerNewUser,
+        updateTutorProfile,
         signOutApp,
         deleteAccount,
         currentUser,

@@ -24,6 +24,7 @@ import {
   TrendingUp
 } from 'lucide-react';
 import { NairaSign } from '../../utils/currency';
+import { DeviceImageUploader } from '../admin/DeviceImageUploader';
 
 interface SignUpPageProps {
   onBackToSignIn: () => void;
@@ -91,15 +92,51 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
   const [wardName, setWardName] = useState('');
   const [pin, setPin] = useState('');
 
-  // Tutor Fields
-  const [subjectSpecialization, setSubjectSpecialization] = useState('');
-  const [qualification, setQualification] = useState('');
-  const [hourlyRate, setHourlyRate] = useState('');
+  // Progressive Tutor Fields (Google Form Sections 1 to 5)
+  const [tutorStage, setTutorStage] = useState<1 | 2 | 3>(1);
+  const [middleName, setMiddleName] = useState('');
+  const [tutorGender, setTutorGender] = useState<'Male' | 'Female' | 'Prefer not to say'>('Male');
+  const [tutorCity, setTutorCity] = useState('');
+  const [tutorState, setTutorState] = useState('Lagos');
+
+  // Stage 2: Qualifications & Preferences
+  const [highestEducation, setHighestEducation] = useState<'NCE' | 'B.Sc.' | 'B.Ed.' | 'M.Sc.' | 'Ph.D.' | 'Other'>('B.Sc.');
+  const [institution, setInstitution] = useState('');
+  const [courseOfStudy, setCourseOfStudy] = useState('');
+  const [experienceYearsRange, setExperienceYearsRange] = useState<'0-1 years' | '1-3 years' | '3-5 years' | '5+ years'>('1-3 years');
+  const [targetClasses, setTargetClasses] = useState<string[]>(['SS 3', 'WAEC/NECO Prep', 'JAMB Prep']);
+  const [proficientSubjects, setProficientSubjects] = useState<string[]>(['Mathematics']);
+  const [hourlyRate, setHourlyRate] = useState('3500');
   const [teachingMode, setTeachingMode] = useState<'both' | 'online' | 'physical'>('both');
+  const [tutorBio, setTutorBio] = useState('');
+
+  // Digital Readiness
+  const [hasDevice, setHasDevice] = useState<boolean>(true);
+  const [hasInternet, setHasInternet] = useState<boolean>(true);
+  const [comfortableWithTools, setComfortableWithTools] = useState<boolean>(true);
+
+  // Stage 3: Mandatory Safety & KYC
+  const [tutorNin, setTutorNin] = useState('');
+  const [headshotUrl, setHeadshotUrl] = useState('');
+  const [idDocumentUrl, setIdDocumentUrl] = useState('');
+  const [cvResumeUrl, setCvResumeUrl] = useState('');
+  const [referee1Name, setReferee1Name] = useState('');
+  const [referee1Phone, setReferee1Phone] = useState('');
+  const [referee1Rel, setReferee1Rel] = useState('');
+  const [referee2Name, setReferee2Name] = useState('');
+  const [referee2Phone, setReferee2Phone] = useState('');
+  const [referee2Rel, setReferee2Rel] = useState('');
 
   // Admin Fields
   const [adminSchoolName, setAdminSchoolName] = useState('');
   const [schoolType, setSchoolType] = useState('Private College');
+
+  // Growth Partner Fields (Live Application & Settlement)
+  const [partnerBankName, setPartnerBankName] = useState('Guaranty Trust Bank (GTBank)');
+  const [partnerAccountNumber, setPartnerAccountNumber] = useState('');
+  const [partnerAccountName, setPartnerAccountName] = useState('');
+  const [partnerRegion, setPartnerRegion] = useState('Lagos State');
+  const [partnerReferralCode, setPartnerReferralCode] = useState(() => `GROW${Math.floor(10 + Math.random() * 90)}`);
 
   const roleCards: {
     role: UserRole;
@@ -273,16 +310,46 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
         pin: pin.trim() || '1234'
       });
     } else if (selectedRole === 'tutor') {
+      const fullLegalName = middleName.trim()
+        ? `${trimmedFirst} ${middleName.trim()} ${trimmedLast}`
+        : computedFullName;
+
       registerNewUser('tutor', {
-        name: computedFullName,
+        name: fullLegalName,
         firstName: trimmedFirst,
+        middleName: middleName.trim(),
         lastName: trimmedLast,
         email: email.trim(),
         phone: phone.trim(),
-        subjects: [subjectSpecialization],
-        qualification: qualification.trim(),
+        gender: tutorGender,
+        city: tutorCity.trim() || 'Lagos',
+        state: tutorState,
+        highestEducation,
+        institution: institution.trim() || 'University of Lagos',
+        courseOfStudy: courseOfStudy.trim() || 'Education & Science',
+        experienceYearsRange,
+        targetClasses,
+        subjects: proficientSubjects.length > 0 ? proficientSubjects : ['Mathematics'],
+        proficientSubjects,
         hourlyRateNaira: parseInt(hourlyRate) || 3500,
-        teachingMode
+        hourlyRate: parseInt(hourlyRate) || 3500,
+        teachingMode,
+        bio: tutorBio.trim() || `${proficientSubjects.join(' & ')} educator with ${experienceYearsRange} experience.`,
+        tagline: `${proficientSubjects.slice(0, 2).join(' & ')} Specialist (${experienceYearsRange})`,
+        digitalReadiness: {
+          hasDevice,
+          hasInternet,
+          comfortableWithTools
+        },
+        nin: tutorNin.trim(),
+        idDocumentUrl,
+        cvResumeUrl,
+        avatarUrl: headshotUrl,
+        guarantors: [
+          ...(referee1Name.trim() ? [{ name: referee1Name.trim(), phone: referee1Phone.trim(), relationship: referee1Rel.trim() || 'Colleague' }] : []),
+          ...(referee2Name.trim() ? [{ name: referee2Name.trim(), phone: referee2Phone.trim(), relationship: referee2Rel.trim() || 'Referee' }] : [])
+        ],
+        onboardingStage: tutorStage
       });
     } else if (selectedRole === 'growth_partner') {
       registerNewUser('growth_partner', {
@@ -290,7 +357,12 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
         firstName: trimmedFirst,
         lastName: trimmedLast,
         email: email.trim(),
-        phone: phone.trim()
+        phone: phone.trim(),
+        bankName: partnerBankName,
+        accountNumber: partnerAccountNumber.trim(),
+        accountName: partnerAccountName.trim() || computedFullName,
+        region: partnerRegion,
+        referralCode: partnerReferralCode
       });
     } else {
       registerNewUser('admin', {
@@ -708,71 +780,512 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
                 </div>
               )}
 
-              {/* TUTOR SPECIFIC FIELDS */}
+              {/* TUTOR SPECIFIC FIELDS: 3-STAGE PROGRESSIVE ONBOARDING (GOOGLE FORM SECTIONS 1 TO 5) */}
               {selectedRole === 'tutor' && (
-                <div className="space-y-3 pt-3 border-t border-[#1E304F]">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block px-1">
-                    Teaching & Rate Details
-                  </span>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-4 pt-3 border-t border-[#1E304F]">
+                  {/* Progressive Stage Stepper Header */}
+                  <div className="bg-[#081220] rounded-2xl p-3 border border-[#1E304F] flex items-center justify-between">
                     <div>
-                      <label className="text-xs font-semibold text-slate-300 block mb-1">Specialization</label>
-                      <input
-                        type="text"
-                        required
-                        value={subjectSpecialization}
-                        onChange={(e) => setSubjectSpecialization(e.target.value)}
-                        placeholder="e.g. Mathematics & Further Maths"
-                        className="w-full bg-[#081220] border border-[#1E304F] focus:border-sky-400 rounded-xl py-2.5 px-3 text-xs text-white placeholder-slate-500 focus:outline-none transition-colors"
-                      />
+                      <span className="text-[10px] font-bold text-sky-400 uppercase tracking-wider block">
+                        Tutor Onboarding · Stage {tutorStage} of 3
+                      </span>
+                      <span className="text-xs font-bold text-white">
+                        {tutorStage === 1
+                          ? 'Section 1: Personal & Residential Details'
+                          : tutorStage === 2
+                          ? 'Section 2 & 3: Qualifications & Teaching Profile'
+                          : 'Section 4 & 5: Trust, KYC & Digital Readiness'}
+                      </span>
                     </div>
 
-                    <div>
-                      <label className="text-xs font-semibold text-slate-300 block mb-1">Qualification</label>
-                      <input
-                        type="text"
-                        required
-                        value={qualification}
-                        onChange={(e) => setQualification(e.target.value)}
-                        placeholder="e.g. B.Sc (Hons), TRCN Certified"
-                        className="w-full bg-[#081220] border border-[#1E304F] focus:border-sky-400 rounded-xl py-2.5 px-3 text-xs text-white placeholder-slate-500 focus:outline-none transition-colors"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="text-xs font-semibold text-slate-300 block mb-1">
-                        Hourly Rate (<NairaSign />)
-                      </label>
-                      <input
-                        type="number"
-                        required
-                        value={hourlyRate}
-                        onChange={(e) => setHourlyRate(e.target.value)}
-                        placeholder="3500"
-                        className="w-full bg-[#081220] border border-[#1E304F] focus:border-sky-400 rounded-xl py-2.5 px-3 text-xs text-white placeholder-slate-500 focus:outline-none transition-colors"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="text-xs font-semibold text-slate-300 block mb-1">Teaching Preference</label>
-                      <select
-                        value={teachingMode}
-                        onChange={(e) => setTeachingMode(e.target.value as any)}
-                        className="w-full bg-[#081220] border border-[#1E304F] focus:border-sky-400 rounded-xl py-2.5 px-3 text-xs text-white focus:outline-none transition-colors"
-                      >
-                        <option value="both">Both Online & In-Person Home</option>
-                        <option value="online">Online Virtual Only</option>
-                        <option value="physical">In-Person Home Lessons Only</option>
-                      </select>
+                    <div className="flex items-center gap-1.5">
+                      {[1, 2, 3].map((s) => (
+                        <button
+                          key={s}
+                          type="button"
+                          onClick={() => setTutorStage(s as 1 | 2 | 3)}
+                          className={`w-6 h-6 rounded-lg text-[10px] font-bold flex items-center justify-center transition-all cursor-pointer ${
+                            tutorStage === s
+                              ? 'bg-sky-500 text-slate-950 font-black ring-2 ring-sky-400/50'
+                              : tutorStage > s
+                              ? 'bg-emerald-950 text-emerald-400 border border-emerald-700'
+                              : 'bg-slate-800 text-slate-400'
+                          }`}
+                        >
+                          {tutorStage > s ? '✓' : s}
+                        </button>
+                      ))}
                     </div>
                   </div>
 
-                  <div className="p-2.5 rounded-xl bg-sky-950/30 border border-sky-800/40 text-[11px] text-sky-200">
-                    ℹ️ Note: National Identification Number (NIN) and Bank Account details will be requested only when you list lessons publicly or withdraw earnings.
-                  </div>
+                  {/* ========================================================= */}
+                  {/* STAGE 1: BASIC PERSONAL INFORMATION (GOOGLE FORM SEC 1)  */}
+                  {/* ========================================================= */}
+                  {tutorStage === 1 && (
+                    <div className="space-y-3.5 animate-in fade-in duration-150">
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div>
+                          <label className="text-xs font-semibold text-slate-300 block mb-1">
+                            Middle Name <span className="text-slate-500 font-normal">(Optional)</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={middleName}
+                            onChange={(e) => setMiddleName(e.target.value)}
+                            placeholder="e.g. Chukwuma"
+                            className="w-full bg-[#081220] border border-[#1E304F] focus:border-sky-400 rounded-xl py-2 px-3 text-xs text-white placeholder-slate-500 focus:outline-none"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-xs font-semibold text-slate-300 block mb-1">
+                            WhatsApp / Phone <span className="text-sky-400 font-bold">*</span>
+                          </label>
+                          <input
+                            type="tel"
+                            required
+                            value={phone}
+                            onChange={(e) => setPhone(e.target.value)}
+                            placeholder="+234 803 123 4567"
+                            className="w-full bg-[#081220] border border-[#1E304F] focus:border-sky-400 rounded-xl py-2 px-3 text-xs text-white placeholder-slate-500 focus:outline-none"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-xs font-semibold text-slate-300 block mb-1">Gender</label>
+                          <select
+                            value={tutorGender}
+                            onChange={(e) => setTutorGender(e.target.value as any)}
+                            className="w-full bg-[#081220] border border-[#1E304F] focus:border-sky-400 rounded-xl py-2 px-3 text-xs text-white focus:outline-none"
+                          >
+                            <option value="Male">Male</option>
+                            <option value="Female">Female</option>
+                            <option value="Prefer not to say">Prefer not to say</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-xs font-semibold text-slate-300 block mb-1">
+                            Residential City / District <span className="text-sky-400 font-bold">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            value={tutorCity}
+                            onChange={(e) => setTutorCity(e.target.value)}
+                            placeholder="e.g. Ikeja / Maryland"
+                            className="w-full bg-[#081220] border border-[#1E304F] focus:border-sky-400 rounded-xl py-2 px-3 text-xs text-white placeholder-slate-500 focus:outline-none"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-xs font-semibold text-slate-300 block mb-1">
+                            State of Residence <span className="text-sky-400 font-bold">*</span>
+                          </label>
+                          <select
+                            value={tutorState}
+                            onChange={(e) => setTutorState(e.target.value)}
+                            className="w-full bg-[#081220] border border-[#1E304F] focus:border-sky-400 rounded-xl py-2 px-3 text-xs text-white focus:outline-none"
+                          >
+                            <option value="Lagos">Lagos</option>
+                            <option value="Abuja (FCT)">Abuja (FCT)</option>
+                            <option value="Rivers">Rivers (Port Harcourt)</option>
+                            <option value="Oyo">Oyo (Ibadan)</option>
+                            <option value="Ogun">Ogun</option>
+                            <option value="Enugu">Enugu</option>
+                            <option value="Kaduna">Kaduna</option>
+                            <option value="Edo">Edo (Benin)</option>
+                            <option value="Kano">Kano</option>
+                            <option value="Delta">Delta</option>
+                            <option value="Anambra">Anambra</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div className="flex justify-end pt-2">
+                        <button
+                          type="button"
+                          onClick={() => setTutorStage(2)}
+                          className="py-2 px-4 rounded-xl bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer"
+                        >
+                          <span>Next: Qualifications & Preferences</span>
+                          <ChevronRight className="w-3.5 h-3.5 stroke-[3]" />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ============================================================== */}
+                  {/* STAGE 2: PROFESSIONAL & ACADEMIC QUALIFICATIONS (SEC 2 & 3)    */}
+                  {/* ============================================================== */}
+                  {tutorStage === 2 && (
+                    <div className="space-y-3.5 animate-in fade-in duration-150">
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div>
+                          <label className="text-xs font-semibold text-slate-300 block mb-1">
+                            Highest Level of Education
+                          </label>
+                          <select
+                            value={highestEducation}
+                            onChange={(e) => setHighestEducation(e.target.value as any)}
+                            className="w-full bg-[#081220] border border-[#1E304F] focus:border-sky-400 rounded-xl py-2 px-3 text-xs text-white focus:outline-none"
+                          >
+                            <option value="NCE">NCE (National Certificate in Education)</option>
+                            <option value="B.Sc.">B.Sc. (Bachelor of Science)</option>
+                            <option value="B.Ed.">B.Ed. (Bachelor of Education)</option>
+                            <option value="M.Sc.">M.Sc. (Master of Science)</option>
+                            <option value="Ph.D.">Ph.D. / Doctorate</option>
+                            <option value="Other">Other Higher Degree</option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="text-xs font-semibold text-slate-300 block mb-1">
+                            Institution Attended
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            value={institution}
+                            onChange={(e) => setInstitution(e.target.value)}
+                            placeholder="e.g. University of Lagos (Unilag)"
+                            className="w-full bg-[#081220] border border-[#1E304F] focus:border-sky-400 rounded-xl py-2 px-3 text-xs text-white placeholder-slate-500 focus:outline-none"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-xs font-semibold text-slate-300 block mb-1">
+                            Course of Study / Major
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            value={courseOfStudy}
+                            onChange={(e) => setCourseOfStudy(e.target.value)}
+                            placeholder="e.g. Mathematics / Physics"
+                            className="w-full bg-[#081220] border border-[#1E304F] focus:border-sky-400 rounded-xl py-2 px-3 text-xs text-white placeholder-slate-500 focus:outline-none"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div>
+                          <label className="text-xs font-semibold text-slate-300 block mb-1">
+                            Tutoring Experience
+                          </label>
+                          <select
+                            value={experienceYearsRange}
+                            onChange={(e) => setExperienceYearsRange(e.target.value as any)}
+                            className="w-full bg-[#081220] border border-[#1E304F] focus:border-sky-400 rounded-xl py-2 px-3 text-xs text-white focus:outline-none"
+                          >
+                            <option value="0-1 years">0 - 1 years</option>
+                            <option value="1-3 years">1 - 3 years</option>
+                            <option value="3-5 years">3 - 5 years</option>
+                            <option value="5+ years">5+ years (Master Educator)</option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="text-xs font-semibold text-slate-300 block mb-1">
+                            Hourly Rate (<NairaSign />)
+                          </label>
+                          <select
+                            value={hourlyRate}
+                            onChange={(e) => setHourlyRate(e.target.value)}
+                            className="w-full bg-[#081220] border border-[#1E304F] focus:border-sky-400 rounded-xl py-2 px-3 text-xs text-white focus:outline-none font-mono"
+                          >
+                            <option value="2000">₦2,000 / hr</option>
+                            <option value="3000">₦3,000 / hr</option>
+                            <option value="3500">₦3,500 / hr (Recommended)</option>
+                            <option value="4500">₦4,500 / hr</option>
+                            <option value="5000">₦5,000 / hr</option>
+                            <option value="6000">₦6,000+ / hr (Specialist)</option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="text-xs font-semibold text-slate-300 block mb-1">
+                            Preferred Tutoring Mode
+                          </label>
+                          <select
+                            value={teachingMode}
+                            onChange={(e) => setTeachingMode(e.target.value as any)}
+                            className="w-full bg-[#081220] border border-[#1E304F] focus:border-sky-400 rounded-xl py-2 px-3 text-xs text-white focus:outline-none"
+                          >
+                            <option value="both">Both Online & In-Person Home</option>
+                            <option value="online">Online Virtual Only</option>
+                            <option value="physical">In-Person Home Lessons Only</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* Proficient Subjects Multi-Select */}
+                      <div>
+                        <label className="text-xs font-semibold text-slate-300 block mb-1.5">
+                          Proficient Subjects (Check all that apply)
+                        </label>
+                        <div className="flex flex-wrap gap-1.5">
+                          {[
+                            'Mathematics',
+                            'English Language',
+                            'Basic Science',
+                            'Physics',
+                            'Chemistry',
+                            'Biology',
+                            'Economics',
+                            'Literature-in-English',
+                            'Further Mathematics'
+                          ].map((sub) => {
+                            const isChecked = proficientSubjects.includes(sub);
+                            return (
+                              <button
+                                key={sub}
+                                type="button"
+                                onClick={() => {
+                                  if (isChecked) {
+                                    setProficientSubjects(proficientSubjects.filter((s) => s !== sub));
+                                  } else {
+                                    setProficientSubjects([...proficientSubjects, sub]);
+                                  }
+                                }}
+                                className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
+                                  isChecked
+                                    ? 'bg-sky-500/20 text-sky-300 border border-sky-500/60'
+                                    : 'bg-[#081220] text-slate-400 border border-[#1E304F] hover:text-white'
+                                }`}
+                              >
+                                {isChecked ? '✓ ' : '+ '}
+                                {sub}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Target Classes Multi-Select */}
+                      <div>
+                        <label className="text-xs font-semibold text-slate-300 block mb-1.5">
+                          Target Classes You Teach
+                        </label>
+                        <div className="flex flex-wrap gap-1.5">
+                          {['JSS 1', 'JSS 2', 'JSS 3', 'SS 1', 'SS 2', 'SS 3', 'WAEC/NECO Prep', 'JAMB Prep'].map((lvl) => {
+                            const isChecked = targetClasses.includes(lvl);
+                            return (
+                              <button
+                                key={lvl}
+                                type="button"
+                                onClick={() => {
+                                  if (isChecked) {
+                                    setTargetClasses(targetClasses.filter((c) => c !== lvl));
+                                  } else {
+                                    setTargetClasses([...targetClasses, lvl]);
+                                  }
+                                }}
+                                className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
+                                  isChecked
+                                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/60'
+                                    : 'bg-[#081220] text-slate-400 border border-[#1E304F] hover:text-white'
+                                }`}
+                              >
+                                {isChecked ? '✓ ' : '+ '}
+                                {lvl}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Public Bio */}
+                      <div>
+                        <label className="text-xs font-semibold text-slate-300 block mb-1">
+                          Brief Public Bio / Introduction
+                        </label>
+                        <textarea
+                          rows={2}
+                          value={tutorBio}
+                          onChange={(e) => setTutorBio(e.target.value)}
+                          placeholder="Introduce yourself to parents and students (pedagogy, track record in WAEC/JAMB, teaching style)..."
+                          className="w-full bg-[#081220] border border-[#1E304F] focus:border-sky-400 rounded-xl py-2 px-3 text-xs text-white placeholder-slate-500 focus:outline-none"
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between pt-2">
+                        <button
+                          type="button"
+                          onClick={() => setTutorStage(1)}
+                          className="text-xs text-slate-400 hover:text-white cursor-pointer"
+                        >
+                          ← Back to Personal Info
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setTutorStage(3)}
+                          className="py-2 px-4 rounded-xl bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer"
+                        >
+                          <span>Next: KYC & Digital Readiness</span>
+                          <ChevronRight className="w-3.5 h-3.5 stroke-[3]" />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ========================================================= */}
+                  {/* STAGE 3: MANDATORY SAFETY, KYC & DIGITAL READINESS (4 & 5) */}
+                  {/* ========================================================= */}
+                  {tutorStage === 3 && (
+                    <div className="space-y-4 animate-in fade-in duration-150">
+                      {/* NIN Field */}
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-xs font-semibold text-slate-300">
+                            11-Digit National Identification Number (NIN)
+                          </label>
+                          <span className="text-[10px] text-emerald-400 font-mono">NIMC Encrypted</span>
+                        </div>
+                        <input
+                          type="text"
+                          maxLength={11}
+                          value={tutorNin}
+                          onChange={(e) => setTutorNin(e.target.value.replace(/\D/g, ''))}
+                          placeholder="e.g. 12345678901"
+                          className="w-full bg-[#081220] border border-[#1E304F] focus:border-emerald-500 rounded-xl py-2 px-3 text-xs text-white font-mono placeholder-slate-500 focus:outline-none"
+                        />
+                      </div>
+
+                      {/* Headshot Upload via Device Uploader with Canvas Compression */}
+                      <div>
+                        <label className="text-xs font-semibold text-slate-300 block mb-1">
+                          Profile Headshot / Photo (Upload from Phone/Device)
+                        </label>
+                        <DeviceImageUploader
+                          currentImageUrl={headshotUrl}
+                          onImageChange={(url) => setHeadshotUrl(url)}
+                          presets={[
+                            {
+                              label: 'Adewale Bakare (Math)',
+                              url: 'https://api.dicebear.com/7.x/micah/svg?seed=Adewale&backgroundColor=b6e3f4'
+                            },
+                            {
+                              label: 'Dr. Amarachi (Bio)',
+                              url: 'https://api.dicebear.com/7.x/micah/svg?seed=Amarachi&backgroundColor=ffd5dc'
+                            },
+                            {
+                              label: 'Prof. Ibrahim (Eng)',
+                              url: 'https://api.dicebear.com/7.x/micah/svg?seed=Ibrahim&backgroundColor=c0aede'
+                            }
+                          ]}
+                        />
+                      </div>
+
+                      {/* Guarantors / Referees */}
+                      <div className="bg-[#081220] p-3 rounded-2xl border border-[#1E304F] space-y-2.5">
+                        <span className="text-[11px] font-bold text-slate-300 uppercase tracking-wider block">
+                          Two Professional Guarantors / Referees
+                        </span>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                          <input
+                            type="text"
+                            value={referee1Name}
+                            onChange={(e) => setReferee1Name(e.target.value)}
+                            placeholder="Referee 1 Name"
+                            className="bg-[#060D17] border border-[#1E304F] rounded-lg py-1.5 px-2.5 text-xs text-white placeholder-slate-500 focus:outline-none"
+                          />
+                          <input
+                            type="tel"
+                            value={referee1Phone}
+                            onChange={(e) => setReferee1Phone(e.target.value)}
+                            placeholder="Phone Number"
+                            className="bg-[#060D17] border border-[#1E304F] rounded-lg py-1.5 px-2.5 text-xs text-white placeholder-slate-500 focus:outline-none"
+                          />
+                          <input
+                            type="text"
+                            value={referee1Rel}
+                            onChange={(e) => setReferee1Rel(e.target.value)}
+                            placeholder="Relationship (e.g. Principal)"
+                            className="bg-[#060D17] border border-[#1E304F] rounded-lg py-1.5 px-2.5 text-xs text-white placeholder-slate-500 focus:outline-none"
+                          />
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                          <input
+                            type="text"
+                            value={referee2Name}
+                            onChange={(e) => setReferee2Name(e.target.value)}
+                            placeholder="Referee 2 Name"
+                            className="bg-[#060D17] border border-[#1E304F] rounded-lg py-1.5 px-2.5 text-xs text-white placeholder-slate-500 focus:outline-none"
+                          />
+                          <input
+                            type="tel"
+                            value={referee2Phone}
+                            onChange={(e) => setReferee2Phone(e.target.value)}
+                            placeholder="Phone Number"
+                            className="bg-[#060D17] border border-[#1E304F] rounded-lg py-1.5 px-2.5 text-xs text-white placeholder-slate-500 focus:outline-none"
+                          />
+                          <input
+                            type="text"
+                            value={referee2Rel}
+                            onChange={(e) => setReferee2Rel(e.target.value)}
+                            placeholder="Relationship (e.g. HOD / Dean)"
+                            className="bg-[#060D17] border border-[#1E304F] rounded-lg py-1.5 px-2.5 text-xs text-white placeholder-slate-500 focus:outline-none"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Digital Readiness (Google Form Sec 5) */}
+                      <div className="bg-[#081220] p-3 rounded-2xl border border-[#1E304F] space-y-2">
+                        <span className="text-[11px] font-bold text-slate-300 uppercase tracking-wider block">
+                          Digital Readiness & Teaching Equipment
+                        </span>
+
+                        <div className="space-y-1.5 text-xs text-slate-300">
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={hasDevice}
+                              onChange={(e) => setHasDevice(e.target.checked)}
+                              className="rounded text-sky-500 focus:ring-0"
+                            />
+                            <span>I have a reliable smartphone, tablet, or laptop / PC</span>
+                          </label>
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={hasInternet}
+                              onChange={(e) => setHasInternet(e.target.checked)}
+                              className="rounded text-sky-500 focus:ring-0"
+                            />
+                            <span>I have access to stable 4G/broadband internet connection</span>
+                          </label>
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={comfortableWithTools}
+                              onChange={(e) => setComfortableWithTools(e.target.checked)}
+                              className="rounded text-sky-500 focus:ring-0"
+                            />
+                            <span>I am comfortable using digital whiteboards, Zoom or Google Meet</span>
+                          </label>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between pt-2">
+                        <button
+                          type="button"
+                          onClick={() => setTutorStage(2)}
+                          className="text-xs text-slate-400 hover:text-white cursor-pointer"
+                        >
+                          ← Back to Qualifications
+                        </button>
+                        <span className="text-[11px] text-emerald-400 font-semibold flex items-center gap-1">
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          <span>Ready for Email Verification</span>
+                        </span>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -812,24 +1325,151 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
                 </div>
               )}
 
-              {/* GROWTH PARTNER SPECIFIC FIELDS */}
+              {/* GROWTH PARTNER SPECIFIC FIELDS (LIVE ONBOARDING & NUBAN SETTLEMENT) */}
               {selectedRole === 'growth_partner' && (
-                <div className="space-y-3 pt-3 border-t border-[#1E304F]">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 block px-1">
-                    Partner Commission & Payout Information
-                  </span>
+                <div className="space-y-3.5 pt-3 border-t border-[#1E304F]">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 block px-1">
+                      Growth Partner Commission & Payout Information
+                    </span>
+                    <span className="text-[10px] font-semibold text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-800">
+                      10% Lifetime RevShare
+                    </span>
+                  </div>
 
-                  <div>
-                    <label className="text-xs font-semibold text-slate-300 block mb-1">WhatsApp / Contact Phone</label>
-                    <div className="relative">
-                      <Phone className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                      <input
-                        type="tel"
-                        value={phone}
-                        onChange={(e) => setPhone(e.target.value)}
-                        placeholder="+234 801 234 5678"
-                        className="w-full bg-[#081220] border border-[#1E304F] focus:border-emerald-500 rounded-xl py-2.5 pl-10 pr-4 text-xs text-white placeholder-slate-500 focus:outline-none transition-colors"
-                      />
+                  {/* Auto-Generated Unique 6-Character Referral Code */}
+                  <div className="bg-[#081220] p-3 rounded-2xl border border-emerald-500/40 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-semibold text-slate-300">
+                        Assigned 6-Character Referral Code
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setPartnerReferralCode(`GROW${Math.floor(10 + Math.random() * 90)}`)}
+                        className="text-[10px] font-semibold text-emerald-400 hover:underline flex items-center gap-1 cursor-pointer"
+                      >
+                        <RefreshCw className="w-3 h-3" />
+                        <span>Regenerate</span>
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 bg-[#060D17] border border-emerald-500/60 rounded-xl py-2 px-3 text-sm font-mono font-black text-emerald-400 tracking-widest text-center shadow-inner">
+                        {partnerReferralCode}
+                      </div>
+                      <span className="text-[11px] text-slate-400">
+                        Shared via your personal referral link: <code className="text-white text-[10px]">?ref={partnerReferralCode}</code>
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-semibold text-slate-300 block mb-1">
+                        WhatsApp / Contact Phone <span className="text-emerald-400 font-bold">*</span>
+                      </label>
+                      <div className="relative">
+                        <Phone className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                        <input
+                          type="tel"
+                          required
+                          value={phone}
+                          onChange={(e) => setPhone(e.target.value)}
+                          placeholder="+234 801 234 5678"
+                          className="w-full bg-[#081220] border border-[#1E304F] focus:border-emerald-500 rounded-xl py-2.5 pl-10 pr-4 text-xs text-white placeholder-slate-500 focus:outline-none transition-colors"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-semibold text-slate-300 block mb-1">
+                        Primary Region / State Coverage
+                      </label>
+                      <select
+                        value={partnerRegion}
+                        onChange={(e) => setPartnerRegion(e.target.value)}
+                        className="w-full bg-[#081220] border border-[#1E304F] focus:border-emerald-500 rounded-xl py-2.5 px-3 text-xs text-white focus:outline-none transition-colors"
+                      >
+                        <option value="Lagos State">Lagos State</option>
+                        <option value="Abuja (FCT)">Abuja (FCT)</option>
+                        <option value="Rivers State">Rivers State (Port Harcourt)</option>
+                        <option value="Oyo State">Oyo State (Ibadan)</option>
+                        <option value="Ogun State">Ogun State</option>
+                        <option value="Enugu State">Enugu State</option>
+                        <option value="Kaduna State">Kaduna State</option>
+                        <option value="Edo State">Edo State</option>
+                        <option value="Delta State">Delta State</option>
+                        <option value="Nationwide / Digital">Nationwide / Digital Channels</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* NUBAN Bank Payout Section */}
+                  <div className="bg-[#081220] p-3.5 rounded-2xl border border-[#1E304F] space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                        <Building2 className="w-4 h-4 text-emerald-400" />
+                        <span>Commission Settlement Bank Account (NUBAN)</span>
+                      </span>
+                      <span className="text-[10px] text-emerald-400 font-mono">Instant Payouts</span>
+                    </div>
+
+                    <div>
+                      <label className="text-[11px] font-semibold text-slate-300 block mb-1">
+                        Select Nigerian Commercial Bank
+                      </label>
+                      <select
+                        value={partnerBankName}
+                        onChange={(e) => setPartnerBankName(e.target.value)}
+                        className="w-full bg-[#060D17] border border-[#1E304F] focus:border-emerald-500 rounded-xl py-2 px-3 text-xs text-white focus:outline-none"
+                      >
+                        {[
+                          'Access Bank',
+                          'First Bank of Nigeria',
+                          'Guaranty Trust Bank (GTBank)',
+                          'United Bank for Africa (UBA)',
+                          'Zenith Bank',
+                          'Stanbic IBTC Bank',
+                          'Fidelity Bank',
+                          'Kuda Microfinance Bank',
+                          'OPay Digital Services',
+                          'Palmpay Limited'
+                        ].map((b) => (
+                          <option key={b} value={b}>
+                            {b}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-[11px] font-semibold text-slate-300 block mb-1">
+                          10-Digit Account Number (NUBAN)
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          maxLength={10}
+                          value={partnerAccountNumber}
+                          onChange={(e) => setPartnerAccountNumber(e.target.value.replace(/\D/g, ''))}
+                          placeholder="e.g. 0123456789"
+                          className="w-full bg-[#060D17] border border-[#1E304F] focus:border-emerald-500 rounded-xl py-2 px-3 text-xs font-mono text-white placeholder-slate-500 focus:outline-none tracking-wider"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-[11px] font-semibold text-slate-300 block mb-1">
+                          Account Name (As on Bank Record)
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={partnerAccountName}
+                          onChange={(e) => setPartnerAccountName(e.target.value)}
+                          placeholder="e.g. Amina Okon"
+                          className="w-full bg-[#060D17] border border-[#1E304F] focus:border-emerald-500 rounded-xl py-2 px-3 text-xs text-white placeholder-slate-500 focus:outline-none"
+                        />
+                      </div>
                     </div>
                   </div>
 
