@@ -3,6 +3,7 @@ import { useApp } from '../../../context/AppContext';
 import { CBT_EXAMS_DATABASE } from '../../../data/cbtExamData';
 import { ASPIRANT_PAST_QUESTION_YEARS } from '../../../data/aspirantMockData';
 import { getJambQuestionsForSubjectAndYear, getAvailablePastQuestionYears } from '../../../data/jambPastQuestionsData';
+import { streamQuestionsBySubjectAndYear, fetchAvailableCloudPapers } from '../../../services/questionService';
 import { CBTExam, CBTExamResult, CBTQuestion } from '../../../types';
 import { playSound, triggerHaptic } from '../../../utils/audioSynthesis';
 import { AspirantSubscriptionModal } from './AspirantSubscriptionModal';
@@ -43,6 +44,12 @@ export const AspirantCBTSimulator: React.FC = () => {
   const [secondsRemaining, setSecondsRemaining] = useState<number>(7200); // 2 hours for full JAMB UTME
   const [isSubscriptionModalOpen, setIsSubscriptionModalOpen] = useState<boolean>(false);
 
+  // Cloud Firestore Streaming State
+  const [streamedQuestionsMap, setStreamedQuestionsMap] = useState<Record<string, CBTQuestion[]>>({});
+  const [streamSource, setStreamSource] = useState<'firestore' | 'cache' | 'bundled'>('bundled');
+  const [cloudPapersList, setCloudPapersList] = useState<Array<{ subject: string; year: number }>>([]);
+  const [isStreaming, setIsStreaming] = useState<boolean>(false);
+
   const subjects = aspirantGoal.subjectCombination || [
     'Use of English',
     'Biology',
@@ -53,8 +60,72 @@ export const AspirantCBTSimulator: React.FC = () => {
   const currentTier = aspirantGoal.tier || 'free';
   const isYearLocked = currentTier === 'free' && parseInt(selectedYear) < 2023;
 
-  // Retrieve dedicated year-specific questions from JAMB archive or CBT_EXAMS_DATABASE
+  // On-demand streaming from Firestore with local caching and bundled fallback
+  useEffect(() => {
+    let isCancelled = false;
+    const streamExamQuestions = async () => {
+      setIsStreaming(true);
+      const examTypeKey = selectedExamType === 'JAMB_UTME' ? 'JAMB' : selectedExamType;
+      const yearNum = parseInt(selectedYear, 10) || 2024;
+      const resultMap: Record<string, CBTQuestion[]> = {};
+      let dominantSource: 'firestore' | 'cache' | 'bundled' = 'bundled';
+
+      try {
+        await Promise.all(
+          subjects.map(async (subj) => {
+            try {
+              const res = await streamQuestionsBySubjectAndYear(examTypeKey, subj, yearNum);
+              if (res.source === 'firestore') dominantSource = 'firestore';
+              else if (res.source === 'cache' && dominantSource !== 'firestore') dominantSource = 'cache';
+
+              if (res.questions && res.questions.length > 0) {
+                resultMap[subj] = res.questions.map((q, idx) => ({
+                  id: parseInt(q.id.replace(/\D/g, '').slice(-6), 10) || (idx + 1),
+                  question: q.question,
+                  options: q.options,
+                  correctOptionIndex: q.correctAnswer,
+                  explanation: q.explanation,
+                  topicRef: q.topic,
+                  passage: q.passage
+                } as any));
+              }
+            } catch (err) {
+              console.warn(`Error streaming questions for ${subj}:`, err);
+            }
+          })
+        );
+      } catch (err) {
+        console.warn('Streaming batch error:', err);
+      }
+
+      if (!isCancelled) {
+        setStreamedQuestionsMap(resultMap);
+        setStreamSource(dominantSource);
+        setIsStreaming(false);
+      }
+    };
+
+    streamExamQuestions();
+    return () => {
+      isCancelled = true;
+    };
+  }, [selectedYear, selectedExamType, subjects.join(',')]);
+
+  // Discover newly uploaded cloud papers
+  useEffect(() => {
+    fetchAvailableCloudPapers().then(papers => {
+      setCloudPapersList(papers.map(p => ({ subject: p.subject, year: p.year })));
+    }).catch(() => {});
+  }, []);
+
+  // Retrieve dedicated year-specific questions from cloud stream, JAMB archive, or CBT_EXAMS_DATABASE
   const subjectExams = subjects.map(subj => {
+    if (streamedQuestionsMap[subj] && streamedQuestionsMap[subj].length > 0) {
+      return {
+        subject: subj,
+        questions: streamedQuestionsMap[subj]
+      };
+    }
     if (selectedExamType === 'JAMB_UTME') {
       const qList = getJambQuestionsForSubjectAndYear(subj, selectedYear, 40);
       return {
@@ -262,10 +333,45 @@ export const AspirantCBTSimulator: React.FC = () => {
             Replicates the official JAMB UTME testing environment, countdown clock, subject tabs, question matrix grid, and keyboard hotkeys to develop speed and muscle memory.
           </p>
 
-          <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs">
             <span className="px-2.5 py-1 rounded-lg bg-slate-900/90 border border-slate-800 text-slate-300">
               Selected 4-Subject Combination: <strong className="text-emerald-400">{subjects.join(', ')}</strong>
             </span>
+
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-900/80 border border-slate-800">
+                {isStreaming ? (
+                  <span className="flex items-center gap-1.5 text-[11px] text-emerald-400">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+                    Streaming from Firestore...
+                  </span>
+                ) : streamSource === 'firestore' ? (
+                  <span className="flex items-center gap-1.5 text-[11px] text-emerald-400 font-medium">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                    Cloud Streamed (Firestore)
+                  </span>
+                ) : streamSource === 'cache' ? (
+                  <span className="flex items-center gap-1.5 text-[11px] text-blue-400 font-medium">
+                    <span className="w-2 h-2 rounded-full bg-blue-400" />
+                    Offline Cached Ready
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-1.5 text-[11px] text-emerald-300 font-medium">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                    Curated Bank Active
+                  </span>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setActiveStudentTab('educator-importer')}
+                className="px-2.5 py-1 rounded-lg bg-emerald-800/80 hover:bg-emerald-700 text-emerald-100 border border-emerald-600/50 text-[11px] font-semibold transition-colors flex items-center gap-1"
+              >
+                <BookOpen className="w-3 h-3 text-emerald-300" />
+                <span>Educator Portal</span>
+              </button>
+            </div>
           </div>
         </div>
 

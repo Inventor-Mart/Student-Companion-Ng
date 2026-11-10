@@ -27,6 +27,7 @@ import { PrepareForExamHub } from './components/student/exam-prep/PrepareForExam
 import { AspirantCBTSimulator } from './components/student/aspirant/AspirantCBTSimulator';
 import { UniversityAdmissionGuide } from './components/student/aspirant/UniversityAdmissionGuide';
 import { NationalMockTournaments } from './components/student/aspirant/NationalMockTournaments';
+import { EducatorQuestionImporter } from './components/admin/EducatorQuestionImporter';
 
 const AppContent: React.FC = () => {
   const [quotaExceeded, setQuotaExceeded] = React.useState(false);
@@ -204,6 +205,14 @@ const AppContent: React.FC = () => {
                   {activeStudentTab === 'games' && <GamesHub />}
                   {activeStudentTab === 'community' && <StudentCommunityForum />}
                   {activeStudentTab === 'exam-prep' && <PrepareForExamHub />}
+                  {activeStudentTab === 'educator-importer' && (
+                    <EducatorQuestionImporter
+                      onClose={() => setActiveStudentTab('dashboard')}
+                      onOpenCBTWithPaper={() => {
+                        setActiveStudentTab('aspirant-cbt');
+                      }}
+                    />
+                  )}
                 </div>
 
                 {/* Fixed Thumb-Zone Bottom Nav */}

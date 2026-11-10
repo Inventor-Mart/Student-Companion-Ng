@@ -35,6 +35,7 @@ service cloud.firestore {
     function isAdmin() {
       return isSignedIn() && (
         (request.auth.token.email == 'martorefe@gmail.com' && request.auth.token.email_verified == true) ||
+        (request.auth.token.email == 'wowrealities@gmail.com' && request.auth.token.email_verified == true) ||
         exists(/databases/$(database)/documents/admins/$(request.auth.uid))
       );
     }
@@ -223,6 +224,40 @@ service cloud.firestore {
              data.status in ['pending', 'resolved', 'dismissed'];
     }
 
+    function isValidPastQuestion(data) {
+      return data.keys().hasAll(['id', 'examType', 'subject', 'year', 'question', 'options', 'correctAnswer', 'explanation', 'topic']) &&
+             data.keys().hasOnly(['id', 'examType', 'subject', 'year', 'question', 'options', 'correctAnswer', 'explanation', 'topic', 'passage', 'paperId', 'diagramUrl', 'uploadedBy', 'createdAt']) &&
+             data.id is string && isValidId(data.id) &&
+             data.examType in ['JAMB', 'WAEC', 'NECO'] &&
+             data.subject is string && data.subject.size() <= 100 &&
+             data.year is number && data.year >= 2000 && data.year <= 2030 &&
+             data.question is string && data.question.size() >= 1 && data.question.size() <= 5000 &&
+             data.options is list && data.options.size() == 4 &&
+             data.correctAnswer is number && data.correctAnswer >= 0 && data.correctAnswer <= 3 &&
+             data.explanation is string && data.explanation.size() <= 3000 &&
+             data.topic is string && data.topic.size() <= 150 &&
+             (!('passage' in data) || data.passage == null || (data.passage is string && data.passage.size() <= 5000)) &&
+             (!('paperId' in data) || (data.paperId is string && data.paperId.size() <= 128)) &&
+             (!('diagramUrl' in data) || data.diagramUrl == null || (data.diagramUrl is string && data.diagramUrl.size() <= 500)) &&
+             (!('uploadedBy' in data) || (data.uploadedBy is string && data.uploadedBy.size() <= 128)) &&
+             (!('createdAt' in data) || (data.createdAt is string && data.createdAt.size() <= 100));
+    }
+
+    function isValidPastQuestionPaper(data) {
+      return data.keys().hasAll(['id', 'examType', 'subject', 'year', 'title', 'totalQuestions']) &&
+             data.keys().hasOnly(['id', 'examType', 'subject', 'year', 'title', 'totalQuestions', 'durationMinutes', 'uploadedBy', 'createdAt', 'updatedAt']) &&
+             data.id is string && isValidId(data.id) &&
+             data.examType in ['JAMB', 'WAEC', 'NECO'] &&
+             data.subject is string && data.subject.size() <= 100 &&
+             data.year is number && data.year >= 2000 && data.year <= 2030 &&
+             data.title is string && data.title.size() <= 200 &&
+             data.totalQuestions is number && data.totalQuestions > 0 &&
+             (!('durationMinutes' in data) || data.durationMinutes is number) &&
+             (!('uploadedBy' in data) || (data.uploadedBy is string && data.uploadedBy.size() <= 128)) &&
+             (!('createdAt' in data) || (data.createdAt is string && data.createdAt.size() <= 100)) &&
+             (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 100));
+    }
+
     // --- COLLECTION RULES ---
 
     // 1. Students Collection
@@ -358,6 +393,20 @@ service cloud.firestore {
     // 14. Connection Test Collection
     match /test/{docId} {
       allow read: if true;
+    }
+
+    // 15. Past Questions Collection (CBT Candidates read/stream; Admin/Educators manage)
+    match /pastQuestions/{questionId} {
+      allow get, list: if true;
+      allow create, update: if isValidId(questionId) && isValidPastQuestion(incoming());
+      allow delete: if isAdmin();
+    }
+
+    // 16. Past Question Papers Collection
+    match /pastQuestionPapers/{paperId} {
+      allow get, list: if true;
+      allow create, update: if isValidId(paperId) && isValidPastQuestionPaper(incoming());
+      allow delete: if isAdmin();
     }
   }
 }

@@ -1,6 +1,6 @@
 {
-  "summary":  "Implementation plan to build and bundle dedicated multi-year past question banks for core JAMB UTME Science and Art subjects (English, Mathematics, Physics, Chemistry, Biology, Government, Economics, Literature), wire year-specific loading in the CBT simulator, and enforce tier access rules.",
-  "updatedAt":  "2026-11-10T09:44:11.370186552Z",
+  "summary":  "Implementation plan for Cloud Firestore past questions storage, on-demand streaming engine for JAMB CBT Simulator, and Educator/Admin Past Question Importer with PIN gate, bulk JSON upload, and smart text auto-parser.",
+  "updatedAt":  "2026-11-10T11:01:46.657000130Z",
   "requestFeedback":  true,
   "userFacing":  true
 }

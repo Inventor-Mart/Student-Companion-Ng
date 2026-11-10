@@ -636,6 +636,46 @@
       "properties": {
         "status": { "type": "string" }
       }
+    },
+    "PastQuestion": {
+      "title": "PastQuestion",
+      "description": "Authentic examination question document for JAMB, WAEC, or NECO",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "examType": { "type": "string", "enum": ["JAMB", "WAEC", "NECO"] },
+        "subject": { "type": "string", "maxLength": 100 },
+        "year": { "type": "number" },
+        "question": { "type": "string", "maxLength": 5000 },
+        "options": { "type": "array" },
+        "correctAnswer": { "type": "number" },
+        "explanation": { "type": "string", "maxLength": 3000 },
+        "topic": { "type": "string", "maxLength": 150 },
+        "passage": { "type": "string", "maxLength": 5000 },
+        "paperId": { "type": "string", "maxLength": 128 },
+        "diagramUrl": { "type": "string", "maxLength": 500 },
+        "uploadedBy": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "maxLength": 100 }
+      },
+      "required": ["id", "examType", "subject", "year", "question", "options", "correctAnswer", "explanation", "topic"]
+    },
+    "PastQuestionPaper": {
+      "title": "PastQuestionPaper",
+      "description": "Examination paper metadata summarizing an uploaded past paper bundle",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "examType": { "type": "string", "enum": ["JAMB", "WAEC", "NECO"] },
+        "subject": { "type": "string", "maxLength": 100 },
+        "year": { "type": "number" },
+        "title": { "type": "string", "maxLength": 200 },
+        "totalQuestions": { "type": "number" },
+        "durationMinutes": { "type": "number" },
+        "uploadedBy": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "maxLength": 100 },
+        "updatedAt": { "type": "string", "maxLength": 100 }
+      },
+      "required": ["id", "examType", "subject", "year", "title", "totalQuestions"]
     }
   },
   "firestore": {
@@ -728,6 +768,18 @@
         "$ref": "#/entities/ForumReport"
       },
       "description": "Safety violation reports submitted for administrative review"
+    },
+    "/pastQuestions/{questionId}": {
+      "schema": {
+        "$ref": "#/entities/PastQuestion"
+      },
+      "description": "Authentic examination questions archive for JAMB, WAEC, and NECO"
+    },
+    "/pastQuestionPapers/{paperId}": {
+      "schema": {
+        "$ref": "#/entities/PastQuestionPaper"
+      },
+      "description": "Uploaded past question paper summaries and indices"
     }
   }
 }

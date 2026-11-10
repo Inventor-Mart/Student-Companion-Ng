@@ -95,8 +95,8 @@ interface AppContextType {
   isFirebaseConnected: boolean;
 
   // Student Navigation
-  activeStudentTab: 'dashboard' | 'syllabus' | 'cbt' | 'competitions' | 'formulas' | 'tutors' | 'games' | 'ai-coach' | 'community' | 'exam-prep' | 'aspirant-cbt' | 'admission-guide' | 'mock-tournaments';
-  setActiveStudentTab: (tab: 'dashboard' | 'syllabus' | 'cbt' | 'competitions' | 'formulas' | 'tutors' | 'games' | 'ai-coach' | 'community' | 'exam-prep' | 'aspirant-cbt' | 'admission-guide' | 'mock-tournaments') => void;
+  activeStudentTab: 'dashboard' | 'syllabus' | 'cbt' | 'competitions' | 'formulas' | 'tutors' | 'games' | 'ai-coach' | 'community' | 'exam-prep' | 'aspirant-cbt' | 'admission-guide' | 'mock-tournaments' | 'educator-importer';
+  setActiveStudentTab: (tab: 'dashboard' | 'syllabus' | 'cbt' | 'competitions' | 'formulas' | 'tutors' | 'games' | 'ai-coach' | 'community' | 'exam-prep' | 'aspirant-cbt' | 'admission-guide' | 'mock-tournaments' | 'educator-importer') => void;
   activeReadingNote: CurriculumTopic | null;
   openNoteReader: (topic: CurriculumTopic) => void;
   closeNoteReader: () => void;
@@ -255,7 +255,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isOffline, setIsOffline] = useState<boolean>(false);
   const [isLandingView, setIsLandingView] = useState<boolean>(false);
   const [currentScreen, setCurrentScreen] = useState<'landing' | 'signin' | 'signup' | 'know_more' | 'app'>('app');
-  const [activeStudentTab, setActiveStudentTab] = useState<'dashboard' | 'syllabus' | 'cbt' | 'competitions' | 'formulas' | 'tutors' | 'games' | 'ai-coach' | 'community' | 'exam-prep' | 'aspirant-cbt' | 'admission-guide' | 'mock-tournaments'>('dashboard');
+  const [activeStudentTab, setActiveStudentTab] = useState<'dashboard' | 'syllabus' | 'cbt' | 'competitions' | 'formulas' | 'tutors' | 'games' | 'ai-coach' | 'community' | 'exam-prep' | 'aspirant-cbt' | 'admission-guide' | 'mock-tournaments' | 'educator-importer'>('dashboard');
   const [activeReadingNote, setActiveReadingNote] = useState<CurriculumTopic | null>(null);
   const [activeExam, setActiveExam] = useState<CBTExam | null>(null);
   const [isUniformModalOpen, setIsUniformModalOpen] = useState<boolean>(false);

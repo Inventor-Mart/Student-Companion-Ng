@@ -31,6 +31,11 @@ export const StudentBottomNav: React.FC = () => {
       icon: GraduationCap
     },
     {
+      id: 'educator-importer',
+      label: 'Past Q Portal',
+      icon: BookOpen
+    },
+    {
       id: 'exam-prep',
       label: 'AI Drill',
       icon: Calendar
