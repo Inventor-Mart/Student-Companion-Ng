@@ -40,16 +40,26 @@ const serverApps = getServerApps();
 const serverApp = serverApps.length > 0 ? serverApps[0] : initServerFirebase(firebaseConfig, 'companion-server');
 const serverDb = getServerFirestore(serverApp, (firebaseConfig as any).firestoreDatabaseId);
 
+// Health check endpoints for platform probes and control plane
+app.get('/health', (_req, res) => res.status(200).json({ status: 'ok', uptime: process.uptime() }));
+app.get('/api/health', (_req, res) => res.status(200).json({ status: 'ok', uptime: process.uptime() }));
+
 // Initialize GoogleGenAI server-side with required User-Agent
-const apiKey = process.env.GEMINI_API_KEY;
-const ai = new GoogleGenAI({
-  apiKey: apiKey,
-  httpOptions: {
-    headers: {
-      'User-Agent': 'aistudio-build',
-    },
-  },
-});
+let aiInstance: GoogleGenAI | null = null;
+function getAi(): GoogleGenAI {
+  if (!aiInstance) {
+    const key = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || '';
+    aiInstance = new GoogleGenAI({
+      apiKey: key,
+      httpOptions: {
+        headers: {
+          'User-Agent': 'aistudio-build',
+        },
+      },
+    });
+  }
+  return aiInstance;
+}
 
 // 1. Nigerian Secondary AI Study Coach & Exam Master
 app.post('/api/gemini/study-tutor', async (req, res) => {
@@ -97,7 +107,7 @@ Strict Pedagogical Guidelines:
       parts: [{ text: String(prompt) }],
     });
 
-    const response = await ai.models.generateContent({
+    const response = await getAi().models.generateContent({
       model: 'gemini-3.8-flash',
       contents,
       config: {
@@ -135,7 +145,7 @@ Please provide:
 4. 📝 **2 High-Yield WAEC/JAMB Past Question Scenarios** (Question + Step-by-Step Solution).
 5. ⚠️ **Common Exam Pitfalls & Examiner Traps to Avoid**.`;
 
-    const response = await ai.models.generateContent({
+    const response = await getAi().models.generateContent({
       model: 'gemini-3.8-flash',
       contents: promptText,
       config: {
@@ -190,7 +200,7 @@ Instructions:
      - suggestedTutorTopic: specific difficult subtopic where a student may need tutor help (eligible for ₦4,000 credit)
 3. Return valid JSON only.`;
 
-    const response = await ai.models.generateContent({
+    const response = await getAi().models.generateContent({
       model: 'gemini-3.8-flash',
       contents: promptText,
       config: {
@@ -247,7 +257,7 @@ Return valid JSON only formatted as an array of objects with the following schem
   }
 ]`;
 
-    const response = await ai.models.generateContent({
+    const response = await getAi().models.generateContent({
       model: 'gemini-3.8-flash',
       contents: promptText,
       config: {

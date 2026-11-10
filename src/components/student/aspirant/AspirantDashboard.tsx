@@ -464,13 +464,7 @@ export const AspirantDashboard: React.FC = () => {
 
           {/* Pillar 2: 15+ Years Past Questions Database */}
           <div
-            onClick={() => {
-              if (aspirantGoal.tier === 'free') {
-                setIsUpgradeModalOpen(true);
-              } else {
-                setActiveStudentTab('aspirant-cbt');
-              }
-            }}
+            onClick={() => setActiveStudentTab('aspirant-cbt')}
             className="group p-4 rounded-2xl bg-[#0D192C] hover:bg-[#12223B] border border-slate-800 hover:border-sky-500/60 transition-all cursor-pointer shadow-md flex flex-col justify-between"
           >
             <div>
@@ -492,7 +486,7 @@ export const AspirantDashboard: React.FC = () => {
               </p>
             </div>
             <div className="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs font-semibold text-sky-400">
-              <span>{aspirantGoal.tier === 'free' ? 'Unlock 2008–2024 Archive' : 'Browse Past Papers'}</span>
+              <span>{aspirantGoal.tier === 'free' ? 'Practice 2023–2024 Free (Unlock All 15+ Yrs)' : 'Browse Past Papers'}</span>
               <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
             </div>
           </div>

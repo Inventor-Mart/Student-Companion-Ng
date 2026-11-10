@@ -1,6 +1,6 @@
 {
-  "summary":  "Complete architectural implementation plan for the new 'University Aspirant' class (Aspirant Hub) catering to WAEC, NECO, and JAMB school leavers, featuring countdown architecture, JAMB CBT simulator, 15+ years past questions, AI drill sergeant study plan, National Weekend Mock Tournaments, Admission & University Guide, and tiered monthly pricing (Free, Aspirant Basic ₦5,000/mo, Aspirant Elite ₦10,000/mo).",
-  "updatedAt":  "2026-11-09T20:20:36.490185145Z",
+  "summary":  "Implementation plan to build and bundle dedicated multi-year past question banks for core JAMB UTME Science and Art subjects (English, Mathematics, Physics, Chemistry, Biology, Government, Economics, Literature), wire year-specific loading in the CBT simulator, and enforce tier access rules.",
+  "updatedAt":  "2026-11-10T09:44:11.370186552Z",
   "requestFeedback":  true,
   "userFacing":  true
 }

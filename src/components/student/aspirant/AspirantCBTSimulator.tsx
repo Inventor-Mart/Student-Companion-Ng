@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useApp } from '../../../context/AppContext';
 import { CBT_EXAMS_DATABASE } from '../../../data/cbtExamData';
 import { ASPIRANT_PAST_QUESTION_YEARS } from '../../../data/aspirantMockData';
+import { getJambQuestionsForSubjectAndYear, getAvailablePastQuestionYears } from '../../../data/jambPastQuestionsData';
 import { CBTExam, CBTExamResult, CBTQuestion } from '../../../types';
 import { playSound, triggerHaptic } from '../../../utils/audioSynthesis';
 import { AspirantSubscriptionModal } from './AspirantSubscriptionModal';
@@ -20,7 +21,8 @@ import {
   Lock,
   Layers,
   HelpCircle,
-  Check
+  Check,
+  BookOpen
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -36,6 +38,8 @@ export const AspirantCBTSimulator: React.FC = () => {
 
   const [isTestActive, setIsTestActive] = useState<boolean>(false);
   const [isSubmitted, setIsSubmitted] = useState<boolean>(false);
+  const [isReviewMode, setIsReviewMode] = useState<boolean>(false);
+  const [lastExamResult, setLastExamResult] = useState<{ scaledScore: number; rawScore: number; totalQuestions: number } | null>(null);
   const [secondsRemaining, setSecondsRemaining] = useState<number>(7200); // 2 hours for full JAMB UTME
   const [isSubscriptionModalOpen, setIsSubscriptionModalOpen] = useState<boolean>(false);
 
@@ -49,8 +53,15 @@ export const AspirantCBTSimulator: React.FC = () => {
   const currentTier = aspirantGoal.tier || 'free';
   const isYearLocked = currentTier === 'free' && parseInt(selectedYear) < 2023;
 
-  // Retrieve or synthesize questions for the 4 subjects from CBT_EXAMS_DATABASE
+  // Retrieve dedicated year-specific questions from JAMB archive or CBT_EXAMS_DATABASE
   const subjectExams = subjects.map(subj => {
+    if (selectedExamType === 'JAMB_UTME') {
+      const qList = getJambQuestionsForSubjectAndYear(subj, selectedYear, 40);
+      return {
+        subject: subj,
+        questions: qList
+      };
+    }
     const match = CBT_EXAMS_DATABASE.find(e =>
       e.subject.toLowerCase().includes(subj.toLowerCase()) ||
       subj.toLowerCase().includes(e.subject.toLowerCase())
@@ -130,6 +141,7 @@ export const AspirantCBTSimulator: React.FC = () => {
     setSecondsRemaining(selectedExamType === 'JAMB_UTME' ? 7200 : 5400);
     setIsTestActive(true);
     setIsSubmitted(false);
+    setIsReviewMode(false);
   };
 
   const handleSelectOption = (idx: number) => {
@@ -172,6 +184,7 @@ export const AspirantCBTSimulator: React.FC = () => {
   const handleSubmitTest = () => {
     setIsTestActive(false);
     setIsSubmitted(true);
+    setIsReviewMode(false);
     playSound.levelUp();
 
     let totalScore = 0;
@@ -188,6 +201,11 @@ export const AspirantCBTSimulator: React.FC = () => {
     });
 
     const scaledJambScore = Math.round((totalScore / Math.max(1, totalQuestions)) * 400);
+    setLastExamResult({
+      scaledScore: scaledJambScore,
+      rawScore: totalScore,
+      totalQuestions
+    });
 
     const result: CBTExamResult = {
       id: `res-asp-${Date.now()}`,
@@ -319,6 +337,21 @@ export const AspirantCBTSimulator: React.FC = () => {
                 );
               })}
             </div>
+
+            {/* Paper Type Indicator Badge */}
+            <div className="mt-3 p-2.5 rounded-xl bg-slate-950/80 border border-slate-800 flex items-center justify-between text-xs">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+                <span className="text-slate-300 font-medium">
+                  {parseInt(selectedYear) >= 2020
+                    ? `Dedicated ${selectedYear} ${selectedExamType} Past Paper with Step-by-Step Solutions`
+                    : `Syllabus-Calibrated ${selectedYear} ${selectedExamType} Historical Paper`}
+                </span>
+              </div>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-950/80 text-emerald-300 border border-emerald-800/50">
+                160 Questions • 4 Subjects
+              </span>
+            </div>
           </div>
 
           {/* Launch Exam CTA */}
@@ -436,6 +469,20 @@ export const AspirantCBTSimulator: React.FC = () => {
                 <span>{flaggedQuestions.has(currentKey) ? 'Flagged for Review' : 'Flag Question'}</span>
               </button>
             </div>
+
+            {/* Topic & Passage Badges */}
+            {(currentQuestion as any).topicRef && (
+              <div className="inline-block px-2.5 py-0.5 rounded-md bg-slate-800 text-slate-300 text-[10px] font-semibold border border-slate-700">
+                Topic: {(currentQuestion as any).topicRef}
+              </div>
+            )}
+
+            {(currentQuestion as any).passage && (
+              <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 text-xs sm:text-sm text-slate-300 leading-relaxed italic">
+                <span className="font-bold text-amber-400 not-italic block mb-1">Comprehension Passage:</span>
+                {(currentQuestion as any).passage}
+              </div>
+            )}
 
             {/* Question Text */}
             <div className="text-sm sm:text-base font-medium text-slate-100 leading-relaxed">
@@ -563,6 +610,189 @@ export const AspirantCBTSimulator: React.FC = () => {
     );
   }
 
+  // Interactive Review Mode (Step through every question with Chief Examiner solutions)
+  if (isReviewMode && isSubmitted) {
+    const reviewSubject = subjectExams[activeSubjectTab] || subjectExams[0];
+    const reviewQuestions = reviewSubject.questions;
+    const reviewQ = reviewQuestions[currentQuestionIndex] || reviewQuestions[0];
+    const reviewKey = `${activeSubjectTab}-${currentQuestionIndex}`;
+    const studentChoice = userAnswers[reviewKey];
+    const isCorrect = studentChoice === reviewQ.correctOptionIndex;
+
+    return (
+      <div className="flex-1 w-full flex flex-col bg-[#070D18] text-slate-100 overflow-hidden select-none">
+        {/* Review Header HUD */}
+        <div className="bg-slate-900 border-b border-slate-800 px-3 py-2 flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setIsReviewMode(false)}
+              className="p-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white cursor-pointer"
+              title="Back to Scorecard"
+            >
+              <ArrowLeft className="w-4 h-4" />
+            </button>
+            <span className="text-xs font-black text-purple-400 font-mono">
+              {selectedYear} {selectedExamType} Solution Review
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2 text-xs">
+            <span className={`px-2 py-0.5 rounded-full font-bold text-[11px] ${
+              studentChoice === undefined
+                ? 'bg-slate-800 text-slate-400 border border-slate-700'
+                : isCorrect
+                ? 'bg-emerald-950 text-emerald-400 border border-emerald-800'
+                : 'bg-rose-950 text-rose-400 border border-rose-800'
+            }`}>
+              {studentChoice === undefined ? 'Unanswered (0)' : isCorrect ? 'Correct (+1)' : 'Incorrect (0)'}
+            </span>
+            <button
+              onClick={() => setIsReviewMode(false)}
+              className="py-1 px-3 rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs cursor-pointer shadow-sm"
+            >
+              Back to Scorecard
+            </button>
+          </div>
+        </div>
+
+        {/* 4 Subjects Navigation Tabs */}
+        <div className="bg-slate-950 border-b border-slate-800/80 px-2 py-1.5 flex items-center gap-1.5 overflow-x-auto shrink-0">
+          {subjectExams.map((sub, idx) => (
+            <button
+              key={sub.subject}
+              onClick={() => {
+                setActiveSubjectTab(idx);
+                setCurrentQuestionIndex(0);
+              }}
+              className={`py-1 px-3 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
+                activeSubjectTab === idx
+                  ? 'bg-purple-600 text-white shadow-sm'
+                  : 'bg-slate-900 text-slate-400 hover:text-white'
+              }`}
+            >
+              {sub.subject}
+            </button>
+          ))}
+        </div>
+
+        {/* Question Review Body */}
+        <div className="flex-1 w-full overflow-y-auto p-4 sm:p-6 space-y-4 max-w-4xl mx-auto">
+          <div className="flex items-center justify-between text-xs text-slate-400">
+            <span className="font-bold">Question {currentQuestionIndex + 1} of {reviewQuestions.length} ({reviewSubject.subject})</span>
+            {(reviewQ as any).topicRef && (
+              <span className="px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-[10px] text-amber-400 font-semibold">
+                {(reviewQ as any).topicRef}
+              </span>
+            )}
+          </div>
+
+          {(reviewQ as any).passage && (
+            <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 text-xs text-slate-300 leading-relaxed italic">
+              <strong className="text-amber-400 not-italic block mb-1">Passage:</strong>
+              {(reviewQ as any).passage}
+            </div>
+          )}
+
+          <div className="text-sm sm:text-base font-semibold text-white leading-relaxed">
+            {reviewQ.question}
+          </div>
+
+          {/* Options with Review Highlights */}
+          <div className="space-y-2 pt-2">
+            {reviewQ.options.map((opt, oIdx) => {
+              const isSelected = studentChoice === oIdx;
+              const isTheCorrectOne = reviewQ.correctOptionIndex === oIdx;
+              const letter = ['A', 'B', 'C', 'D'][oIdx];
+
+              let borderStyle = 'border-slate-800 bg-slate-900/60 text-slate-300';
+              if (isTheCorrectOne) {
+                borderStyle = 'border-emerald-500 bg-emerald-950/60 text-white ring-1 ring-emerald-500';
+              } else if (isSelected && !isCorrect) {
+                borderStyle = 'border-rose-500 bg-rose-950/60 text-rose-200 ring-1 ring-rose-500';
+              }
+
+              return (
+                <div
+                  key={oIdx}
+                  className={`w-full p-3 rounded-2xl border text-left text-xs sm:text-sm flex items-center gap-3 ${borderStyle}`}
+                >
+                  <span className={`w-7 h-7 rounded-xl flex items-center justify-center font-bold text-xs shrink-0 ${
+                    isTheCorrectOne
+                      ? 'bg-emerald-500 text-slate-950'
+                      : isSelected
+                      ? 'bg-rose-500 text-white'
+                      : 'bg-slate-800 text-slate-400'
+                  }`}>
+                    {letter}
+                  </span>
+                  <span className="flex-1 leading-snug">{opt}</span>
+                  {isTheCorrectOne && (
+                    <span className="text-[10px] font-bold text-emerald-400 bg-emerald-950/90 px-2 py-0.5 rounded border border-emerald-800 shrink-0">
+                      Correct Answer
+                    </span>
+                  )}
+                  {isSelected && !isTheCorrectOne && (
+                    <span className="text-[10px] font-bold text-rose-400 bg-rose-950/90 px-2 py-0.5 rounded border border-rose-800 shrink-0">
+                      Your Choice
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Chief Examiner Explanation */}
+          {reviewQ.explanation && (
+            <div className="p-4 rounded-2xl bg-[#0D1E38] border border-sky-500/30 text-xs sm:text-sm text-sky-100 space-y-1.5 shadow-md">
+              <span className="font-bold text-sky-300 text-xs uppercase tracking-wide flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-sky-400" />
+                Chief Examiner's Step-by-Step Explanation
+              </span>
+              <p className="leading-relaxed text-slate-200 whitespace-pre-line">
+                {reviewQ.explanation}
+              </p>
+            </div>
+          )}
+
+          {/* Navigation Controls */}
+          <div className="pt-4 flex items-center justify-between border-t border-slate-800">
+            <button
+              onClick={() => {
+                if (currentQuestionIndex > 0) setCurrentQuestionIndex(prev => prev - 1);
+                else if (activeSubjectTab > 0) {
+                  setActiveSubjectTab(prev => prev - 1);
+                  setCurrentQuestionIndex(subjectExams[activeSubjectTab - 1].questions.length - 1);
+                }
+              }}
+              disabled={currentQuestionIndex === 0 && activeSubjectTab === 0}
+              className="py-2 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-30 text-xs font-bold text-slate-200 flex items-center gap-1 cursor-pointer"
+            >
+              <ChevronLeft className="w-4 h-4" /> Previous
+            </button>
+
+            <span className="text-xs text-slate-400 font-mono">
+              Q{currentQuestionIndex + 1} / {reviewQuestions.length}
+            </span>
+
+            <button
+              onClick={() => {
+                if (currentQuestionIndex < reviewQuestions.length - 1) setCurrentQuestionIndex(prev => prev + 1);
+                else if (activeSubjectTab < subjectExams.length - 1) {
+                  setActiveSubjectTab(prev => prev + 1);
+                  setCurrentQuestionIndex(0);
+                }
+              }}
+              disabled={currentQuestionIndex === reviewQuestions.length - 1 && activeSubjectTab === subjectExams.length - 1}
+              className="py-2 px-4 rounded-xl bg-purple-600 hover:bg-purple-500 disabled:opacity-30 text-xs font-bold text-white flex items-center gap-1 cursor-pointer"
+            >
+              Next <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // Submitted Scorecard View
   return (
     <div className="flex-1 w-full overflow-y-auto px-4 py-6 space-y-5 touch-pan-y text-slate-100 flex flex-col items-center">
@@ -582,22 +812,44 @@ export const AspirantCBTSimulator: React.FC = () => {
         <div className="p-4 rounded-2xl bg-slate-950 border border-emerald-500/40 space-y-1">
           <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Estimated UTME Aggregate</span>
           <div className="text-3xl font-black text-emerald-400 font-mono">
-            {Math.round((Object.keys(userAnswers).length / 160) * 400)} <span className="text-xs text-slate-400 font-normal">/ 400</span>
+            {lastExamResult?.scaledScore ?? 280} <span className="text-xs text-slate-400 font-normal">/ 400</span>
           </div>
           <p className="text-[11px] text-slate-300">
-            Target cut-off: <strong>{aspirantGoal.targetScore || 310}</strong> points
+            Raw Score: <strong>{lastExamResult?.rawScore ?? 0}</strong> of <strong>{lastExamResult?.totalQuestions ?? 160}</strong> Questions Correct ({Math.round(((lastExamResult?.rawScore ?? 0) / Math.max(1, lastExamResult?.totalQuestions ?? 160)) * 100)}%)
+          </p>
+          <p className="text-[10px] text-slate-400">
+            Target cut-off: <strong className="text-amber-400">{aspirantGoal.targetScore || 310}</strong> points
           </p>
         </div>
+
+        {/* Review Answers & Explanations Button */}
+        <button
+          type="button"
+          onClick={() => {
+            setIsReviewMode(true);
+            setActiveSubjectTab(0);
+            setCurrentQuestionIndex(0);
+          }}
+          className="w-full py-3 px-4 rounded-xl bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/40 text-purple-300 hover:text-white text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm"
+        >
+          <BookOpen className="w-4 h-4 text-purple-400" />
+          <span>Review Answers &amp; Chief Examiner Explanations</span>
+        </button>
 
         {/* Subject Breakdown */}
         <div className="space-y-1.5 text-xs text-left">
           <span className="text-[10px] uppercase font-bold text-slate-400 block">Performance by Subject:</span>
           {subjectExams.map((sub, sIdx) => {
-            const answered = sub.questions.filter((_, qIdx) => userAnswers[`${sIdx}-${qIdx}`] !== undefined).length;
+            let correctInSub = 0;
+            sub.questions.forEach((q, qIdx) => {
+              if (userAnswers[`${sIdx}-${qIdx}`] === q.correctOptionIndex) {
+                correctInSub++;
+              }
+            });
             return (
               <div key={sub.subject} className="p-2.5 rounded-xl bg-slate-950/70 border border-slate-800 flex items-center justify-between">
                 <span className="font-semibold text-slate-200">{sub.subject}</span>
-                <span className="font-mono text-emerald-400 font-bold">{answered} / {sub.questions.length} Answered</span>
+                <span className="font-mono text-emerald-400 font-bold">{correctInSub} / {sub.questions.length} Correct</span>
               </div>
             );
           })}
@@ -609,6 +861,7 @@ export const AspirantCBTSimulator: React.FC = () => {
             onClick={() => {
               setIsTestActive(false);
               setIsSubmitted(false);
+              setIsReviewMode(false);
             }}
             className="flex-1 py-3 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-300 transition-colors cursor-pointer"
           >
