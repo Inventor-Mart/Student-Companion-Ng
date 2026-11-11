@@ -28,6 +28,15 @@ export const AIUniformVerificationModal: React.FC = () => {
   const [isSuccess, setIsSuccess] = useState<boolean>(student.uniformVerified);
   const [cameraActive, setCameraActive] = useState<boolean>(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
+  const [verificationResult, setVerificationResult] = useState<{
+    isUniform: boolean;
+    confidence: number;
+    detectedElements?: string[];
+    schoolCrestVisible?: boolean;
+    rejectionReason?: string | null;
+    feedback?: string;
+  } | null>(null);
+  const [verificationError, setVerificationError] = useState<string | null>(null);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -131,22 +140,59 @@ export const AIUniformVerificationModal: React.FC = () => {
     }
   };
 
-  const handleStartScan = () => {
+  const handleStartScan = async () => {
     if (!selectedImage) return;
     setIsScanning(true);
     setScanStep(1);
+    setVerificationResult(null);
+    setVerificationError(null);
 
-    setTimeout(() => {
-      setScanStep(2);
-      setTimeout(() => {
-        setScanStep(3);
-        setTimeout(() => {
-          setIsScanning(false);
+    const step2Timer = setTimeout(() => setScanStep(2), 700);
+    const step3Timer = setTimeout(() => setScanStep(3), 1500);
+
+    try {
+      const response = await fetch('/api/ai/verify-uniform', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          imageBase64: selectedImage,
+          studentName: student.name,
+          schoolName: student.school,
+          classLevel: student.classLevel,
+        }),
+      });
+
+      clearTimeout(step2Timer);
+      clearTimeout(step3Timer);
+
+      const data = await response.json();
+
+      if (response.ok && data.success && data.verification) {
+        const v = data.verification;
+        setVerificationResult(v);
+        if (v.isUniform) {
           setIsSuccess(true);
           verifySchoolUniform(selectedImage);
-        }, 900);
-      }, 900);
-    }, 900);
+        } else {
+          setIsSuccess(false);
+          setVerificationError(
+            v.rejectionReason ||
+            'Strict uniform check failed: School collar or crest was not clearly detected. Please ensure your uniform collar and badge are visible.'
+          );
+        }
+      } else {
+        setVerificationError(data.error || 'Unable to inspect uniform. Please try again with clear lighting.');
+        setIsSuccess(false);
+      }
+    } catch (err: any) {
+      clearTimeout(step2Timer);
+      clearTimeout(step3Timer);
+      console.warn('AI Uniform Verification Error:', err);
+      setVerificationError(err?.message || 'Network error verifying uniform with SC AI.');
+      setIsSuccess(false);
+    } finally {
+      setIsScanning(false);
+    }
   };
 
   if (!isUniformModalOpen) return null;
@@ -280,6 +326,53 @@ export const AIUniformVerificationModal: React.FC = () => {
               </div>
             )}
           </div>
+
+          {/* Verification Success Details */}
+          {verificationResult?.isUniform && (
+            <div className="p-3 bg-emerald-950/70 border border-emerald-500/60 rounded-xl space-y-1 text-xs text-emerald-200">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-white flex items-center gap-1.5">
+                  <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                  <span>Verified with SC AI Vision</span>
+                </span>
+                <span className="font-mono text-[10px] text-emerald-400 font-bold bg-emerald-900/60 px-1.5 py-0.2 rounded">
+                  {verificationResult.confidence}% Confidence
+                </span>
+              </div>
+              {verificationResult.detectedElements && verificationResult.detectedElements.length > 0 && (
+                <p className="text-[11px] text-slate-300">
+                  Detected: <strong className="text-white">{verificationResult.detectedElements.join(' · ')}</strong>
+                </p>
+              )}
+              {verificationResult.feedback && (
+                <p className="text-[10px] text-emerald-300 italic">{verificationResult.feedback}</p>
+              )}
+            </div>
+          )}
+
+          {/* Verification Rejection Alert */}
+          {verificationError && !isScanning && (
+            <div className="p-3 bg-rose-950/70 border border-rose-500/60 rounded-xl space-y-1.5 text-xs text-rose-200 animate-in fade-in">
+              <div className="flex items-center gap-1.5 font-bold text-white">
+                <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                <span>Strict Inspection Failed</span>
+              </div>
+              <p className="text-[11px] text-rose-200/90 leading-relaxed">{verificationError}</p>
+              <div className="pt-1 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setVerificationError(null);
+                    setVerificationResult(null);
+                    setSelectedImage(null);
+                  }}
+                  className="py-1 px-2.5 rounded-lg bg-rose-900/70 hover:bg-rose-800 text-rose-200 text-[10px] font-bold cursor-pointer transition-colors"
+                >
+                  Choose Different Photo
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Camera Warning / Message */}
           {cameraError && (

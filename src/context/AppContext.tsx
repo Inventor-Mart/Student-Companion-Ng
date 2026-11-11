@@ -1972,8 +1972,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }));
     }
 
-    // 3. Firestore update (only for persistent database bookings, skip demo sessions)
-    if (currentUser && !isOffline && !bookingId.startsWith('demo-')) {
+    // 3. Firestore update (only for persistent database bookings)
+    const isStoredBooking = tutorBookings.some(b => b.id === bookingId);
+    if (currentUser && !isOffline && isStoredBooking) {
       const bookingDocRef = doc(db, 'tutorBookings', bookingId);
       const path = `tutorBookings/${bookingId}`;
       updateDoc(bookingDocRef, {

@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
-import { Mail, Lock, ArrowLeft } from 'lucide-react';
+import { Mail, Lock, ArrowLeft, CheckCircle2, AlertCircle, X, RefreshCw } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { sendPasswordResetEmail } from 'firebase/auth';
+import { auth } from '../../lib/firebase';
 
 interface SignInPageProps {
   onBackToLanding: () => void;
@@ -18,6 +20,42 @@ export const SignInPage: React.FC<SignInPageProps> = ({
   const [password, setPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // Live Firebase Password Recovery States
+  const [isForgotModalOpen, setIsForgotModalOpen] = useState(false);
+  const [resetEmail, setResetEmail] = useState('');
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetSuccessMsg, setResetSuccessMsg] = useState<string | null>(null);
+  const [resetErrorMsg, setResetErrorMsg] = useState<string | null>(null);
+
+  const handleSendPasswordReset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const target = resetEmail.trim() || emailOrUsername.trim();
+    if (!target || !target.includes('@')) {
+      setResetErrorMsg('Please enter a valid email address for password recovery.');
+      return;
+    }
+    setResetLoading(true);
+    setResetErrorMsg(null);
+    setResetSuccessMsg(null);
+    try {
+      await sendPasswordResetEmail(auth, target);
+      setResetSuccessMsg(`Password reset link successfully sent to ${target}. Please check your inbox or spam.`);
+    } catch (err: any) {
+      console.warn('Firebase password reset error:', err);
+      if (err.code === 'auth/user-not-found') {
+        setResetErrorMsg('No registered account was found with that email address.');
+      } else if (err.code === 'auth/invalid-email') {
+        setResetErrorMsg('The email address format is invalid.');
+      } else if (err.code === 'auth/too-many-requests') {
+        setResetErrorMsg('Too many password reset requests. Please wait a few minutes and try again.');
+      } else {
+        setResetErrorMsg(err?.message || 'Failed to send password reset email. Please try again.');
+      }
+    } finally {
+      setResetLoading(false);
+    }
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -197,7 +235,12 @@ export const SignInPage: React.FC<SignInPageProps> = ({
           <div className="w-full flex justify-end -mt-1 pr-2">
             <button
               type="button"
-              onClick={() => alert('Password recovery link sent! For demo purposes, you can also sign in directly.')}
+              onClick={() => {
+                setResetEmail(emailOrUsername);
+                setResetErrorMsg(null);
+                setResetSuccessMsg(null);
+                setIsForgotModalOpen(true);
+              }}
               className="text-sm font-semibold text-[#FF5B00] hover:underline cursor-pointer"
             >
               Forgot?
@@ -293,6 +336,98 @@ export const SignInPage: React.FC<SignInPageProps> = ({
         </div>
 
       </div>
+
+      {/* Live Firebase Password Reset Modal */}
+      {isForgotModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#0C172B] border border-[#1E304F] rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-start justify-between pb-2 border-b border-[#1E304F]">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2.5 rounded-2xl bg-[#FF5B00]/15 text-[#FF5B00] border border-[#FF5B00]/25">
+                  <Mail className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">Reset Account Password</h3>
+                  <p className="text-[11px] text-slate-400">Receive a secure password reset link via email</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsForgotModalOpen(false);
+                  setResetErrorMsg(null);
+                  setResetSuccessMsg(null);
+                }}
+                className="text-slate-400 hover:text-white p-1 rounded-lg cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSendPasswordReset} className="space-y-3.5">
+              <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1">
+                  Registered Email Address
+                </label>
+                <div className="relative">
+                  <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="email"
+                    required
+                    value={resetEmail}
+                    onChange={(e) => {
+                      setResetEmail(e.target.value);
+                      if (resetErrorMsg) setResetErrorMsg(null);
+                    }}
+                    placeholder="you@domain.ng"
+                    className="w-full bg-[#081220] border border-[#1E304F] focus:border-[#FF5B00] rounded-xl py-2.5 pl-10 pr-4 text-xs text-white placeholder-slate-500 focus:outline-none transition-colors"
+                  />
+                </div>
+              </div>
+
+              {resetSuccessMsg && (
+                <div className="p-3 bg-emerald-950/80 border border-emerald-500/60 rounded-xl text-xs text-emerald-200 flex items-start gap-2 animate-in fade-in">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                  <p className="leading-relaxed">{resetSuccessMsg}</p>
+                </div>
+              )}
+
+              {resetErrorMsg && (
+                <div className="p-3 bg-rose-950/80 border border-rose-500/60 rounded-xl text-xs text-rose-200 flex items-start gap-2 animate-in fade-in">
+                  <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                  <p className="leading-relaxed">{resetErrorMsg}</p>
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsForgotModalOpen(false);
+                    setResetErrorMsg(null);
+                    setResetSuccessMsg(null);
+                  }}
+                  className="py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold cursor-pointer"
+                >
+                  Close
+                </button>
+                <button
+                  type="submit"
+                  disabled={resetLoading || !resetEmail.trim()}
+                  className="py-2.5 px-5 rounded-xl bg-[#FF5B00] hover:bg-[#e05000] disabled:opacity-50 text-white font-bold text-xs flex items-center gap-1.5 transition-all shadow-md shadow-[#FF5B00]/25 cursor-pointer"
+                >
+                  {resetLoading ? (
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Mail className="w-3.5 h-3.5" />
+                  )}
+                  <span>Send Reset Email</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

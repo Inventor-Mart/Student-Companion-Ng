@@ -485,7 +485,7 @@ export const StudentDashboard: React.FC = () => {
 
         <div className="flex items-center gap-2 pt-1">
           <button
-            onClick={() => launchVirtualClassroom(activeOnlineBooking?.id || 'demo-classroom', 'student')}
+            onClick={() => launchVirtualClassroom(activeOnlineBooking?.id || `classroom-${student.id || Date.now()}`, 'student')}
             className="flex-1 py-2.5 px-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold rounded-xl transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
           >
             <Video className="w-4 h-4" />

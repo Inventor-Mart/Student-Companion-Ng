@@ -208,7 +208,7 @@ export const TutorDiscovery: React.FC = () => {
           </div>
         </div>
         <button
-          onClick={() => launchVirtualClassroom('demo-classroom-session', 'student')}
+          onClick={() => launchVirtualClassroom(`classroom-${Date.now()}`, 'student')}
           className="px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs rounded-xl transition-all shadow-md flex items-center gap-1.5 shrink-0 cursor-pointer"
         >
           <Video className="w-3.5 h-3.5" />

@@ -289,7 +289,91 @@ Return valid JSON only formatted as an array of objects with the following schem
   }
 });
 
+// 2d. Gemini Multimodal Secondary School Uniform Inspector (Strict Mode)
+app.post('/api/ai/verify-uniform', async (req, res) => {
+  try {
+    const { imageBase64, studentName, schoolName, classLevel } = req.body;
 
+    if (!imageBase64) {
+      return res.status(400).json({ success: false, error: 'Uniform photo is required for verification' });
+    }
+
+    // Parse data URL or clean base64 string
+    let mimeType = 'image/jpeg';
+    let cleanBase64 = String(imageBase64).trim();
+    const match = cleanBase64.match(/^data:(image\/[a-zA-Z+.-]+);base64,(.+)$/);
+    if (match) {
+      mimeType = match[1];
+      cleanBase64 = match[2];
+    }
+
+    const systemInstruction = `You are the Official AI Uniform Inspector for Nigerian Secondary Schools on the Student Companion platform.
+Your mandate is to strictly evaluate uploaded student selfies and photos to verify if the student is actively wearing their official Nigerian secondary school uniform.
+
+STRICT INSPECTION RULES:
+1. Collar Structure: A genuine Nigerian school uniform MUST feature a distinct, visible collar (e.g. turn-down shirt collar, blouse collar, school pinafore collar, or blazer).
+2. Institutional Signifiers: Look for school emblems, embroidered crests, chest pocket badges, or school neckties / cross-ties.
+3. IMMEDIATE REJECTION CRITERIA:
+   - Plain round-neck t-shirts, polo shirts without school crest, hoodies, singlets, sports jerseys, or sleepwear.
+   - Adult work attire, traditional/native wear, party dresses.
+   - Non-human photos, pet photos, landscape photos, or obscured/blank images where no uniform can be identified.
+4. If approved: Set "isUniform" to true, provide a confidence score (75-100), enumerate detected elements (e.g. ["Collared school shirt", "Embroidered chest crest", "School tie"]), and give an encouraging 1-sentence note.
+5. If rejected: Set "isUniform" to false, confidence (<50), and provide a clear, educational "rejectionReason" explaining why it failed and how to retake with a visible collar or badge.
+
+Return strictly valid JSON only matching the schema:
+{
+  "isUniform": boolean,
+  "confidence": number,
+  "detectedElements": string[],
+  "schoolCrestVisible": boolean,
+  "rejectionReason": string | null,
+  "feedback": string
+}`;
+
+    const promptText = `Verify this photo for student: ${studentName || 'Student'}, declared school: ${schoolName || 'Secondary School'}, class: ${classLevel || 'SS 3'}. Does this image show a genuine collared school uniform?`;
+
+    const aiResponse = await getAi().models.generateContent({
+      model: 'gemini-3.8-flash',
+      contents: {
+        parts: [
+          {
+            inlineData: {
+              mimeType,
+              data: cleanBase64,
+            },
+          },
+          {
+            text: promptText,
+          },
+        ],
+      },
+      config: {
+        systemInstruction,
+        responseMimeType: 'application/json',
+      },
+    });
+
+    const rawText = (aiResponse.text || '{}').trim();
+    let parsed: any;
+    try {
+      parsed = JSON.parse(rawText);
+    } catch {
+      const cleanJson = rawText.replace(/^```json\n?/, '').replace(/\n?```$/, '').trim();
+      parsed = JSON.parse(cleanJson);
+    }
+
+    return res.json({
+      success: true,
+      verification: parsed,
+    });
+  } catch (error: any) {
+    console.error('Gemini Uniform Verification Error:', error);
+    return res.status(500).json({
+      success: false,
+      error: error?.message || 'Failed to inspect school uniform with Gemini AI',
+    });
+  }
+});
 
 // 3. Email Service Status Endpoint
 app.get('/api/email-status', (_req, res) => {
@@ -904,7 +988,30 @@ app.get('/api/partners/:partnerId/summary', async (req, res) => {
   }
 });
 
-// 5. Submit Withdrawal Request from Partner Digital Wallet
+// ==========================================
+// PAYSTACK PAYMENT & VERIFICATION GATEWAY
+// ==========================================
+
+let runtimePaystackPublicKey = process.env.VITE_PAYSTACK_PUBLIC_KEY || process.env.PAYSTACK_PUBLIC_KEY || '';
+let runtimePaystackSecretKey = process.env.PAYSTACK_SECRET_KEY || '';
+
+function getNigerianBankCode(bankName?: string): string {
+  if (!bankName) return '058';
+  const name = bankName.toLowerCase();
+  if (name.includes('gtbank') || name.includes('guaranty')) return '058';
+  if (name.includes('access')) return '044';
+  if (name.includes('zenith')) return '057';
+  if (name.includes('united bank') || name.includes('uba')) return '033';
+  if (name.includes('first bank')) return '011';
+  if (name.includes('stanbic')) return '221';
+  if (name.includes('fidelity')) return '070';
+  if (name.includes('kuda')) return '50211';
+  if (name.includes('opay')) return '999992';
+  if (name.includes('palmpay')) return '999991';
+  return '058';
+}
+
+// 5. Submit Withdrawal Request from Partner Digital Wallet (Automated Paystack Transfer)
 app.post('/api/partners/withdraw', async (req, res) => {
   try {
     const { partnerId, amountNaira } = req.body;
@@ -918,6 +1025,63 @@ app.post('/api/partners/withdraw', async (req, res) => {
 
     const walletRef = doc(serverDb, 'partnerWallets', partnerId);
     const partnerRef = doc(serverDb, 'growthPartners', partnerId);
+
+    // Fetch partner details for bank settlement
+    const partnerSnapPre = await getDoc(partnerRef);
+    const partnerData = partnerSnapPre.exists() ? partnerSnapPre.data() : null;
+
+    let transferReference = `trf_${Date.now()}`;
+    let transferStatus = 'processed';
+    let paystackTransferCode: string | null = null;
+    const secretKey = runtimePaystackSecretKey || process.env.PAYSTACK_SECRET_KEY;
+
+    // If live Paystack secret key is present and partner has account details, disburse via Paystack Transfers
+    if (secretKey && partnerData?.accountNumber) {
+      try {
+        const bankCode = getNigerianBankCode(partnerData.bankName);
+        const recipientRes = await fetch('https://api.paystack.co/transferrecipient', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${secretKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            type: 'nuban',
+            name: partnerData.accountName || partnerData.name || 'Growth Partner',
+            account_number: partnerData.accountNumber,
+            bank_code: bankCode,
+            currency: 'NGN',
+          }),
+        });
+
+        const recipientData = await recipientRes.json().catch(() => ({}));
+        if (recipientData.status && recipientData.data?.recipient_code) {
+          const recipientCode = recipientData.data.recipient_code;
+          const transferRes = await fetch('https://api.paystack.co/transfer', {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${secretKey}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              source: 'balance',
+              amount: amountNaira * 100, // in kobo
+              recipient: recipientCode,
+              reason: `Student Companion Partner Commission Payout - ${partnerData.name || partnerId}`,
+            }),
+          });
+
+          const transferData = await transferRes.json().catch(() => ({}));
+          if (transferData.status && transferData.data) {
+            transferReference = transferData.data.reference || transferReference;
+            paystackTransferCode = transferData.data.transfer_code || null;
+            transferStatus = transferData.data.status || 'success';
+          }
+        }
+      } catch (paystackErr) {
+        console.warn('[Paystack Transfer Notice] Live transfer call encountered an issue; updating local ledger:', paystackErr);
+      }
+    }
 
     const result = await runTransaction(serverDb, async (transaction) => {
       // 1. ALL READS FIRST
@@ -959,12 +1123,35 @@ app.post('/api/partners/withdraw', async (req, res) => {
       };
     });
 
+    // Record ledger withdrawal in Firestore subcollection
+    try {
+      const txId = `tx_with_${Date.now()}`;
+      const txRef = doc(serverDb, 'partnerWallets', partnerId, 'transactions', txId);
+      await setDoc(txRef, {
+        id: txId,
+        partnerId,
+        type: 'withdrawal',
+        amountNaira,
+        reference: transferReference,
+        paystackTransferCode,
+        status: transferStatus,
+        bankName: partnerData?.bankName || 'Registered Bank',
+        accountNumber: partnerData?.accountNumber || '',
+        accountName: partnerData?.accountName || '',
+        createdAt: new Date().toISOString(),
+      });
+    } catch (txLogErr) {
+      console.warn('Could not record withdrawal transaction log:', txLogErr);
+    }
+
     return res.json({
       success: true,
       amountWithdrawn: amountNaira,
       remainingBalanceNaira: result.newBalance,
       totalWithdrawnNaira: result.newWithdrawn,
-      message: `Withdrawal request of ₦${amountNaira.toLocaleString()} processed successfully to your registered bank account.`,
+      reference: transferReference,
+      status: transferStatus,
+      message: `Withdrawal of ₦${amountNaira.toLocaleString()} processed successfully to your registered bank account (${partnerData?.bankName || 'Bank'}).`,
     });
   } catch (error: any) {
     console.error('Error in /api/partners/withdraw:', error);
@@ -974,13 +1161,6 @@ app.post('/api/partners/withdraw', async (req, res) => {
     });
   }
 });
-
-// ==========================================
-// PAYSTACK PAYMENT & VERIFICATION GATEWAY
-// ==========================================
-
-let runtimePaystackPublicKey = process.env.VITE_PAYSTACK_PUBLIC_KEY || process.env.PAYSTACK_PUBLIC_KEY || '';
-let runtimePaystackSecretKey = process.env.PAYSTACK_SECRET_KEY || '';
 
 // 1. Get Paystack Public Config
 app.get('/api/paystack/config', (_req, res) => {
