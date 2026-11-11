@@ -27,11 +27,18 @@ import {
   Key,
   RefreshCw,
   Check,
-  ExternalLink
+  ExternalLink,
+  Users,
+  UserPlus,
+  Trash2,
+  Search,
+  KeyRound,
+  GraduationCap
 } from 'lucide-react';
 import { NairaText, NairaSign } from '../../utils/currency';
 import { ParentCommunityForum } from './ParentCommunityForum';
 import { ExamPrepUnlockModal } from '../student/exam-prep/ExamPrepUnlockModal';
+import { LinkedWard } from '../../types';
 
 export const ParentPortal: React.FC = () => {
   const {
@@ -48,11 +55,13 @@ export const ParentPortal: React.FC = () => {
     currentUserProfile,
     championshipRegistrations,
     approveChampionshipRegistration,
-    examPrepState
+    examPrepState,
+    linkedWards,
+    activeWardId,
+    linkWardByCode,
+    unlinkWard,
+    setActiveWard
   } = useApp();
-
-  const parentName = currentUserProfile?.fullName || 'Registered Parent';
-  const wardName = currentUserProfile?.parentData?.wardName || (student.name && student.name !== '' ? student.name : 'Registered Ward');
 
   const [enteredPin, setEnteredPin] = useState<string>('');
   const [pinError, setPinError] = useState<string>('');
@@ -62,6 +71,43 @@ export const ParentPortal: React.FC = () => {
   const [isProcessingPaystack, setIsProcessingPaystack] = useState<boolean>(false);
   const [parentTab, setParentTab] = useState<'overview' | 'community'>('overview');
   const [isExamPrepModalOpen, setIsExamPrepModalOpen] = useState<boolean>(false);
+
+  // Multi-Ward Management States
+  const [isLinkWardModalOpen, setIsLinkWardModalOpen] = useState(false);
+  const [linkWardInput, setLinkWardInput] = useState('');
+  const [isLinkingWard, setIsLinkingWard] = useState(false);
+  const [linkWardFeedback, setLinkWardFeedback] = useState<{ success: boolean; message?: string; ward?: LinkedWard } | null>(null);
+  const [confirmUnlinkWard, setConfirmUnlinkWard] = useState<LinkedWard | null>(null);
+
+  const currentActiveWard = linkedWards.find(w => w.studentId === activeWardId) || linkedWards[0];
+  const parentName = currentUserProfile?.fullName || 'Registered Parent';
+  const wardName = currentActiveWard?.studentName || currentUserProfile?.parentData?.wardName || (student.name && student.name !== '' ? student.name : 'Registered Ward');
+
+  const handleLinkWardSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!linkWardInput.trim()) return;
+    setIsLinkingWard(true);
+    setLinkWardFeedback(null);
+    try {
+      const res = await linkWardByCode(linkWardInput);
+      setLinkWardFeedback(res);
+      if (res.success) {
+        setLinkWardInput('');
+      }
+    } catch (err: any) {
+      setLinkWardFeedback({
+        success: false,
+        message: err?.message || 'Failed to link ward. Please verify the code or email.'
+      });
+    } finally {
+      setIsLinkingWard(false);
+    }
+  };
+
+  const handleConfirmUnlink = async (wardId: string) => {
+    await unlinkWard(wardId);
+    setConfirmUnlinkWard(null);
+  };
 
   // Paystack Live Configuration & Verification States
   const [paystackConfig, setPaystackConfig] = useState<{
@@ -335,6 +381,105 @@ export const ParentPortal: React.FC = () => {
             <Lock className="w-3.5 h-3.5 text-slate-400" />
             <span>Lock</span>
           </button>
+        </div>
+      </div>
+
+      {/* Linked Children & Multi-Ward Switcher Bar */}
+      <div className="bg-slate-900/90 rounded-2xl p-3.5 border border-slate-800 space-y-2.5 shadow-sm">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 rounded-lg bg-[#FF5B00]/10 border border-[#FF5B00]/20 text-[#FF5B00]">
+              <Users className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs font-bold text-white tracking-tight">
+                  Linked Children &amp; Wards
+                </span>
+                <span className="text-[10px] font-mono font-bold text-[#FF5B00] bg-[#FF5B00]/10 px-1.5 py-0.2 rounded border border-[#FF5B00]/20">
+                  {linkedWards.length}
+                </span>
+              </div>
+              <p className="text-[10px] text-slate-400">
+                Click a child to inspect their personalized CBT drill results, study streak, and timetable.
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              setLinkWardFeedback(null);
+              setLinkWardInput('');
+              setIsLinkWardModalOpen(true);
+            }}
+            className="py-1.5 px-3 rounded-xl bg-[#FF5B00] hover:bg-[#e05000] active:scale-95 text-white text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-md shadow-[#FF5B00]/20"
+          >
+            <UserPlus className="w-3.5 h-3.5" />
+            <span>+ Link Child</span>
+          </button>
+        </div>
+
+        {/* Wards Horizontal Grid / List */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 pt-1">
+          {linkedWards.map((w) => {
+            const isActive = (activeWardId ? w.studentId === activeWardId : w.studentId === linkedWards[0]?.studentId);
+            return (
+              <div
+                key={w.studentId}
+                onClick={() => setActiveWard(w.studentId)}
+                className={`p-3 rounded-xl border text-left transition-all cursor-pointer relative group flex flex-col justify-between ${
+                  isActive
+                    ? 'bg-slate-950 border-emerald-500 ring-1 ring-emerald-500/40 shadow-md'
+                    : 'bg-slate-950/60 border-slate-800 hover:border-slate-700 hover:bg-slate-900/60'
+                }`}
+              >
+                <div className="flex items-start justify-between gap-1.5 mb-1.5">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-xs shrink-0 ${
+                      isActive ? 'bg-emerald-500 text-slate-950 font-black' : 'bg-slate-800 text-slate-300'
+                    }`}>
+                      {w.studentName.slice(0, 1).toUpperCase()}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-bold text-white text-xs truncate">{w.studentName}</span>
+                        {isActive && (
+                          <span className="text-[9px] font-bold text-emerald-400 bg-emerald-950 px-1 py-0.2 rounded border border-emerald-800/80 shrink-0">
+                            Active
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-[10px] text-slate-400 block truncate">
+                        {w.classLevel} {w.stream ? `· ${w.stream}` : ''}
+                      </span>
+                    </div>
+                  </div>
+
+                  {linkedWards.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setConfirmUnlinkWard(w);
+                      }}
+                      className="opacity-0 group-hover:opacity-100 p-1 hover:bg-red-950/80 rounded text-slate-500 hover:text-red-400 transition-all cursor-pointer"
+                      title="Unlink ward"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-between text-[10px] pt-1.5 border-t border-slate-900 text-slate-400">
+                  <span className="truncate max-w-[140px]">{w.schoolName}</span>
+                  <span className="font-mono text-[9px] text-[#84E000] bg-slate-900 px-1.5 py-0.2 rounded">
+                    {w.studentLinkCode}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
 
@@ -1040,6 +1185,146 @@ export const ParentPortal: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Link Child / Ward Modal */}
+      {isLinkWardModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-start justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2.5 rounded-2xl bg-[#FF5B00]/15 text-[#FF5B00] border border-[#FF5B00]/25">
+                  <UserPlus className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">Link Child or Ward</h3>
+                  <p className="text-[11px] text-slate-400">Connect using their 6-character Student Link Code or Email</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsLinkWardModalOpen(false);
+                  setLinkWardFeedback(null);
+                  setLinkWardInput('');
+                }}
+                className="text-slate-400 hover:text-white p-1 rounded-lg cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleLinkWardSubmit} className="space-y-3.5">
+              <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1">
+                  Student Link Code or Registered Email
+                </label>
+                <div className="relative">
+                  <KeyRound className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    required
+                    value={linkWardInput}
+                    onChange={(e) => {
+                      setLinkWardInput(e.target.value);
+                      if (linkWardFeedback) setLinkWardFeedback(null);
+                    }}
+                    placeholder="e.g. STU-8K2D or student@domain.ng"
+                    className="w-full bg-[#081220] border border-slate-800 focus:border-[#FF5B00] rounded-xl py-2.5 pl-10 pr-4 text-xs font-mono font-bold tracking-wider text-white placeholder-slate-500 uppercase focus:outline-none transition-colors"
+                  />
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Students can find their 6-character Link Code directly at the top of their Student Companion dashboard.
+                </p>
+              </div>
+
+              {linkWardFeedback && (
+                <div
+                  className={`p-3 rounded-xl border text-xs leading-relaxed space-y-1 ${
+                    linkWardFeedback.success
+                      ? 'bg-emerald-950/80 border-emerald-600 text-emerald-200'
+                      : 'bg-rose-950/80 border-rose-600 text-rose-200'
+                  }`}
+                >
+                  <div className="flex items-center gap-1.5 font-bold">
+                    {linkWardFeedback.success ? (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                    ) : (
+                      <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                    )}
+                    <span>{linkWardFeedback.message}</span>
+                  </div>
+                  {linkWardFeedback.ward && (
+                    <div className="text-[11px] text-emerald-300 pt-1 border-t border-emerald-900/60">
+                      <strong>{linkWardFeedback.ward.studentName}</strong> · {linkWardFeedback.ward.classLevel} ({linkWardFeedback.ward.stream || 'General'}) · {linkWardFeedback.ward.schoolName}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsLinkWardModalOpen(false);
+                    setLinkWardFeedback(null);
+                    setLinkWardInput('');
+                  }}
+                  className="py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold cursor-pointer"
+                >
+                  Close
+                </button>
+                <button
+                  type="submit"
+                  disabled={isLinkingWard || !linkWardInput.trim()}
+                  className="py-2.5 px-5 rounded-xl bg-[#FF5B00] hover:bg-[#e05000] disabled:opacity-50 text-white font-bold text-xs flex items-center gap-1.5 transition-all shadow-md shadow-[#FF5B00]/20 cursor-pointer"
+                >
+                  {isLinkingWard ? (
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <UserPlus className="w-3.5 h-3.5" />
+                  )}
+                  <span>Verify &amp; Link Ward</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Confirm Unlink Ward Modal */}
+      {confirmUnlinkWard && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-sm w-full shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150 text-center">
+            <div className="w-12 h-12 rounded-2xl bg-rose-500/10 text-rose-400 border border-rose-500/20 flex items-center justify-center mx-auto">
+              <Trash2 className="w-6 h-6" />
+            </div>
+
+            <div>
+              <h3 className="text-sm font-bold text-white">Unlink {confirmUnlinkWard.studentName}?</h3>
+              <p className="text-xs text-slate-400 mt-1">
+                You will no longer receive weekly scorecards or CBT mock results for this child until re-linked with their code.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setConfirmUnlinkWard(null)}
+                className="flex-1 py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => handleConfirmUnlink(confirmUnlinkWard.studentId)}
+                className="flex-1 py-2 px-3 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition-all cursor-pointer shadow-md shadow-rose-950"
+              >
+                Unlink Child
+              </button>
+            </div>
           </div>
         </div>
       )}

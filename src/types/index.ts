@@ -45,6 +45,7 @@ export interface StudentProfile {
   subscribedUntil?: string;
   termExpiresAt?: string;
   addOns?: StudentAddOnEntitlements;
+  studentLinkCode?: string;
 }
 
 export interface CurriculumTopic {
@@ -272,6 +273,43 @@ export interface RegisteredTutorData {
   onboardingStage?: 1 | 2 | 3;
 }
 
+export type ParentRelationship = 'Father' | 'Mother' | 'Guardian' | 'Sibling' | 'Relative' | 'Other';
+export type ParentAcademicGoal =
+  | 'WAEC / WASSCE Excellence'
+  | 'JAMB UTME 300+ Target'
+  | 'Junior BECE Certification'
+  | 'Termly Promotion Top 3'
+  | '1-on-1 Personalized Tutoring'
+  | 'STEM & Math Confidence';
+export type ParentNotificationChannel = 'WhatsApp' | 'SMS' | 'Email' | 'In-App Only';
+
+export interface LinkedWard {
+  studentId: string;
+  studentName: string;
+  classLevel: NigerianClassLevel;
+  stream?: AcademicStream | string;
+  schoolName: string;
+  studentLinkCode: string;
+  linkedAt: string;
+  avatarUrl?: string;
+  isPrimary?: boolean;
+}
+
+export interface RegisteredParentData {
+  phone: string;
+  pin: string;
+  relationship?: ParentRelationship;
+  stateOfResidence?: string;
+  cityOrLga?: string;
+  academicGoals?: ParentAcademicGoal[];
+  notificationPreference?: ParentNotificationChannel;
+  allowAutomatedReports?: boolean;
+  linkedWards?: LinkedWard[];
+  activeWardId?: string;
+  address?: VerifiedAddress;
+  wardName?: string; // Backward compatibility
+}
+
 export interface RegisteredUserProfile {
   id: string;
   role: UserRole;
@@ -282,12 +320,7 @@ export interface RegisteredUserProfile {
   verifiedAt?: string;
   createdAt: string;
   studentData?: StudentProfile;
-  parentData?: {
-    phone: string;
-    wardName: string;
-    pin: string;
-    address?: VerifiedAddress;
-  };
+  parentData?: RegisteredParentData;
   tutorData?: RegisteredTutorData;
   adminData?: {
     schoolName: string;

@@ -37,7 +37,12 @@ import {
   AspirantTier,
   StudentSubscriptionTier,
   StudentSubscriptionPlan,
-  StudentAddOnEntitlements
+  StudentAddOnEntitlements,
+  LinkedWard,
+  RegisteredParentData,
+  ParentRelationship,
+  ParentAcademicGoal,
+  ParentNotificationChannel
 } from '../types';
 import {
   generateCuratedStudyCalendar,
@@ -243,6 +248,13 @@ interface AppContextType {
   targetSubscriptionPlan: StudentSubscriptionPlan | null;
   openStudentSubscriptionModal: (targetPlan?: StudentSubscriptionPlan) => void;
   closeStudentSubscriptionModal: () => void;
+
+  // Multi-Ward Linking & Management
+  linkedWards: LinkedWard[];
+  activeWardId: string | null;
+  linkWardByCode: (codeOrEmail: string) => Promise<{ success: boolean; ward?: LinkedWard; message?: string }>;
+  unlinkWard: (studentId: string) => Promise<void>;
+  setActiveWard: (studentId: string) => void;
 }
 
 const INITIAL_EMPTY_STUDENT: StudentProfile = {
@@ -261,7 +273,8 @@ const INITIAL_EMPTY_STUDENT: StudentProfile = {
   completedQuizIds: [],
   isSubscribed: false,
   subscriptionPlan: 'free',
-  subscriptionTier: 'free'
+  subscriptionTier: 'free',
+  studentLinkCode: 'STU-8K2D'
 };
 
 const INITIAL_EMPTY_WALLET: ParentWallet = {
@@ -495,6 +508,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           return INITIAL_EMPTY_STUDENT;
         }
         if (parsed.name && parsed.name !== 'Tunde Balogun' && parsed.id !== 'std-tunde-001') {
+          if (!parsed.studentLinkCode) parsed.studentLinkCode = 'STU-8K2D';
           return parsed;
         }
       } catch {}
@@ -1000,6 +1014,209 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const lockParentPin = () => {
     setIsParentPinUnlocked(false);
+  };
+
+  // Multi-Ward Linking State & Methods
+  const [linkedWards, setLinkedWards] = useState<LinkedWard[]>(() => {
+    const parent = currentUserProfile?.parentData;
+    if (parent?.linkedWards && Array.isArray(parent.linkedWards) && parent.linkedWards.length > 0) {
+      return parent.linkedWards;
+    }
+    if (parent?.wardName) {
+      return [{
+        studentId: student.id || 'std-primary-ward',
+        studentName: parent.wardName,
+        classLevel: student.classLevel || 'SS 3',
+        stream: student.stream || 'Science',
+        schoolName: student.school || 'Secondary School',
+        studentLinkCode: student.studentLinkCode || 'STU-8K2D',
+        linkedAt: new Date().toISOString(),
+        isPrimary: true
+      }];
+    }
+    return [];
+  });
+
+  const [activeWardId, setActiveWardId] = useState<string | null>(() => {
+    const parent = currentUserProfile?.parentData;
+    if (parent?.activeWardId) return parent.activeWardId;
+    return linkedWards[0]?.studentId || null;
+  });
+
+  const linkWardByCode = async (codeOrEmail: string): Promise<{ success: boolean; ward?: LinkedWard; message?: string }> => {
+    const term = codeOrEmail.trim();
+    if (!term) {
+      return { success: false, message: 'Please enter a Student Link Code or registered email.' };
+    }
+
+    const isEmail = term.includes('@');
+    const cleanTerm = term.toLowerCase();
+
+    // 1. Search in allRegisteredUsers
+    const matchedUser = allRegisteredUsers.find(u => {
+      if (u.role !== 'student') return false;
+      if (isEmail && u.email?.toLowerCase() === cleanTerm) return true;
+      const code = u.studentData?.studentLinkCode?.toLowerCase() || '';
+      return code === cleanTerm || code.replace(/[^a-z0-9]/gi, '') === cleanTerm.replace(/[^a-z0-9]/gi, '');
+    });
+
+    let matchedStudent: StudentProfile | null = matchedUser?.studentData || null;
+
+    // 2. Fallback to current student state if match
+    if (!matchedStudent && student.name) {
+      const code = (student.studentLinkCode || '').toLowerCase();
+      if ((isEmail && currentUser?.email?.toLowerCase() === cleanTerm) ||
+          code === cleanTerm ||
+          code.replace(/[^a-z0-9]/gi, '') === cleanTerm.replace(/[^a-z0-9]/gi, '')) {
+        matchedStudent = student;
+      }
+    }
+
+    // 3. Fallback mock student for instant demo testing
+    if (!matchedStudent && (cleanTerm === 'stu-8k2d' || cleanTerm === 'stu8k2d' || cleanTerm === 'amina@student.ng')) {
+      matchedStudent = {
+        id: 'std-amina-01',
+        name: 'Amina Okon',
+        school: "Queen's College Lagos",
+        classLevel: 'SS 3',
+        stream: 'Science',
+        xp: 1450,
+        rank: 'Scholar',
+        streakDays: 8,
+        lastStudyDate: new Date().toISOString().split('T')[0],
+        uniformVerified: true,
+        uniformPhotoUrl: null,
+        downloadedSubjectIds: [],
+        completedQuizIds: [],
+        studentLinkCode: 'STU-8K2D'
+      };
+    }
+
+    if (!matchedStudent) {
+      return {
+        success: false,
+        message: isEmail
+          ? `No student found registered with email "${term}".`
+          : `No student found matching Link Code "${term}". Ask your ward to check their Student Dashboard for their 6-character code.`
+      };
+    }
+
+    // Check if already linked
+    if (linkedWards.some(w => w.studentId === matchedStudent!.id || w.studentLinkCode.toLowerCase() === (matchedStudent!.studentLinkCode || '').toLowerCase())) {
+      return {
+        success: false,
+        message: `${matchedStudent.name} is already linked to your parent account.`
+      };
+    }
+
+    const newWard: LinkedWard = {
+      studentId: matchedStudent.id || `std-${Date.now()}`,
+      studentName: matchedStudent.name,
+      classLevel: matchedStudent.classLevel,
+      stream: matchedStudent.stream,
+      schoolName: matchedStudent.school,
+      studentLinkCode: matchedStudent.studentLinkCode || `STU-${Math.floor(1000 + Math.random() * 9000)}`,
+      linkedAt: new Date().toISOString(),
+      isPrimary: linkedWards.length === 0
+    };
+
+    const updatedWards = [...linkedWards, newWard];
+    setLinkedWards(updatedWards);
+    setActiveWardId(newWard.studentId);
+
+    // Update parent profile
+    if (currentUserProfile) {
+      const updatedProfile: RegisteredUserProfile = {
+        ...currentUserProfile,
+        parentData: {
+          ...(currentUserProfile.parentData || { phone: '', pin: '' }),
+          linkedWards: updatedWards,
+          activeWardId: newWard.studentId,
+          wardName: newWard.studentName
+        }
+      };
+      setCurrentUserProfile(updatedProfile);
+      safeSetItem('sc_user_profile', JSON.stringify(updatedProfile));
+
+      if (currentUser && !isOffline) {
+        try {
+          await updateDoc(doc(db, 'users', currentUser.uid), {
+            'parentData.linkedWards': updatedWards,
+            'parentData.activeWardId': newWard.studentId,
+            'parentData.wardName': newWard.studentName
+          });
+        } catch (err) {
+          console.warn('Could not update parentData in Firestore:', err);
+        }
+      }
+    }
+
+    return {
+      success: true,
+      ward: newWard,
+      message: `Successfully linked ${newWard.studentName} (${newWard.classLevel})!`
+    };
+  };
+
+  const unlinkWard = async (studentId: string): Promise<void> => {
+    const updated = linkedWards.filter(w => w.studentId !== studentId);
+    setLinkedWards(updated);
+    const newActiveId = updated[0]?.studentId || null;
+    setActiveWardId(newActiveId);
+
+    if (currentUserProfile) {
+      const updatedProfile: RegisteredUserProfile = {
+        ...currentUserProfile,
+        parentData: {
+          ...(currentUserProfile.parentData || { phone: '', pin: '' }),
+          linkedWards: updated,
+          activeWardId: newActiveId || undefined,
+          wardName: updated[0]?.studentName || ''
+        }
+      };
+      setCurrentUserProfile(updatedProfile);
+      safeSetItem('sc_user_profile', JSON.stringify(updatedProfile));
+
+      if (currentUser && !isOffline) {
+        try {
+          await updateDoc(doc(db, 'users', currentUser.uid), {
+            'parentData.linkedWards': updated,
+            'parentData.activeWardId': newActiveId || null,
+            'parentData.wardName': updated[0]?.studentName || ''
+          });
+        } catch (err) {}
+      }
+    }
+  };
+
+  const setActiveWard = (studentId: string): void => {
+    setActiveWardId(studentId);
+    const targetWard = linkedWards.find(w => w.studentId === studentId);
+    if (!targetWard) return;
+
+    // Switch student context
+    setStudent(prev => ({
+      ...prev,
+      id: targetWard.studentId,
+      name: targetWard.studentName,
+      classLevel: targetWard.classLevel,
+      school: targetWard.schoolName,
+      stream: (targetWard.stream as any) || prev.stream || 'Science',
+      studentLinkCode: targetWard.studentLinkCode
+    }));
+
+    if (currentUserProfile) {
+      const updatedProfile: RegisteredUserProfile = {
+        ...currentUserProfile,
+        parentData: {
+          ...(currentUserProfile.parentData || { phone: '', pin: '' }),
+          activeWardId: studentId,
+          wardName: targetWard.studentName
+        }
+      };
+      setCurrentUserProfile(updatedProfile);
+      safeSetItem('sc_user_profile', JSON.stringify(updatedProfile));
+    }
   };
 
   const fundParentWallet = (amountNaira: number) => {
@@ -1816,6 +2033,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setCurrentRole(role);
 
     if (role === 'student') {
+      const freshLinkCode = profileData.studentLinkCode || `STU-${Math.floor(1000 + Math.random() * 9000)}`;
       const freshStudent: StudentProfile = {
         id: newId,
         name: fullName,
@@ -1830,17 +2048,44 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         uniformVerified: false,
         uniformPhotoUrl: null,
         downloadedSubjectIds: [],
-        completedQuizIds: []
+        completedQuizIds: [],
+        studentLinkCode: freshLinkCode
       };
       newProfile.studentData = freshStudent;
       setStudent(freshStudent);
       safeSetItem('sc_student', JSON.stringify(freshStudent));
     } else if (role === 'parent') {
+      const initialLinkedWards: LinkedWard[] = profileData.linkedWards || [];
+      if (initialLinkedWards.length === 0 && profileData.wardName) {
+        initialLinkedWards.push({
+          studentId: `std-ward-${Date.now()}`,
+          studentName: profileData.wardName,
+          classLevel: profileData.classLevel || 'SS 3',
+          stream: 'Science',
+          schoolName: profileData.schoolName || 'Secondary School',
+          studentLinkCode: profileData.studentLinkCode || 'STU-8K2D',
+          linkedAt: new Date().toISOString(),
+          isPrimary: true
+        });
+      }
+
       newProfile.parentData = {
         phone: profileData.phone || '',
-        wardName: profileData.wardName || '',
-        pin: profileData.pin || ''
+        wardName: profileData.wardName || (initialLinkedWards[0]?.studentName || ''),
+        pin: profileData.pin || '',
+        relationship: profileData.relationship || 'Guardian',
+        stateOfResidence: profileData.stateOfResidence || 'Lagos',
+        cityOrLga: profileData.cityOrLga || 'Lagos Island',
+        academicGoals: profileData.academicGoals || ['WAEC / WASSCE Excellence'],
+        notificationPreference: profileData.notificationPreference || 'WhatsApp',
+        allowAutomatedReports: profileData.allowAutomatedReports ?? true,
+        linkedWards: initialLinkedWards,
+        activeWardId: initialLinkedWards[0]?.studentId || undefined
       };
+      setLinkedWards(initialLinkedWards);
+      if (initialLinkedWards[0]?.studentId) {
+        setActiveWardId(initialLinkedWards[0].studentId);
+      }
       const freshWallet: ParentWallet = {
         balanceNaira: 0,
         pin: profileData.pin || '',
@@ -2980,7 +3225,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         isStudentSubscriptionModalOpen,
         targetSubscriptionPlan,
         openStudentSubscriptionModal,
-        closeStudentSubscriptionModal
+        closeStudentSubscriptionModal,
+        linkedWards,
+        activeWardId,
+        linkWardByCode,
+        unlinkWard,
+        setActiveWard
       }}
     >
       {children}

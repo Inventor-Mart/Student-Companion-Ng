@@ -1,6 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
-import { UserRole, NigerianClassLevel, AcademicStream } from '../../types';
+import {
+  UserRole,
+  NigerianClassLevel,
+  AcademicStream,
+  ParentRelationship,
+  ParentAcademicGoal,
+  ParentNotificationChannel,
+  LinkedWard
+} from '../../types';
 import {
   GraduationCap,
   ShieldCheck,
@@ -23,7 +31,11 @@ import {
   RefreshCw,
   TrendingUp,
   FileText,
-  Sparkles
+  Sparkles,
+  Search,
+  UserCheck,
+  Bell,
+  Heart
 } from 'lucide-react';
 import { NairaSign } from '../../utils/currency';
 import { DeviceImageUploader } from '../admin/DeviceImageUploader';
@@ -39,7 +51,7 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
   onSignUpSuccess,
   initialRole
 }) => {
-  const { registerNewUser, targetSignUpRole } = useApp();
+  const { registerNewUser, targetSignUpRole, allRegisteredUsers } = useApp();
 
   const effectiveRole = initialRole || targetSignUpRole;
   const [step, setStep] = useState<1 | 2 | 3>(effectiveRole ? 2 : 1);
@@ -90,10 +102,100 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
     }
   };
 
-  // Parent Fields
+  // Progressive Parent Fields (3-Stage Structured Questionnaire)
+  const [parentStage, setParentStage] = useState<1 | 2 | 3>(1);
   const [phone, setPhone] = useState('');
-  const [wardName, setWardName] = useState('');
   const [pin, setPin] = useState('');
+  const [parentRelationship, setParentRelationship] = useState<ParentRelationship>('Mother');
+  const [parentState, setParentState] = useState('Lagos');
+  const [parentCity, setParentCity] = useState('');
+
+  // Stage 2: Ward Linking & Academic Goals
+  const [studentLinkCodeInput, setStudentLinkCodeInput] = useState('');
+  const [matchedStudent, setMatchedStudent] = useState<LinkedWard | null>(null);
+  const [linkSearchError, setLinkSearchError] = useState<string | null>(null);
+  const [isSearchingStudent, setIsSearchingStudent] = useState(false);
+  const [wardName, setWardName] = useState('');
+  const [wardClassLevel, setWardClassLevel] = useState<NigerianClassLevel>('SS 3');
+  const [wardSchoolName, setWardSchoolName] = useState('');
+  const [parentAcademicGoals, setParentAcademicGoals] = useState<ParentAcademicGoal[]>([
+    'WAEC / WASSCE Excellence',
+    'JAMB UTME 300+ Target'
+  ]);
+
+  // Stage 3: Communication & Reports Preferences
+  const [parentNotificationPref, setParentNotificationPref] = useState<ParentNotificationChannel>('WhatsApp');
+  const [parentAllowReports, setParentAllowReports] = useState(true);
+  const [parentAllowTutorAlerts, setParentAllowTutorAlerts] = useState(true);
+
+  // Toggle helper for Parent Academic Goals
+  const handleToggleAcademicGoal = (goal: ParentAcademicGoal) => {
+    setParentAcademicGoals(prev =>
+      prev.includes(goal) ? prev.filter(g => g !== goal) : [...prev, goal]
+    );
+  };
+
+  // Live lookup helper for Student Link Code / Email
+  const handleLookupStudentWard = (codeOrEmail: string) => {
+    const term = codeOrEmail.trim();
+    if (!term) {
+      setLinkSearchError('Please enter a 6-character Student Link Code or registered email.');
+      return;
+    }
+    setLinkSearchError(null);
+    setIsSearchingStudent(true);
+
+    const isEmail = term.includes('@');
+    const cleanTerm = term.toLowerCase();
+
+    // 1. Search in all registered users
+    const found = allRegisteredUsers?.find(u => {
+      if (u.role !== 'student') return false;
+      if (isEmail && u.email?.toLowerCase() === cleanTerm) return true;
+      const code = u.studentData?.studentLinkCode?.toLowerCase() || '';
+      return code === cleanTerm || code.replace(/[^a-z0-9]/gi, '') === cleanTerm.replace(/[^a-z0-9]/gi, '');
+    });
+
+    if (found && found.studentData) {
+      const ward: LinkedWard = {
+        studentId: found.id,
+        studentName: found.fullName || found.studentData.name,
+        classLevel: found.studentData.classLevel || 'SS 3',
+        stream: found.studentData.stream || 'Science',
+        schoolName: found.studentData.school || 'Secondary School',
+        studentLinkCode: found.studentData.studentLinkCode || codeOrEmail.toUpperCase(),
+        linkedAt: new Date().toISOString(),
+        isPrimary: true
+      };
+      setMatchedStudent(ward);
+      setWardName(ward.studentName);
+      setWardClassLevel(ward.classLevel);
+      setWardSchoolName(ward.schoolName);
+    } else {
+      // Recognized demo link code fallback (e.g. STU-8K2D)
+      if (cleanTerm === 'stu-8k2d' || cleanTerm.replace(/[^a-z0-9]/gi, '') === 'stu8k2d') {
+        const demoWard: LinkedWard = {
+          studentId: 'std-demo-amina',
+          studentName: 'Amina Okon',
+          classLevel: 'SS 3',
+          stream: 'Science',
+          schoolName: "King's College Lagos",
+          studentLinkCode: 'STU-8K2D',
+          linkedAt: new Date().toISOString(),
+          isPrimary: true
+        };
+        setMatchedStudent(demoWard);
+        setWardName(demoWard.studentName);
+        setWardClassLevel(demoWard.classLevel);
+        setWardSchoolName(demoWard.schoolName);
+      } else {
+        setLinkSearchError(
+          `No active student account found for "${term}". You can type your ward's name manually below; you can also link their account later in the Parent Portal.`
+        );
+      }
+    }
+    setIsSearchingStudent(false);
+  };
 
   // Progressive Tutor Fields (Google Form Sections 1 to 5)
   const [tutorStage, setTutorStage] = useState<1 | 2 | 3>(1);
@@ -310,14 +412,40 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
         targetExam
       });
     } else if (selectedRole === 'parent') {
+      const initialLinkedWards: LinkedWard[] = [];
+      if (matchedStudent) {
+        initialLinkedWards.push(matchedStudent);
+      } else if (wardName.trim()) {
+        initialLinkedWards.push({
+          studentId: `std-ward-${Date.now()}`,
+          studentName: wardName.trim(),
+          classLevel: wardClassLevel,
+          stream: wardClassLevel.startsWith('JSS') ? 'Junior' : 'Science',
+          schoolName: wardSchoolName.trim() || 'Secondary School',
+          studentLinkCode: studentLinkCodeInput.trim().toUpperCase() || 'STU-8K2D',
+          linkedAt: new Date().toISOString(),
+          isPrimary: true
+        });
+      }
+
       registerNewUser('parent', {
         name: computedFullName,
         firstName: trimmedFirst,
         lastName: trimmedLast,
         email: email.trim(),
         phone: phone.trim(),
-        wardName: wardName.trim(),
-        pin: pin.trim() || '1234'
+        pin: pin.trim() || '1234',
+        wardName: wardName.trim() || (initialLinkedWards[0]?.studentName || 'Student Ward'),
+        relationship: parentRelationship,
+        stateOfResidence: parentState,
+        cityOrLga: parentCity.trim() || 'Lagos',
+        academicGoals: parentAcademicGoals,
+        notificationPreference: parentNotificationPref,
+        allowAutomatedReports: parentAllowReports,
+        linkedWards: initialLinkedWards,
+        classLevel: wardClassLevel,
+        schoolName: wardSchoolName.trim() || 'Secondary School',
+        studentLinkCode: studentLinkCodeInput.trim().toUpperCase() || 'STU-8K2D'
       });
     } else if (selectedRole === 'tutor') {
       const fullLegalName = middleName.trim()
@@ -758,59 +886,471 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
                 </div>
               )}
 
-              {/* PARENT SPECIFIC FIELDS */}
+              {/* PARENT SPECIFIC FIELDS: 3-STAGE PROGRESSIVE ONBOARDING */}
               {selectedRole === 'parent' && (
-                <div className="space-y-3 pt-3 border-t border-[#1E304F]">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block px-1">
-                    Guardian & Security Controls
-                  </span>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-4 pt-3 border-t border-[#1E304F]">
+                  {/* Progressive Stage Stepper Header */}
+                  <div className="bg-[#081220] rounded-2xl p-3 border border-[#FF5B00]/30 flex items-center justify-between">
                     <div>
-                      <label className="text-xs font-semibold text-slate-300 block mb-1">WhatsApp / Phone Number</label>
-                      <div className="relative">
-                        <Phone className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                      <span className="text-[10px] font-bold text-[#FF5B00] uppercase tracking-wider block">
+                        Parent Onboarding · Stage {parentStage} of 3
+                      </span>
+                      <span className="text-xs font-bold text-white">
+                        {parentStage === 1
+                          ? 'Stage 1: Guardian Identity & Residence'
+                          : parentStage === 2
+                          ? 'Stage 2: Ward Association & Academic Focus'
+                          : 'Stage 3: Communication & Performance Alerts'}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                      {[1, 2, 3].map((s) => (
+                        <button
+                          key={s}
+                          type="button"
+                          onClick={() => setParentStage(s as 1 | 2 | 3)}
+                          className={`w-6 h-6 rounded-lg text-[10px] font-bold flex items-center justify-center transition-all cursor-pointer ${
+                            parentStage === s
+                              ? 'bg-[#FF5B00] text-white font-black ring-2 ring-[#FF5B00]/40'
+                              : parentStage > s
+                              ? 'bg-emerald-950 text-emerald-400 border border-emerald-700'
+                              : 'bg-slate-800 text-slate-400'
+                          }`}
+                        >
+                          {parentStage > s ? '✓' : s}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* ========================================================= */}
+                  {/* STAGE 1: GUARDIAN IDENTITY & RESIDENTIAL SECURITY        */}
+                  {/* ========================================================= */}
+                  {parentStage === 1 && (
+                    <div className="space-y-3.5 animate-in fade-in duration-150">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-xs font-semibold text-slate-300 block mb-1">
+                            Relationship to Student <span className="text-[#FF5B00] font-bold">*</span>
+                          </label>
+                          <select
+                            value={parentRelationship}
+                            onChange={(e) => setParentRelationship(e.target.value as ParentRelationship)}
+                            className="w-full bg-[#081220] border border-[#1E304F] focus:border-[#FF5B00] rounded-xl py-2.5 px-3 text-xs text-white focus:outline-none transition-colors"
+                          >
+                            <option value="Mother">Mother</option>
+                            <option value="Father">Father</option>
+                            <option value="Guardian">Legal Guardian</option>
+                            <option value="Sibling">Elder Sibling</option>
+                            <option value="Relative">Family Relative</option>
+                            <option value="Other">Other</option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="text-xs font-semibold text-slate-300 block mb-1">
+                            WhatsApp / Phone Number <span className="text-[#FF5B00] font-bold">*</span>
+                          </label>
+                          <div className="relative">
+                            <Phone className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                            <input
+                              type="tel"
+                              required
+                              value={phone}
+                              onChange={(e) => setPhone(e.target.value)}
+                              placeholder="+234 801 234 5678"
+                              className="w-full bg-[#081220] border border-[#1E304F] focus:border-[#FF5B00] rounded-xl py-2.5 pl-10 pr-4 text-xs text-white placeholder-slate-500 focus:outline-none transition-colors"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-xs font-semibold text-slate-300 block mb-1">
+                            State of Residence <span className="text-[#FF5B00] font-bold">*</span>
+                          </label>
+                          <select
+                            value={parentState}
+                            onChange={(e) => setParentState(e.target.value)}
+                            className="w-full bg-[#081220] border border-[#1E304F] focus:border-[#FF5B00] rounded-xl py-2.5 px-3 text-xs text-white focus:outline-none transition-colors"
+                          >
+                            <option value="Lagos">Lagos</option>
+                            <option value="Abuja (FCT)">Abuja (FCT)</option>
+                            <option value="Rivers">Rivers</option>
+                            <option value="Oyo">Oyo</option>
+                            <option value="Kano">Kano</option>
+                            <option value="Kaduna">Kaduna</option>
+                            <option value="Ogun">Ogun</option>
+                            <option value="Delta">Delta</option>
+                            <option value="Edo">Edo</option>
+                            <option value="Enugu">Enugu</option>
+                            <option value="Anambra">Anambra</option>
+                            <option value="Ondo">Ondo</option>
+                            <option value="Kwara">Kwara</option>
+                            <option value="Akwa Ibom">Akwa Ibom</option>
+                            <option value="Cross River">Cross River</option>
+                            <option value="Imo">Imo</option>
+                            <option value="Abia">Abia</option>
+                            <option value="Jos / Plateau">Plateau</option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="text-xs font-semibold text-slate-300 block mb-1">
+                            City / Local Government Area <span className="text-[#FF5B00] font-bold">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            value={parentCity}
+                            onChange={(e) => setParentCity(e.target.value)}
+                            placeholder="e.g. Ikeja / Lekki / Port Harcourt"
+                            className="w-full bg-[#081220] border border-[#1E304F] focus:border-[#FF5B00] rounded-xl py-2.5 px-3 text-xs text-white placeholder-slate-500 focus:outline-none transition-colors"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-xs font-semibold text-slate-300">
+                            4-Digit Security PIN <span className="text-[#FF5B00] font-bold">*</span>
+                          </label>
+                          <span className="text-[10px] text-slate-400">Protects wallet & tutor approvals</span>
+                        </div>
                         <input
-                          type="tel"
+                          type="password"
+                          maxLength={4}
                           required
-                          value={phone}
-                          onChange={(e) => setPhone(e.target.value)}
-                          placeholder="+234 801 234 5678"
-                          className="w-full bg-[#081220] border border-[#1E304F] focus:border-[#FF5B00] rounded-xl py-2.5 pl-10 pr-4 text-xs text-white placeholder-slate-500 focus:outline-none transition-colors"
+                          value={pin}
+                          onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
+                          placeholder="e.g. 1234"
+                          className="w-full max-w-[200px] bg-[#081220] border border-[#1E304F] focus:border-[#FF5B00] rounded-xl py-2.5 px-4 text-sm font-mono tracking-widest text-center text-white focus:outline-none transition-colors"
                         />
+                        <p className="text-[11px] text-slate-400 mt-1">
+                          You will use this 4-digit PIN to authorize tutor bookings, exam sponsorships, and Paystack wallet transactions.
+                        </p>
+                      </div>
+
+                      <div className="flex justify-end pt-2">
+                        <button
+                          type="button"
+                          onClick={() => setParentStage(2)}
+                          className="py-2.5 px-5 rounded-xl bg-[#FF5B00] hover:bg-[#e05000] text-white font-bold text-xs flex items-center gap-1.5 transition-all shadow-md shadow-[#FF5B00]/20 cursor-pointer"
+                        >
+                          <span>Next: Ward Link & Goals</span>
+                          <ChevronRight className="w-3.5 h-3.5 stroke-[3]" />
+                        </button>
                       </div>
                     </div>
+                  )}
 
-                    <div>
-                      <label className="text-xs font-semibold text-slate-300 block mb-1">Ward's Student Name</label>
-                      <input
-                        type="text"
-                        required
-                        value={wardName}
-                        onChange={(e) => setWardName(e.target.value)}
-                        placeholder="e.g. Amina Okon"
-                        className="w-full bg-[#081220] border border-[#1E304F] focus:border-[#FF5B00] rounded-xl py-2.5 px-3 text-xs text-white placeholder-slate-500 focus:outline-none transition-colors"
-                      />
+                  {/* ========================================================= */}
+                  {/* STAGE 2: WARD LINKING & ACADEMIC GOALS                    */}
+                  {/* ========================================================= */}
+                  {parentStage === 2 && (
+                    <div className="space-y-4 animate-in fade-in duration-150">
+                      {/* Student Link Code Lookup Box */}
+                      <div className="p-3.5 bg-[#060D17] border border-[#1E304F] rounded-2xl space-y-2.5">
+                        <div className="flex items-center justify-between">
+                          <label className="text-xs font-bold text-white flex items-center gap-1.5">
+                            <KeyRound className="w-3.5 h-3.5 text-[#FF5B00]" />
+                            <span>Link by Student Link Code or Email</span>
+                          </label>
+                          <span className="text-[10px] text-emerald-400 font-semibold bg-emerald-950/70 px-2 py-0.5 rounded border border-emerald-800">
+                            Instant Verification
+                          </span>
+                        </div>
+
+                        <p className="text-[11px] text-slate-400 leading-snug">
+                          Enter your child's 6-character Student Link Code (found on their dashboard e.g., <span className="font-mono text-white font-bold">STU-8K2D</span>) or their registered email.
+                        </p>
+
+                        <div className="flex gap-2">
+                          <div className="relative flex-1">
+                            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                            <input
+                              type="text"
+                              value={studentLinkCodeInput}
+                              onChange={(e) => {
+                                setStudentLinkCodeInput(e.target.value);
+                                if (linkSearchError) setLinkSearchError(null);
+                              }}
+                              placeholder="e.g. STU-8K2D or student@domain.ng"
+                              className="w-full bg-[#091222] border border-[#1E304F] focus:border-[#FF5B00] rounded-xl py-2 pl-9 pr-3 text-xs font-mono font-bold tracking-wider text-white placeholder-slate-500 uppercase focus:outline-none transition-colors"
+                            />
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => handleLookupStudentWard(studentLinkCodeInput)}
+                            disabled={isSearchingStudent || !studentLinkCodeInput.trim()}
+                            className="px-4 py-2 bg-[#FF5B00] hover:bg-[#e05000] disabled:opacity-50 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 transition-all cursor-pointer shrink-0"
+                          >
+                            {isSearchingStudent ? (
+                              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <UserCheck className="w-3.5 h-3.5" />
+                            )}
+                            <span>Verify Code</span>
+                          </button>
+                        </div>
+
+                        {/* Matched Ward Preview Card */}
+                        {matchedStudent && (
+                          <div className="p-3 bg-emerald-950/40 border border-emerald-500/40 rounded-xl flex items-center justify-between text-xs">
+                            <div className="space-y-0.5">
+                              <div className="flex items-center gap-1.5">
+                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                                <span className="font-bold text-white">{matchedStudent.studentName}</span>
+                                <span className="text-[10px] font-mono text-emerald-300 bg-emerald-900/60 px-1.5 py-0.2 rounded">
+                                  {matchedStudent.studentLinkCode}
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-slate-300">
+                                {matchedStudent.schoolName} · {matchedStudent.classLevel} ({matchedStudent.stream || 'General'})
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setMatchedStudent(null);
+                                setStudentLinkCodeInput('');
+                              }}
+                              className="text-[10px] text-slate-400 hover:text-white underline cursor-pointer"
+                            >
+                              Clear
+                            </button>
+                          </div>
+                        )}
+
+                        {linkSearchError && (
+                          <div className="p-2.5 bg-amber-950/50 border border-amber-800/60 rounded-xl text-[11px] text-amber-200 leading-snug">
+                            {linkSearchError}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Manual Ward Fields (Active if no code verified or to customize) */}
+                      <div className="space-y-3 pt-2">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block px-1">
+                          Ward Student Profile Details
+                        </span>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div>
+                            <label className="text-xs font-semibold text-slate-300 block mb-1">
+                              Ward Full Name <span className="text-[#FF5B00] font-bold">*</span>
+                            </label>
+                            <input
+                              type="text"
+                              required
+                              value={wardName}
+                              onChange={(e) => setWardName(e.target.value)}
+                              placeholder="e.g. Amina Okon"
+                              className="w-full bg-[#081220] border border-[#1E304F] focus:border-[#FF5B00] rounded-xl py-2 px-3 text-xs text-white placeholder-slate-500 focus:outline-none transition-colors"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="text-xs font-semibold text-slate-300 block mb-1">
+                              Ward Class Level <span className="text-[#FF5B00] font-bold">*</span>
+                            </label>
+                            <select
+                              value={wardClassLevel}
+                              onChange={(e) => setWardClassLevel(e.target.value as NigerianClassLevel)}
+                              className="w-full bg-[#081220] border border-[#1E304F] focus:border-[#FF5B00] rounded-xl py-2 px-3 text-xs text-white focus:outline-none transition-colors"
+                            >
+                              <option value="JSS 1">JSS 1 (Junior 1)</option>
+                              <option value="JSS 2">JSS 2 (Junior 2)</option>
+                              <option value="JSS 3">JSS 3 (BECE Junior WAEC)</option>
+                              <option value="SS 1">SS 1 (Senior 1)</option>
+                              <option value="SS 2">SS 2 (Senior 2)</option>
+                              <option value="SS 3">SS 3 (WAEC & JAMB Graduating Class)</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="text-xs font-semibold text-slate-300 block mb-1">
+                            School Name
+                          </label>
+                          <input
+                            type="text"
+                            value={wardSchoolName}
+                            onChange={(e) => setWardSchoolName(e.target.value)}
+                            placeholder="e.g. King's College Lagos / Queens College / Corona High"
+                            className="w-full bg-[#081220] border border-[#1E304F] focus:border-[#FF5B00] rounded-xl py-2 px-3 text-xs text-white placeholder-slate-500 focus:outline-none transition-colors"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Academic Goals (Multi-select) */}
+                      <div className="space-y-2 pt-2 border-t border-[#1E304F]">
+                        <div className="flex items-center justify-between">
+                          <label className="text-xs font-bold text-white">
+                            Primary Academic Targets for Your Ward
+                          </label>
+                          <span className="text-[10px] text-slate-400">Select all that apply</span>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          {(
+                            [
+                              'WAEC / WASSCE Excellence',
+                              'JAMB UTME 300+ Target',
+                              'Junior BECE Certification',
+                              'Termly Promotion Top 3',
+                              '1-on-1 Personalized Tutoring',
+                              'STEM & Math Confidence'
+                            ] as ParentAcademicGoal[]
+                          ).map((goal) => {
+                            const isSelected = parentAcademicGoals.includes(goal);
+                            return (
+                              <button
+                                key={goal}
+                                type="button"
+                                onClick={() => handleToggleAcademicGoal(goal)}
+                                className={`p-2.5 rounded-xl border text-left text-xs font-semibold transition-all flex items-center justify-between cursor-pointer ${
+                                  isSelected
+                                    ? 'bg-[#FF5B00]/15 border-[#FF5B00] text-white'
+                                    : 'bg-[#081220] border-[#1E304F] text-slate-300 hover:border-slate-600'
+                                }`}
+                              >
+                                <span>{goal}</span>
+                                {isSelected ? (
+                                  <Check className="w-3.5 h-3.5 text-[#FF5B00] stroke-[3]" />
+                                ) : (
+                                  <div className="w-3.5 h-3.5 rounded border border-slate-600" />
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between pt-2">
+                        <button
+                          type="button"
+                          onClick={() => setParentStage(1)}
+                          className="py-2 px-4 rounded-xl bg-[#14233C] text-slate-300 font-bold text-xs hover:bg-[#1E3355] transition-all cursor-pointer"
+                        >
+                          Back
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setParentStage(3)}
+                          className="py-2.5 px-5 rounded-xl bg-[#FF5B00] hover:bg-[#e05000] text-white font-bold text-xs flex items-center gap-1.5 transition-all shadow-md shadow-[#FF5B00]/20 cursor-pointer"
+                        >
+                          <span>Next: Alerts & Reports</span>
+                          <ChevronRight className="w-3.5 h-3.5 stroke-[3]" />
+                        </button>
+                      </div>
                     </div>
-                  </div>
+                  )}
 
-                  <div>
-                    <label className="text-xs font-semibold text-slate-300 block mb-1">
-                      Set 4-Digit Security PIN (For Tutor Booking Approvals)
-                    </label>
-                    <input
-                      type="password"
-                      maxLength={4}
-                      required
-                      value={pin}
-                      onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
-                      placeholder="e.g. 1234"
-                      className="w-full max-w-[200px] bg-[#081220] border border-[#1E304F] focus:border-[#FF5B00] rounded-xl py-2.5 px-4 text-sm font-mono tracking-widest text-center text-white focus:outline-none transition-colors"
-                    />
-                    <span className="text-[10px] text-slate-400 block mt-1">
-                      Physical home address will be requested only when you book an in-person session.
-                    </span>
-                  </div>
+                  {/* ========================================================= */}
+                  {/* STAGE 3: COMMUNICATION & REPORTS PREFERENCES             */}
+                  {/* ========================================================= */}
+                  {parentStage === 3 && (
+                    <div className="space-y-4 animate-in fade-in duration-150">
+                      <div className="space-y-2">
+                        <label className="text-xs font-bold text-white block">
+                          Preferred Notification Channel
+                        </label>
+                        <p className="text-[11px] text-slate-400">
+                          Where would you like to receive mock exam summaries, weekly revision scorecards, and session notices?
+                        </p>
+
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                          {(['WhatsApp', 'SMS', 'Email', 'In-App Only'] as ParentNotificationChannel[]).map((channel) => {
+                            const isSelected = parentNotificationPref === channel;
+                            return (
+                              <button
+                                key={channel}
+                                type="button"
+                                onClick={() => setParentNotificationPref(channel)}
+                                className={`p-3 rounded-xl border text-center transition-all cursor-pointer ${
+                                  isSelected
+                                    ? 'bg-[#FF5B00]/20 border-[#FF5B00] text-white font-bold'
+                                    : 'bg-[#081220] border-[#1E304F] text-slate-300 hover:border-slate-600'
+                                }`}
+                              >
+                                <span className="text-xs block">{channel}</span>
+                                {channel === 'WhatsApp' && (
+                                  <span className="text-[9px] text-emerald-400 font-normal mt-0.5 block">Recommended</span>
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Automated Toggles */}
+                      <div className="space-y-2.5 pt-2 border-t border-[#1E304F]">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block px-1">
+                          Automated Parental Controls
+                        </span>
+
+                        <label className="flex items-start gap-3 p-3 bg-[#081220] rounded-xl border border-[#1E304F] cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={parentAllowReports}
+                            onChange={(e) => setParentAllowReports(e.target.checked)}
+                            className="mt-0.5 rounded border-slate-700 text-[#FF5B00] focus:ring-0"
+                          />
+                          <div className="space-y-0.5">
+                            <span className="text-xs font-bold text-white block">
+                              Automated Weekly Study Progress & CBT Mock Scorecards
+                            </span>
+                            <p className="text-[11px] text-slate-400 leading-snug">
+                              Receive weekly summaries of completed curriculum topics, CBT exam scores, and study streak alerts for your ward.
+                            </p>
+                          </div>
+                        </label>
+
+                        <label className="flex items-start gap-3 p-3 bg-[#081220] rounded-xl border border-[#1E304F] cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={parentAllowTutorAlerts}
+                            onChange={(e) => setParentAllowTutorAlerts(e.target.checked)}
+                            className="mt-0.5 rounded border-slate-700 text-[#FF5B00] focus:ring-0"
+                          />
+                          <div className="space-y-0.5">
+                            <span className="text-xs font-bold text-white block">
+                              Instant Tutor Session & Wallet Notifications
+                            </span>
+                            <p className="text-[11px] text-slate-400 leading-snug">
+                              Get real-time notification alerts when vetted tutors propose lessons, complete sessions, or when wallet funds are added.
+                            </p>
+                          </div>
+                        </label>
+                      </div>
+
+                      {/* Multi-ward notice */}
+                      <div className="p-3 bg-[#0B172A] rounded-xl border border-sky-500/30 text-[11px] text-sky-200 leading-relaxed flex items-center gap-2.5">
+                        <Users className="w-4 h-4 text-sky-400 shrink-0" />
+                        <span>
+                          <strong>Multi-Ward Support:</strong> You will be able to link and monitor additional children or siblings across different classes anytime directly in your Parent Portal.
+                        </span>
+                      </div>
+
+                      <div className="flex items-center justify-between pt-2">
+                        <button
+                          type="button"
+                          onClick={() => setParentStage(2)}
+                          className="py-2 px-4 rounded-xl bg-[#14233C] text-slate-300 font-bold text-xs hover:bg-[#1E3355] transition-all cursor-pointer"
+                        >
+                          Back
+                        </button>
+                        <span className="text-xs text-emerald-400 font-semibold flex items-center gap-1">
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          <span>Ready for Email Verification</span>
+                        </span>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 

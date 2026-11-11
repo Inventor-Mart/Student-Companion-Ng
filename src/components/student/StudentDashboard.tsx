@@ -26,7 +26,9 @@ import {
   Sparkles,
   KeyRound,
   FileText,
-  X
+  X,
+  Copy,
+  Check
 } from 'lucide-react';
 import { NairaText, NairaSign } from '../../utils/currency';
 import { AspirantDashboard } from './aspirant/AspirantDashboard';
@@ -56,6 +58,20 @@ export const StudentDashboard: React.FC = () => {
 
   const avatarFileInputRef = useRef<HTMLInputElement>(null);
   const [isExamPrepModalOpen, setIsExamPrepModalOpen] = useState(false);
+  const [isCopiedLinkCode, setIsCopiedLinkCode] = useState(false);
+  const [isParentLinkInfoOpen, setIsParentLinkInfoOpen] = useState(false);
+
+  const studentLinkCode = student.studentLinkCode || 'STU-8K2D';
+  const handleCopyLinkCode = () => {
+    try {
+      navigator.clipboard.writeText(studentLinkCode);
+      setIsCopiedLinkCode(true);
+      setTimeout(() => setIsCopiedLinkCode(false), 2500);
+    } catch {
+      setIsCopiedLinkCode(true);
+      setTimeout(() => setIsCopiedLinkCode(false), 2500);
+    }
+  };
 
   const displayName = student.name || currentUserProfile?.fullName || 'Registered Student';
   const displaySchool = student.school || 'Secondary School';
@@ -309,6 +325,56 @@ export const StudentDashboard: React.FC = () => {
               className="h-full bg-gradient-to-r from-emerald-500 to-emerald-400 rounded-full transition-all duration-500"
               style={{ width: `${Math.min(100, Math.max(5, rankProgress.percent))}%` }}
             />
+          </div>
+        </div>
+
+        {/* Parent Link Code Voucher Card */}
+        <div className="mt-3 pt-2.5 border-t border-slate-800/80 flex items-center justify-between gap-2.5 flex-wrap">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+              <KeyRound className="w-3.5 h-3.5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-bold text-slate-300 uppercase tracking-wider">
+                  Parent Link Code
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setIsParentLinkInfoOpen(true)}
+                  className="text-[9px] text-emerald-400 hover:underline cursor-pointer"
+                >
+                  How to link?
+                </button>
+              </div>
+              <p className="text-[10px] text-slate-400 leading-none mt-0.5">
+                Give this 6-character code to your parent to link their guardian portal.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <span className="font-mono font-black text-xs tracking-wider text-[#84E000] bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-800 shadow-inner select-all">
+              {studentLinkCode}
+            </span>
+            <button
+              type="button"
+              onClick={handleCopyLinkCode}
+              className="py-1 px-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white text-[10px] font-bold flex items-center gap-1 transition-all cursor-pointer shadow-sm"
+              title="Copy link code"
+            >
+              {isCopiedLinkCode ? (
+                <>
+                  <Check className="w-3 h-3 stroke-[3]" />
+                  <span>Copied</span>
+                </>
+              ) : (
+                <>
+                  <Copy className="w-3 h-3" />
+                  <span>Copy</span>
+                </>
+              )}
+            </button>
           </div>
         </div>
       </div>
@@ -965,6 +1031,68 @@ export const StudentDashboard: React.FC = () => {
             >
               Close
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Parent Link Info Explanation Modal */}
+      {isParentLinkInfoOpen && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-start justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2.5 rounded-2xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                  <KeyRound className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">Your Student Link Code</h3>
+                  <span className="text-xs text-emerald-400 font-mono font-bold tracking-wider">{studentLinkCode}</span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsParentLinkInfoOpen(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-2.5 text-xs text-slate-300 leading-relaxed">
+              <p>
+                Your <strong>6-character Student Link Code</strong> allows your parent, guardian, or sponsor to link their account with yours.
+              </p>
+              <div className="p-3 bg-slate-950/70 rounded-xl border border-slate-800 space-y-1.5">
+                <span className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider block">
+                  What your parent can do when linked:
+                </span>
+                <ul className="list-disc list-inside space-y-1 text-slate-300 text-[11px]">
+                  <li>View your weekly study streaks and completed curriculum topics</li>
+                  <li>Review your CBT mock exam scores (WAEC, JAMB, BECE)</li>
+                  <li>Fund your prep wallet and sponsor certified home or online tutors</li>
+                  <li>Receive automated WhatsApp or SMS progress summaries</li>
+                </ul>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between pt-2">
+              <button
+                type="button"
+                onClick={handleCopyLinkCode}
+                className="py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-md shadow-emerald-950"
+              >
+                {isCopiedLinkCode ? <Check className="w-4 h-4 stroke-[3]" /> : <Copy className="w-4 h-4" />}
+                <span>{isCopiedLinkCode ? 'Link Code Copied!' : 'Copy Link Code'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsParentLinkInfoOpen(false)}
+                className="py-2 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}
