@@ -1089,6 +1089,220 @@ app.post('/api/paystack/verify-payment', async (req, res) => {
       console.warn(`[Paystack Notice] PAYSTACK_SECRET_KEY not set. Recording reference ${reference} in verified sandbox mode.`);
     }
 
+    if (purpose === 'school_direct_subscription') {
+      const { adminId, schoolName, schoolCode, plan } = req.body;
+      const cleanAdminId = adminId || (email ? email.replace(/[^a-zA-Z0-9_-]/g, '_') : 'admin_default');
+      const now = new Date();
+      const isTermly = plan === 'termly' || amountNaira >= 40000;
+      const durationDays = isTermly ? 90 : 30;
+      const expiresAt = new Date(now.getTime() + durationDays * 24 * 60 * 60 * 1000).toISOString();
+      const planName = isTermly ? 'termly' : 'monthly';
+
+      try {
+        const userRef = doc(serverDb, 'users', cleanAdminId);
+        await setDoc(userRef, {
+          adminData: {
+            directSubscription: {
+              plan: planName,
+              amountNaira,
+              paidAt: now.toISOString(),
+              expiresAt,
+              paystackReference: reference,
+              status: 'active'
+            },
+            accreditationQualified: true,
+            qualificationReason: 'direct_subscription'
+          }
+        }, { merge: true });
+
+        // Record in school_subscriptions collection
+        const subRecordRef = doc(serverDb, 'school_subscriptions', reference);
+        await setDoc(subRecordRef, {
+          id: reference,
+          adminId: cleanAdminId,
+          schoolName: schoolName || 'Secondary School',
+          schoolCode: schoolCode || '',
+          plan: planName,
+          amountNaira,
+          channel: paymentChannel,
+          reference,
+          paidAt: now.toISOString(),
+          expiresAt,
+          status: 'active'
+        });
+      } catch (dbErr) {
+        console.warn('Could not persist school subscription to Firestore:', dbErr);
+      }
+
+      return res.json({
+        success: true,
+        reference,
+        amountNaira,
+        plan: planName,
+        expiresAt,
+        channel: paymentChannel,
+        message: `₦${amountNaira.toLocaleString()} institutional direct subscription verified and activated for ${schoolName || 'school'}.`
+      });
+    }
+
+    // Helper for academic term cycle end date
+    const getAcademicTermEndDate = (): string => {
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = now.getMonth();
+      let end: Date;
+      if (month >= 0 && month <= 3) {
+        end = new Date(year, 3, 20, 23, 59, 59);
+        if (now >= end) end = new Date(year, 6, 31, 23, 59, 59);
+      } else if (month >= 4 && month <= 7) {
+        end = new Date(year, 6, 31, 23, 59, 59);
+        if (now >= end) end = new Date(year, 11, 20, 23, 59, 59);
+      } else {
+        end = new Date(year, 11, 20, 23, 59, 59);
+        if (now >= end) end = new Date(year + 1, 3, 20, 23, 59, 59);
+      }
+      return end.toISOString();
+    };
+
+    if (purpose === 'student_tier_subscription') {
+      const { studentId, studentName, plan, parentId } = req.body;
+      const cleanStudentId = studentId || (email ? email.replace(/[^a-zA-Z0-9_-]/g, '_') : 'student_default');
+      const cleanParentId = parentId || (email ? email.replace(/[^a-zA-Z0-9_-]/g, '_') : 'parent_default');
+      const termExpiresAt = getAcademicTermEndDate();
+      const planName = (plan || 'basic').toLowerCase();
+
+      try {
+        const studentRef = doc(serverDb, 'students', cleanStudentId);
+        await setDoc(studentRef, {
+          isSubscribed: true,
+          subscriptionPlan: planName,
+          subscriptionTier: planName,
+          termExpiresAt,
+          subscribedUntil: termExpiresAt,
+          lastSubscribedAt: new Date().toISOString(),
+          lastPaymentReference: reference
+        }, { merge: true });
+
+        const userRef = doc(serverDb, 'users', cleanStudentId);
+        await setDoc(userRef, {
+          studentData: {
+            isSubscribed: true,
+            subscriptionPlan: planName,
+            subscriptionTier: planName,
+            termExpiresAt,
+            subscribedUntil: termExpiresAt
+          }
+        }, { merge: true });
+
+        // If Elite Tier (₦60,000), automatically credit ₦16,000 Pre-paid Tutor Credits to Parent Escrow Wallet
+        let creditedWalletAmount = 0;
+        if (planName === 'elite') {
+          creditedWalletAmount = 16000;
+          const walletRef = doc(serverDb, 'parentWallets', cleanParentId);
+          const tutorTxId = `TX_TUTOR_CREDIT_${Date.now()}`;
+          await runTransaction(serverDb, async (tx) => {
+            const wSnap = await tx.get(walletRef);
+            const currentBal = wSnap.exists() ? (wSnap.data().balance || 0) : 0;
+            const newBal = currentBal + 16000;
+            if (wSnap.exists()) {
+              tx.update(walletRef, {
+                balance: newBal,
+                lastFundedAt: new Date().toISOString(),
+                lastPaymentReference: reference
+              });
+            } else {
+              tx.set(walletRef, {
+                id: cleanParentId,
+                parentId: cleanParentId,
+                balance: newBal,
+                totalFunded: 16000,
+                createdAt: new Date().toISOString(),
+                lastPaymentReference: reference
+              });
+            }
+
+            const txRef = doc(serverDb, 'parentWallets', cleanParentId, 'transactions', tutorTxId);
+            tx.set(txRef, {
+              id: tutorTxId,
+              parentId: cleanParentId,
+              type: 'fund',
+              amount: 16000,
+              channel: 'tier_benefit',
+              reference: `BONUS_${reference}`,
+              status: 'success',
+              purpose: 'elite_tier_tutor_credit',
+              wardName: studentName || 'Enrolled Scholar',
+              description: '₦16,000 Pre-paid Tutor Booking Credits (Elite Tier Package)',
+              createdAt: new Date().toISOString()
+            });
+          });
+        }
+
+        // Record subscription ledger
+        const subRecordRef = doc(serverDb, 'subscriptionPayments', reference);
+        await setDoc(subRecordRef, {
+          id: reference,
+          studentId: cleanStudentId,
+          studentName: studentName || 'Student',
+          plan: planName,
+          amountNaira,
+          paymentGateway: 'Paystack',
+          channel: paymentChannel,
+          status: 'successful',
+          termExpiresAt,
+          tutorCreditsAwardedNaira: creditedWalletAmount,
+          createdAt: new Date().toISOString()
+        });
+      } catch (dbErr) {
+        console.warn('Could not persist student tier subscription to Firestore:', dbErr);
+      }
+
+      return res.json({
+        success: true,
+        reference,
+        amountNaira,
+        plan: planName,
+        termExpiresAt,
+        channel: paymentChannel,
+        tutorCreditsAwarded: planName === 'elite' ? 16000 : 0,
+        message: `₦${amountNaira.toLocaleString()} ${planName.toUpperCase()} Termly Subscription successfully verified!`
+      });
+    }
+
+    if (purpose === 'ai_coach_unlock' || purpose === 'termly_competition_unlock' || purpose === 'termly_drill_unlock') {
+      const { studentId, subject } = req.body;
+      const cleanStudentId = studentId || (email ? email.replace(/[^a-zA-Z0-9_-]/g, '_') : 'student_default');
+
+      try {
+        const studentRef = doc(serverDb, 'students', cleanStudentId);
+        const updateData: any = {};
+        if (purpose === 'ai_coach_unlock') {
+          updateData['addOns.aiCoachUnlocked'] = true;
+        } else if (purpose === 'termly_competition_unlock') {
+          updateData['addOns.termlyCompetitionUnlocked'] = true;
+        } else if (purpose === 'termly_drill_unlock') {
+          if (subject) {
+            updateData['addOns.termlyDrillSingleSubjects'] = [subject];
+          } else {
+            updateData['addOns.termlyDrillAllSubjects'] = true;
+          }
+        }
+
+        await setDoc(studentRef, updateData, { merge: true });
+      } catch (dbErr) {
+        console.warn('Could not persist student add-on unlock to Firestore:', dbErr);
+      }
+
+      return res.json({
+        success: true,
+        reference,
+        amountNaira,
+        purpose,
+        channel: paymentChannel,
+        message: `Add-on unlock verified and activated!`
+      });
+    }
+
     const cleanParentId = parentId || (email ? email.replace(/[^a-zA-Z0-9_-]/g, '_') : 'parent_default');
     const transactionId = `TX_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
 

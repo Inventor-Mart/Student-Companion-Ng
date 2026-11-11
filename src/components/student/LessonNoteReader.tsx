@@ -12,7 +12,9 @@ import {
   Lightbulb,
   ArrowUp,
   Hash,
-  Binary
+  Binary,
+  Lock,
+  Sparkles
 } from 'lucide-react';
 import {
   sanitizeCodeMath,
@@ -320,12 +322,118 @@ export const LessonNoteReader: React.FC = () => {
     student,
     toggleDownloadNote,
     addStudentXP,
-    startExam
+    startExam,
+    openStudentSubscriptionModal,
+    checkStudentFeatureAccess
   } = useApp();
 
   if (!activeReadingNote) return null;
 
+  const access = checkStudentFeatureAccess('scheme_weeks', { weekNumber: activeReadingNote.weekNumber });
+
   const isDownloaded = student.downloadedSubjectIds.includes(activeReadingNote.id);
+
+  // If topic week is locked on Free Tier (Weeks 3 to 12)
+  if (!access.hasAccess) {
+    return (
+      <div className="flex-1 w-full flex flex-col bg-slate-950 text-slate-100 overflow-hidden">
+        {/* Top Reader App Bar */}
+        <div className="bg-slate-900/90 backdrop-blur-md px-4 py-3 border-b border-slate-800 flex items-center justify-between shrink-0 z-20">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <button
+              onClick={closeNoteReader}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors shrink-0 cursor-pointer"
+              title="Back to syllabus"
+            >
+              <ArrowLeft className="w-4 h-4" />
+            </button>
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 text-[11px] text-amber-400 font-semibold truncate">
+                <span>{activeReadingNote.subject}</span>
+                <span className="text-slate-500">·</span>
+                <span className="text-slate-400">Week {activeReadingNote.weekNumber}</span>
+              </div>
+              <h2 className="text-xs font-bold text-white truncate">
+                {cleanMathText(activeReadingNote.topicTitle)}
+              </h2>
+            </div>
+          </div>
+          <span className="text-[10px] font-bold text-amber-400 bg-amber-950/80 border border-amber-800/80 px-2.5 py-1 rounded-lg flex items-center gap-1">
+            <Lock className="w-3 h-3" /> Basic Plan
+          </span>
+        </div>
+
+        {/* Locked Paywall Container */}
+        <div className="flex-1 overflow-y-auto px-4 py-8 max-w-lg mx-auto w-full flex flex-col items-center justify-center text-center space-y-6">
+          <div className="w-16 h-16 rounded-3xl bg-amber-950/80 border-2 border-amber-600/70 flex items-center justify-center text-amber-400 shadow-xl shadow-amber-950/50">
+            <Lock className="w-8 h-8" />
+          </div>
+
+          <div className="space-y-2">
+            <span className="text-[11px] font-bold tracking-widest text-amber-400 uppercase bg-amber-950/60 border border-amber-700/50 px-3 py-1 rounded-full">
+              Free Tier Limitation
+            </span>
+            <h3 className="text-lg font-black text-white leading-tight">
+              Weeks 3 to 12 Lesson Notes are Locked
+            </h3>
+            <p className="text-xs text-slate-300 max-w-md mx-auto leading-relaxed">
+              The 100% Free Tier unlocks Week 1 and Week 2 for initial preview. To study <span className="text-white font-semibold">{activeReadingNote.topicTitle}</span> and unlock all 12 weeks of NERDC curriculum notes for the term, upgrade to the Basic Plan.
+            </p>
+          </div>
+
+          {/* Benefits summary card */}
+          <div className="w-full bg-slate-900/90 border border-slate-800 rounded-2xl p-4 text-left space-y-2.5">
+            <div className="text-xs font-bold text-white flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-amber-400" />
+              <span>What You Get in the Basic Plan (₦8,000 / term):</span>
+            </div>
+            <ul className="space-y-2 text-xs text-slate-300">
+              <li className="flex items-start gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                <span><strong className="text-white">100% Full Term Notes:</strong> Complete NERDC Scheme of Work for Weeks 1 through 12.</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                <span><strong className="text-white">Topic Quizzes:</strong> 5-question test after every lesson to verify mastery.</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                <span><strong className="text-white">Student Community:</strong> Full access to peer academic chat channels.</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                <span><strong className="text-white">AI Uniform Verification:</strong> Earn +500 XP to qualify for Student of the Week.</span>
+              </li>
+            </ul>
+          </div>
+
+          {/* Actions */}
+          <div className="w-full space-y-2.5">
+            <button
+              onClick={() => openStudentSubscriptionModal('basic')}
+              className="w-full py-3.5 px-4 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs rounded-xl shadow-lg shadow-emerald-950/60 flex items-center justify-center gap-2 cursor-pointer transition-all"
+            >
+              <span>Unlock All Weeks with Basic Plan (₦8,000 / term)</span>
+            </button>
+
+            <button
+              onClick={() => openStudentSubscriptionModal('standard')}
+              className="w-full py-2.5 px-4 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 hover:text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 cursor-pointer transition-colors"
+            >
+              <span>Compare Standard (₦15k) & Elite (₦60k)</span>
+            </button>
+
+            <button
+              onClick={closeNoteReader}
+              className="text-xs text-slate-400 hover:text-slate-200 underline pt-1 cursor-pointer"
+            >
+              Return to Scheme of Work
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // Generate a guaranteed 10-question topic-specific quiz based on this exact topic
   const matchingExam = useMemo(() => {

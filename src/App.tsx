@@ -30,6 +30,7 @@ import { NationalMockTournaments } from './components/student/aspirant/NationalM
 import { EducatorQuestionImporter } from './components/admin/EducatorQuestionImporter';
 import { BroadcastNewsTicker } from './components/student/BroadcastNewsTicker';
 import { PopupAnnouncementModal } from './components/student/PopupAnnouncementModal';
+import { StudentSubscriptionModal } from './components/student/StudentSubscriptionModal';
 
 const AppContent: React.FC = () => {
   const [quotaExceeded, setQuotaExceeded] = React.useState(false);
@@ -53,7 +54,10 @@ const AppContent: React.FC = () => {
     currentScreen,
     setCurrentScreen,
     isAuthenticated,
-    isSuperAdmin
+    isSuperAdmin,
+    isStudentSubscriptionModalOpen,
+    targetSubscriptionPlan,
+    closeStudentSubscriptionModal
   } = useApp();
 
   // Screen 1: The New Concept Landing Page (Public Discovery)
@@ -230,6 +234,13 @@ const AppContent: React.FC = () => {
 
             {/* Over-The-Air Pop-Up Promotional Image Announcement Modal */}
             <PopupAnnouncementModal />
+
+            {/* 4-Tier Student Termly Subscription & Modular Add-On Modal */}
+            <StudentSubscriptionModal
+              isOpen={isStudentSubscriptionModalOpen}
+              onClose={closeStudentSubscriptionModal}
+              targetPlan={targetSubscriptionPlan}
+            />
           </div>
         )}
 

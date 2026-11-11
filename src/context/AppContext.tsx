@@ -25,6 +25,7 @@ import {
   RegisteredUserProfile,
   RegisteredTutorData,
   GrowthPartner,
+  SchoolMaterial,
   TimetableSlot,
   ChampionshipRegistration,
   ChampionshipTier,
@@ -33,7 +34,10 @@ import {
   DiagnosticProfile,
   StudyCalendar,
   AspirantGoal,
-  AspirantTier
+  AspirantTier,
+  StudentSubscriptionTier,
+  StudentSubscriptionPlan,
+  StudentAddOnEntitlements
 } from '../types';
 import {
   generateCuratedStudyCalendar,
@@ -182,6 +186,63 @@ interface AppContextType {
   updateUserRecord: (userId: string, updates: Partial<RegisteredUserProfile>) => Promise<void>;
   switchRole: (role: UserRole) => void;
   loginAsDeveloper: (email?: string) => void;
+
+  // School Administrator & Institutional Publishing
+  schoolMaterials: SchoolMaterial[];
+  publishSchoolMaterial: (material: Omit<SchoolMaterial, 'id' | 'createdAt'>) => void;
+  deleteSchoolMaterial: (id: string) => void;
+  verifySchoolAdmin: (status: 'verified' | 'pending_verification') => void;
+  linkStudentToSchool: (schoolCode: string) => boolean;
+  subscribeSchoolAdmin: (plan: 'monthly' | 'termly', paystackRef: string) => Promise<boolean>;
+  getSchoolAccreditationMetrics: (schoolCode: string) => {
+    totalStudents: number;
+    paidStudents: number;
+    freeStudents: number;
+    hasActiveDirectSubscription: boolean;
+    directSubscriptionExpiresAt?: string;
+    isQualifiedForReview: boolean;
+    qualificationReason?: 'paid_students_threshold' | 'direct_subscription' | 'manual_override';
+  };
+  setStudentSubscriptionStatus: (studentId: string, isSubscribed: boolean, tier?: StudentSubscriptionTier) => Promise<void>;
+
+  // 4-Tier Student Subscriptions & Entitlements
+  subscribeStudentTier: (
+    plan: StudentSubscriptionPlan,
+    paymentMethod: 'paystack' | 'wallet',
+    paystackRef?: string
+  ) => Promise<{ success: boolean; error?: string }>;
+  unlockStudentAddOn: (
+    addon: 'ai_coach' | 'termly_competition' | 'termly_drill_all' | 'termly_drill_single',
+    subject?: string,
+    paymentMethod?: 'paystack' | 'wallet',
+    paystackRef?: string
+  ) => Promise<{ success: boolean; error?: string }>;
+  recordDailyGameAttempt: (gameId: string) => { allowed: boolean; remainingAttempts: number };
+  checkStudentFeatureAccess: (
+    feature:
+      | 'scheme_weeks'
+      | 'quiz_questions'
+      | 'formulas'
+      | 'games'
+      | 'termly_drill'
+      | 'leaderboard_win'
+      | 'chat'
+      | 'ai_verification'
+      | 'weekly_competition'
+      | 'ai_coach'
+      | 'termly_competition'
+      | 'prepare_exam',
+    options?: { weekNumber?: number; questionIndex?: number; gameId?: string; subject?: string }
+  ) => {
+    hasAccess: boolean;
+    requiredPlan?: StudentSubscriptionPlan;
+    reason?: string;
+    unlockPriceNaira?: number;
+  };
+  isStudentSubscriptionModalOpen: boolean;
+  targetSubscriptionPlan: StudentSubscriptionPlan | null;
+  openStudentSubscriptionModal: (targetPlan?: StudentSubscriptionPlan) => void;
+  closeStudentSubscriptionModal: () => void;
 }
 
 const INITIAL_EMPTY_STUDENT: StudentProfile = {
@@ -197,7 +258,10 @@ const INITIAL_EMPTY_STUDENT: StudentProfile = {
   uniformVerified: false,
   uniformPhotoUrl: null,
   downloadedSubjectIds: [],
-  completedQuizIds: []
+  completedQuizIds: [],
+  isSubscribed: false,
+  subscriptionPlan: 'free',
+  subscriptionTier: 'free'
 };
 
 const INITIAL_EMPTY_WALLET: ParentWallet = {
@@ -222,6 +286,74 @@ const isPurgedRecord = (data: any) => {
   const str = `${data.fullName || ''} ${data.name || ''} ${data.id || ''}`.toLowerCase();
   return PURGED_PATTERNS.some(p => str.includes(p));
 };
+
+const DEFAULT_INITIAL_MATERIALS: SchoolMaterial[] = [
+  {
+    id: 'mat_1',
+    schoolCode: 'SCHL88',
+    schoolName: "King's College Lagos",
+    type: 'lesson_note',
+    title: 'WAEC Special Review: Differential Calculus & Rates of Change',
+    subject: 'Mathematics',
+    classLevel: 'SS 3',
+    term: 'Second Term',
+    week: 'Week 4',
+    content: 'Comprehensive summary of differentiation from first principles, power rule, product rule, quotient rule, and applications to velocity, acceleration, and maximum/minimum turning points.',
+    attachmentName: 'Calculus_First_Principles_Notes.pdf',
+    createdAt: '2026-11-05T09:30:00Z',
+    authorName: 'Dr. Joseph Adeleke'
+  },
+  {
+    id: 'mat_2',
+    schoolCode: 'SCHL88',
+    schoolName: "King's College Lagos",
+    type: 'assignment',
+    title: 'Mid-Term Assignment: Gravitational & Electric Fields Problem Set',
+    subject: 'Physics',
+    classLevel: 'SS 3',
+    term: 'Second Term',
+    week: 'Week 5',
+    content: 'Complete the 10 calculation problems on inverse square laws, Coulomb force, and orbital satellite velocity in your Physics notebook. Show all standard SI units.',
+    dueDate: '2026-11-20',
+    maxScore: 20,
+    attachmentName: 'Physics_Field_Theory_Worksheet.pdf',
+    createdAt: '2026-11-08T11:00:00Z',
+    authorName: 'Engr. Benson Okon'
+  },
+  {
+    id: 'mat_3',
+    schoolCode: 'SCHL88',
+    schoolName: "King's College Lagos",
+    type: 'project',
+    title: 'Termly Science Exhibition Project: Renewable Solar-Wind Microgrid Model',
+    subject: 'Physics',
+    classLevel: 'SS 2',
+    term: 'Second Term',
+    week: 'Week 8',
+    content: 'Form groups of 4 to design and fabricate a miniature working model demonstrating solar-photovoltaic and miniature wind-turbine energy conversion with circuit schematics.',
+    dueDate: '2026-12-05',
+    maxScore: 30,
+    attachmentName: 'KC_Science_Exhibition_Rubric.pdf',
+    createdAt: '2026-11-02T14:15:00Z',
+    authorName: 'Science Faculty Board'
+  },
+  {
+    id: 'mat_4',
+    schoolCode: 'SCHL88',
+    schoolName: "King's College Lagos",
+    type: 'past_question',
+    title: 'BECE 2024 Model Questions Drill with Examiner Marking Guide',
+    subject: 'Basic Science',
+    classLevel: 'JSS 3',
+    term: 'Second Term',
+    week: 'Week 6',
+    content: '25-question standard BECE drill covering energy transformations, digestive systems, and ecology with step-by-step WAEC/NECO marking scheme explanations.',
+    examBoard: 'BECE',
+    maxScore: 25,
+    createdAt: '2026-11-09T08:00:00Z',
+    authorName: 'Chief Examiner Council'
+  }
+];
 
 const AppContext = createContext<AppContextType | null>(null);
 
@@ -416,6 +548,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     return {};
   });
+
+  // School Administrator Materials (Notes, Assignments, Projects, Past Questions)
+  const [schoolMaterials, setSchoolMaterials] = useState<SchoolMaterial[]>(() => {
+    const saved = safeGetItem('sc_school_materials');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch {}
+    }
+    return DEFAULT_INITIAL_MATERIALS;
+  });
+
+  useEffect(() => {
+    safeSetItem('sc_school_materials', JSON.stringify(schoolMaterials));
+  }, [schoolMaterials]);
 
   // Calculate Rank based on XP
   const calculateRank = (xp: number): StudentRank => {
@@ -1672,6 +1820,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         id: newId,
         name: fullName,
         school: profileData.schoolName || profileData.school || "Secondary School",
+        schoolCode: profileData.schoolCode ? profileData.schoolCode.trim().toUpperCase() : undefined,
         classLevel: profileData.classLevel || 'JSS 1',
         stream: profileData.stream || 'Science',
         xp: 0,
@@ -1803,9 +1952,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         })
       }).catch(err => console.warn('Could not sync partner with server:', err));
     } else if (role === 'admin') {
+      const isPrivilegedAdmin = isSuperAdminEmail(email);
+      const generatedSchoolCode = profileData.schoolCode || `SCHL${Math.floor(10 + Math.random() * 90)}`;
       newProfile.adminData = {
         schoolName: profileData.schoolName || 'Secondary School',
-        schoolType: profileData.schoolType || 'College'
+        schoolType: profileData.schoolType || 'College',
+        schoolCode: generatedSchoolCode,
+        designation: profileData.designation || 'School Administrator',
+        phone: profileData.phone || '',
+        state: profileData.state || 'Lagos',
+        lga: profileData.lga || 'Lagos Island',
+        documentUrl: profileData.documentUrl || '',
+        verificationStatus: isPrivilegedAdmin ? 'verified' : (profileData.verificationStatus || 'pending_verification'),
+        verifiedAt: isPrivilegedAdmin ? new Date().toISOString() : undefined
       };
     }
 
@@ -1813,6 +1972,774 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     safeSetItem('sc_user_profile', JSON.stringify(newProfile));
     setTargetSignUpRole(null);
     setCurrentScreen('app');
+  };
+
+  const publishSchoolMaterial = (material: Omit<SchoolMaterial, 'id' | 'createdAt'>) => {
+    const newMaterial: SchoolMaterial = {
+      ...material,
+      id: `mat_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      createdAt: new Date().toISOString()
+    };
+    setSchoolMaterials(prev => [newMaterial, ...prev]);
+
+    if (!isOffline && isFirebaseConnected) {
+      setDoc(doc(db, 'school_materials', newMaterial.id), newMaterial).catch(err => {
+        console.warn('Could not sync school material to Firestore:', err);
+      });
+    }
+  };
+
+  const deleteSchoolMaterial = (id: string) => {
+    setSchoolMaterials(prev => prev.filter(m => m.id !== id));
+
+    if (!isOffline && isFirebaseConnected) {
+      deleteDoc(doc(db, 'school_materials', id)).catch(err => {
+        console.warn('Could not delete school material from Firestore:', err);
+      });
+    }
+  };
+
+  const verifySchoolAdmin = (status: 'verified' | 'pending_verification') => {
+    if (!currentUserProfile) return;
+    const currentAdminData = currentUserProfile.adminData || {
+      schoolName: 'Secondary School',
+      schoolType: 'College'
+    };
+    const updated: RegisteredUserProfile = {
+      ...currentUserProfile,
+      adminData: {
+        ...currentAdminData,
+        verificationStatus: status,
+        verifiedAt: status === 'verified' ? new Date().toISOString() : undefined
+      }
+    };
+    setCurrentUserProfile(updated);
+    safeSetItem('sc_user_profile', JSON.stringify(updated));
+
+    // Also update in allRegisteredUsers
+    setAllRegisteredUsers(prev => {
+      const updatedList = prev.map(u => (u.id === currentUserProfile.id ? updated : u));
+      safeSetItem('sc_all_users', JSON.stringify(updatedList));
+      return updatedList;
+    });
+
+    if (!isOffline && isFirebaseConnected && currentUserProfile.id) {
+      setDoc(doc(db, 'users', currentUserProfile.id), { adminData: updated.adminData }, { merge: true }).catch(err => {
+        console.warn('Could not sync admin verification to Firestore:', err);
+      });
+    }
+  };
+
+  const linkStudentToSchool = (code: string): boolean => {
+    const cleanCode = code.trim().toUpperCase();
+    if (!cleanCode) return false;
+
+    const updatedStudent: StudentProfile = {
+      ...student,
+      schoolCode: cleanCode
+    };
+    setStudent(updatedStudent);
+    safeSetItem('sc_student', JSON.stringify(updatedStudent));
+
+    if (currentUserProfile && currentUserProfile.role === 'student') {
+      const updatedProfile: RegisteredUserProfile = {
+        ...currentUserProfile,
+        studentData: updatedStudent
+      };
+      setCurrentUserProfile(updatedProfile);
+      safeSetItem('sc_user_profile', JSON.stringify(updatedProfile));
+
+      // Also update in allRegisteredUsers directory so School Admin roster sees it in real time
+      setAllRegisteredUsers(prev => {
+        const updatedList = prev.map(u => (u.id === currentUserProfile.id ? updatedProfile : u));
+        safeSetItem('sc_all_users', JSON.stringify(updatedList));
+        return updatedList;
+      });
+
+      if (!isOffline && isFirebaseConnected && currentUser?.uid) {
+        setDoc(doc(db, 'students', currentUser.uid), { schoolCode: cleanCode }, { merge: true }).catch(err => {
+          console.warn('Could not sync student school code to Firestore:', err);
+        });
+      }
+    }
+    return true;
+  };
+
+  const subscribeSchoolAdmin = async (plan: 'monthly' | 'termly', paystackRef: string): Promise<boolean> => {
+    if (!currentUserProfile) return false;
+    const isTermly = plan === 'termly';
+    const amountNaira = isTermly ? 42000 : 15000;
+    const durationDays = isTermly ? 90 : 30;
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + durationDays * 24 * 60 * 60 * 1000).toISOString();
+
+    const currentAdminData = currentUserProfile.adminData || {
+      schoolName: 'Secondary School',
+      schoolType: 'College'
+    };
+
+    const directSub = {
+      plan,
+      amountNaira,
+      paidAt: now.toISOString(),
+      expiresAt,
+      paystackReference: paystackRef,
+      status: 'active' as const
+    };
+
+    const updatedProfile: RegisteredUserProfile = {
+      ...currentUserProfile,
+      adminData: {
+        ...currentAdminData,
+        directSubscription: directSub,
+        accreditationQualified: true,
+        qualificationReason: 'direct_subscription'
+      }
+    };
+
+    setCurrentUserProfile(updatedProfile);
+    safeSetItem('sc_user_profile', JSON.stringify(updatedProfile));
+
+    setAllRegisteredUsers(prev => {
+      const updatedList = prev.map(u => (u.id === currentUserProfile.id ? updatedProfile : u));
+      safeSetItem('sc_all_users', JSON.stringify(updatedList));
+      return updatedList;
+    });
+
+    if (!isOffline && isFirebaseConnected && currentUserProfile.id) {
+      setDoc(doc(db, 'users', currentUserProfile.id), {
+        adminData: updatedProfile.adminData
+      }, { merge: true }).catch(err => {
+        console.warn('Could not sync school subscription to Firestore:', err);
+      });
+    }
+
+    return true;
+  };
+
+  const getSchoolAccreditationMetrics = (schoolCode: string) => {
+    const cleanCode = (schoolCode || '').trim().toUpperCase();
+    if (!cleanCode) {
+      return {
+        totalStudents: 0,
+        paidStudents: 0,
+        freeStudents: 0,
+        hasActiveDirectSubscription: false,
+        isQualifiedForReview: false
+      };
+    }
+
+    const matchingStudents: StudentProfile[] = [];
+    const seenIds = new Set<string>();
+
+    if (student?.name && student.schoolCode?.toUpperCase() === cleanCode) {
+      matchingStudents.push(student);
+      seenIds.add(student.id || 'current_student');
+    }
+
+    allRegisteredUsers.forEach(u => {
+      if (u.role === 'student' && u.studentData && u.studentData.schoolCode?.toUpperCase() === cleanCode) {
+        const sid = u.studentData.id || u.id;
+        if (!seenIds.has(sid)) {
+          seenIds.add(sid);
+          matchingStudents.push(u.studentData);
+        }
+      }
+    });
+
+    let paidCount = 0;
+    matchingStudents.forEach(s => {
+      const isPaid = s.isSubscribed === true ||
+        (Boolean(s.subscriptionTier) && s.subscriptionTier !== 'free') ||
+        (Boolean(s.subscribedUntil) && new Date(s.subscribedUntil!) > new Date());
+      if (isPaid) {
+        paidCount++;
+      }
+    });
+
+    const totalStudents = matchingStudents.length;
+    const freeStudents = Math.max(0, totalStudents - paidCount);
+
+    const adminUser = allRegisteredUsers.find(
+      u => (u.role === 'school_admin' || u.role === 'admin') &&
+           u.adminData?.schoolCode?.toUpperCase() === cleanCode
+    );
+
+    const directSub = adminUser?.adminData?.directSubscription || currentUserProfile?.adminData?.directSubscription;
+    const hasActiveDirectSubscription = Boolean(
+      directSub && directSub.status === 'active' && new Date(directSub.expiresAt) > new Date()
+    );
+
+    const meetsThreshold = paidCount >= 50;
+    const isQualifiedForReview = meetsThreshold || hasActiveDirectSubscription;
+    const qualificationReason = meetsThreshold
+      ? ('paid_students_threshold' as const)
+      : hasActiveDirectSubscription
+      ? ('direct_subscription' as const)
+      : undefined;
+
+    return {
+      totalStudents,
+      paidStudents: paidCount,
+      freeStudents,
+      hasActiveDirectSubscription,
+      directSubscriptionExpiresAt: directSub?.expiresAt,
+      isQualifiedForReview,
+      qualificationReason
+    };
+  };
+
+  const setStudentSubscriptionStatus = async (
+    studentId: string,
+    isSubscribed: boolean,
+    tier: StudentSubscriptionTier = 'standard'
+  ) => {
+    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+    if (student.id === studentId || studentId === 'current') {
+      const updated: StudentProfile = {
+        ...student,
+        isSubscribed,
+        subscriptionTier: isSubscribed ? tier : 'free',
+        subscribedUntil: isSubscribed ? expiresAt : undefined
+      };
+      setStudent(updated);
+      safeSetItem('sc_student', JSON.stringify(updated));
+    }
+
+    setAllRegisteredUsers(prev => {
+      const updated = prev.map(u => {
+        if (u.id === studentId || (u.studentData && u.studentData.id === studentId)) {
+          const currentStudent = u.studentData || {
+            id: u.id,
+            name: u.fullName,
+            school: 'Secondary School',
+            classLevel: 'SS 1' as const,
+            stream: 'Science' as const,
+            xp: 0,
+            rank: 'Scholar' as const,
+            streakDays: 0,
+            lastStudyDate: new Date().toISOString(),
+            uniformVerified: true,
+            uniformPhotoUrl: null,
+            downloadedSubjectIds: [],
+            completedQuizIds: []
+          };
+          const updatedStudentData: StudentProfile = {
+            ...currentStudent,
+            isSubscribed,
+            subscriptionTier: isSubscribed ? tier : 'free',
+            subscribedUntil: isSubscribed ? expiresAt : undefined
+          };
+          return {
+            ...u,
+            studentData: updatedStudentData
+          };
+        }
+        return u;
+      });
+      safeSetItem('sc_all_users', JSON.stringify(updated));
+      return updated;
+    });
+
+    if (!isOffline && isFirebaseConnected && studentId && studentId !== 'current') {
+      setDoc(doc(db, 'students', studentId), {
+        isSubscribed,
+        subscriptionTier: isSubscribed ? tier : 'free',
+        subscribedUntil: isSubscribed ? expiresAt : null
+      }, { merge: true }).catch(err => {
+        console.warn('Could not sync student subscription to Firestore:', err);
+      });
+    }
+  };
+
+  // 4-Tier Student Subscriptions & Entitlements State & Engine
+  const [isStudentSubscriptionModalOpen, setIsStudentSubscriptionModalOpen] = useState<boolean>(false);
+  const [targetSubscriptionPlan, setTargetSubscriptionPlan] = useState<StudentSubscriptionPlan | null>(null);
+
+  const openStudentSubscriptionModal = (targetPlan?: StudentSubscriptionPlan) => {
+    if (targetPlan) setTargetSubscriptionPlan(targetPlan);
+    setIsStudentSubscriptionModalOpen(true);
+  };
+
+  const closeStudentSubscriptionModal = () => {
+    setIsStudentSubscriptionModalOpen(false);
+    setTargetSubscriptionPlan(null);
+  };
+
+  const getAcademicTermEndDate = (): string => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth();
+    let end: Date;
+    if (month >= 0 && month <= 3) {
+      end = new Date(year, 3, 20, 23, 59, 59);
+      if (now >= end) end = new Date(year, 6, 31, 23, 59, 59);
+    } else if (month >= 4 && month <= 7) {
+      end = new Date(year, 6, 31, 23, 59, 59);
+      if (now >= end) end = new Date(year, 11, 20, 23, 59, 59);
+    } else {
+      end = new Date(year, 11, 20, 23, 59, 59);
+      if (now >= end) end = new Date(year + 1, 3, 20, 23, 59, 59);
+    }
+    return end.toISOString();
+  };
+
+  const subscribeStudentTier = async (
+    plan: StudentSubscriptionPlan,
+    paymentMethod: 'paystack' | 'wallet',
+    paystackRef?: string
+  ): Promise<{ success: boolean; error?: string }> => {
+    const prices: Record<StudentSubscriptionPlan, number> = {
+      free: 0,
+      basic: 8000,
+      standard: 15000,
+      elite: 60000
+    };
+
+    const feeNaira = prices[plan];
+
+    if (paymentMethod === 'wallet' && feeNaira > 0) {
+      const currentBalance = parentWallet.balanceNaira;
+      if (currentBalance < feeNaira) {
+        return {
+          success: false,
+          error: `Insufficient Parent Escrow Wallet balance (₦${currentBalance.toLocaleString()} available, ₦${feeNaira.toLocaleString()} required). Please fund your wallet or pay via Paystack.`
+        };
+      }
+
+      // Deduct from wallet
+      const txId = `TX_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      const updatedBalance = currentBalance - feeNaira;
+      const newTransaction = {
+        id: txId,
+        type: 'debit' as const,
+        amountNaira: feeNaira,
+        description: `Subscribed to ${plan.toUpperCase()} Tier Pass (Full Academic Term Access)`,
+        date: new Date().toISOString()
+      };
+      const updatedWallet: ParentWallet = {
+        ...parentWallet,
+        balanceNaira: updatedBalance,
+        transactions: [newTransaction, ...parentWallet.transactions]
+      };
+      setParentWallet(updatedWallet);
+      safeSetItem('sc_parent_wallet', JSON.stringify(updatedWallet));
+    }
+
+    const termExpiresAt = getAcademicTermEndDate();
+    const effectiveStudentId = student.id || currentUser?.uid || (currentUserProfile?.id ? currentUserProfile.id : 'student_active');
+
+    // If Elite Tier (₦60,000), automatically credit ₦16,000 Pre-paid Tutor Credits to Parent Escrow Wallet
+    if (plan === 'elite') {
+      const bonusTxId = `TX_TUTOR_BONUS_${Date.now()}`;
+      setParentWallet(prev => {
+        const bonusTx = {
+          id: bonusTxId,
+          type: 'credit' as const,
+          amountNaira: 16000,
+          description: '₦16,000 Pre-paid Tutor Booking Credits (Elite Scholar Tier)',
+          date: new Date().toISOString()
+        };
+        const newWallet = {
+          ...prev,
+          balanceNaira: prev.balanceNaira + 16000,
+          transactions: [bonusTx, ...prev.transactions]
+        };
+        safeSetItem('sc_parent_wallet', JSON.stringify(newWallet));
+        return newWallet;
+      });
+    }
+
+    // Automatically unlock Prepare for Exam Plan if Standard or Elite
+    if (plan === 'standard' || plan === 'elite') {
+      setExamPrepState(prev => {
+        const updated = {
+          ...prev,
+          isUnlocked: true,
+          unlockedAt: new Date().toISOString(),
+          paymentMethod: paymentMethod === 'wallet' ? ('escrow_wallet' as const) : ('direct_paystack' as const),
+          tutorCreditsRemainingNaira: prev.tutorCreditsRemainingNaira + (plan === 'elite' ? 16000 : 0)
+        };
+        safeSetItem('sc_exam_prep', JSON.stringify(updated));
+        return updated;
+      });
+    }
+
+    const updatedStudent: StudentProfile = {
+      ...student,
+      isSubscribed: plan !== 'free',
+      subscriptionPlan: plan,
+      subscriptionTier: plan,
+      subscribedUntil: termExpiresAt,
+      termExpiresAt
+    };
+
+    setStudent(updatedStudent);
+    safeSetItem('sc_student', JSON.stringify(updatedStudent));
+
+    if (currentUserProfile) {
+      const updatedProfile: RegisteredUserProfile = {
+        ...currentUserProfile,
+        studentData: updatedStudent
+      };
+      setCurrentUserProfile(updatedProfile);
+      safeSetItem('sc_user_profile', JSON.stringify(updatedProfile));
+
+      setAllRegisteredUsers(prev => {
+        const updated = prev.map(u => (u.id === currentUserProfile.id ? updatedProfile : u));
+        safeSetItem('sc_all_users', JSON.stringify(updated));
+        return updated;
+      });
+    }
+
+    // Persist to Firestore
+    if (!isOffline && isFirebaseConnected && effectiveStudentId) {
+      setDoc(doc(db, 'students', effectiveStudentId), {
+        isSubscribed: plan !== 'free',
+        subscriptionPlan: plan,
+        subscriptionTier: plan,
+        termExpiresAt,
+        subscribedUntil: termExpiresAt,
+        lastSubscribedAt: new Date().toISOString(),
+        lastPaymentReference: paystackRef || `WALLET_${Date.now()}`
+      }, { merge: true }).catch(err => {
+        console.warn('Could not sync student subscription to Firestore:', err);
+      });
+    }
+
+    confetti({
+      particleCount: 100,
+      spread: 70,
+      origin: { y: 0.6 }
+    });
+
+    return { success: true };
+  };
+
+  const unlockStudentAddOn = async (
+    addon: 'ai_coach' | 'termly_competition' | 'termly_drill_all' | 'termly_drill_single',
+    subject?: string,
+    paymentMethod: 'paystack' | 'wallet' = 'wallet',
+    paystackRef?: string
+  ): Promise<{ success: boolean; error?: string }> => {
+    const prices: Record<string, number> = {
+      ai_coach: 10000,
+      termly_competition: 10000,
+      termly_drill_all: 5000,
+      termly_drill_single: 1000
+    };
+
+    const feeNaira = prices[addon] || 1000;
+
+    if (paymentMethod === 'wallet') {
+      const currentBalance = parentWallet.balanceNaira;
+      if (currentBalance < feeNaira) {
+        return {
+          success: false,
+          error: `Insufficient Parent Escrow Wallet balance (₦${currentBalance.toLocaleString()} available, ₦${feeNaira.toLocaleString()} required).`
+        };
+      }
+
+      const txId = `TX_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      const updatedWallet: ParentWallet = {
+        ...parentWallet,
+        balanceNaira: currentBalance - feeNaira,
+        transactions: [
+          {
+            id: txId,
+            type: 'debit',
+            amountNaira: feeNaira,
+            description: `Unlocked Add-On: ${addon.replace(/_/g, ' ').toUpperCase()}${subject ? ` (${subject})` : ''}`,
+            date: new Date().toISOString()
+          },
+          ...parentWallet.transactions
+        ]
+      };
+      setParentWallet(updatedWallet);
+      safeSetItem('sc_parent_wallet', JSON.stringify(updatedWallet));
+    }
+
+    const currentAddOns = student.addOns || {};
+    const updatedAddOns: StudentAddOnEntitlements = {
+      ...currentAddOns,
+      aiCoachUnlocked: addon === 'ai_coach' ? true : currentAddOns.aiCoachUnlocked,
+      termlyCompetitionUnlocked: addon === 'termly_competition' ? true : currentAddOns.termlyCompetitionUnlocked,
+      termlyDrillAllSubjects: addon === 'termly_drill_all' ? true : currentAddOns.termlyDrillAllSubjects,
+      termlyDrillSingleSubjects: addon === 'termly_drill_single' && subject
+        ? Array.from(new Set([...(currentAddOns.termlyDrillSingleSubjects || []), subject]))
+        : currentAddOns.termlyDrillSingleSubjects
+    };
+
+    const updatedStudent: StudentProfile = {
+      ...student,
+      addOns: updatedAddOns
+    };
+
+    setStudent(updatedStudent);
+    safeSetItem('sc_student', JSON.stringify(updatedStudent));
+
+    if (currentUserProfile) {
+      const updatedProfile: RegisteredUserProfile = {
+        ...currentUserProfile,
+        studentData: updatedStudent
+      };
+      setCurrentUserProfile(updatedProfile);
+      safeSetItem('sc_user_profile', JSON.stringify(updatedProfile));
+    }
+
+    return { success: true };
+  };
+
+  const recordDailyGameAttempt = (gameId: string): { allowed: boolean; remainingAttempts: number } => {
+    const plan = student.subscriptionPlan || (student.isSubscribed ? 'basic' : 'free');
+    if (plan !== 'free') {
+      return { allowed: true, remainingAttempts: 999 };
+    }
+
+    const allowedFreeGames = ['maths_sprint', 'periodic_table', 'maths-sprint', 'periodic-table'];
+    if (!allowedFreeGames.includes(gameId)) {
+      return { allowed: false, remainingAttempts: 0 };
+    }
+
+    const today = new Date().toISOString().split('T')[0];
+    const currentDaily = student.addOns?.dailyGameAttempts;
+    let attemptsToday = 0;
+
+    if (currentDaily && currentDaily.date === today) {
+      attemptsToday = currentDaily.attempts[gameId] || 0;
+    }
+
+    if (attemptsToday >= 1) {
+      return { allowed: false, remainingAttempts: 0 };
+    }
+
+    const updatedDaily = {
+      date: today,
+      attempts: {
+        ...(currentDaily?.date === today ? currentDaily.attempts : {}),
+        [gameId]: attemptsToday + 1
+      }
+    };
+
+    const updatedStudent: StudentProfile = {
+      ...student,
+      addOns: {
+        ...(student.addOns || {}),
+        dailyGameAttempts: updatedDaily
+      }
+    };
+
+    setStudent(updatedStudent);
+    safeSetItem('sc_student', JSON.stringify(updatedStudent));
+
+    return { allowed: true, remainingAttempts: 0 };
+  };
+
+  const checkStudentFeatureAccess = (
+    feature:
+      | 'scheme_weeks'
+      | 'quiz_questions'
+      | 'formulas'
+      | 'games'
+      | 'termly_drill'
+      | 'leaderboard_win'
+      | 'chat'
+      | 'ai_verification'
+      | 'weekly_competition'
+      | 'ai_coach'
+      | 'termly_competition'
+      | 'prepare_exam',
+    options?: { weekNumber?: number; questionIndex?: number; gameId?: string; subject?: string }
+  ): {
+    hasAccess: boolean;
+    requiredPlan?: StudentSubscriptionPlan;
+    reason?: string;
+    unlockPriceNaira?: number;
+  } => {
+    const plan: StudentSubscriptionPlan = student.subscriptionPlan || (student.isSubscribed ? 'basic' : 'free');
+    const addOns = student.addOns || {};
+
+    if (feature === 'scheme_weeks') {
+      const week = options?.weekNumber || 1;
+      if (plan === 'free') {
+        if (week <= 2) return { hasAccess: true };
+        return {
+          hasAccess: false,
+          requiredPlan: 'basic',
+          reason: 'Weeks 3 to 12 lesson notes are locked on the Free Tier. Upgrade to the Basic Plan (₦8,000 / term) for full term coverage.',
+          unlockPriceNaira: 8000
+        };
+      }
+      return { hasAccess: true };
+    }
+
+    if (feature === 'quiz_questions') {
+      const qIdx = options?.questionIndex !== undefined ? options.questionIndex : 0;
+      if (plan === 'free') {
+        if (qIdx < 2) return { hasAccess: true };
+        return {
+          hasAccess: false,
+          requiredPlan: 'basic',
+          reason: 'Topic quizzes are restricted on the Free Tier. Upgrade to Basic Plan (₦8,000 / term) for 5 questions or Standard Plan for all 10.',
+          unlockPriceNaira: 8000
+        };
+      }
+      if (plan === 'basic') {
+        if (qIdx < 5) return { hasAccess: true };
+        return {
+          hasAccess: false,
+          requiredPlan: 'standard',
+          reason: 'Questions 6 to 10 are locked on the Basic Tier. Upgrade to Standard Plan (₦15,000 / term) for full 10-question quizzes.',
+          unlockPriceNaira: 15000
+        };
+      }
+      return { hasAccess: true };
+    }
+
+    if (feature === 'formulas') {
+      return { hasAccess: true };
+    }
+
+    if (feature === 'games') {
+      const gameId = options?.gameId || '';
+      if (plan === 'free') {
+        const freeGames = ['maths_sprint', 'periodic_table', 'maths-sprint', 'periodic-table'];
+        if (freeGames.includes(gameId)) {
+          return { hasAccess: true };
+        }
+        return {
+          hasAccess: false,
+          requiredPlan: 'basic',
+          reason: 'Only Maths Sprint and Periodic Table are unlocked on the Free Tier (1 attempt/day). Upgrade to Basic (₦8,000) for 4 games or Standard (₦15,000) for all games.',
+          unlockPriceNaira: 8000
+        };
+      }
+      if (plan === 'basic') {
+        const basicGames = [
+          'maths_sprint',
+          'periodic_table',
+          'speed_concord',
+          'nigerian_geo_civic',
+          'maths-sprint',
+          'periodic-table',
+          'speed-concord',
+          'nigerian-geo-civic'
+        ];
+        if (basicGames.includes(gameId)) {
+          return { hasAccess: true };
+        }
+        return {
+          hasAccess: false,
+          requiredPlan: 'standard',
+          reason: 'This game is locked on the Basic Tier. Upgrade to Standard Plan (₦15,000 / term) to unlock all arcade study games unlimited.',
+          unlockPriceNaira: 15000
+        };
+      }
+      return { hasAccess: true };
+    }
+
+    if (feature === 'termly_drill') {
+      if (plan === 'elite' || plan === 'standard') return { hasAccess: true };
+      if (addOns.termlyDrillAllSubjects) return { hasAccess: true };
+      if (options?.subject && addOns.termlyDrillSingleSubjects?.includes(options.subject)) {
+        return { hasAccess: true };
+      }
+      if (plan === 'basic') {
+        return {
+          hasAccess: false,
+          requiredPlan: 'standard',
+          reason: 'Termly CBT Drills are locked on the Basic Tier. Unlock for ₦5,000 (all subjects), ₦1,000 (single subject), or upgrade to Standard Plan (₦15,000).',
+          unlockPriceNaira: 5000
+        };
+      }
+      return {
+        hasAccess: false,
+        requiredPlan: 'standard',
+        reason: 'Termly Drills are locked on the Free Tier. Upgrade to Standard Plan (₦15,000 / term) for unlimited CBT practice.',
+        unlockPriceNaira: 15000
+      };
+    }
+
+    if (feature === 'leaderboard_win') {
+      if (plan === 'free') {
+        return {
+          hasAccess: false,
+          requiredPlan: 'basic',
+          reason: 'Free tier students can view the leaderboard to track rankings, but cannot earn full competition XP to win prizes. Upgrade to Basic (₦8,000 / term) to rank and win!',
+          unlockPriceNaira: 8000
+        };
+      }
+      return { hasAccess: true };
+    }
+
+    if (feature === 'chat') {
+      if (plan === 'free') {
+        return {
+          hasAccess: false,
+          requiredPlan: 'basic',
+          reason: 'Community discussions and academic chat channels require a Basic Plan (₦8,000 / term) or above.',
+          unlockPriceNaira: 8000
+        };
+      }
+      return { hasAccess: true };
+    }
+
+    if (feature === 'ai_verification') {
+      if (plan === 'free') {
+        return {
+          hasAccess: false,
+          requiredPlan: 'basic',
+          reason: 'AI uniform verification to earn 500 XP is locked on the Free Tier. Upgrade to Basic (₦8,000 / term) to verify and claim rank XP.',
+          unlockPriceNaira: 8000
+        };
+      }
+      return { hasAccess: true };
+    }
+
+    if (feature === 'weekly_competition') {
+      if (plan === 'standard' || plan === 'elite') return { hasAccess: true };
+      return {
+        hasAccess: false,
+        requiredPlan: 'standard',
+        reason: 'Weekly student championship contests are unlocked on Standard (₦15,000) and Elite (₦60,000) plans.',
+        unlockPriceNaira: 15000
+      };
+    }
+
+    if (feature === 'ai_coach') {
+      if (plan === 'elite') return { hasAccess: true };
+      if (addOns.aiCoachUnlocked) return { hasAccess: true };
+      return {
+        hasAccess: false,
+        requiredPlan: 'elite',
+        reason: 'SC AI Coach is included in the Elite Tier (₦60,000) or available as a ₦10,000 modular add-on.',
+        unlockPriceNaira: 10000
+      };
+    }
+
+    if (feature === 'termly_competition') {
+      if (plan === 'elite') return { hasAccess: true };
+      if (addOns.termlyCompetitionUnlocked) return { hasAccess: true };
+      return {
+        hasAccess: false,
+        requiredPlan: 'elite',
+        reason: 'Termly National Mock Tournaments with cash prizes are unlocked in Elite Tier or accessible with a ₦10,000 competition pass.',
+        unlockPriceNaira: 10000
+      };
+    }
+
+    if (feature === 'prepare_exam') {
+      if (plan === 'standard' || plan === 'elite') return { hasAccess: true };
+      if (examPrepState.isUnlocked) return { hasAccess: true };
+      return {
+        hasAccess: false,
+        requiredPlan: 'standard',
+        reason: 'Prepare For Exam Plan is included in Standard (₦15,000) and Elite (₦60,000) plans.',
+        unlockPriceNaira: 15000
+      };
+    }
+
+    return { hasAccess: true };
   };
 
   const updateTutorProfile = (updatedTutorData: Partial<RegisteredTutorData>) => {
@@ -1901,10 +2828,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return updated;
     });
 
+    if (currentUserProfile && currentUserProfile.id === userId) {
+      const updated = { ...currentUserProfile, ...updates };
+      setCurrentUserProfile(updated);
+      safeSetItem('sc_user_profile', JSON.stringify(updated));
+    }
+
     if (impersonatedUser && impersonatedUser.id === userId) {
       const updated = { ...impersonatedUser, ...updates };
       setImpersonatedUser(updated);
       if (updated.studentData) setStudent(updated.studentData);
+    }
+
+    if (!isOffline && isFirebaseConnected) {
+      setDoc(doc(db, 'users', userId), updates, { merge: true }).catch(err => {
+        console.warn('Could not sync user update to Firestore:', err);
+      });
     }
   };
 
@@ -2024,7 +2963,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         stopImpersonation,
         updateUserRecord,
         switchRole,
-        loginAsDeveloper
+        loginAsDeveloper,
+        schoolMaterials,
+        publishSchoolMaterial,
+        deleteSchoolMaterial,
+        verifySchoolAdmin,
+        linkStudentToSchool,
+        subscribeSchoolAdmin,
+        getSchoolAccreditationMetrics,
+        setStudentSubscriptionStatus,
+        subscribeStudentTier,
+        unlockStudentAddOn,
+        recordDailyGameAttempt,
+        checkStudentFeatureAccess,
+        isStudentSubscriptionModalOpen,
+        targetSubscriptionPlan,
+        openStudentSubscriptionModal,
+        closeStudentSubscriptionModal
       }}
     >
       {children}

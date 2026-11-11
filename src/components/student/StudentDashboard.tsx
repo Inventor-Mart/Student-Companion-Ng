@@ -23,10 +23,14 @@ import {
   Video,
   Calendar,
   Lock,
-  Sparkles
+  Sparkles,
+  KeyRound,
+  FileText,
+  X
 } from 'lucide-react';
 import { NairaText, NairaSign } from '../../utils/currency';
 import { AspirantDashboard } from './aspirant/AspirantDashboard';
+import { SchoolMaterial } from '../../types';
 
 export const StudentDashboard: React.FC = () => {
   const {
@@ -40,8 +44,15 @@ export const StudentDashboard: React.FC = () => {
     updateStudentClass,
     tutorBookings,
     launchVirtualClassroom,
-    examPrepState
+    examPrepState,
+    schoolMaterials,
+    linkStudentToSchool
   } = useApp();
+
+  const [isLinkSchoolModalOpen, setIsLinkSchoolModalOpen] = useState(false);
+  const [inputSchoolCode, setInputSchoolCode] = useState('');
+  const [linkFeedback, setLinkFeedback] = useState<string | null>(null);
+  const [selectedSchoolMaterial, setSelectedSchoolMaterial] = useState<SchoolMaterial | null>(null);
 
   const avatarFileInputRef = useRef<HTMLInputElement>(null);
   const [isExamPrepModalOpen, setIsExamPrepModalOpen] = useState(false);
@@ -73,6 +84,12 @@ export const StudentDashboard: React.FC = () => {
 
   // Pick jump back in note
   const jumpBackNote = NIGERIAN_CURRICULUM_TOPICS[0];
+
+  // School Curriculum Materials published by verified administrator
+  const relevantMaterials = schoolMaterials.filter(
+    m => (student.schoolCode ? m.schoolCode.toUpperCase() === student.schoolCode.toUpperCase() : m.schoolName.toLowerCase().includes(displaySchool.toLowerCase())) &&
+         (m.classLevel === student.classLevel || m.classLevel === 'All Classes')
+  );
 
   // Determine class-specific drill details & matching mock exam
   const getDrillConfig = (classLevel: string) => {
@@ -201,13 +218,26 @@ export const StudentDashboard: React.FC = () => {
             </div>
 
             <div>
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1.5 flex-wrap">
                 <h2 className="text-base font-bold text-white tracking-tight leading-tight">
                   {displayName}
                 </h2>
                 <span className="text-[11px] font-semibold text-emerald-400 bg-emerald-950/80 border border-emerald-800/60 rounded px-1.5 py-0.2">
                   {student.rank}
                 </span>
+                {student.schoolCode ? (
+                  <span className="text-[10px] font-mono font-bold text-purple-300 bg-purple-950/90 border border-purple-700/70 rounded px-1.5 py-0.5">
+                    {student.schoolCode}
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setIsLinkSchoolModalOpen(true)}
+                    className="text-[10px] font-semibold text-purple-400 hover:text-purple-300 underline cursor-pointer"
+                  >
+                    + Link School Code
+                  </button>
+                )}
               </div>
               <p className="text-xs text-slate-400 mt-0.5">
                 {displaySchool} · {student.classLevel} ({student.stream})
@@ -544,6 +574,57 @@ export const StudentDashboard: React.FC = () => {
         </div>
       )}
 
+      {/* Official School Materials & Assignments (From Verified Administrator) */}
+      {relevantMaterials.length > 0 && (
+        <div className="bg-slate-900/90 rounded-2xl p-4 border border-purple-500/30 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-purple-400 animate-pulse" />
+              <span className="text-xs font-bold uppercase tracking-wider text-purple-300">
+                {displaySchool} Curriculum Materials
+              </span>
+            </div>
+            <span className="text-[10px] text-purple-400 font-mono font-bold bg-purple-950/80 px-2 py-0.5 rounded border border-purple-800">
+              {student.schoolCode || 'SCHL88'}
+            </span>
+          </div>
+
+          <div className="space-y-2">
+            {relevantMaterials.slice(0, 3).map(mat => (
+              <div
+                key={mat.id}
+                onClick={() => setSelectedSchoolMaterial(mat)}
+                className="p-3 rounded-xl bg-slate-950/80 border border-slate-800/80 hover:border-purple-500/60 transition-all cursor-pointer flex items-center justify-between gap-3 group"
+              >
+                <div className="space-y-0.5 min-w-0">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded border uppercase ${
+                      mat.type === 'assignment' ? 'bg-amber-950 text-amber-300 border-amber-800' :
+                      mat.type === 'project' ? 'bg-emerald-950 text-emerald-300 border-emerald-800' :
+                      mat.type === 'past_question' ? 'bg-sky-950 text-sky-300 border-sky-800' :
+                      'bg-purple-950 text-purple-300 border-purple-800'
+                    }`}>
+                      {mat.type.replace('_', ' ')}
+                    </span>
+                    <span className="text-xs font-bold text-white group-hover:text-purple-300 transition-colors truncate">
+                      {mat.title}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 line-clamp-1">
+                    {mat.subject} · {mat.classLevel} {mat.dueDate ? `· Due: ${mat.dueDate}` : ''}
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-1 text-[11px] text-purple-400 font-semibold shrink-0 group-hover:translate-x-0.5 transition-transform">
+                  <span>View</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Jump Back In Card */}
       <div className="bg-slate-900/90 rounded-2xl p-4 border border-slate-800 space-y-2.5">
         <div className="flex items-center justify-between">
@@ -753,6 +834,140 @@ export const StudentDashboard: React.FC = () => {
         onClose={() => setIsExamPrepModalOpen(false)}
         onSuccess={() => setActiveStudentTab('exam-prep')}
       />
+
+      {/* Link School Code Modal */}
+      {isLinkSchoolModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-sm w-full p-5 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+              <div className="flex items-center gap-2">
+                <KeyRound className="w-4 h-4 text-purple-400" />
+                <h3 className="text-sm font-bold text-white">Link Your School Code</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsLinkSchoolModalOpen(false);
+                  setLinkFeedback(null);
+                }}
+                className="p-1 rounded-lg bg-slate-800 text-slate-400 hover:text-white transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-400 leading-relaxed">
+              Enter the unique 6-character School Code (e.g. <span className="font-mono text-purple-300 font-bold">SCHL88</span>) provided by your school administrator or teacher.
+            </p>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!inputSchoolCode.trim()) return;
+                const ok = linkStudentToSchool(inputSchoolCode);
+                if (ok) {
+                  setLinkFeedback(`Linked successfully to school code ${inputSchoolCode.trim().toUpperCase()}!`);
+                  setTimeout(() => {
+                    setIsLinkSchoolModalOpen(false);
+                    setLinkFeedback(null);
+                  }, 1500);
+                }
+              }}
+              className="space-y-3"
+            >
+              <div>
+                <input
+                  type="text"
+                  required
+                  maxLength={8}
+                  value={inputSchoolCode}
+                  onChange={(e) => setInputSchoolCode(e.target.value.toUpperCase())}
+                  placeholder="e.g. SCHL88"
+                  className="w-full bg-slate-950 border border-slate-700 focus:border-purple-500 rounded-xl py-2.5 px-3 text-sm font-mono font-black text-center tracking-widest text-white uppercase focus:outline-none transition-colors"
+                />
+              </div>
+
+              {linkFeedback && (
+                <div className="p-2 rounded-lg bg-emerald-950 border border-emerald-800 text-emerald-400 text-xs text-center font-medium">
+                  {linkFeedback}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                className="w-full py-2.5 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer shadow"
+              >
+                Verify &amp; Link School
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* School Material Reader Modal */}
+      {selectedSchoolMaterial && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-lg w-full max-h-[85vh] overflow-y-auto p-5 space-y-4 shadow-2xl">
+            <div className="flex items-start justify-between gap-3 pb-3 border-b border-slate-800">
+              <div>
+                <span className="text-[10px] font-bold text-purple-300 uppercase tracking-wider block">
+                  {selectedSchoolMaterial.subject} · {selectedSchoolMaterial.classLevel}
+                </span>
+                <h3 className="text-base font-bold text-white mt-1">
+                  {selectedSchoolMaterial.title}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedSchoolMaterial(null)}
+                className="p-1 rounded-lg bg-slate-800 text-slate-400 hover:text-white transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 text-xs text-slate-400 flex-wrap">
+                <span>By: {selectedSchoolMaterial.authorName}</span>
+                {selectedSchoolMaterial.dueDate && (
+                  <>
+                    <span>·</span>
+                    <span className="text-amber-400 font-semibold">Due: {selectedSchoolMaterial.dueDate}</span>
+                  </>
+                )}
+                {selectedSchoolMaterial.maxScore && (
+                  <>
+                    <span>·</span>
+                    <span className="text-emerald-400 font-mono font-semibold">{selectedSchoolMaterial.maxScore} Marks</span>
+                  </>
+                )}
+              </div>
+
+              <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 text-xs text-slate-200 whitespace-pre-wrap leading-relaxed font-sans">
+                {selectedSchoolMaterial.content}
+              </div>
+
+              {selectedSchoolMaterial.attachmentName && (
+                <div className="p-3 bg-purple-950/40 border border-purple-800/60 rounded-xl flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <FileText className="w-4 h-4 text-purple-400" />
+                    <span className="text-xs font-semibold text-white">{selectedSchoolMaterial.attachmentName}</span>
+                  </div>
+                  <span className="text-[10px] text-purple-300 font-medium">Worksheet Attached</span>
+                </div>
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setSelectedSchoolMaterial(null)}
+              className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -358,6 +358,7 @@ interface ActiveCBTRunnerProps {
 }
 
 const ActiveCBTRunner: React.FC<ActiveCBTRunnerProps> = ({ exam, onExit, onSaveResult, onGoHome }) => {
+  const { student, openStudentSubscriptionModal, checkStudentFeatureAccess } = useApp();
   const [currentIdx, setCurrentIdx] = useState<number>(0);
   const [answers, setAnswers] = useState<Record<number, number>>({});
   const [flagged, setFlagged] = useState<number[]>([]);
@@ -630,62 +631,102 @@ const ActiveCBTRunner: React.FC<ActiveCBTRunnerProps> = ({ exam, onExit, onSaveR
 
       {/* Main Question Surface */}
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4 touch-pan-y max-w-2xl mx-auto w-full">
-        {/* Question Box */}
-        <div className="bg-slate-900/90 rounded-2xl p-4 border border-slate-800 space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider">
-              {currentQuestion.topicRef || exam.subject}
-            </span>
-
-            <button
-              onClick={() => toggleFlag(currentQuestion.id)}
-              className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium border transition-colors ${
-                flagged.includes(currentQuestion.id)
-                  ? 'bg-amber-950/80 text-amber-300 border-amber-600/60'
-                  : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-slate-200'
-              }`}
-            >
-              <Flag className="w-3 h-3" />
-              <span>{flagged.includes(currentQuestion.id) ? 'Flagged' : 'Flag'}</span>
-            </button>
-          </div>
-
-          <h3 className="text-xs sm:text-sm font-semibold text-white leading-relaxed">
-            {renderFormattedSpan(currentQuestion.question, `q-${currentQuestion.id}`)}
-          </h3>
-        </div>
-
-        {/* Multiple Choice Options */}
-        <div className="space-y-2">
-          {currentQuestion.options.map((opt, oIdx) => {
-            const isSelected = answers[currentQuestion.id] === oIdx;
-
+        {(() => {
+          const currentQuestionAccess = checkStudentFeatureAccess('quiz_questions', { questionIndex: currentIdx });
+          if (!currentQuestionAccess.hasAccess) {
             return (
-              <button
-                key={oIdx}
-                onClick={() => handleSelectOption(currentQuestion.id, oIdx)}
-                className={`w-full p-3.5 rounded-2xl text-left border flex items-center gap-3 transition-all ${
-                  isSelected
-                    ? 'bg-emerald-950/70 border-emerald-500 text-white shadow-md'
-                    : 'bg-slate-900/80 border-slate-800 text-slate-300 hover:border-slate-700 hover:bg-slate-850'
-                }`}
-              >
-                <div
-                  className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold font-mono shrink-0 transition-colors ${
-                    isSelected
-                      ? 'bg-emerald-500 text-slate-950'
-                      : 'bg-slate-800 text-slate-400'
-                  }`}
-                >
-                  {String.fromCharCode(65 + oIdx)}
+              <div className="bg-slate-900/90 rounded-2xl p-6 border border-amber-600/50 text-center space-y-4">
+                <div className="w-12 h-12 rounded-2xl bg-amber-950/80 border border-amber-600 flex items-center justify-center text-amber-400 mx-auto shadow-md shadow-amber-950/60">
+                  <Lock className="w-6 h-6" />
                 </div>
-                <span className="text-xs font-medium leading-snug">
-                  {renderFormattedSpan(opt, `opt-${currentQuestion.id}-${oIdx}`)}
-                </span>
-              </button>
+                <div className="space-y-1">
+                  <div className="text-[11px] font-bold text-amber-400 uppercase tracking-widest">
+                    Question {currentIdx + 1} of {exam.questions.length} Locked
+                  </div>
+                  <h3 className="text-sm font-bold text-white">
+                    {currentQuestionAccess.reason || 'Upgrade your subscription plan to unlock full interactive quiz questions.'}
+                  </h3>
+                  <p className="text-xs text-slate-400 max-w-sm mx-auto">
+                    {currentQuestionAccess.requiredPlan === 'basic'
+                      ? 'Upgrade to the Basic Plan (₦8,000 / term) for 5 questions, or Standard Plan (₦15,000) for all questions.'
+                      : 'The Basic Plan includes questions 1 to 5. Upgrade to Standard Plan (₦15,000 / term) to unlock all 10 questions for every topic.'}
+                  </p>
+                </div>
+                <div className="flex flex-col sm:flex-row items-center justify-center gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => openStudentSubscriptionModal(currentQuestionAccess.requiredPlan || 'standard')}
+                    className="w-full sm:w-auto py-2.5 px-5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs rounded-xl shadow-md transition-all cursor-pointer inline-flex items-center justify-center gap-2"
+                  >
+                    <Sparkles className="w-4 h-4 text-emerald-300" />
+                    <span>Upgrade to {currentQuestionAccess.requiredPlan === 'basic' ? 'Basic (₦8,000 / term)' : 'Standard Plan (₦15,000 / term)'}</span>
+                  </button>
+                </div>
+              </div>
             );
-          })}
-        </div>
+          }
+
+          return (
+            <>
+              {/* Question Box */}
+              <div className="bg-slate-900/90 rounded-2xl p-4 border border-slate-800 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider">
+                    {currentQuestion.topicRef || exam.subject}
+                  </span>
+
+                  <button
+                    onClick={() => toggleFlag(currentQuestion.id)}
+                    className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium border transition-colors ${
+                      flagged.includes(currentQuestion.id)
+                        ? 'bg-amber-950/80 text-amber-300 border-amber-600/60'
+                        : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-slate-200'
+                    }`}
+                  >
+                    <Flag className="w-3 h-3" />
+                    <span>{flagged.includes(currentQuestion.id) ? 'Flagged' : 'Flag'}</span>
+                  </button>
+                </div>
+
+                <h3 className="text-xs sm:text-sm font-semibold text-white leading-relaxed">
+                  {renderFormattedSpan(currentQuestion.question, `q-${currentQuestion.id}`)}
+                </h3>
+              </div>
+
+              {/* Multiple Choice Options */}
+              <div className="space-y-2">
+                {currentQuestion.options.map((opt, oIdx) => {
+                  const isSelected = answers[currentQuestion.id] === oIdx;
+
+                  return (
+                    <button
+                      key={oIdx}
+                      onClick={() => handleSelectOption(currentQuestion.id, oIdx)}
+                      className={`w-full p-3.5 rounded-2xl text-left border flex items-center gap-3 transition-all ${
+                        isSelected
+                          ? 'bg-emerald-950/70 border-emerald-500 text-white shadow-md'
+                          : 'bg-slate-900/80 border-slate-800 text-slate-300 hover:border-slate-700 hover:bg-slate-850'
+                      }`}
+                    >
+                      <div
+                        className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold font-mono shrink-0 transition-colors ${
+                          isSelected
+                            ? 'bg-emerald-500 text-slate-950'
+                            : 'bg-slate-800 text-slate-400'
+                        }`}
+                      >
+                        {String.fromCharCode(65 + oIdx)}
+                      </div>
+                      <span className="text-xs font-medium leading-snug">
+                        {renderFormattedSpan(opt, `opt-${currentQuestion.id}-${oIdx}`)}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          );
+        })()}
 
         {/* Question Palette Grid */}
         <div className="bg-slate-900/70 rounded-2xl p-3 border border-slate-800 space-y-2">
@@ -706,9 +747,13 @@ const ActiveCBTRunner: React.FC<ActiveCBTRunnerProps> = ({ exam, onExit, onSaveR
               const isCurrent = qIdx === currentIdx;
               const isAnswered = answers[q.id] !== undefined;
               const isFlagged = flagged.includes(q.id);
+              const qAccess = checkStudentFeatureAccess('quiz_questions', { questionIndex: qIdx });
+              const isLocked = !qAccess.hasAccess;
 
               let bgClass = 'bg-slate-800 text-slate-400 border-slate-700';
-              if (isFlagged) {
+              if (isLocked) {
+                bgClass = 'bg-slate-950/80 text-amber-500/70 border-slate-800';
+              } else if (isFlagged) {
                 bgClass = 'bg-amber-950 text-amber-300 border-amber-600';
               } else if (isAnswered) {
                 bgClass = 'bg-emerald-950 text-emerald-400 border-emerald-700';
@@ -722,9 +767,13 @@ const ActiveCBTRunner: React.FC<ActiveCBTRunnerProps> = ({ exam, onExit, onSaveR
                 <button
                   key={q.id}
                   onClick={() => setCurrentIdx(qIdx)}
-                  className={`w-8 h-8 rounded-lg text-xs font-mono font-medium border flex items-center justify-center transition-all ${bgClass}`}
+                  className={`w-8 h-8 rounded-lg text-xs font-mono font-medium border flex items-center justify-center transition-all ${bgClass} relative`}
                 >
-                  {qIdx + 1}
+                  {isLocked ? (
+                    <Lock className="w-3 h-3 text-amber-500" />
+                  ) : (
+                    qIdx + 1
+                  )}
                 </button>
               );
             })}

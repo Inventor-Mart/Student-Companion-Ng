@@ -21,7 +21,9 @@ import {
   AlertCircle,
   CheckCircle2,
   RefreshCw,
-  TrendingUp
+  TrendingUp,
+  FileText,
+  Sparkles
 } from 'lucide-react';
 import { NairaSign } from '../../utils/currency';
 import { DeviceImageUploader } from '../admin/DeviceImageUploader';
@@ -64,6 +66,7 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
   const [stream, setStream] = useState<AcademicStream>('Science');
   const [targetExam, setTargetExam] = useState<'WAEC' | 'JAMB_UTME' | 'NECO' | 'BECE' | 'INTERNAL'>('WAEC');
   const [schoolName, setSchoolName] = useState('');
+  const [studentSchoolCode, setStudentSchoolCode] = useState('');
   const [state, setState] = useState('Lagos');
 
   const isCertificateClass = (level: NigerianClassLevel): boolean => {
@@ -129,7 +132,13 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
 
   // Admin Fields
   const [adminSchoolName, setAdminSchoolName] = useState('');
-  const [schoolType, setSchoolType] = useState('Private College');
+  const [schoolType, setSchoolType] = useState('Private Secondary College');
+  const [adminDesignation, setAdminDesignation] = useState('Principal / Head of School');
+  const [adminPhone, setAdminPhone] = useState('');
+  const [adminState, setAdminState] = useState('Lagos');
+  const [adminLga, setAdminLga] = useState('Lagos Island');
+  const [adminSchoolCode, setAdminSchoolCode] = useState(() => `SCHL${Math.floor(10 + Math.random() * 90)}`);
+  const [adminDocumentUrl, setAdminDocumentUrl] = useState('');
 
   // Growth Partner Fields (Live Application & Settlement)
   const [partnerBankName, setPartnerBankName] = useState('Guaranty Trust Bank (GTBank)');
@@ -297,6 +306,7 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
         classLevel,
         stream,
         school: schoolName.trim() || 'Secondary School',
+        schoolCode: studentSchoolCode.trim().toUpperCase() || undefined,
         targetExam
       });
     } else if (selectedRole === 'parent') {
@@ -371,7 +381,13 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
         lastName: trimmedLast,
         email: email.trim(),
         schoolName: adminSchoolName.trim() || 'Secondary School',
-        schoolType
+        schoolType,
+        designation: adminDesignation,
+        phone: adminPhone.trim(),
+        state: adminState,
+        lga: adminLga,
+        schoolCode: adminSchoolCode,
+        documentUrl: adminDocumentUrl
       });
     }
 
@@ -716,9 +732,27 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
                         type="text"
                         value={schoolName}
                         onChange={(e) => setSchoolName(e.target.value)}
-                        placeholder="e.g. Federal Government College, Corona High, etc."
+                        placeholder="e.g. King's College Lagos, Corona High, etc."
                         className="w-full bg-[#081220] border border-[#1E304F] focus:border-[#84E000] rounded-xl py-2.5 px-3 text-xs text-white placeholder-slate-500 focus:outline-none transition-colors"
                       />
+                    </div>
+
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-xs font-semibold text-slate-300">School Code (Optional)</label>
+                        <span className="text-[10px] text-emerald-400 font-medium">Link with your School</span>
+                      </div>
+                      <input
+                        type="text"
+                        maxLength={8}
+                        value={studentSchoolCode}
+                        onChange={(e) => setStudentSchoolCode(e.target.value.toUpperCase())}
+                        placeholder="e.g. SCHL88"
+                        className="w-full bg-[#081220] border border-[#1E304F] focus:border-[#84E000] rounded-xl py-2.5 px-3 text-xs font-mono font-bold tracking-wider text-white placeholder-slate-500 focus:outline-none uppercase transition-colors"
+                      />
+                      <p className="text-[10px] text-slate-400 mt-1">
+                        Got a 6-character school code from your teacher or administrator? Enter it to sync lesson notes &amp; assignments.
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -1289,22 +1323,55 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
                 </div>
               )}
 
-              {/* ADMIN SPECIFIC FIELDS */}
+              {/* ADMIN SPECIFIC FIELDS (INSTITUTIONAL ONBOARDING & VERIFICATION) */}
               {selectedRole === 'admin' && (
-                <div className="space-y-3 pt-3 border-t border-[#1E304F]">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block px-1">
-                    School Information
-                  </span>
+                <div className="space-y-4 pt-3 border-t border-[#1E304F]">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-purple-400 block px-1">
+                      School Information &amp; Institutional Accreditation
+                    </span>
+                    <span className="text-[10px] font-semibold text-purple-300 bg-purple-950/60 px-2 py-0.5 rounded border border-purple-800">
+                      Curriculum Publisher
+                    </span>
+                  </div>
+
+                  {/* Auto-Generated Unique 6-Character School Code */}
+                  <div className="bg-[#081220] p-3.5 rounded-2xl border border-purple-500/40 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                        <KeyRound className="w-3.5 h-3.5 text-purple-400" />
+                        <span>Assigned 6-Character School Code</span>
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setAdminSchoolCode(`SCHL${Math.floor(10 + Math.random() * 90)}`)}
+                        className="text-[10px] font-semibold text-purple-400 hover:underline flex items-center gap-1 cursor-pointer"
+                      >
+                        <RefreshCw className="w-3 h-3" />
+                        <span>Regenerate</span>
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-32 bg-[#060D17] border border-purple-500/60 rounded-xl py-2 px-3 text-base font-mono font-black text-purple-300 tracking-widest text-center shadow-inner">
+                        {adminSchoolCode}
+                      </div>
+                      <span className="text-[11px] text-slate-400 leading-snug">
+                        Students enter this code during signup or in their profile to link directly with your school notes, assignments &amp; exam drills.
+                      </span>
+                    </div>
+                  </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <label className="text-xs font-semibold text-slate-300 block mb-1">School Name</label>
+                      <label className="text-xs font-semibold text-slate-300 block mb-1">
+                        School Legal Name <span className="text-purple-400">*</span>
+                      </label>
                       <input
                         type="text"
                         required
                         value={adminSchoolName}
                         onChange={(e) => setAdminSchoolName(e.target.value)}
-                        placeholder="e.g. Queen's College, Yaba"
+                        placeholder="e.g. King's College Lagos"
                         className="w-full bg-[#081220] border border-[#1E304F] focus:border-purple-400 rounded-xl py-2.5 px-3 text-xs text-white placeholder-slate-500 focus:outline-none transition-colors"
                       />
                     </div>
@@ -1317,9 +1384,111 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
                         className="w-full bg-[#081220] border border-[#1E304F] focus:border-purple-400 rounded-xl py-2.5 px-3 text-xs text-white focus:outline-none transition-colors"
                       >
                         <option value="Federal Unity School">Federal Unity College</option>
-                        <option value="State Public School">State Public Secondary</option>
-                        <option value="Private College">Private Secondary College</option>
+                        <option value="State Public School">State Public Secondary School</option>
+                        <option value="Private Secondary College">Private Secondary College</option>
+                        <option value="International Grammar School">International Grammar School</option>
+                        <option value="Mission / Faith-Based College">Mission / Faith-Based College</option>
                       </select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-semibold text-slate-300 block mb-1">
+                        Your Official Designation <span className="text-purple-400">*</span>
+                      </label>
+                      <select
+                        value={adminDesignation}
+                        onChange={(e) => setAdminDesignation(e.target.value)}
+                        className="w-full bg-[#081220] border border-[#1E304F] focus:border-purple-400 rounded-xl py-2.5 px-3 text-xs text-white focus:outline-none transition-colors"
+                      >
+                        <option value="Principal / Head of School">Principal / Head of School</option>
+                        <option value="Vice Principal (Academic)">Vice Principal (Academic)</option>
+                        <option value="Director of Curriculum & Instruction">Director of Curriculum &amp; Instruction</option>
+                        <option value="Chief Examination Officer">Chief Examination Officer</option>
+                        <option value="ICT & Computer Studies Director">ICT &amp; Computer Studies Director</option>
+                        <option value="Proprietor / Board Trustee">Proprietor / Board Trustee</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-semibold text-slate-300 block mb-1">
+                        Official Phone / WhatsApp <span className="text-purple-400">*</span>
+                      </label>
+                      <div className="relative">
+                        <Phone className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                        <input
+                          type="tel"
+                          required
+                          value={adminPhone}
+                          onChange={(e) => setAdminPhone(e.target.value)}
+                          placeholder="+234 802 345 6789"
+                          className="w-full bg-[#081220] border border-[#1E304F] focus:border-purple-400 rounded-xl py-2.5 pl-10 pr-4 text-xs text-white placeholder-slate-500 focus:outline-none transition-colors"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-semibold text-slate-300 block mb-1">State</label>
+                      <select
+                        value={adminState}
+                        onChange={(e) => setAdminState(e.target.value)}
+                        className="w-full bg-[#081220] border border-[#1E304F] focus:border-purple-400 rounded-xl py-2.5 px-3 text-xs text-white focus:outline-none transition-colors"
+                      >
+                        <option value="Lagos">Lagos</option>
+                        <option value="Abuja FCT">Abuja FCT</option>
+                        <option value="Ogun">Ogun</option>
+                        <option value="Oyo">Oyo</option>
+                        <option value="Rivers">Rivers</option>
+                        <option value="Delta">Delta</option>
+                        <option value="Kaduna">Kaduna</option>
+                        <option value="Kano">Kano</option>
+                        <option value="Enugu">Enugu</option>
+                        <option value="Edo">Edo</option>
+                        <option value="Anambra">Anambra</option>
+                        <option value="Osun">Osun</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-semibold text-slate-300 block mb-1">Local Government (LGA)</label>
+                      <input
+                        type="text"
+                        value={adminLga}
+                        onChange={(e) => setAdminLga(e.target.value)}
+                        placeholder="e.g. Lagos Island / Ikeja"
+                        className="w-full bg-[#081220] border border-[#1E304F] focus:border-purple-400 rounded-xl py-2.5 px-3 text-xs text-white placeholder-slate-500 focus:outline-none transition-colors"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Institutional Verification Accreditation Document Upload */}
+                  <div className="pt-2">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                        <FileText className="w-3.5 h-3.5 text-purple-400" />
+                        <span>Institutional Accreditation Document</span>
+                      </label>
+                      <span className="text-[10px] text-amber-400 font-medium">Verification Gate</span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 mb-2">
+                      Upload your Ministry of Education Approval Letter, WAEC/NECO Examination Center approval, or CAC Registration Certificate.
+                    </p>
+                    <DeviceImageUploader
+                      currentImageUrl={adminDocumentUrl}
+                      onImageChange={setAdminDocumentUrl}
+                    />
+
+                    <div className="p-3 bg-purple-950/40 rounded-xl border border-purple-800/40 text-[11px] text-purple-200/90 leading-relaxed mt-2 space-y-1">
+                      <div className="font-bold text-white flex items-center gap-1.5">
+                        <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                        <span>Accreditation Qualification Criteria</span>
+                      </div>
+                      <p>
+                        To complete accreditation and unlock curriculum publishing, schools must have a minimum of <strong>50 subscribed students</strong> linked via your school code, OR activate an instant institutional subscription (<strong>₦15,000 / month</strong> or <strong>₦42,000 / term</strong>) in your admin portal.
+                      </p>
                     </div>
                   </div>
                 </div>

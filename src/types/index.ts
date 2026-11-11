@@ -13,6 +13,17 @@ export type AcademicStream = 'Junior' | 'Science' | 'Non-Science';
 
 export type StudentRank = 'Fresher' | 'Scholar' | 'Prefect' | 'Senior Boy' | 'Senior Girl' | 'Senior Prefect';
 
+export type StudentSubscriptionPlan = 'free' | 'basic' | 'standard' | 'elite';
+export type StudentSubscriptionTier = StudentSubscriptionPlan | 'premium' | 'termly' | 'annual';
+
+export interface StudentAddOnEntitlements {
+  aiCoachUnlocked?: boolean;
+  termlyCompetitionUnlocked?: boolean;
+  termlyDrillAllSubjects?: boolean;
+  termlyDrillSingleSubjects?: string[];
+  dailyGameAttempts?: { date: string; attempts: Record<string, number> };
+}
+
 export interface StudentProfile {
   id: string;
   name: string;
@@ -27,6 +38,13 @@ export interface StudentProfile {
   uniformPhotoUrl: string | null;
   downloadedSubjectIds: string[];
   completedQuizIds: string[];
+  schoolCode?: string;
+  isSubscribed?: boolean;
+  subscriptionPlan?: StudentSubscriptionPlan;
+  subscriptionTier?: StudentSubscriptionTier;
+  subscribedUntil?: string;
+  termExpiresAt?: string;
+  addOns?: StudentAddOnEntitlements;
 }
 
 export interface CurriculumTopic {
@@ -273,10 +291,48 @@ export interface RegisteredUserProfile {
   adminData?: {
     schoolName: string;
     schoolType: string;
+    schoolCode?: string;
+    designation?: string;
+    phone?: string;
+    state?: string;
+    lga?: string;
+    documentUrl?: string;
+    verificationStatus?: 'pending_verification' | 'verified';
+    verifiedAt?: string;
+    directSubscription?: {
+      plan: 'monthly' | 'termly';
+      amountNaira: number;
+      paidAt: string;
+      expiresAt: string;
+      paystackReference: string;
+      status: 'active' | 'expired';
+    };
+    accreditationQualified?: boolean;
+    qualificationReason?: 'paid_students_threshold' | 'direct_subscription' | 'manual_override';
   };
   growthPartnerData?: GrowthPartner;
   isSuperAdmin?: boolean;
   isDeveloper?: boolean;
+}
+
+export interface SchoolMaterial {
+  id: string;
+  schoolCode: string;
+  schoolName: string;
+  type: 'lesson_note' | 'assignment' | 'project' | 'past_question';
+  title: string;
+  subject: string;
+  classLevel: NigerianClassLevel | 'All Classes';
+  term?: 'First Term' | 'Second Term' | 'Third Term';
+  week?: string;
+  content: string;
+  attachmentUrl?: string;
+  attachmentName?: string;
+  dueDate?: string;
+  maxScore?: number;
+  examBoard?: 'WAEC' | 'JAMB' | 'NECO' | 'BECE';
+  createdAt: string;
+  authorName: string;
 }
 
 export interface GrowthPartner {

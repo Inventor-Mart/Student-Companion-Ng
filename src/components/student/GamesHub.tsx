@@ -18,7 +18,8 @@ import {
   Sparkles,
   Coffee,
   Flame,
-  Gem
+  Gem,
+  Lock
 } from 'lucide-react';
 
 import { MathSprintGame } from './games/MathSprintGame';
@@ -51,7 +52,13 @@ type GameId =
   | 'bio_sort';
 
 export const GamesHub: React.FC = () => {
-  const { student, addStudentXP } = useApp();
+  const {
+    student,
+    addStudentXP,
+    openStudentSubscriptionModal,
+    checkStudentFeatureAccess,
+    recordDailyGameAttempt
+  } = useApp();
   const [activeGame, setActiveGame] = useState<GameId>('hub');
   const [filterCategory, setFilterCategory] = useState<'ALL' | 'RELAX' | 'STEM' | 'ARTS' | 'CIVICS'>('ALL');
   const [isMuted, setIsMuted] = useState<boolean>(getSoundMuted());

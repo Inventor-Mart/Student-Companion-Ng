@@ -28,7 +28,8 @@ import {
   AlertTriangle,
   Trash2,
   ShieldAlert,
-  Radio
+  Radio,
+  FileText
 } from 'lucide-react';
 import { SchoolAdminPortal } from './SchoolAdminPortal';
 import { OTACompetitionManager } from './OTACompetitionManager';
@@ -48,7 +49,8 @@ export const SuperAdminPortal: React.FC = () => {
     updateUserRecord,
     isSuperAdmin,
     isFirebaseConnected,
-    currentRole
+    currentRole,
+    getSchoolAccreditationMetrics
   } = useApp();
 
   const [portalView, setPortalView] = useState<'directory' | 'school_admin' | 'forum_moderation' | 'ota_competitions'>('directory');
@@ -91,6 +93,10 @@ export const SuperAdminPortal: React.FC = () => {
   const [editParentPin, setEditParentPin] = useState<string>('1234');
   const [editHourlyRate, setEditHourlyRate] = useState<number>(3000);
   const [editTutorVerified, setEditTutorVerified] = useState<boolean>(true);
+  const [editAdminSchoolName, setEditAdminSchoolName] = useState<string>('');
+  const [editAdminSchoolCode, setEditAdminSchoolCode] = useState<string>('SCHL88');
+  const [editAdminVerified, setEditAdminVerified] = useState<boolean>(true);
+  const [selectedAccreditationDocUrl, setSelectedAccreditationDocUrl] = useState<string | null>(null);
 
   // Filtered Users
   const filteredUsers = allRegisteredUsers.filter(u => {
@@ -101,6 +107,8 @@ export const SuperAdminPortal: React.FC = () => {
     const studentSchool = u.studentData?.school?.toLowerCase() || '';
     const parentWard = u.parentData?.wardName?.toLowerCase() || '';
     const tutorSubject = u.tutorData?.subjectSpecialization?.toLowerCase() || '';
+    const adminSchool = u.adminData?.schoolName?.toLowerCase() || '';
+    const adminCode = u.adminData?.schoolCode?.toLowerCase() || '';
 
     return (
       u.fullName.toLowerCase().includes(query) ||
@@ -108,7 +116,9 @@ export const SuperAdminPortal: React.FC = () => {
       u.id.toLowerCase().includes(query) ||
       studentSchool.includes(query) ||
       parentWard.includes(query) ||
-      tutorSubject.includes(query)
+      tutorSubject.includes(query) ||
+      adminSchool.includes(query) ||
+      adminCode.includes(query)
     );
   });
 
@@ -128,6 +138,23 @@ export const SuperAdminPortal: React.FC = () => {
     setEditParentPin(u.parentData?.pin || '1234');
     setEditHourlyRate(u.tutorData?.hourlyRate || 3000);
     setEditTutorVerified(u.tutorData?.verification?.isVerified || false);
+    setEditAdminSchoolName(u.adminData?.schoolName || 'Secondary School');
+    setEditAdminSchoolCode(u.adminData?.schoolCode || 'SCHL88');
+    setEditAdminVerified(u.adminData?.verificationStatus === 'verified');
+  };
+
+  const handleToggleAdminAccreditation = async (user: RegisteredUserProfile, newStatus: 'verified' | 'pending_verification') => {
+    if (!user.adminData) return;
+    const updatedAdminData = {
+      ...user.adminData,
+      verificationStatus: newStatus,
+      verifiedAt: newStatus === 'verified' ? new Date().toISOString() : undefined
+    };
+    await updateUserRecord(user.id, {
+      adminData: updatedAdminData
+    });
+    setModerationNotice(`${user.adminData.schoolName} accreditation ${newStatus === 'verified' ? 'approved ✓' : 'set to pending'}.`);
+    setTimeout(() => setModerationNotice(null), 3500);
   };
 
   const handleSaveUserEdit = async (e: React.FormEvent) => {
@@ -164,6 +191,14 @@ export const SuperAdminPortal: React.FC = () => {
           accountName: editFullName.toUpperCase(),
           isVerified: editTutorVerified
         }
+      };
+    } else if (selectedUserForEdit.role === 'admin' && selectedUserForEdit.adminData) {
+      updates.adminData = {
+        ...selectedUserForEdit.adminData,
+        schoolName: editAdminSchoolName,
+        schoolCode: editAdminSchoolCode.toUpperCase(),
+        verificationStatus: editAdminVerified ? 'verified' : 'pending_verification',
+        verifiedAt: editAdminVerified ? new Date().toISOString() : undefined
       };
     }
 
@@ -669,18 +704,121 @@ export const SuperAdminPortal: React.FC = () => {
                     <div className="bg-slate-900/80 rounded-xl p-2.5 text-[11px] space-y-1.5 border border-slate-800/60">
                       <div className="flex items-center justify-between">
                         <span className="text-slate-400">Institution:</span>
-                        <span className="font-semibold text-white">{u.adminData.schoolName}</span>
+                        <span className="font-semibold text-white truncate max-w-[180px]">{u.adminData.schoolName}</span>
                       </div>
                       <div className="flex items-center justify-between">
-                        <span className="text-slate-400">Type:</span>
-                        <span className="font-semibold text-slate-300">{u.adminData.schoolType}</span>
+                        <span className="text-slate-400">Designation / Type:</span>
+                        <span className="font-semibold text-slate-300 truncate max-w-[180px]">
+                          {u.adminData.designation || 'Administrator'} · {u.adminData.schoolType}
+                        </span>
                       </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-400">School Code:</span>
+                        <span className="font-mono font-bold text-purple-300">{u.adminData.schoolCode || 'SCHL88'}</span>
+                      </div>
+                      {u.adminData.phone && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-400">Official Contact:</span>
+                          <span className="font-mono text-slate-300">{u.adminData.phone}</span>
+                        </div>
+                      )}
+                      {(() => {
+                        const schoolMetrics = getSchoolAccreditationMetrics(u.adminData.schoolCode || '');
+                        return (
+                          <>
+                            <div className="flex items-center justify-between">
+                              <span className="text-slate-400">Accreditation Status:</span>
+                              {u.adminData.verificationStatus === 'verified' ? (
+                                <span className="text-emerald-400 font-bold flex items-center gap-1">
+                                  <CheckCircle2 className="w-3 h-3" /> Accredited ✓
+                                </span>
+                              ) : (
+                                <span className="text-amber-400 font-bold flex items-center gap-1">
+                                  <AlertTriangle className="w-3 h-3" /> Pending Review
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="flex items-center justify-between">
+                              <span className="text-slate-400">Accreditation Quota:</span>
+                              {schoolMetrics.isQualifiedForReview ? (
+                                <span className="text-emerald-300 font-bold text-[10px] bg-emerald-950/80 border border-emerald-700 px-1.5 py-0.5 rounded flex items-center gap-1">
+                                  <CheckCircle2 className="w-2.5 h-2.5" />
+                                  <span>
+                                    {schoolMetrics.qualificationReason === 'paid_students_threshold'
+                                      ? `Qualified (${schoolMetrics.paidStudents} Paid Students)`
+                                      : 'Qualified (Direct Sub)'}
+                                  </span>
+                                </span>
+                              ) : (
+                                <span className="text-amber-400 font-semibold text-[10px] bg-amber-950/80 border border-amber-800 px-1.5 py-0.5 rounded flex items-center gap-1">
+                                  <AlertTriangle className="w-2.5 h-2.5" />
+                                  <span>Not Qualified ({schoolMetrics.paidStudents}/50 Paid)</span>
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="flex items-center justify-between text-[10px]">
+                              <span className="text-slate-400">Student Enrollment:</span>
+                              <span className="font-mono text-slate-300">
+                                <strong className="text-emerald-400">{schoolMetrics.paidStudents} Paid</strong> · {schoolMetrics.freeStudents} Free ({schoolMetrics.totalStudents} Linked)
+                              </span>
+                            </div>
+
+                            {u.adminData.directSubscription && (
+                              <div className="flex items-center justify-between text-[10px] bg-purple-950/40 p-1.5 rounded border border-purple-800/40">
+                                <span className="text-purple-300">Direct Subscription:</span>
+                                <span className="font-mono font-bold text-white">
+                                  ₦{u.adminData.directSubscription.amountNaira.toLocaleString()} ({u.adminData.directSubscription.plan})
+                                </span>
+                              </div>
+                            )}
+
+                            {u.adminData.documentUrl && (
+                              <div className="pt-1 flex items-center justify-between border-t border-slate-800/50">
+                                <span className="text-slate-400">Accreditation Document:</span>
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedAccreditationDocUrl(u.adminData!.documentUrl!)}
+                                  className="text-[10px] text-purple-400 hover:text-purple-300 underline font-semibold flex items-center gap-1 cursor-pointer"
+                                >
+                                  <FileText className="w-3 h-3" />
+                                  <span>View Document</span>
+                                </button>
+                              </div>
+                            )}
+                          </>
+                        );
+                      })()}
                     </div>
                   )}
                 </div>
 
                 {/* Card Action Buttons */}
                 <div className="flex items-center gap-2 pt-2 border-t border-slate-800/60">
+                  {isAdmin && u.adminData && (
+                    u.adminData.verificationStatus === 'verified' ? (
+                      <button
+                        type="button"
+                        onClick={() => handleToggleAdminAccreditation(u, 'pending_verification')}
+                        className="px-2.5 py-1.5 rounded-xl bg-slate-900 hover:bg-rose-950/70 text-slate-400 hover:text-rose-300 border border-slate-800 hover:border-rose-800/80 text-[11px] font-semibold transition-colors cursor-pointer"
+                        title="Revoke accreditation"
+                      >
+                        Revoke
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => handleToggleAdminAccreditation(u, 'verified')}
+                        className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold transition-colors cursor-pointer flex items-center gap-1 shadow"
+                        title="Approve institutional accreditation"
+                      >
+                        <ShieldCheck className="w-3.5 h-3.5" />
+                        <span>Approve</span>
+                      </button>
+                    )
+                  )}
+
                   <button
                     onClick={() => startImpersonation(u)}
                     className="flex-1 bg-indigo-950/80 hover:bg-indigo-900 text-indigo-300 hover:text-white border border-indigo-700/60 py-1.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
@@ -845,6 +983,73 @@ export const SuperAdminPortal: React.FC = () => {
                 </div>
               )}
 
+              {selectedUserForEdit.role === 'admin' && (
+                <div className="space-y-2.5">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-slate-400 font-semibold block mb-1">School Name</label>
+                      <input
+                        type="text"
+                        value={editAdminSchoolName}
+                        onChange={e => setEditAdminSchoolName(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-purple-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-slate-400 font-semibold block mb-1">School Code (6-char)</label>
+                      <input
+                        type="text"
+                        maxLength={8}
+                        value={editAdminSchoolCode}
+                        onChange={e => setEditAdminSchoolCode(e.target.value.toUpperCase())}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white font-mono font-bold uppercase focus:outline-none focus:border-purple-500"
+                      />
+                    </div>
+                  </div>
+
+                  {(() => {
+                    const metrics = getSchoolAccreditationMetrics(editAdminSchoolCode || '');
+                    return (
+                      <div className="p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-400">Accreditation Quota:</span>
+                          {metrics.isQualifiedForReview ? (
+                            <span className="text-emerald-400 font-bold">
+                              ✓ Qualified ({metrics.qualificationReason === 'paid_students_threshold' ? `${metrics.paidStudents} Paid Students` : 'Direct Sub Active'})
+                            </span>
+                          ) : (
+                            <span className="text-amber-400 font-bold">
+                              Not Met ({metrics.paidStudents}/50 Paid Students)
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[10px] text-slate-500">
+                          Affiliated: {metrics.paidStudents} Paid · {metrics.freeStudents} Free Tier ({metrics.totalStudents} Total)
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  <div className="flex items-center justify-between p-2.5 bg-slate-950 border border-slate-800 rounded-xl">
+                    <div>
+                      <span className="font-semibold text-white block">Institutional Accreditation</span>
+                      <span className="text-[10px] text-slate-400">Unlock curriculum notes and CBT publishing</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setEditAdminVerified(!editAdminVerified)}
+                      className={`px-3 py-1 rounded-lg font-bold text-xs cursor-pointer transition-colors ${
+                        editAdminVerified
+                          ? 'bg-emerald-600 text-white'
+                          : 'bg-slate-800 text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      {editAdminVerified ? 'Accredited ✓' : 'Pending Review'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
                 <button
                   type="button"
@@ -861,6 +1066,51 @@ export const SuperAdminPortal: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Accreditation Document Preview Modal */}
+      {selectedAccreditationDocUrl && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xs">
+          <div className="bg-[#0B1526] border border-slate-700 w-full max-w-lg rounded-2xl p-5 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <FileText className="w-4 h-4 text-purple-400" />
+                <h3 className="text-sm font-bold text-white">Institutional Accreditation Document</h3>
+              </div>
+              <button
+                onClick={() => setSelectedAccreditationDocUrl(null)}
+                className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="bg-slate-950 rounded-xl p-2 border border-slate-800 max-h-[60vh] overflow-auto flex items-center justify-center">
+              {selectedAccreditationDocUrl.startsWith('data:image') || selectedAccreditationDocUrl.startsWith('http') ? (
+                <img
+                  src={selectedAccreditationDocUrl}
+                  alt="Accreditation Certificate"
+                  className="max-w-full max-h-[55vh] object-contain rounded-lg"
+                />
+              ) : (
+                <div className="p-8 text-center text-slate-400 text-xs">
+                  <FileText className="w-8 h-8 text-purple-400 mx-auto mb-2" />
+                  <p>Accreditation File: {selectedAccreditationDocUrl}</p>
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end">
+              <button
+                type="button"
+                onClick={() => setSelectedAccreditationDocUrl(null)}
+                className="px-4 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-semibold text-xs cursor-pointer"
+              >
+                Close Viewer
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -18,7 +18,8 @@ import {
   ChevronRight,
   CheckCircle2,
   FolderOpen,
-  Atom
+  Atom,
+  Lock
 } from 'lucide-react';
 
 // Subject syllabus metadata with authentic Nigerian NERDC curriculum topics
@@ -176,7 +177,9 @@ export const SchemeOfWorkHub: React.FC = () => {
     toggleDownloadNote,
     isOffline,
     setActiveStudentTab,
-    updateStudentClass
+    updateStudentClass,
+    openStudentSubscriptionModal,
+    checkStudentFeatureAccess
   } = useApp();
 
   const [viewMode, setViewMode] = useState<'class' | 'matrix'>('class');
@@ -370,16 +373,20 @@ This digital module is aligned with the Nigerian Educational Research and Develo
 
   const availableWeeksForSubject = Array.from({ length: maxWeeksForSubject }, (_, i) => i + 1).map(wk => {
     const note = getTopicForSubject(explorerSubject, undefined, '2nd Term', wk);
+    const isLocked = !checkStudentFeatureAccess('scheme_weeks', { weekNumber: wk }).hasAccess;
     return {
       weekNumber: wk,
       shortTitle: note.topicTitle.length > 38 ? note.topicTitle.slice(0, 38) + '...' : note.topicTitle,
-      note
+      note,
+      isLocked
     };
   });
 
   const activeExplorerNote =
     availableWeeksForSubject.find(w => w.weekNumber === explorerWeek)?.note ||
     availableWeeksForSubject[0].note;
+
+  const isExplorerNoteLocked = !checkStudentFeatureAccess('scheme_weeks', { weekNumber: activeExplorerNote.weekNumber }).hasAccess;
 
   return (
     <div className="flex-1 w-full overflow-y-auto px-4 py-4 space-y-4 touch-pan-y text-slate-100">
@@ -497,7 +504,7 @@ This digital module is aligned with the Nigerian Educational Research and Develo
               >
                 {availableWeeksForSubject.map(w => (
                   <option key={w.weekNumber} value={w.weekNumber}>
-                    Week {w.weekNumber}: {w.shortTitle}
+                    Week {w.weekNumber}: {w.shortTitle} {w.isLocked ? '🔒 (Locked · Basic)' : ''}
                   </option>
                 ))}
               </select>
@@ -518,7 +525,7 @@ This digital module is aligned with the Nigerian Educational Research and Develo
               >
                 {availableWeeksForSubject.map(w => (
                   <option key={`explorer-topic-wk-${w.weekNumber}`} value={w.weekNumber}>
-                    {w.note.topicTitle}
+                    {w.isLocked ? '🔒 ' : ''}{w.note.topicTitle}
                   </option>
                 ))}
               </select>
@@ -542,6 +549,11 @@ This digital module is aligned with the Nigerian Educational Research and Develo
                   <Clock className="w-3 h-3 text-slate-500" />
                   {activeExplorerNote.readingTimeMinutes} min read
                 </span>
+                {isExplorerNoteLocked && (
+                  <span className="text-[9px] font-bold text-amber-400 bg-amber-950/80 border border-amber-700/60 rounded px-1.5 py-0.2 flex items-center gap-1">
+                    <Lock className="w-2.5 h-2.5" /> Basic Plan Only
+                  </span>
+                )}
               </div>
               <h4 className="text-xs sm:text-sm font-bold text-white mt-1 leading-snug">
                 {activeExplorerNote.topicTitle}
@@ -552,15 +564,23 @@ This digital module is aligned with the Nigerian Educational Research and Develo
             </div>
 
             <button
-              onClick={() => toggleDownloadNote(activeExplorerNote.id)}
+              onClick={() => {
+                if (isExplorerNoteLocked) {
+                  openStudentSubscriptionModal('basic');
+                } else {
+                  toggleDownloadNote(activeExplorerNote.id);
+                }
+              }}
               className={`p-2 rounded-xl border transition-colors shrink-0 cursor-pointer ${
                 student.downloadedSubjectIds.includes(activeExplorerNote.id)
                   ? 'bg-emerald-950 text-emerald-400 border-emerald-800'
                   : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-white'
               }`}
-              title="Save note for offline reading"
+              title={isExplorerNoteLocked ? 'Locked on Free Tier' : 'Save note for offline reading'}
             >
-              {student.downloadedSubjectIds.includes(activeExplorerNote.id) ? (
+              {isExplorerNoteLocked ? (
+                <Lock className="w-4 h-4 text-amber-400" />
+              ) : student.downloadedSubjectIds.includes(activeExplorerNote.id) ? (
                 <Check className="w-4 h-4 text-emerald-400" />
               ) : (
                 <Download className="w-4 h-4" />
@@ -580,19 +600,48 @@ This digital module is aligned with the Nigerian Educational Research and Develo
             ))}
           </div>
 
+          {/* Locked Notification Bar */}
+          {isExplorerNoteLocked && (
+            <div className="bg-amber-950/40 border border-amber-600/40 rounded-xl p-2.5 flex items-center justify-between gap-2 text-xs text-amber-200">
+              <div className="flex items-center gap-2">
+                <Lock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                <span className="text-[11px] leading-snug">Weeks 3 to 12 are locked on the Free Tier. Unlock complete term notes with Basic (₦8,000 / term).</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => openStudentSubscriptionModal('basic')}
+                className="px-2.5 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-lg text-[10px] whitespace-nowrap cursor-pointer shrink-0"
+              >
+                Upgrade ₦8k
+              </button>
+            </div>
+          )}
+
           {/* Action Trigger */}
           <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between">
             <div className="text-[10px] text-slate-400 flex items-center gap-1">
               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
               <span>Full lesson note ready for offline study</span>
             </div>
-            <button
-              onClick={() => openNoteReader(activeExplorerNote)}
-              className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
-            >
-              <span>Read Full Note</span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </button>
+            {isExplorerNoteLocked ? (
+              <button
+                type="button"
+                onClick={() => openStudentSubscriptionModal('basic')}
+                className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
+              >
+                <Lock className="w-3.5 h-3.5" />
+                <span>Unlock (Basic ₦8k)</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => openNoteReader(activeExplorerNote)}
+                className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
+              >
+                <span>Read Full Note</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -871,6 +920,7 @@ This digital module is aligned with the Nigerian Educational Research and Develo
               filteredSubjects.map(item => {
                 const topic = getTopicForSubject(item.subject, item.stream);
                 const isDownloaded = student.downloadedSubjectIds.includes(topic.id);
+                const isTopicLocked = !checkStudentFeatureAccess('scheme_weeks', { weekNumber: topic.weekNumber }).hasAccess;
 
                 return (
                   <div
@@ -944,13 +994,25 @@ This digital module is aligned with the Nigerian Educational Research and Develo
                           <span>SC AI Coach</span>
                         </button>
 
-                        <button
-                          onClick={() => openNoteReader(topic)}
-                          className="flex items-center gap-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-xl transition-colors shadow-sm cursor-pointer"
-                        >
-                          <span>Read Notes</span>
-                          <ArrowRight className="w-3.5 h-3.5" />
-                        </button>
+                        {isTopicLocked ? (
+                          <button
+                            type="button"
+                            onClick={() => openStudentSubscriptionModal('basic')}
+                            className="flex items-center gap-1 px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white text-xs font-semibold rounded-xl transition-colors shadow-sm cursor-pointer"
+                          >
+                            <Lock className="w-3.5 h-3.5" />
+                            <span>Unlock (₦8k)</span>
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => openNoteReader(topic)}
+                            className="flex items-center gap-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-xl transition-colors shadow-sm cursor-pointer"
+                          >
+                            <span>Read Notes</span>
+                            <ArrowRight className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>
