@@ -63,52 +63,61 @@ export const GamesHub: React.FC = () => {
   const [filterCategory, setFilterCategory] = useState<'ALL' | 'RELAX' | 'STEM' | 'ARTS' | 'CIVICS'>('ALL');
   const [isMuted, setIsMuted] = useState<boolean>(getSoundMuted());
 
+  const handleAwardGameXP = (amount: number, reason?: string) => {
+    addStudentXP({
+      feature: 'games',
+      baseXP: amount,
+      difficulty: 'medium',
+      reason: reason || 'Educational Curriculum Game'
+    });
+  };
+
   if (activeGame === 'snake') {
-    return <SnakeGame onExit={() => setActiveGame('hub')} onAwardXP={addStudentXP} />;
+    return <SnakeGame onExit={() => setActiveGame('hub')} onAwardXP={handleAwardGameXP} />;
   }
 
   if (activeGame === 'tetris') {
-    return <TetrisGame onExit={() => setActiveGame('hub')} onAwardXP={addStudentXP} />;
+    return <TetrisGame onExit={() => setActiveGame('hub')} onAwardXP={handleAwardGameXP} />;
   }
 
   if (activeGame === 'match_3') {
-    return <Match3Game onExit={() => setActiveGame('hub')} onAwardXP={addStudentXP} />;
+    return <Match3Game onExit={() => setActiveGame('hub')} onAwardXP={handleAwardGameXP} />;
   }
 
   if (activeGame === 'spelling_bee') {
-    return <SpellingBeeGame onExit={() => setActiveGame('hub')} onAwardXP={addStudentXP} />;
+    return <SpellingBeeGame onExit={() => setActiveGame('hub')} onAwardXP={handleAwardGameXP} />;
   }
 
   if (activeGame === 'current_affairs') {
-    return <CurrentAffairsGame onExit={() => setActiveGame('hub')} onAwardXP={addStudentXP} />;
+    return <CurrentAffairsGame onExit={() => setActiveGame('hub')} onAwardXP={handleAwardGameXP} />;
   }
 
   if (activeGame === 'math_sprint') {
-    return <MathSprintGame onExit={() => setActiveGame('hub')} onAwardXP={addStudentXP} />;
+    return <MathSprintGame onExit={() => setActiveGame('hub')} onAwardXP={handleAwardGameXP} />;
   }
 
   if (activeGame === 'periodic_table') {
-    return <PeriodicTableGame onExit={() => setActiveGame('hub')} onAwardXP={addStudentXP} />;
+    return <PeriodicTableGame onExit={() => setActiveGame('hub')} onAwardXP={handleAwardGameXP} />;
   }
 
   if (activeGame === 'speed_concord') {
-    return <SpeedConcordGame onExit={() => setActiveGame('hub')} onAwardXP={addStudentXP} />;
+    return <SpeedConcordGame onExit={() => setActiveGame('hub')} onAwardXP={handleAwardGameXP} />;
   }
 
   if (activeGame === 'word_scramble') {
-    return <WordScrambleGame onExit={() => setActiveGame('hub')} onAwardXP={addStudentXP} />;
+    return <WordScrambleGame onExit={() => setActiveGame('hub')} onAwardXP={handleAwardGameXP} />;
   }
 
   if (activeGame === 'nigerian_geo') {
-    return <NigerianGeoGame onExit={() => setActiveGame('hub')} onAwardXP={addStudentXP} />;
+    return <NigerianGeoGame onExit={() => setActiveGame('hub')} onAwardXP={handleAwardGameXP} />;
   }
 
   if (activeGame === 'formula_master') {
-    return <FormulaMasterGame onExit={() => setActiveGame('hub')} onAwardXP={addStudentXP} />;
+    return <FormulaMasterGame onExit={() => setActiveGame('hub')} onAwardXP={handleAwardGameXP} />;
   }
 
   if (activeGame === 'bio_sort') {
-    return <BioSortGame onExit={() => setActiveGame('hub')} onAwardXP={addStudentXP} />;
+    return <BioSortGame onExit={() => setActiveGame('hub')} onAwardXP={handleAwardGameXP} />;
   }
 
   const allGames = [

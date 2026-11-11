@@ -31,6 +31,7 @@ import { EducatorQuestionImporter } from './components/admin/EducatorQuestionImp
 import { BroadcastNewsTicker } from './components/student/BroadcastNewsTicker';
 import { PopupAnnouncementModal } from './components/student/PopupAnnouncementModal';
 import { StudentSubscriptionModal } from './components/student/StudentSubscriptionModal';
+import { XPAwardNotification } from './components/student/XPAwardNotification';
 
 const AppContent: React.FC = () => {
   const [quotaExceeded, setQuotaExceeded] = React.useState(false);
@@ -241,6 +242,9 @@ const AppContent: React.FC = () => {
               onClose={closeStudentSubscriptionModal}
               targetPlan={targetSubscriptionPlan}
             />
+
+            {/* Live Academic XP Award & Explorer Multiplier Toast */}
+            <XPAwardNotification />
           </div>
         )}
 

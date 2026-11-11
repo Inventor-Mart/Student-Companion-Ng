@@ -95,7 +95,7 @@ export const AiStudyCoach: React.FC<AiStudyCoachProps> = ({
   initialSubject = 'Mathematics',
   initialTopic
 }) => {
-  const { student } = useApp();
+  const { student, addStudentXP } = useApp();
   const isSS3 = student.classLevel === 'SS 3';
   const isJSS3 = student.classLevel === 'JSS 3';
   const isJunior = student.classLevel.startsWith('JSS');
@@ -165,6 +165,13 @@ export const AiStudyCoach: React.FC<AiStudyCoachProps> = ({
       if (!customPrompt) {
         setUserPrompt('');
       }
+
+      addStudentXP({
+        feature: 'ai-coach',
+        baseXP: 45,
+        difficulty: 'medium',
+        reason: `SC AI Study Guidance (${subject})`
+      });
     } catch (err: any) {
       console.error('Study Coach Error:', err);
       setErrorMessage(

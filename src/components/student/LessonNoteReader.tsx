@@ -441,7 +441,12 @@ export const LessonNoteReader: React.FC = () => {
   }, [activeReadingNote]);
 
   const handleCompleteReading = () => {
-    addStudentXP(50, `Completed ${activeReadingNote.topicTitle}`);
+    addStudentXP({
+      feature: 'syllabus',
+      baseXP: 60,
+      difficulty: 'medium',
+      reason: `Completed Reading: ${activeReadingNote.topicTitle}`
+    });
     closeNoteReader();
   };
 

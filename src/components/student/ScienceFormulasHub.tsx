@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { useApp } from '../../context/AppContext';
 import {
   MATH_FORMULA_CATEGORIES,
   PHYSICS_FORMULA_CATEGORIES,
@@ -57,11 +58,19 @@ export const ScienceFormulasHub: React.FC = () => {
   const [chemMass, setChemMass] = useState<string>('50');
   const [chemMolarMass, setChemMolarMass] = useState<string>('100');
 
+  const { addStudentXP } = useApp();
+
   // Copy formula text
   const handleCopyFormula = (id: string, text: string) => {
     navigator.clipboard.writeText(text);
     setCopiedFormulaId(id);
     setTimeout(() => setCopiedFormulaId(null), 2000);
+    addStudentXP({
+      feature: 'formulas',
+      baseXP: 30,
+      difficulty: 'medium',
+      reason: 'Explored Science Formulas'
+    });
   };
 
   // Get active formula categories

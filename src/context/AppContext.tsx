@@ -42,8 +42,18 @@ import {
   RegisteredParentData,
   ParentRelationship,
   ParentAcademicGoal,
-  ParentNotificationChannel
+  ParentNotificationChannel,
+  AwardXPOptions,
+  AwardXPResult,
+  AppFeatureId,
+  DailyExplorationState
 } from '../types';
+import {
+  calculateDynamicXP,
+  calculateRank as calculateRankFromXP,
+  getExplorerStatus,
+  ALL_APP_FEATURES
+} from '../utils/xpEconomy';
 import {
   generateCuratedStudyCalendar,
   UNLOCK_FEE_NAIRA,
@@ -140,7 +150,9 @@ interface AppContextType {
   // Student State & Actions
   student: StudentProfile;
   updateStudentClass: (classLevel: any, stream: any) => void;
-  addStudentXP: (amount: number, reason?: string) => void;
+  addStudentXP: (amountOrOptions: number | AwardXPOptions, reason?: string) => AwardXPResult | undefined;
+  lastXPAward: AwardXPResult | null;
+  dismissLastXPAward: () => void;
   verifySchoolUniform: (photoUrl: string) => void;
   updateStudentAvatar: (photoUrl: string) => void;
   toggleDownloadNote: (topicId: string) => void;
@@ -581,10 +593,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Calculate Rank based on XP
   const calculateRank = (xp: number): StudentRank => {
-    if (xp >= 15000) return 'Senior Boy';
-    if (xp >= 7500) return 'Prefect';
-    if (xp >= 2500) return 'Scholar';
-    return 'Fresher';
+    return calculateRankFromXP(xp);
   };
 
   // Safe local storage persistence fallbacks
@@ -799,45 +808,66 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const addStudentXP = useCallback((amount: number, reason?: string) => {
-    setTimeout(() => {
-      setStudent(prev => {
-        const newXP = prev.xp + amount;
-        const newRank = calculateRank(newXP);
-        const rankChanged = newRank !== prev.rank;
-        const updated = {
-          ...prev,
+  const [lastXPAward, setLastXPAward] = useState<AwardXPResult | null>(null);
+
+  const dismissLastXPAward = useCallback(() => {
+    setLastXPAward(null);
+  }, []);
+
+  const addStudentXP = useCallback((amountOrOptions: number | AwardXPOptions, reason?: string): AwardXPResult | undefined => {
+    const opts: AwardXPOptions =
+      typeof amountOrOptions === 'number'
+        ? { baseXP: amountOrOptions, reason: reason || 'Academic Activity Completed' }
+        : amountOrOptions;
+
+    let computedResult: AwardXPResult | undefined;
+
+    setStudent(prev => {
+      const { result, updatedExploration } = calculateDynamicXP(opts, prev.dailyExploration);
+      computedResult = result;
+
+      const newXP = prev.xp + result.totalXPAwarded;
+      const newRank = calculateRankFromXP(newXP);
+      const rankChanged = newRank !== prev.rank;
+
+      const updated = {
+        ...prev,
+        xp: newXP,
+        rank: newRank,
+        dailyExploration: updatedExploration,
+      };
+
+      if (currentUser && !isOffline) {
+        const docRef = doc(db, 'students', currentUser.uid);
+        const path = `students/${currentUser.uid}`;
+        updateDoc(docRef, {
           xp: newXP,
-          rank: newRank
-        };
+          rank: newRank,
+          streakDays: prev.streakDays,
+          lastStudyDate: new Date().toISOString().split('T')[0],
+          dailyExploration: updatedExploration,
+        }).catch(err => {
+          handleFirestoreError(err, OperationType.UPDATE, path);
+        });
+      }
 
-        if (currentUser && !isOffline) {
-          const docRef = doc(db, 'students', currentUser.uid);
-          const path = `students/${currentUser.uid}`;
-          updateDoc(docRef, {
-            xp: newXP,
-            rank: newRank,
-            streakDays: prev.streakDays,
-            lastStudyDate: new Date().toISOString().split('T')[0]
-          }).catch(err => {
-            handleFirestoreError(err, OperationType.UPDATE, path);
+      setLastXPAward(result);
+
+      // Only fire confetti celebration on actual rank level-up
+      if (rankChanged) {
+        try {
+          confetti({
+            particleCount: 60,
+            spread: 70,
+            origin: { y: 0.7 }
           });
-        }
+        } catch {}
+      }
 
-        // Only fire confetti celebration on actual rank level-up
-        if (rankChanged) {
-          try {
-            confetti({
-              particleCount: 50,
-              spread: 60,
-              origin: { y: 0.7 }
-            });
-          } catch {}
-        }
+      return updated;
+    });
 
-        return updated;
-      });
-    }, 0);
+    return computedResult;
   }, [currentUser, isOffline]);
 
   const updateStudentClass = (classLevel: any, stream?: any) => {
@@ -979,24 +1009,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const saveExamResult = (result: CBTExamResult) => {
-    setExamResults(prev => [result, ...prev]);
-    addStudentXP(result.xpAwarded);
+    const computed = addStudentXP({
+      feature: 'cbt',
+      baseXP: Math.max(25, result.score * 5),
+      difficulty: result.totalQuestions >= 40 ? 'hard' : result.totalQuestions >= 20 ? 'medium' : 'easy',
+      questionCount: result.totalQuestions,
+      scorePercentage: result.percentage,
+      reason: `Completed ${result.examTitle} (${result.score}/${result.totalQuestions})`
+    });
+
+    const finalXP = computed?.totalXPAwarded || result.xpAwarded;
+    const finalResult: CBTExamResult = { ...result, xpAwarded: finalXP };
+
+    setExamResults(prev => [finalResult, ...prev]);
 
     if (currentUser && !isOffline) {
       const resultDocRef = doc(db, 'students', currentUser.uid, 'examResults', result.id);
       const path = `students/${currentUser.uid}/examResults/${result.id}`;
       setDoc(resultDocRef, {
-        id: result.id,
+        id: finalResult.id,
         studentId: currentUser.uid,
-        examId: result.examId,
-        examTitle: result.examTitle,
-        subject: result.subject,
-        score: result.score,
-        totalQuestions: result.totalQuestions,
-        percentage: result.percentage,
-        timeSpentSeconds: result.timeSpentSeconds,
-        xpAwarded: result.xpAwarded,
-        date: result.date
+        examId: finalResult.examId,
+        examTitle: finalResult.examTitle,
+        subject: finalResult.subject,
+        score: finalResult.score,
+        totalQuestions: finalResult.totalQuestions,
+        percentage: finalResult.percentage,
+        timeSpentSeconds: finalResult.timeSpentSeconds,
+        xpAwarded: finalXP,
+        date: finalResult.date
       }).catch(err => {
         handleFirestoreError(err, OperationType.CREATE, path);
       });
@@ -1492,7 +1533,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         origin: { y: 0.6 }
       });
     } catch {}
-    addStudentXP(150, "Unlocked 'Prepare For Exam'");
+    addStudentXP({
+      feature: 'exam-prep',
+      baseXP: 250,
+      paidAmountNgn: UNLOCK_FEE_NAIRA,
+      difficulty: 'hard',
+      reason: "Unlocked 'Prepare For Exam' Comprehensive Hub"
+    });
 
     return true;
   };
@@ -1554,7 +1601,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         origin: { y: 0.6 }
       });
     } catch {}
-    addStudentXP(50, `Unlocked '${subject}' Exam Pass`);
+    addStudentXP({
+      feature: 'exam-prep',
+      baseXP: 100,
+      paidAmountNgn: SINGLE_SUBJECT_EXAM_FEE_NAIRA,
+      difficulty: 'medium',
+      reason: `Unlocked '${subject}' Exam Pass`
+    });
 
     return true;
   };
@@ -1626,7 +1679,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ? prev.completedBlockIds.filter(id => id !== blockId)
         : [...prev.completedBlockIds, blockId];
       if (!exists) {
-        addStudentXP(50, 'Completed Study Block');
+        addStudentXP({
+          feature: 'exam-prep',
+          baseXP: 50,
+          difficulty: 'medium',
+          reason: 'Completed Intensive Study Block'
+        });
       }
       return { ...prev, completedBlockIds: next };
     });
@@ -1653,7 +1711,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setCompletedAspirantDrillIds(prev =>
       prev.includes(drillId) ? prev.filter(id => id !== drillId) : [...prev, drillId]
     );
-    addStudentXP(25, 'Completed Aspirant Daily Drill');
+    addStudentXP({
+      feature: 'aspirant-cbt',
+      baseXP: 35,
+      difficulty: 'medium',
+      reason: 'Completed Aspirant Daily Drill'
+    });
   };
 
   const subscribeAspirantTier = (
@@ -1701,7 +1764,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         origin: { y: 0.6 }
       });
     } catch {}
-    addStudentXP(100, `Upgraded to Aspirant ${tier.toUpperCase()}`);
+    addStudentXP({
+      feature: 'aspirant-cbt',
+      baseXP: tier === 'elite' ? 500 : 250,
+      paidAmountNgn: feeNaira,
+      difficulty: 'hard',
+      reason: `Subscribed to Aspirant ${tier.toUpperCase()} Monthly Pass`
+    });
 
     return true;
   };
@@ -1796,7 +1865,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return updated;
     });
 
-    addStudentXP(score * 15, `Championship Day ${day} (${subject})`);
+    addStudentXP({
+      feature: 'competitions',
+      baseXP: Math.max(50, score * 12),
+      difficulty: 'hard',
+      questionCount: totalQuestions,
+      scorePercentage,
+      reason: `National Championship Day ${day} (${subject})`
+    });
     confetti({ particleCount: 80, spread: 70, origin: { y: 0.6 } });
   };
 
@@ -1841,6 +1917,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         handleFirestoreError(err, OperationType.CREATE, path);
       });
     }
+
+    addStudentXP({
+      feature: 'tutors',
+      baseXP: 250,
+      paidAmountNgn: newBooking.amountNaira,
+      difficulty: 'hard',
+      reason: `Booked 1-on-1 Tutoring with ${newBooking.tutorName} (${newBooking.subject})`
+    });
 
     return newBooking;
   };
@@ -2660,6 +2744,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       origin: { y: 0.6 }
     });
 
+    if (plan !== 'free') {
+      const planAmount = prices[plan];
+      addStudentXP({
+        feature: 'general',
+        baseXP: 500,
+        paidAmountNgn: planAmount,
+        difficulty: 'hard',
+        reason: `Enrolled in ${plan.toUpperCase()} Academic Membership`
+      });
+    }
+
     return { success: true };
   };
 
@@ -3160,6 +3255,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         student,
         updateStudentClass,
         addStudentXP,
+        lastXPAward,
+        dismissLastXPAward,
         verifySchoolUniform,
         updateStudentAvatar,
         toggleDownloadNote,

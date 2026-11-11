@@ -293,7 +293,14 @@ export const AspirantCBTSimulator: React.FC = () => {
     };
 
     saveExamResult(result);
-    addStudentXP(result.xpAwarded, `Completed ${selectedYear} ${selectedExamType} Simulator`);
+    addStudentXP({
+      feature: 'aspirant-cbt',
+      baseXP: 150,
+      difficulty: 'hard',
+      questionCount: totalQuestions,
+      scorePercentage: result.percentage,
+      reason: `Completed ${selectedYear} ${selectedExamType} Full Simulator`
+    });
 
     try {
       confetti({

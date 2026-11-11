@@ -3,6 +3,7 @@ import { useApp } from '../../../context/AppContext';
 import { NIGERIAN_UNIVERSITIES } from '../../../data/universityAdmissionData';
 import { generateAspirantDailyDrill, ASPIRANT_PAST_QUESTION_YEARS } from '../../../data/aspirantMockData';
 import { AspirantSubscriptionModal } from './AspirantSubscriptionModal';
+import { DailyExplorerHUD } from '../DailyExplorerHUD';
 import {
   Calendar,
   Clock,
@@ -204,6 +205,9 @@ export const AspirantDashboard: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Daily Study Diversity & XP Multiplier HUD */}
+      <DailyExplorerHUD />
 
       {/* Backward-Counting Calendar Section */}
       <div className="space-y-3">

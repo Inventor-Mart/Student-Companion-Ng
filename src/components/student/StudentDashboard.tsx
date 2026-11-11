@@ -32,6 +32,7 @@ import {
 } from 'lucide-react';
 import { NairaText, NairaSign } from '../../utils/currency';
 import { AspirantDashboard } from './aspirant/AspirantDashboard';
+import { DailyExplorerHUD } from './DailyExplorerHUD';
 import { SchoolMaterial } from '../../types';
 
 export const StudentDashboard: React.FC = () => {
@@ -378,6 +379,9 @@ export const StudentDashboard: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Daily Multi-Tool Study Diversity & XP Multiplier Tracker */}
+      <DailyExplorerHUD />
 
       {/* 'Prepare For Exam' SC AI Daily Study Calendar & Tutor Booking Card */}
       <div className="bg-gradient-to-r from-emerald-950/80 via-slate-900 to-teal-950/80 border border-emerald-500/50 rounded-2xl p-4 shadow-lg space-y-3 relative overflow-hidden">

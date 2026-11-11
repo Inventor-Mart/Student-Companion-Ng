@@ -136,8 +136,13 @@ export const CompetitionsHub: React.FC = () => {
       spread: 70,
       origin: { y: 0.7 }
     });
-    setHasEnteredThisWeek(true);
-    addStudentXP(250);
+    addStudentXP({
+      feature: 'competitions',
+      baseXP: 250,
+      difficulty: 'hard',
+      scorePercentage: 85,
+      reason: 'Entered National Academic Olympiad Challenge'
+    });
   };
 
   // Countdown timer for active stage exam

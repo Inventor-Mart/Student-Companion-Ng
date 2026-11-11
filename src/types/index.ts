@@ -24,6 +24,50 @@ export interface StudentAddOnEntitlements {
   dailyGameAttempts?: { date: string; attempts: Record<string, number> };
 }
 
+export interface DailyExplorationState {
+  date: string; // YYYY-MM-DD
+  featuresUsed: string[]; // e.g. ['cbt', 'games', 'syllabus', 'formulas', 'ai-coach', 'tutors', 'competitions', 'community', 'exam-prep', 'uniform']
+  featureCounts: Record<string, number>;
+}
+
+export type AppFeatureId =
+  | 'cbt'
+  | 'aspirant-cbt'
+  | 'syllabus'
+  | 'formulas'
+  | 'ai-coach'
+  | 'tutors'
+  | 'games'
+  | 'competitions'
+  | 'community'
+  | 'exam-prep'
+  | 'uniform'
+  | 'general';
+
+export interface AwardXPOptions {
+  feature?: AppFeatureId;
+  baseXP: number;
+  difficulty?: 'easy' | 'medium' | 'hard';
+  questionCount?: number;
+  scorePercentage?: number;
+  paidAmountNgn?: number;
+  reason?: string;
+}
+
+export interface AwardXPResult {
+  totalXPAwarded: number;
+  baseXP: number;
+  difficultyMultiplier: number;
+  volumeMultiplier: number;
+  repeatFactor: number;
+  explorerMultiplier: number;
+  masteryBonus: number;
+  paidMilestoneBonus: number;
+  newDailyCount: number;
+  uniqueFeaturesCount: number;
+  reason: string;
+}
+
 export interface StudentProfile {
   id: string;
   name: string;
@@ -46,6 +90,7 @@ export interface StudentProfile {
   termExpiresAt?: string;
   addOns?: StudentAddOnEntitlements;
   studentLinkCode?: string;
+  dailyExploration?: DailyExplorationState;
 }
 
 export interface CurriculumTopic {
