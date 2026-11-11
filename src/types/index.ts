@@ -175,9 +175,10 @@ export interface WalletTransaction {
   type: 'credit' | 'debit';
   amountNaira: number;
   description: string;
-  timestamp: string;
-  status: 'successful' | 'pending';
-  reference: string;
+  timestamp?: string;
+  date?: string;
+  status?: 'successful' | 'pending';
+  reference?: string;
 }
 
 export interface ParentWallet {
@@ -625,6 +626,8 @@ export interface ExamPrepState {
   isUnlocked: boolean;
   unlockedAt?: string;
   tutorCreditsNaira: number; // Starts at 4,000 upon unlock
+  tutorCreditsRemainingNaira?: number;
+  paymentMethod?: 'escrow_wallet' | 'direct_paystack';
   diagnosticProfile?: DiagnosticProfile;
   activeCalendar?: StudyCalendar | null;
   completedBlockIds: string[];

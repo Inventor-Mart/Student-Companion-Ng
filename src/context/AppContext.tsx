@@ -2358,7 +2358,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           isUnlocked: true,
           unlockedAt: new Date().toISOString(),
           paymentMethod: paymentMethod === 'wallet' ? ('escrow_wallet' as const) : ('direct_paystack' as const),
-          tutorCreditsRemainingNaira: prev.tutorCreditsRemainingNaira + (plan === 'elite' ? 16000 : 0)
+          tutorCreditsRemainingNaira: (prev.tutorCreditsRemainingNaira ?? prev.tutorCreditsNaira ?? 0) + (plan === 'elite' ? 16000 : 0),
+          tutorCreditsNaira: (prev.tutorCreditsNaira || 0) + (plan === 'elite' ? 16000 : 0)
         };
         safeSetItem('sc_exam_prep', JSON.stringify(updated));
         return updated;
