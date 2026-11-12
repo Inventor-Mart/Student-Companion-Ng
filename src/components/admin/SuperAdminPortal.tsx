@@ -37,6 +37,7 @@ import {
 import { SchoolAdminPortal } from './SchoolAdminPortal';
 import { OTACompetitionManager } from './OTACompetitionManager';
 import { LessonNotesManager } from './LessonNotesManager';
+import { EducatorQuestionImporter } from './EducatorQuestionImporter';
 import { NairaText, NairaSign } from '../../utils/currency';
 import { ForumReport, ForumMessage } from '../../types';
 import {
@@ -59,7 +60,7 @@ export const SuperAdminPortal: React.FC = () => {
     adminLessonNotes
   } = useApp();
 
-  const [portalView, setPortalView] = useState<'directory' | 'school_admin' | 'forum_moderation' | 'ota_competitions' | 'lesson_notes'>('directory');
+  const [portalView, setPortalView] = useState<'directory' | 'school_admin' | 'forum_moderation' | 'ota_competitions' | 'lesson_notes' | 'past_questions'>('directory');
   const [roleFilter, setRoleFilter] = useState<'all' | UserRole>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedUserForEdit, setSelectedUserForEdit] = useState<RegisteredUserProfile | null>(null);
@@ -482,6 +483,17 @@ export const SuperAdminPortal: React.FC = () => {
     );
   }
 
+  if (portalView === 'past_questions') {
+    return (
+      <div className="flex-1 min-h-0 w-full flex flex-col overflow-hidden">
+        <EducatorQuestionImporter
+          skipPinGate
+          onClose={() => setPortalView('directory')}
+        />
+      </div>
+    );
+  }
+
   if (portalView === 'school_admin') {
     return (
       <div className="flex-1 min-h-0 w-full flex flex-col overflow-hidden">
@@ -547,6 +559,15 @@ export const SuperAdminPortal: React.FC = () => {
                   {adminLessonNotes.length}
                 </span>
               )}
+            </button>
+
+            <button
+              onClick={() => setPortalView('past_questions')}
+              className="flex items-center gap-1.5 px-3 min-h-[40px] rounded-xl bg-sky-950/75 hover:bg-sky-900 border border-sky-600/60 text-sky-300 text-xs font-bold transition-all cursor-pointer shadow-sm whitespace-nowrap"
+              title="Teacher & Admin Portal: Upload and manage JAMB, WAEC & NECO past question papers"
+            >
+              <FileText className="w-3.5 h-3.5 text-sky-400" />
+              <span>Teacher &amp; Admin Portal</span>
             </button>
 
             <button

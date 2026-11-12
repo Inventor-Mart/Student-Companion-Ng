@@ -82,7 +82,7 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
   const [state, setState] = useState('Lagos');
 
   const isCertificateClass = (level: NigerianClassLevel): boolean => {
-    return level === 'JSS 3' || level === 'SS 3';
+    return level === 'JSS 3' || level === 'SS 3' || level === 'University Aspirant';
   };
 
   const handleClassLevelChange = (val: NigerianClassLevel) => {
@@ -97,6 +97,8 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
       setTargetExam('BECE');
     } else if (val === 'SS 3') {
       setTargetExam(prev => (prev === 'BECE' || prev === 'INTERNAL' ? 'WAEC' : prev));
+    } else if (val === 'University Aspirant') {
+      setTargetExam(prev => (prev === 'BECE' || prev === 'INTERNAL' ? 'JAMB_UTME' : prev));
     } else {
       setTargetExam('INTERNAL');
     }
@@ -260,8 +262,8 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
     {
       role: 'student',
       title: 'Student',
-      badge: 'JSS 1 – SS 3',
-      description: 'Study curriculum notes, practice CBT exams, and earn XP badges.',
+      badge: 'JSS 1 – Aspirant',
+      description: 'Study curriculum notes, practice WAEC & JAMB CBT mocks, and earn XP badges.',
       icon: <GraduationCap className="w-6 h-6 text-[#84E000]" />,
       color: 'border-[#84E000]/60 hover:border-[#84E000]'
     },
@@ -407,7 +409,7 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
         email: email.trim(),
         classLevel,
         stream,
-        school: schoolName.trim() || 'Secondary School',
+        school: schoolName.trim() || (classLevel === 'University Aspirant' ? 'School Leaver / Aspirant' : 'Secondary School'),
         schoolCode: studentSchoolCode.trim().toUpperCase() || undefined,
         targetExam
       });
@@ -763,11 +765,14 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
                         <option value="SS 1">SS 1 (Senior 1)</option>
                         <option value="SS 2">SS 2 (Senior 2)</option>
                         <option value="SS 3">SS 3 (WAEC / JAMB / NECO Certificate Class)</option>
+                        <option value="University Aspirant">University Aspirant (School Leaver / JAMB Candidate)</option>
                       </select>
                     </div>
 
                     <div>
-                      <label className="text-xs font-semibold text-slate-300 block mb-1">Academic Stream</label>
+                      <label className="text-xs font-semibold text-slate-300 block mb-1">
+                        {classLevel === 'University Aspirant' ? 'Target Stream (Intended Course Track)' : 'Academic Stream'}
+                      </label>
                       <select
                         value={stream}
                         disabled={classLevel.startsWith('JSS')}
@@ -779,7 +784,7 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
                         ) : (
                           <>
                             <option value="Science">Science (Physics, Chem, Bio, Further Maths)</option>
-                            <option value="Non-Science">Commercial / Arts & Humanities</option>
+                            <option value="Non-Science">Commercial / Arts &amp; Humanities</option>
                           </>
                         )}
                       </select>
@@ -808,6 +813,11 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
                             Senior Cert
                           </span>
                         )}
+                        {classLevel === 'University Aspirant' && (
+                          <span className="text-[10px] font-semibold text-[#FF5B00] bg-[#FF5B00]/15 px-1.5 py-0.5 rounded">
+                            Aspirant Hub
+                          </span>
+                        )}
                       </div>
 
                       {/* Locked for Non-Certificate Classes (JSS 1, 2 and SS 1, 2) */}
@@ -818,7 +828,7 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
                             <Lock className="w-3.5 h-3.5 text-amber-400/80 shrink-0 ml-1.5" />
                           </div>
                           <p className="text-[10px] text-slate-500 mt-1 leading-tight">
-                            Locked for {classLevel}. External target exams unlock in graduating classes (<strong className="text-slate-400">JSS 3</strong> &amp; <strong className="text-slate-400">SS 3</strong>).
+                            Locked for {classLevel}. External target exams unlock in graduating classes (<strong className="text-slate-400">JSS 3</strong> &amp; <strong className="text-slate-400">SS 3</strong>) and <strong className="text-slate-400">University Aspirant</strong>.
                           </p>
                         </div>
                       ) : classLevel === 'JSS 3' ? (
@@ -836,39 +846,51 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
                           </p>
                         </div>
                       ) : (
-                        /* Unlocked for SS 3: Limited to WAEC, JAMB UTME, and NECO */
+                        /* Unlocked for SS 3 & University Aspirant: JAMB UTME, WAEC, NECO */
                         <div>
                           <select
-                            value={targetExam === 'BECE' || targetExam === 'INTERNAL' ? 'WAEC' : targetExam}
+                            value={targetExam === 'BECE' || targetExam === 'INTERNAL' ? (classLevel === 'University Aspirant' ? 'JAMB_UTME' : 'WAEC') : targetExam}
                             onChange={(e) => setTargetExam(e.target.value as any)}
                             className="w-full bg-[#081220] border border-[#1E304F] focus:border-[#84E000] rounded-xl py-2.5 px-3 text-xs text-white focus:outline-none transition-colors"
                           >
-                            <option value="WAEC">WAEC SSCE (Senior School Certificate Exam)</option>
                             <option value="JAMB_UTME">JAMB UTME (University Matriculation Exam)</option>
+                            <option value="WAEC">WAEC SSCE (Senior School Certificate Exam)</option>
                             <option value="NECO">NECO SSCE (National Senior School Certificate)</option>
                           </select>
                           <p className="text-[10px] text-sky-400 mt-1">
-                            Senior national examination question banks &amp; timed CBT modes enabled.
+                            {classLevel === 'University Aspirant'
+                              ? 'Aspirant Command Center, Post-UTME admission guide & 15+ years CBT enabled.'
+                              : 'Senior national examination question banks & timed CBT modes enabled.'}
                           </p>
                         </div>
                       )}
                     </div>
 
                     <div>
-                      <label className="text-xs font-semibold text-slate-300 block mb-1">State & School</label>
+                      <label className="text-xs font-semibold text-slate-300 block mb-1">
+                        {classLevel === 'University Aspirant' ? 'Former Secondary School (Optional)' : 'State & School'}
+                      </label>
                       <input
                         type="text"
                         value={schoolName}
                         onChange={(e) => setSchoolName(e.target.value)}
-                        placeholder="e.g. King's College Lagos, Corona High, etc."
+                        placeholder={
+                          classLevel === 'University Aspirant'
+                            ? 'e.g. Former school or leave blank (Graduated)'
+                            : "e.g. King's College Lagos, Corona High, etc."
+                        }
                         className="w-full bg-[#081220] border border-[#1E304F] focus:border-[#84E000] rounded-xl py-2.5 px-3 text-xs text-white placeholder-slate-500 focus:outline-none transition-colors"
                       />
                     </div>
 
                     <div>
                       <div className="flex items-center justify-between mb-1">
-                        <label className="text-xs font-semibold text-slate-300">School Code (Optional)</label>
-                        <span className="text-[10px] text-emerald-400 font-medium">Link with your School</span>
+                        <label className="text-xs font-semibold text-slate-300">
+                          {classLevel === 'University Aspirant' ? 'Tutorial / School Code (Optional)' : 'School Code (Optional)'}
+                        </label>
+                        <span className="text-[10px] text-emerald-400 font-medium">
+                          {classLevel === 'University Aspirant' ? 'Optional Link' : 'Link with your School'}
+                        </span>
                       </div>
                       <input
                         type="text"
@@ -879,7 +901,9 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
                         className="w-full bg-[#081220] border border-[#1E304F] focus:border-[#84E000] rounded-xl py-2.5 px-3 text-xs font-mono font-bold tracking-wider text-white placeholder-slate-500 focus:outline-none uppercase transition-colors"
                       />
                       <p className="text-[10px] text-slate-400 mt-1">
-                        Got a 6-character school code from your teacher or administrator? Enter it to sync lesson notes &amp; assignments.
+                        {classLevel === 'University Aspirant'
+                          ? 'Studying with a tutorial center or alma mater? Enter their 6-character code, or leave blank.'
+                          : 'Got a 6-character school code from your teacher or administrator? Enter it to sync lesson notes & assignments.'}
                       </p>
                     </div>
                   </div>

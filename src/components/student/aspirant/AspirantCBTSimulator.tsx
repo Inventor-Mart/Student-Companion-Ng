@@ -369,15 +369,6 @@ export const AspirantCBTSimulator: React.FC = () => {
                   </span>
                 )}
               </div>
-
-              <button
-                type="button"
-                onClick={() => setActiveStudentTab('educator-importer')}
-                className="px-2.5 py-1 rounded-lg bg-emerald-800/80 hover:bg-emerald-700 text-emerald-100 border border-emerald-600/50 text-[11px] font-semibold transition-colors flex items-center gap-1"
-              >
-                <BookOpen className="w-3 h-3 text-emerald-300" />
-                <span>Educator Portal</span>
-              </button>
             </div>
           </div>
         </div>

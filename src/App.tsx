@@ -229,12 +229,16 @@ const AppContent: React.FC = () => {
                   {activeStudentTab === 'community' && <StudentCommunityForum />}
                   {activeStudentTab === 'exam-prep' && <PrepareForExamHub />}
                   {activeStudentTab === 'educator-importer' && (
-                    <EducatorQuestionImporter
-                      onClose={() => setActiveStudentTab('dashboard')}
-                      onOpenCBTWithPaper={() => {
-                        setActiveStudentTab('aspirant-cbt');
-                      }}
-                    />
+                    isSuperAdmin ? (
+                      <EducatorQuestionImporter
+                        onClose={() => setActiveStudentTab('dashboard')}
+                        onOpenCBTWithPaper={() => {
+                          setActiveStudentTab('aspirant-cbt');
+                        }}
+                      />
+                    ) : (
+                      <StudentDashboard />
+                    )
                   )}
                 </div>
 

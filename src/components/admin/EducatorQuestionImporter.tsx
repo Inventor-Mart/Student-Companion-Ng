@@ -13,6 +13,7 @@ import { auth } from '../../lib/firebase';
 interface EducatorQuestionImporterProps {
   onClose?: () => void;
   onOpenCBTWithPaper?: (subject: string, year: number) => void;
+  skipPinGate?: boolean;
 }
 
 const NIGERIAN_EXAM_SUBJECTS = [
@@ -69,12 +70,14 @@ TOPIC: Chemical Bonding`;
 
 export const EducatorQuestionImporter: React.FC<EducatorQuestionImporterProps> = ({
   onClose,
-  onOpenCBTWithPaper
+  onOpenCBTWithPaper,
+  skipPinGate = false
 }) => {
-  const { currentUserProfile } = useApp();
+  const { currentUserProfile, isSuperAdmin } = useApp();
 
   // Authentication & PIN Gate State
   const [isUnlocked, setIsUnlocked] = useState<boolean>(() => {
+    if (skipPinGate) return true;
     if (typeof window !== 'undefined') {
       return sessionStorage.getItem('educator_pin_unlocked') === 'true';
     }
@@ -82,6 +85,7 @@ export const EducatorQuestionImporter: React.FC<EducatorQuestionImporterProps> =
   });
   const [enteredPin, setEnteredPin] = useState<string>('');
   const [pinError, setPinError] = useState<string | null>(null);
+  const [confirmDeletePaperId, setConfirmDeletePaperId] = useState<string | null>(null);
 
   // Active View Mode
   const [activeTab, setActiveTab] = useState<'import' | 'archive'>('import');
@@ -108,16 +112,16 @@ export const EducatorQuestionImporter: React.FC<EducatorQuestionImporterProps> =
   const [cloudPapers, setCloudPapers] = useState<CloudPastQuestionPaper[]>([]);
   const [loadingPapers, setLoadingPapers] = useState<boolean>(false);
 
-  // Auto-unlock for verified admin email
+  // Auto-unlock for Super Admin or verified admin email
   useEffect(() => {
     const email = auth.currentUser?.email || currentUserProfile?.email;
-    if (email === 'wowrealities@gmail.com' || email === 'martorefe@gmail.com') {
+    if (skipPinGate || isSuperAdmin || email === 'wowrealities@gmail.com' || email === 'martorefe@gmail.com') {
       setIsUnlocked(true);
       if (typeof window !== 'undefined') {
         sessionStorage.setItem('educator_pin_unlocked', 'true');
       }
     }
-  }, [currentUserProfile]);
+  }, [currentUserProfile, isSuperAdmin, skipPinGate]);
 
   // Load cloud papers on archive tab
   useEffect(() => {
@@ -274,9 +278,7 @@ export const EducatorQuestionImporter: React.FC<EducatorQuestionImporterProps> =
   };
 
   const handleDeletePaper = async (paperId: string) => {
-    if (!window.confirm(`Are you sure you want to delete paper "${paperId}" and all its questions from Firestore?`)) {
-      return;
-    }
+    setConfirmDeletePaperId(null);
     await deleteCloudPaper(paperId);
     loadPapers();
   };
@@ -354,7 +356,7 @@ export const EducatorQuestionImporter: React.FC<EducatorQuestionImporterProps> =
   const currentQ = parsedQuestions[selectedQuestionIndex];
 
   return (
-    <div className="bg-slate-50 min-h-screen text-slate-900 pb-20">
+    <div className="flex-1 min-h-0 w-full overflow-y-auto bg-slate-50 text-slate-900 pb-20">
       {/* Top Navigation Bar */}
       <header className="bg-emerald-900 text-white border-b border-emerald-800 sticky top-0 z-30 shadow-md">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
@@ -883,11 +885,11 @@ export const EducatorQuestionImporter: React.FC<EducatorQuestionImporterProps> =
                         </div>
                       </div>
 
-                      <div className="flex items-center justify-between pt-4 mt-3 border-t border-slate-200">
+                      <div className="flex items-center justify-between pt-4 mt-3 border-t border-slate-200 gap-2">
                         {onOpenCBTWithPaper ? (
                           <button
                             onClick={() => onOpenCBTWithPaper(paper.subject, paper.year)}
-                            className="text-xs font-semibold text-emerald-700 hover:text-emerald-800 flex items-center gap-1"
+                            className="text-xs font-semibold text-emerald-700 hover:text-emerald-800 flex items-center gap-1 cursor-pointer"
                           >
                             Launch CBT Test →
                           </button>
@@ -895,15 +897,35 @@ export const EducatorQuestionImporter: React.FC<EducatorQuestionImporterProps> =
                           <span className="text-xs text-emerald-700 font-medium">Ready in CBT</span>
                         )}
 
-                        <button
-                          onClick={() => handleDeletePaper(paper.id)}
-                          className="text-xs text-rose-600 hover:text-rose-700 p-1"
-                          title="Delete from Firestore"
-                        >
-                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                          </svg>
-                        </button>
+                        {confirmDeletePaperId === paper.id ? (
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleDeletePaper(paper.id)}
+                              className="px-2 py-1 rounded bg-rose-600 hover:bg-rose-700 text-white text-[11px] font-bold cursor-pointer"
+                            >
+                              Confirm Delete
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setConfirmDeletePaperId(null)}
+                              className="px-2 py-1 rounded bg-slate-200 hover:bg-slate-300 text-slate-700 text-[11px] font-medium cursor-pointer"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDeletePaperId(paper.id)}
+                            className="text-xs text-rose-600 hover:text-rose-700 p-1 cursor-pointer"
+                            title="Delete from Firestore"
+                          >
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          </button>
+                        )}
                       </div>
                     </div>
                   ))}

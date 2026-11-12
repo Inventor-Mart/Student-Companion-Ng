@@ -590,32 +590,6 @@ export const AspirantDashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* Educator & Admin Past Question Importer Card */}
-      <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-950/70 via-slate-900 to-[#0A1828] border border-emerald-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-lg">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shrink-0">
-            <BookOpen className="w-5 h-5" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-emerald-400 uppercase tracking-wider">Teacher & Admin Portal</span>
-              <span className="text-[10px] bg-emerald-900/80 text-emerald-300 border border-emerald-700/50 px-1.5 py-0.5 rounded font-mono">PIN: 2026</span>
-            </div>
-            <h3 className="font-bold text-white text-sm">Past Question Importer & Cloud Firestore Archive</h3>
-            <p className="text-xs text-slate-400">
-              Secondary school teachers & center admins can paste raw question papers or upload JSON to stream into the live CBT database.
-            </p>
-          </div>
-        </div>
-        <button
-          onClick={() => setActiveStudentTab('educator-importer')}
-          className="py-2.5 px-4 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-900/40 whitespace-nowrap transition-colors flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
-        >
-          <span>Open Importer Workbench</span>
-          <ArrowRight className="w-3.5 h-3.5" />
-        </button>
-      </div>
-
       {/* Subscription Tier Comparison Card */}
       <div className="bg-gradient-to-r from-[#0B1527] to-[#122340] border border-[#233F6D] rounded-2xl p-5 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
