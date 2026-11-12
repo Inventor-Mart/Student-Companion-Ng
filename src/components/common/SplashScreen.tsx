@@ -80,7 +80,7 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({
       className={`fixed inset-0 z-50 flex flex-col items-center justify-between p-8 bg-[#070D1A] select-none cursor-pointer transition-opacity duration-300 ease-out overflow-hidden ${
         isFadingOut ? 'opacity-0 pointer-events-none' : 'opacity-100'
       }`}
-      aria-label="Student Companion Splash Screen, tap anywhere to enter login"
+      aria-label="Student Companion Splash Screen, tap anywhere to enter"
     >
       {/* Ambient Radial Illumination */}
       <div

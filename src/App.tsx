@@ -68,7 +68,7 @@ const AppContent: React.FC = () => {
       <SplashScreen
         durationMs={3000}
         onFinish={() => {
-          setCurrentScreen('signin');
+          setCurrentScreen('landing');
         }}
       />
     );
