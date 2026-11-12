@@ -4,6 +4,7 @@ import { NIGERIAN_CURRICULUM_TOPICS, OFFICIAL_SUBJECTS_BY_CLASS } from '../../da
 import { NigerianClassLevel, CurriculumTopic, AcademicStream } from '../../types';
 import { cleanMathText } from '../../utils/mathFormatter';
 import { normalizeSubjectKey, resolveAdminLessonNote } from '../../services/lessonNoteService';
+import { calculateRealisticStudyMinutes } from '../../utils/studyDuration';
 import {
   Search,
   BookOpen,
@@ -630,9 +631,9 @@ This digital module is aligned with the Nigerian Educational Research and Develo
                 <span>·</span>
                 <span>Week {activeExplorerNote.weekNumber}</span>
                 <span>·</span>
-                <span className="flex items-center gap-0.5">
+                <span className="flex items-center gap-0.5 tabular-nums">
                   <Clock className="w-3 h-3 text-slate-500" />
-                  {activeExplorerNote.readingTimeMinutes} min read
+                  {calculateRealisticStudyMinutes(activeExplorerNote)} min study
                 </span>
                 {isExplorerNoteLocked && (
                   <span className="text-[9px] font-bold text-amber-400 bg-amber-950/80 border border-amber-700/60 rounded px-1.5 py-0.2 flex items-center gap-1">
@@ -1071,7 +1072,7 @@ This digital module is aligned with the Nigerian Educational Research and Develo
                       <div className="flex items-center gap-2 text-xs text-slate-400">
                         <span className="flex items-center gap-1 tabular-nums">
                           <Clock className="w-3.5 h-3.5" />
-                          <span>{topic.readingTimeMinutes} min</span>
+                          <span>{calculateRealisticStudyMinutes(topic)} min study</span>
                         </span>
                         {isVerifiedRead && (
                           <span className="flex items-center gap-1 text-[11px] font-semibold text-[#84CC16]">

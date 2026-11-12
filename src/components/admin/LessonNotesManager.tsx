@@ -39,6 +39,7 @@ import {
   normalizeSubjectKey,
   saveAdminLessonNote
 } from '../../services/lessonNoteService';
+import { calculateRealisticStudyMinutes } from '../../utils/studyDuration';
 
 interface LessonNotesManagerProps {
   onBack: () => void;
@@ -241,6 +242,28 @@ export const LessonNotesManager: React.FC<LessonNotesManagerProps> = ({ onBack }
       ) || null
     );
   }, [classLevel, stream, term, weekNumber, effectiveSubject]);
+
+  const effectiveStudyMinutesPreview = useMemo(() => {
+    const compiledMarkdown =
+      uploadMode === 'structured' ? compileSectionsToMarkdown(sections) : contentMarkdown;
+    const subtopics = subtopicsText
+      .split('\n')
+      .map(s => s.trim())
+      .filter(Boolean);
+    const keyTakeaways = takeawaysText
+      .split('\n')
+      .map(s => s.trim())
+      .filter(Boolean);
+
+    return calculateRealisticStudyMinutes({
+      summary,
+      contentMarkdown: compiledMarkdown,
+      subtopics,
+      keyTakeaways,
+      readingTimeMinutes,
+      isAdminOverride: true
+    });
+  }, [uploadMode, sections, contentMarkdown, subtopicsText, takeawaysText, summary, readingTimeMinutes]);
 
   // Switch between Mode 1 (Markdown) and Mode 2 (Structured) preserving content
   const handleSwitchMode = (targetMode: 'markdown' | 'structured') => {
@@ -917,7 +940,7 @@ export const LessonNotesManager: React.FC<LessonNotesManagerProps> = ({ onBack }
 
             <div>
               <label className="text-[11px] font-semibold text-slate-300 block mb-1">
-                Est. Reading Time (mins)
+                Est. Study Time (mins)
               </label>
               <input
                 type="number"
@@ -927,6 +950,9 @@ export const LessonNotesManager: React.FC<LessonNotesManagerProps> = ({ onBack }
                 onChange={e => setReadingTimeMinutes(Number(e.target.value))}
                 className="w-full min-h-[44px] bg-[#091222] border border-slate-700 rounded-xl px-3.5 text-xs text-white font-mono tabular-nums focus:outline-none focus:border-[#84E000]"
               />
+              <p className="text-[10px] text-slate-400 mt-1 tabular-nums">
+                Student verification target: <span className="text-emerald-400 font-semibold">{effectiveStudyMinutesPreview} min</span>
+              </p>
             </div>
           </div>
 

@@ -4,6 +4,13 @@ import { CBT_EXAMS_DATABASE } from '../../data/cbtExamData';
 import { getTopicSpecificQuiz } from '../../utils/topicQuizGenerator';
 import { playSound } from '../../utils/audioSynthesis';
 import {
+  calculateRealisticStudyMinutes,
+  clearSavedReadingProgress,
+  formatStudyTimer,
+  getSavedReadingProgress,
+  saveReadingProgress
+} from '../../utils/studyDuration';
+import {
   ArrowLeft,
   Download,
   Check,
@@ -335,12 +342,15 @@ export const LessonNoteReader: React.FC = () => {
   const bottomSentinelRef = useRef<HTMLDivElement | null>(null);
 
   const [elapsedSeconds, setElapsedSeconds] = useState<number>(0);
+  const [resumedFromSeconds, setResumedFromSeconds] = useState<number>(0);
   const [isTabVisible, setIsTabVisible] = useState<boolean>(
     typeof document !== 'undefined' ? document.visibilityState === 'visible' : true
   );
   const [hasScrolledToBottom, setHasScrolledToBottom] = useState<boolean>(false);
   const [checkpointSelections, setCheckpointSelections] = useState<Record<number, number>>({});
   const [justClaimedSuccess, setJustClaimedSuccess] = useState<boolean>(false);
+
+  const latestElapsedRef = useRef<number>(0);
 
   // Generate a guaranteed topic-specific quiz based on this exact topic
   const matchingExam = useMemo(() => {
@@ -353,14 +363,12 @@ export const LessonNoteReader: React.FC = () => {
     return matchingExam.questions.slice(0, Math.min(2, matchingExam.questions.length));
   }, [matchingExam]);
 
-  // Dynamic active reading target duration scaled by note length (30-90 seconds)
-  const targetSeconds = useMemo(() => {
-    if (!activeReadingNote) return 30;
-    const rawText = `${activeReadingNote.summary || ''} ${activeReadingNote.contentMarkdown || ''}`;
-    const wordCount = rawText.trim().split(/\s+/).filter(Boolean).length;
-    const calculated = Math.round(wordCount / 4.5);
-    return Math.min(90, Math.max(30, calculated));
-  }, [activeReadingNote]);
+  // Realistic study duration matching the header estimate (20-35 min for multi-topic weekly lessons)
+  const estimatedStudyMinutes = useMemo(
+    () => calculateRealisticStudyMinutes(activeReadingNote),
+    [activeReadingNote]
+  );
+  const targetSeconds = estimatedStudyMinutes * 60;
 
   const isAlreadyVerified = Boolean(
     activeReadingNote && (student.completedReadNoteIds || []).includes(activeReadingNote.id)
@@ -371,41 +379,110 @@ export const LessonNoteReader: React.FC = () => {
     return (student.verifiedReadingLogs || []).find(l => l.noteId === activeReadingNote.id);
   }, [activeReadingNote, student.verifiedReadingLogs]);
 
-  // Reset verification gates cleanly whenever switching lesson notes
+  const sessionMetaRef = useRef<{
+    studentId: string;
+    noteId: string | null;
+    targetSeconds: number;
+    isAlreadyVerified: boolean;
+  }>({
+    studentId: student.id,
+    noteId: activeReadingNote?.id || null,
+    targetSeconds,
+    isAlreadyVerified
+  });
+
   useEffect(() => {
-    setElapsedSeconds(0);
+    sessionMetaRef.current = {
+      studentId: student.id,
+      noteId: activeReadingNote?.id || null,
+      targetSeconds,
+      isAlreadyVerified
+    };
+  }, [student.id, activeReadingNote?.id, targetSeconds, isAlreadyVerified]);
+
+  // Restore saved cross-session reading progress when opening a note and persist when leaving
+  useEffect(() => {
+    if (!activeReadingNote) {
+      latestElapsedRef.current = 0;
+      setElapsedSeconds(0);
+      setResumedFromSeconds(0);
+      setHasScrolledToBottom(false);
+      setCheckpointSelections({});
+      setJustClaimedSuccess(false);
+      return;
+    }
+
+    const noteId = activeReadingNote.id;
+    const studentId = student.id;
+    const alreadyDone = (student.completedReadNoteIds || []).includes(noteId);
+    const saved = alreadyDone
+      ? 0
+      : Math.min(targetSeconds, getSavedReadingProgress(studentId, noteId));
+
+    latestElapsedRef.current = saved;
+    setElapsedSeconds(saved);
+    setResumedFromSeconds(saved);
     setHasScrolledToBottom(false);
     setCheckpointSelections({});
     setJustClaimedSuccess(false);
-  }, [activeReadingNote?.id]);
 
-  // Pause reading timer whenever browser tab is hidden or minimized
-  useEffect(() => {
-    const handleVisibility = () => {
-      setIsTabVisible(document.visibilityState === 'visible');
+    return () => {
+      const meta = sessionMetaRef.current;
+      if (meta.noteId === noteId && !meta.isAlreadyVerified && latestElapsedRef.current > 0) {
+        saveReadingProgress(studentId, noteId, latestElapsedRef.current, targetSeconds);
+      }
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeReadingNote?.id, student.id]);
+
+  // Pause reading timer & persist progress when browser tab is hidden or page unloads
+  useEffect(() => {
+    const flushProgress = () => {
+      const meta = sessionMetaRef.current;
+      if (meta.noteId && !meta.isAlreadyVerified && latestElapsedRef.current > 0) {
+        saveReadingProgress(meta.studentId, meta.noteId, latestElapsedRef.current, meta.targetSeconds);
+      }
+    };
+
+    const handleVisibility = () => {
+      const visible = document.visibilityState === 'visible';
+      setIsTabVisible(visible);
+      if (!visible) {
+        flushProgress();
+      }
+    };
+
     document.addEventListener('visibilitychange', handleVisibility);
-    return () => document.removeEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('beforeunload', flushProgress);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('beforeunload', flushProgress);
+    };
   }, []);
 
-  // Increment active on-screen reading seconds (30-90s target)
+  // Increment active on-screen reading seconds up to estimatedStudyMinutes * 60 and persist periodically
   useEffect(() => {
     if (!activeReadingNote || isAlreadyVerified) return;
     const accessCheck = checkStudentFeatureAccess('scheme_weeks', { weekNumber: activeReadingNote.weekNumber });
     if (!accessCheck.hasAccess) return;
     if (!isTabVisible || elapsedSeconds >= targetSeconds) return;
 
+    const noteId = activeReadingNote.id;
+    const studentId = student.id;
+
     const timerId = window.setInterval(() => {
       setElapsedSeconds(prev => {
-        if (prev + 1 >= targetSeconds) {
-          return targetSeconds;
+        const next = prev + 1 >= targetSeconds ? targetSeconds : prev + 1;
+        latestElapsedRef.current = next;
+        if (next % 5 === 0 || next === targetSeconds) {
+          saveReadingProgress(studentId, noteId, next, targetSeconds);
         }
-        return prev + 1;
+        return next;
       });
     }, 1000);
 
     return () => window.clearInterval(timerId);
-  }, [activeReadingNote, isAlreadyVerified, isTabVisible, elapsedSeconds, targetSeconds, checkStudentFeatureAccess]);
+  }, [activeReadingNote, student.id, isAlreadyVerified, isTabVisible, elapsedSeconds, targetSeconds, checkStudentFeatureAccess]);
 
   // Track scroll depth down to bottom sentinel (or immediate pass if note fits without scroll)
   const checkScrollCompletion = useCallback(() => {
@@ -564,12 +641,6 @@ export const LessonNoteReader: React.FC = () => {
 
   const canClaimMarkRead = !isAlreadyVerified && isTimerMet && isScrollMet && isCheckpointMet;
 
-  const formatTimer = (sec: number) => {
-    const mins = Math.floor(sec / 60);
-    const rem = sec % 60;
-    return `${mins}:${rem < 10 ? '0' : ''}${rem}`;
-  };
-
   const handleSelectCheckpointOption = (questionId: number, optionIdx: number, correctIdx: number) => {
     if (isAlreadyVerified) return;
     setCheckpointSelections(prev => ({ ...prev, [questionId]: optionIdx }));
@@ -593,6 +664,9 @@ export const LessonNoteReader: React.FC = () => {
       checkpointScore: checkpointCorrectCount,
       checkpointTotal: checkpointQuestions.length
     });
+
+    sessionMetaRef.current.isAlreadyVerified = true;
+    clearSavedReadingProgress(student.id, activeReadingNote.id);
 
     if (!res.alreadyVerified) {
       playSound.levelUp();
@@ -679,9 +753,9 @@ export const LessonNoteReader: React.FC = () => {
         {isAlreadyVerified ? (
           <div className="flex items-center gap-2 text-emerald-400 font-semibold whitespace-nowrap">
             <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-            <span>
+            <span className="tabular-nums">
               Verified Read · XP Claimed
-              {existingReadLog ? ` · ${existingReadLog.activeSeconds}s active study · Checkpoint ${existingReadLog.checkpointScore}/${existingReadLog.checkpointTotal}` : ''}
+              {existingReadLog ? ` · ${formatStudyTimer(existingReadLog.activeSeconds)} active study · Checkpoint ${existingReadLog.checkpointScore}/${existingReadLog.checkpointTotal}` : ''}
             </span>
           </div>
         ) : (
@@ -703,10 +777,18 @@ export const LessonNoteReader: React.FC = () => {
                 {isTimerMet
                   ? 'Time Verified'
                   : isTabVisible
-                  ? `${formatTimer(elapsedSeconds)} / ${formatTimer(targetSeconds)}`
-                  : 'Paused'}
+                  ? `${formatStudyTimer(elapsedSeconds)} / ${formatStudyTimer(targetSeconds)}`
+                  : `Paused · ${formatStudyTimer(elapsedSeconds)}`}
               </span>
             </span>
+            {resumedFromSeconds > 0 && !isTimerMet && (
+              <>
+                <span className="text-slate-600 hidden sm:inline" aria-hidden="true">·</span>
+                <span className="text-[10px] text-cyan-300/90 font-medium hidden sm:inline tabular-nums">
+                  Resumed from {formatStudyTimer(resumedFromSeconds)}
+                </span>
+              </>
+            )}
             <span className="text-slate-600" aria-hidden="true">·</span>
             <span className={`flex items-center gap-1 font-medium ${isCheckpointMet ? 'text-emerald-400' : 'text-slate-300'}`}>
               {isCheckpointMet ? (
@@ -735,9 +817,9 @@ export const LessonNoteReader: React.FC = () => {
             <span>·</span>
             <span>Week {activeReadingNote.weekNumber}</span>
             <span>·</span>
-            <span className="flex items-center gap-1">
+            <span className="flex items-center gap-1 tabular-nums">
               <Clock className="w-3 h-3 text-slate-400" />
-              {activeReadingNote.readingTimeMinutes} min read
+              {estimatedStudyMinutes} min study
             </span>
           </div>
           <h1 className="text-lg sm:text-xl font-bold text-white tracking-tight leading-tight">
@@ -1395,7 +1477,7 @@ export const LessonNoteReader: React.FC = () => {
                 <Lock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                 <span className="tabular-nums">
                   {!isTimerMet
-                    ? `Read ${formatTimer(targetSeconds - elapsedSeconds)} left`
+                    ? `Read ${formatStudyTimer(targetSeconds - elapsedSeconds)} left`
                     : !isScrollMet
                     ? 'Scroll to Bottom'
                     : 'Pass Checkpoint'}
