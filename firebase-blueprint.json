@@ -66,6 +66,14 @@
         "completedQuizIds": {
           "type": "array",
           "description": "List of completed CBT quiz identifiers"
+        },
+        "completedReadNoteIds": {
+          "type": "array",
+          "description": "List of verified lesson note IDs completed by the student"
+        },
+        "verifiedReadingLogs": {
+          "type": "array",
+          "description": "Structured verified lesson note reading logs with duration and checkpoint accuracy"
         }
       },
       "required": ["id", "name", "school", "classLevel", "stream", "xp", "rank", "streakDays"]

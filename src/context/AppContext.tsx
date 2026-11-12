@@ -45,7 +45,8 @@ import {
   AwardXPResult,
   AppFeatureId,
   DailyExplorationState,
-  AdminLessonNote
+  AdminLessonNote,
+  VerifiedLessonReadLog
 } from '../types';
 import { subscribeToAdminLessonNotes } from '../services/lessonNoteService';
 import {
@@ -165,6 +166,13 @@ interface AppContextType {
   student: StudentProfile;
   updateStudentClass: (classLevel: any, stream: any) => void;
   addStudentXP: (amountOrOptions: number | AwardXPOptions, reason?: string) => AwardXPResult | undefined;
+  recordVerifiedLessonRead: (params: {
+    topic: CurriculumTopic;
+    activeSeconds: number;
+    targetSeconds: number;
+    checkpointScore: number;
+    checkpointTotal: number;
+  }) => { alreadyVerified: boolean; xpResult?: AwardXPResult };
   lastXPAward: AwardXPResult | null;
   dismissLastXPAward: () => void;
   verifySchoolUniform: (photoUrl: string) => void;
@@ -298,6 +306,8 @@ const INITIAL_EMPTY_STUDENT: StudentProfile = {
   uniformPhotoUrl: null,
   downloadedSubjectIds: [],
   completedQuizIds: [],
+  completedReadNoteIds: [],
+  verifiedReadingLogs: [],
   isSubscribed: false,
   subscriptionPlan: 'free',
   subscriptionTier: 'free'
@@ -733,7 +743,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 uniformVerified: false,
                 uniformPhotoUrl: user.photoURL || null,
                 downloadedSubjectIds: [],
-                completedQuizIds: []
+                completedQuizIds: [],
+                completedReadNoteIds: [],
+                verifiedReadingLogs: []
               };
               setDoc(studentDocRef, newProfile, { merge: true }).catch((err) => {
                 handleFirestoreError(err, OperationType.CREATE, path);
@@ -889,6 +901,164 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     return computedResult;
   }, [currentUser, isOffline]);
+
+  const recordVerifiedLessonRead = useCallback((params: {
+    topic: CurriculumTopic;
+    activeSeconds: number;
+    targetSeconds: number;
+    checkpointScore: number;
+    checkpointTotal: number;
+  }): { alreadyVerified: boolean; xpResult?: AwardXPResult } => {
+    const { topic, activeSeconds, targetSeconds, checkpointScore, checkpointTotal } = params;
+
+    if ((student.completedReadNoteIds || []).includes(topic.id)) {
+      return { alreadyVerified: true };
+    }
+
+    let computedResult: AwardXPResult | undefined;
+    let wasAlreadyVerified = false;
+    let nextCompletedIds: string[] = [];
+    let nextLogs: VerifiedLessonReadLog[] = [];
+    let finalXP = student.xp;
+    let finalRank = student.rank;
+
+    setStudent(prev => {
+      const prevIds = prev.completedReadNoteIds || [];
+      if (prevIds.includes(topic.id)) {
+        wasAlreadyVerified = true;
+        return prev;
+      }
+
+      const { result, updatedExploration } = calculateDynamicXP(
+        {
+          feature: 'syllabus',
+          baseXP: 60,
+          difficulty: 'medium',
+          reason: `Verified Reading: ${topic.topicTitle}`
+        },
+        prev.dailyExploration
+      );
+      computedResult = result;
+
+      const newXP = prev.xp + result.totalXPAwarded;
+      const newRank = calculateRankFromXP(newXP);
+      const rankChanged = newRank !== prev.rank;
+
+      finalXP = newXP;
+      finalRank = newRank;
+      nextCompletedIds = [...prevIds, topic.id].slice(-200);
+
+      const newLog: VerifiedLessonReadLog = {
+        noteId: topic.id,
+        topicTitle: topic.topicTitle,
+        subject: topic.subject,
+        classLevel: topic.classLevel,
+        term: topic.term,
+        weekNumber: topic.weekNumber,
+        activeSeconds: Math.max(0, Math.round(activeSeconds)),
+        targetSeconds: Math.max(30, Math.round(targetSeconds)),
+        checkpointScore,
+        checkpointTotal,
+        xpAwarded: result.totalXPAwarded,
+        completedAt: new Date().toISOString()
+      };
+
+      const prevLogs = prev.verifiedReadingLogs || [];
+      nextLogs = [newLog, ...prevLogs.filter(l => l.noteId !== topic.id)].slice(0, 100);
+      const studyDate = new Date().toISOString().split('T')[0];
+
+      const updated: StudentProfile = {
+        ...prev,
+        xp: newXP,
+        rank: newRank,
+        lastStudyDate: studyDate,
+        dailyExploration: updatedExploration,
+        completedReadNoteIds: nextCompletedIds,
+        verifiedReadingLogs: nextLogs
+      };
+
+      safeSetItem('sc_student', JSON.stringify(updated));
+
+      if (currentUser && !isOffline) {
+        const docRef = doc(db, 'students', currentUser.uid);
+        const path = `students/${currentUser.uid}`;
+        updateDoc(docRef, {
+          xp: newXP,
+          rank: newRank,
+          streakDays: prev.streakDays,
+          lastStudyDate: studyDate,
+          completedReadNoteIds: nextCompletedIds,
+          verifiedReadingLogs: nextLogs
+        }).catch(err => {
+          handleFirestoreError(err, OperationType.UPDATE, path);
+        });
+      }
+
+      setLastXPAward(result);
+
+      if (rankChanged) {
+        try {
+          confetti({
+            particleCount: 60,
+            spread: 70,
+            origin: { y: 0.7 }
+          });
+        } catch {}
+      }
+
+      return updated;
+    });
+
+    if (wasAlreadyVerified) {
+      return { alreadyVerified: true };
+    }
+
+    // Propagate to currentUserProfile and allRegisteredUsers so School Admin & Parent views update in real time
+    setCurrentUserProfile(prev => {
+      if (!prev || !prev.studentData) return prev;
+      const updatedProfile: RegisteredUserProfile = {
+        ...prev,
+        studentData: {
+          ...prev.studentData,
+          xp: finalXP,
+          rank: finalRank,
+          completedReadNoteIds: nextCompletedIds,
+          verifiedReadingLogs: nextLogs
+        }
+      };
+      safeSetItem('sc_user_profile', JSON.stringify(updatedProfile));
+      return updatedProfile;
+    });
+
+    setAllRegisteredUsers(prev => {
+      const targetStudentId = student.id || currentUser?.uid;
+      if (!targetStudentId) return prev;
+      let changed = false;
+      const updatedList = prev.map(u => {
+        if (u.role === 'student' && (u.id === targetStudentId || u.studentData?.id === targetStudentId)) {
+          changed = true;
+          const baseStudent = u.studentData || student;
+          return {
+            ...u,
+            studentData: {
+              ...baseStudent,
+              xp: finalXP,
+              rank: finalRank,
+              completedReadNoteIds: nextCompletedIds,
+              verifiedReadingLogs: nextLogs
+            }
+          };
+        }
+        return u;
+      });
+      if (changed) {
+        safeSetItem('sc_all_users', JSON.stringify(updatedList));
+      }
+      return changed ? updatedList : prev;
+    });
+
+    return { alreadyVerified: false, xpResult: computedResult };
+  }, [student, currentUser, isOffline]);
 
   const updateStudentClass = (classLevel: any, stream?: any) => {
     const finalStream = stream || (typeof classLevel === 'string' && classLevel.startsWith('JSS') ? 'Junior' : 'Science');
@@ -2263,7 +2433,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         uniformVerified: false,
         uniformPhotoUrl: null,
         downloadedSubjectIds: [],
-        completedQuizIds: []
+        completedQuizIds: [],
+        completedReadNoteIds: [],
+        verifiedReadingLogs: []
       };
       newProfile.studentData = freshStudent;
       setStudent(freshStudent);
@@ -3367,6 +3539,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         student,
         updateStudentClass,
         addStudentXP,
+        recordVerifiedLessonRead,
         lastXPAward,
         dismissLastXPAward,
         verifySchoolUniform,

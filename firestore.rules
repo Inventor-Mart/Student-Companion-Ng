@@ -43,7 +43,7 @@ service cloud.firestore {
     // --- ENTITY VALIDATION BLUEPRINTS ---
     function isValidStudentProfile(data) {
       return data.keys().hasAll(['id', 'name', 'school', 'classLevel', 'stream', 'xp', 'rank', 'streakDays']) &&
-             data.keys().hasOnly(['id', 'name', 'school', 'classLevel', 'stream', 'xp', 'rank', 'streakDays', 'lastStudyDate', 'uniformVerified', 'uniformPhotoUrl', 'downloadedSubjectIds', 'completedQuizIds']) &&
+             data.keys().hasOnly(['id', 'name', 'school', 'classLevel', 'stream', 'xp', 'rank', 'streakDays', 'lastStudyDate', 'uniformVerified', 'uniformPhotoUrl', 'downloadedSubjectIds', 'completedQuizIds', 'completedReadNoteIds', 'verifiedReadingLogs']) &&
              data.id is string && isValidId(data.id) &&
              data.name is string && data.name.size() >= 1 && data.name.size() <= 100 &&
              data.school is string && data.school.size() <= 150 &&
@@ -56,7 +56,9 @@ service cloud.firestore {
              (!('uniformVerified' in data) || data.uniformVerified is bool) &&
              (!('uniformPhotoUrl' in data) || data.uniformPhotoUrl == null || (data.uniformPhotoUrl is string && data.uniformPhotoUrl.size() <= 500)) &&
              (!('downloadedSubjectIds' in data) || (data.downloadedSubjectIds is list && data.downloadedSubjectIds.size() <= 50)) &&
-             (!('completedQuizIds' in data) || (data.completedQuizIds is list && data.completedQuizIds.size() <= 100));
+             (!('completedQuizIds' in data) || (data.completedQuizIds is list && data.completedQuizIds.size() <= 100)) &&
+             (!('completedReadNoteIds' in data) || (data.completedReadNoteIds is list && data.completedReadNoteIds.size() <= 200 && (data.completedReadNoteIds.size() == 0 || data.completedReadNoteIds[0] is string))) &&
+             (!('verifiedReadingLogs' in data) || (data.verifiedReadingLogs is list && data.verifiedReadingLogs.size() <= 200 && (data.verifiedReadingLogs.size() == 0 || data.verifiedReadingLogs[0] is map)));
     }
 
     function isValidExamResult(data) {

@@ -157,6 +157,13 @@ export const StudentDashboard: React.FC = () => {
 
   // Determine current class drill & topic
   const currentTopic = NIGERIAN_CURRICULUM_TOPICS[0];
+  const verifiedReadIds = student.completedReadNoteIds || [];
+  const verifiedLogs = student.verifiedReadingLogs || [];
+  const verifiedNotesCount = verifiedReadIds.length;
+  const verifiedStudyMinutes = Math.max(
+    0,
+    Math.round(verifiedLogs.reduce((acc, l) => acc + (l.activeSeconds || 0), 0) / 60)
+  );
 
   const getDrillConfig = (classLevel: string) => {
     if (classLevel === 'SS 3') {
@@ -482,13 +489,16 @@ export const StudentDashboard: React.FC = () => {
           <div className="flex items-start justify-between relative z-10">
             <div>
               <span className="text-xs font-black uppercase tracking-wider text-white/80 block">
-                {student.classLevel} Syllabus · Week 4
+                {student.classLevel} Syllabus · Week {currentTopic.weekNumber}
               </span>
               <h2 className="text-2xl font-black text-white tracking-tight mt-0.5">
                 Lesson Notes
               </h2>
-              <p className="text-xs font-medium text-white/90 mt-1 max-w-[220px] line-clamp-1">
+              <p className="text-xs font-medium text-white/90 mt-1 max-w-[240px] line-clamp-1">
                 {currentTopic.topicTitle}
+              </p>
+              <p className="text-[11px] font-mono tabular-nums font-bold text-white/85 mt-1">
+                {verifiedNotesCount} verified read · {verifiedStudyMinutes}m active study
               </p>
             </div>
 
@@ -952,8 +962,8 @@ export const StudentDashboard: React.FC = () => {
                 </p>
               </div>
 
-              <div className="mt-3 pt-2.5 border-t border-cyan-900/60 flex items-center justify-between text-[10px] font-bold text-cyan-300">
-                <span>Weeks 1–12</span>
+              <div className="mt-3 pt-2.5 border-t border-cyan-900/60 flex items-center justify-between text-[10px] font-bold text-cyan-300 tabular-nums">
+                <span>{verifiedNotesCount > 0 ? `${verifiedNotesCount} Verified · Weeks 1–12` : 'Weeks 1–12'}</span>
                 <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
               </div>
             </motion.div>

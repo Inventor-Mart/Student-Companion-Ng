@@ -335,6 +335,17 @@ export const SchoolAdminPortal: React.FC = () => {
       .map(s => ({ ...s, isCurrentAccount: false }))
   ];
 
+  const totalSchoolVerifiedReads = combinedStudents.reduce(
+    (acc, std) => acc + ((std.completedReadNoteIds || []).length || (std.verifiedReadingLogs || []).length),
+    0
+  );
+  const totalSchoolVerifiedMinutes = Math.round(
+    combinedStudents.reduce(
+      (acc, std) => acc + (std.verifiedReadingLogs || []).reduce((sum, l) => sum + (l.activeSeconds || 0), 0),
+      0
+    ) / 60
+  );
+
   const filteredStudents = combinedStudents.filter(std => {
     if (studentClassFilter === 'junior' && !std.classLevel.startsWith('JSS')) return false;
     if (studentClassFilter === 'senior' && !std.classLevel.startsWith('SS')) return false;
@@ -689,8 +700,8 @@ export const SchoolAdminPortal: React.FC = () => {
                   <h3 className="text-sm font-black text-white tracking-tight">
                     Scholars Linked to {selectedSchool}
                   </h3>
-                  <p className="text-[11px] text-slate-300 mt-1">
-                    {metrics.paidStudents} Subscribed · {metrics.freeStudents} Free Tier
+                  <p className="text-[11px] text-slate-300 mt-1 tabular-nums">
+                    {metrics.paidStudents} Subscribed · {totalSchoolVerifiedReads} Verified Reads
                   </p>
                 </div>
 
@@ -1244,6 +1255,21 @@ export const SchoolAdminPortal: React.FC = () => {
                   </div>
                 </div>
               </div>
+              {/* Institutional Verified Reading Report Summary */}
+              <div className="grid grid-cols-3 gap-2 pt-2 border-t border-slate-800/80">
+                <div className="bg-[#0D1527] rounded-xl p-2.5 border border-slate-800">
+                  <span className="text-[10px] text-slate-400 block">Scholars Linked</span>
+                  <span className="text-sm font-black font-mono tabular-nums text-white">{combinedStudents.length}</span>
+                </div>
+                <div className="bg-[#0D1527] rounded-xl p-2.5 border border-slate-800">
+                  <span className="text-[10px] text-slate-400 block">Verified Notes Read</span>
+                  <span className="text-sm font-black font-mono tabular-nums text-[#84CC16]">{totalSchoolVerifiedReads}</span>
+                </div>
+                <div className="bg-[#0D1527] rounded-xl p-2.5 border border-slate-800">
+                  <span className="text-[10px] text-slate-400 block">Verified Study Time</span>
+                  <span className="text-sm font-black font-mono tabular-nums text-[#FF5B00]">{totalSchoolVerifiedMinutes}m</span>
+                </div>
+              </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
@@ -1252,6 +1278,11 @@ export const SchoolAdminPortal: React.FC = () => {
                   std.isSubscribed === true ||
                   (Boolean(std.subscriptionTier) && std.subscriptionTier !== 'free') ||
                   (Boolean(std.subscribedUntil) && new Date(std.subscribedUntil!) > new Date());
+                const stdReadCount =
+                  (std.completedReadNoteIds || []).length || (std.verifiedReadingLogs || []).length;
+                const stdStudyMinutes = Math.round(
+                  (std.verifiedReadingLogs || []).reduce((acc, log) => acc + (log.activeSeconds || 0), 0) / 60
+                );
 
                 return (
                   <div
@@ -1291,14 +1322,14 @@ export const SchoolAdminPortal: React.FC = () => {
                             </span>
                           )}
                         </div>
-                        <span className="text-[10px] text-slate-300 block mt-0.5">
-                          {std.classLevel} · School Code:{' '}
-                          <span className="font-mono text-[#84CC16]">{adminSchoolCode}</span> · Rank: {std.rank || 'Scholar'}
+                        <span className="text-[10px] text-slate-300 block mt-0.5 tabular-nums">
+                          {std.classLevel} · <span className="text-[#84CC16] font-semibold">{stdReadCount} verified notes</span>
+                          {stdStudyMinutes > 0 ? ` (${stdStudyMinutes}m)` : ''} · {std.rank || 'Scholar'}
                         </span>
                       </div>
                     </div>
 
-                    <div className="text-right font-mono shrink-0 ml-2">
+                    <div className="text-right font-mono shrink-0 ml-2 tabular-nums">
                       <span className="font-black text-[#84CC16] text-sm block">{std.xp.toLocaleString()} XP</span>
                       <span className="text-[10px] text-[#FF5B00] font-bold block">{std.streakDays || 1}d streak</span>
                     </div>

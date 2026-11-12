@@ -53,6 +53,7 @@ export const ParentPortal: React.FC = () => {
     approveTutorBooking,
     rejectTutorBooking,
     student,
+    allRegisteredUsers,
     examResults,
     currentUserProfile,
     championshipRegistrations,
@@ -84,6 +85,17 @@ export const ParentPortal: React.FC = () => {
   const [confirmUnlinkWard, setConfirmUnlinkWard] = useState<LinkedWard | null>(null);
 
   const currentActiveWard = linkedWards.find(w => w.studentId === activeWardId) || linkedWards[0];
+  const wardStudentProfile =
+    allRegisteredUsers.find(
+      u => u.role === 'student' && u.studentData && currentActiveWard && u.studentData.id === currentActiveWard.studentId
+    )?.studentData || student;
+  const wardVerifiedLogs = wardStudentProfile.verifiedReadingLogs || [];
+  const wardVerifiedCount =
+    (wardStudentProfile.completedReadNoteIds || []).length || wardVerifiedLogs.length;
+  const wardVerifiedMinutes = Math.max(
+    0,
+    Math.round(wardVerifiedLogs.reduce((acc, log) => acc + (log.activeSeconds || 0), 0) / 60)
+  );
   const parentName = currentUserProfile?.fullName || 'Registered Parent';
   const wardName =
     currentActiveWard?.studentName ||
@@ -894,7 +906,7 @@ export const ParentPortal: React.FC = () => {
                       className="flex items-center gap-1 bg-[#FF5B00]/20 border border-[#FF5B00]/50 px-2 py-0.5 rounded-lg text-[10px] font-black text-[#FF5B00]"
                     >
                       <Flame className="w-3 h-3 fill-[#FF5B00]" />
-                      <span className="tabular-nums">{student.streakDays}d</span>
+                      <span className="tabular-nums">{wardStudentProfile.streakDays || student.streakDays}d</span>
                     </motion.div>
                   </div>
 
@@ -905,19 +917,22 @@ export const ParentPortal: React.FC = () => {
                   <div className="grid grid-cols-2 gap-1.5 mt-2">
                     <div className="bg-[#0D1527] rounded-xl p-1.5 border border-slate-800 text-center">
                       <span className="text-xs font-black font-mono tabular-nums text-[#84CC16] block">
-                        {student.xp.toLocaleString()}
+                        {(wardStudentProfile.xp ?? student.xp).toLocaleString()}
                       </span>
                       <span className="text-[9px] text-slate-400">Total XP</span>
                     </div>
                     <div className="bg-[#0D1527] rounded-xl p-1.5 border border-slate-800 text-center">
                       <span className="text-xs font-black font-mono tabular-nums text-white block">
-                        {latestExamResult ? `${latestExamResult.percentage}%` : `${student.downloadedSubjectIds.length}`}
+                        {wardVerifiedCount}
                       </span>
                       <span className="text-[9px] text-slate-400">
-                        {latestExamResult ? 'Latest CBT' : 'Notes'}
+                        Verified Notes
                       </span>
                     </div>
                   </div>
+                  <p className="text-[10px] text-slate-400 font-mono tabular-nums mt-1.5">
+                    {wardVerifiedMinutes}m active reading · {latestExamResult ? `${latestExamResult.percentage}% CBT` : 'No CBT yet'}
+                  </p>
                 </div>
 
                 <div className="mt-3 pt-2.5 border-t border-slate-700/80 flex items-center justify-between text-[10px] font-black text-[#84CC16]">
@@ -1552,28 +1567,66 @@ export const ParentPortal: React.FC = () => {
 
                   <div className="grid grid-cols-3 gap-2.5">
                     <div className="bg-[#14203D] p-3 rounded-2xl border border-[#FF5B00]/40 text-center">
-                      <div className="flex items-center justify-center gap-1 text-[#FF5B00] text-sm font-black">
+                      <div className="flex items-center justify-center gap-1 text-[#FF5B00] text-sm font-black tabular-nums">
                         <Flame className="w-4 h-4 fill-[#FF5B00]" />
-                        <span>{student.streakDays}d</span>
+                        <span>{wardStudentProfile.streakDays || student.streakDays}d</span>
                       </div>
                       <span className="text-[10px] text-slate-400 block mt-1">Study Streak</span>
                     </div>
 
                     <div className="bg-[#14203D] p-3 rounded-2xl border border-[#84CC16]/40 text-center">
-                      <div className="flex items-center justify-center gap-1 text-[#84CC16] text-sm font-black font-mono">
+                      <div className="flex items-center justify-center gap-1 text-[#84CC16] text-sm font-black font-mono tabular-nums">
                         <Award className="w-4 h-4" />
-                        <span>{student.xp.toLocaleString()}</span>
+                        <span>{(wardStudentProfile.xp ?? student.xp).toLocaleString()}</span>
                       </div>
                       <span className="text-[10px] text-slate-400 block mt-1">Total XP</span>
                     </div>
 
                     <div className="bg-[#14203D] p-3 rounded-2xl border border-slate-700 text-center">
-                      <div className="flex items-center justify-center gap-1 text-white text-sm font-black font-mono">
+                      <div className="flex items-center justify-center gap-1 text-white text-sm font-black font-mono tabular-nums">
                         <BookOpen className="w-4 h-4 text-[#84CC16]" />
-                        <span>{student.downloadedSubjectIds.length}</span>
+                        <span>{wardVerifiedCount}</span>
                       </div>
-                      <span className="text-[10px] text-slate-400 block mt-1">Offline Notes</span>
+                      <span className="text-[10px] text-slate-400 block mt-1 tabular-nums">
+                        Verified ({wardVerifiedMinutes}m)
+                      </span>
                     </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-black text-white">Verified Lesson Reading Log</span>
+                      <span className="text-[11px] font-mono tabular-nums text-[#84CC16]">
+                        {wardVerifiedCount} completed
+                      </span>
+                    </div>
+                    {wardVerifiedLogs.length === 0 ? (
+                      <p className="text-xs text-slate-400 bg-[#14203D] p-3 rounded-2xl border border-slate-800">
+                        No lesson notes verified yet. Students earn Verified Read status after reading to the bottom, staying active on screen, and passing the note checkpoint.
+                      </p>
+                    ) : (
+                      wardVerifiedLogs.slice(0, 6).map(log => (
+                        <div
+                          key={`${log.noteId}-${log.completedAt}`}
+                          className="bg-[#14203D] p-3 rounded-2xl border border-slate-800 flex items-center justify-between gap-3 text-xs"
+                        >
+                          <div className="min-w-0">
+                            <span className="font-bold text-white block truncate">{log.topicTitle}</span>
+                            <span className="text-[10px] text-slate-400 block">
+                              {log.subject} · {log.classLevel} · Week {log.weekNumber}
+                            </span>
+                          </div>
+                          <div className="text-right shrink-0 font-mono tabular-nums">
+                            <span className="font-black text-[#84CC16] block">
+                              {log.checkpointScore}/{log.checkpointTotal} Check
+                            </span>
+                            <span className="text-[10px] text-slate-400 block">
+                              {log.activeSeconds}s active
+                            </span>
+                          </div>
+                        </div>
+                      ))
+                    )}
                   </div>
 
                   <div className="space-y-2">

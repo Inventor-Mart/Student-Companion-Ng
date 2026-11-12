@@ -703,16 +703,20 @@ This digital module is aligned with the Nigerian Educational Research and Develo
           )}
 
           {/* Action Trigger */}
-          <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between">
-            <div className="text-[10px] text-slate-400 flex items-center gap-1">
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Full lesson note ready for offline study</span>
+          <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between gap-2">
+            <div className="text-[11px] text-slate-300 flex items-center gap-1.5">
+              <CheckCircle2 className={`w-3.5 h-3.5 shrink-0 ${(student.completedReadNoteIds || []).includes(activeExplorerNote.id) ? 'text-[#84CC16]' : 'text-emerald-400'}`} />
+              <span>
+                {(student.completedReadNoteIds || []).includes(activeExplorerNote.id)
+                  ? 'Verified Read · Checkpoint Passed'
+                  : 'Full lesson note ready for study'}
+              </span>
             </div>
             {isExplorerNoteLocked ? (
               <button
                 type="button"
                 onClick={() => openStudentSubscriptionModal('basic')}
-                className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
+                className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0"
               >
                 <Lock className="w-3.5 h-3.5" />
                 <span>Unlock (Basic ₦8k)</span>
@@ -721,9 +725,9 @@ This digital module is aligned with the Nigerian Educational Research and Develo
               <button
                 type="button"
                 onClick={() => openNoteReader(activeExplorerNote)}
-                className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
+                className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0"
               >
-                <span>Read Full Note</span>
+                <span>{(student.completedReadNoteIds || []).includes(activeExplorerNote.id) ? 'Review Note' : 'Read Full Note'}</span>
                 <ArrowRight className="w-3.5 h-3.5" />
               </button>
             )}
@@ -1009,6 +1013,7 @@ This digital module is aligned with the Nigerian Educational Research and Develo
                   selectedTerm === 'All' ? undefined : selectedTerm
                 );
                 const isDownloaded = student.downloadedSubjectIds.includes(topic.id);
+                const isVerifiedRead = (student.completedReadNoteIds || []).includes(topic.id);
                 const isTopicLocked = !checkStudentFeatureAccess('scheme_weeks', { weekNumber: topic.weekNumber }).hasAccess;
 
                 return (
@@ -1062,21 +1067,29 @@ This digital module is aligned with the Nigerian Educational Research and Develo
                     </div>
 
                     {/* Card Footer */}
-                    <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between">
-                      <div className="flex items-center gap-1.5 text-xs text-slate-400">
-                        <Clock className="w-3.5 h-3.5" />
-                        <span>{topic.readingTimeMinutes} mins read</span>
+                    <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 text-xs text-slate-400">
+                        <span className="flex items-center gap-1 tabular-nums">
+                          <Clock className="w-3.5 h-3.5" />
+                          <span>{topic.readingTimeMinutes} min</span>
+                        </span>
+                        {isVerifiedRead && (
+                          <span className="flex items-center gap-1 text-[11px] font-semibold text-[#84CC16]">
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            <span>Verified Read</span>
+                          </span>
+                        )}
                         {isDownloaded && (
-                          <span className="text-[10px] font-semibold text-emerald-400 bg-emerald-950 px-1.5 py-0.2 rounded border border-emerald-800">
-                            Cached
+                          <span className="text-[11px] font-medium text-emerald-400">
+                            · Cached
                           </span>
                         )}
                       </div>
 
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 shrink-0">
                         <button
                           onClick={() => setActiveStudentTab('ai-coach')}
-                          className="flex items-center gap-1 px-2.5 py-1.5 bg-emerald-950/80 hover:bg-emerald-900 text-emerald-300 border border-emerald-800/60 text-xs font-semibold rounded-xl transition-colors cursor-pointer"
+                          className="flex items-center gap-1 px-2.5 py-1.5 bg-emerald-950/80 hover:bg-emerald-900 text-emerald-300 border border-emerald-800/60 text-xs font-semibold rounded-xl transition-colors cursor-pointer whitespace-nowrap"
                           title="Ask SC AI Study Coach to explain this topic"
                         >
                           <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
@@ -1087,7 +1100,7 @@ This digital module is aligned with the Nigerian Educational Research and Develo
                           <button
                             type="button"
                             onClick={() => openStudentSubscriptionModal('basic')}
-                            className="flex items-center gap-1 px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white text-xs font-semibold rounded-xl transition-colors shadow-sm cursor-pointer"
+                            className="flex items-center gap-1 px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white text-xs font-semibold rounded-xl transition-colors shadow-sm cursor-pointer whitespace-nowrap"
                           >
                             <Lock className="w-3.5 h-3.5" />
                             <span>Unlock (₦8k)</span>
@@ -1096,9 +1109,9 @@ This digital module is aligned with the Nigerian Educational Research and Develo
                           <button
                             type="button"
                             onClick={() => openNoteReader(topic)}
-                            className="flex items-center gap-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-xl transition-colors shadow-sm cursor-pointer"
+                            className="flex items-center gap-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-xl transition-colors shadow-sm cursor-pointer whitespace-nowrap"
                           >
-                            <span>Read Notes</span>
+                            <span>{isVerifiedRead ? 'Review Note' : 'Read Notes'}</span>
                             <ArrowRight className="w-3.5 h-3.5" />
                           </button>
                         )}

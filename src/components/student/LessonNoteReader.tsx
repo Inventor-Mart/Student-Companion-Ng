@@ -1,7 +1,8 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { useApp } from '../../context/AppContext';
 import { CBT_EXAMS_DATABASE } from '../../data/cbtExamData';
 import { getTopicSpecificQuiz } from '../../utils/topicQuizGenerator';
+import { playSound } from '../../utils/audioSynthesis';
 import {
   ArrowLeft,
   Download,
@@ -11,10 +12,13 @@ import {
   Clock,
   Lightbulb,
   ArrowUp,
+  ArrowDown,
   Hash,
   Binary,
   Lock,
-  Sparkles
+  Sparkles,
+  HelpCircle,
+  PauseCircle
 } from 'lucide-react';
 import {
   sanitizeCodeMath,
@@ -321,16 +325,124 @@ export const LessonNoteReader: React.FC = () => {
     closeNoteReader,
     student,
     toggleDownloadNote,
-    addStudentXP,
+    recordVerifiedLessonRead,
     startExam,
     openStudentSubscriptionModal,
     checkStudentFeatureAccess
   } = useApp();
 
-  // Generate a guaranteed 10-question topic-specific quiz based on this exact topic
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const bottomSentinelRef = useRef<HTMLDivElement | null>(null);
+
+  const [elapsedSeconds, setElapsedSeconds] = useState<number>(0);
+  const [isTabVisible, setIsTabVisible] = useState<boolean>(
+    typeof document !== 'undefined' ? document.visibilityState === 'visible' : true
+  );
+  const [hasScrolledToBottom, setHasScrolledToBottom] = useState<boolean>(false);
+  const [checkpointSelections, setCheckpointSelections] = useState<Record<number, number>>({});
+  const [justClaimedSuccess, setJustClaimedSuccess] = useState<boolean>(false);
+
+  // Generate a guaranteed topic-specific quiz based on this exact topic
   const matchingExam = useMemo(() => {
     return activeReadingNote ? getTopicSpecificQuiz(activeReadingNote) : null;
   }, [activeReadingNote]);
+
+  // Extract 1-2 crisp inline checkpoint questions for reading verification
+  const checkpointQuestions = useMemo(() => {
+    if (!matchingExam || !matchingExam.questions.length) return [];
+    return matchingExam.questions.slice(0, Math.min(2, matchingExam.questions.length));
+  }, [matchingExam]);
+
+  // Dynamic active reading target duration scaled by note length (30-90 seconds)
+  const targetSeconds = useMemo(() => {
+    if (!activeReadingNote) return 30;
+    const rawText = `${activeReadingNote.summary || ''} ${activeReadingNote.contentMarkdown || ''}`;
+    const wordCount = rawText.trim().split(/\s+/).filter(Boolean).length;
+    const calculated = Math.round(wordCount / 4.5);
+    return Math.min(90, Math.max(30, calculated));
+  }, [activeReadingNote]);
+
+  const isAlreadyVerified = Boolean(
+    activeReadingNote && (student.completedReadNoteIds || []).includes(activeReadingNote.id)
+  );
+
+  const existingReadLog = useMemo(() => {
+    if (!activeReadingNote) return undefined;
+    return (student.verifiedReadingLogs || []).find(l => l.noteId === activeReadingNote.id);
+  }, [activeReadingNote, student.verifiedReadingLogs]);
+
+  // Reset verification gates cleanly whenever switching lesson notes
+  useEffect(() => {
+    setElapsedSeconds(0);
+    setHasScrolledToBottom(false);
+    setCheckpointSelections({});
+    setJustClaimedSuccess(false);
+  }, [activeReadingNote?.id]);
+
+  // Pause reading timer whenever browser tab is hidden or minimized
+  useEffect(() => {
+    const handleVisibility = () => {
+      setIsTabVisible(document.visibilityState === 'visible');
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, []);
+
+  // Increment active on-screen reading seconds (30-90s target)
+  useEffect(() => {
+    if (!activeReadingNote || isAlreadyVerified) return;
+    const accessCheck = checkStudentFeatureAccess('scheme_weeks', { weekNumber: activeReadingNote.weekNumber });
+    if (!accessCheck.hasAccess) return;
+    if (!isTabVisible || elapsedSeconds >= targetSeconds) return;
+
+    const timerId = window.setInterval(() => {
+      setElapsedSeconds(prev => {
+        if (prev + 1 >= targetSeconds) {
+          return targetSeconds;
+        }
+        return prev + 1;
+      });
+    }, 1000);
+
+    return () => window.clearInterval(timerId);
+  }, [activeReadingNote, isAlreadyVerified, isTabVisible, elapsedSeconds, targetSeconds, checkStudentFeatureAccess]);
+
+  // Track scroll depth down to bottom sentinel (or immediate pass if note fits without scroll)
+  const checkScrollCompletion = useCallback(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    const fitsWithoutOverflow = el.scrollHeight <= el.clientHeight + 28;
+    const reachedBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 72;
+    if (fitsWithoutOverflow || reachedBottom) {
+      setHasScrolledToBottom(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!activeReadingNote || isAlreadyVerified) return;
+    const timer = window.setTimeout(checkScrollCompletion, 250);
+
+    const sentinel = bottomSentinelRef.current;
+    const container = scrollContainerRef.current;
+    if (!sentinel || !container || typeof IntersectionObserver === 'undefined') {
+      return () => window.clearTimeout(timer);
+    }
+
+    const observer = new IntersectionObserver(
+      entries => {
+        if (entries.some(entry => entry.isIntersecting)) {
+          setHasScrolledToBottom(true);
+        }
+      },
+      { root: container, threshold: 0.15 }
+    );
+    observer.observe(sentinel);
+
+    return () => {
+      window.clearTimeout(timer);
+      observer.disconnect();
+    };
+  }, [activeReadingNote?.id, isAlreadyVerified, checkScrollCompletion]);
 
   if (!activeReadingNote) return null;
 
@@ -440,14 +552,52 @@ export const LessonNoteReader: React.FC = () => {
     );
   }
 
+  const isTimerMet = isAlreadyVerified || elapsedSeconds >= targetSeconds;
+  const isScrollMet = isAlreadyVerified || hasScrolledToBottom;
+
+  const checkpointCorrectCount = checkpointQuestions.filter(
+    q => checkpointSelections[q.id] === q.correctOptionIndex
+  ).length;
+  const isCheckpointMet =
+    isAlreadyVerified ||
+    (checkpointQuestions.length > 0 && checkpointCorrectCount === checkpointQuestions.length);
+
+  const canClaimMarkRead = !isAlreadyVerified && isTimerMet && isScrollMet && isCheckpointMet;
+
+  const formatTimer = (sec: number) => {
+    const mins = Math.floor(sec / 60);
+    const rem = sec % 60;
+    return `${mins}:${rem < 10 ? '0' : ''}${rem}`;
+  };
+
+  const handleSelectCheckpointOption = (questionId: number, optionIdx: number, correctIdx: number) => {
+    if (isAlreadyVerified) return;
+    setCheckpointSelections(prev => ({ ...prev, [questionId]: optionIdx }));
+    if (optionIdx === correctIdx) {
+      playSound.correct();
+    } else {
+      playSound.buzz();
+    }
+  };
+
   const handleCompleteReading = () => {
-    addStudentXP({
-      feature: 'syllabus',
-      baseXP: 60,
-      difficulty: 'medium',
-      reason: `Completed Reading: ${activeReadingNote.topicTitle}`
+    if (!canClaimMarkRead) {
+      playSound.buzz();
+      return;
+    }
+
+    const res = recordVerifiedLessonRead({
+      topic: activeReadingNote,
+      activeSeconds: Math.max(elapsedSeconds, targetSeconds),
+      targetSeconds,
+      checkpointScore: checkpointCorrectCount,
+      checkpointTotal: checkpointQuestions.length
     });
-    closeNoteReader();
+
+    if (!res.alreadyVerified) {
+      playSound.levelUp();
+      setJustClaimedSuccess(true);
+    }
   };
 
   // Dynamic takeaway header based on class level (Strictly avoid WAEC/JAMB on non-SS3)
@@ -524,8 +674,60 @@ export const LessonNoteReader: React.FC = () => {
         </div>
       </div>
 
+      {/* Compact 3-Gate Reading Verification Strip */}
+      <div className="bg-slate-900/75 border-b border-slate-800/80 px-4 py-1.5 flex items-center justify-between gap-2 text-[11px] shrink-0 z-10 overflow-x-auto">
+        {isAlreadyVerified ? (
+          <div className="flex items-center gap-2 text-emerald-400 font-semibold whitespace-nowrap">
+            <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+            <span>
+              Verified Read · XP Claimed
+              {existingReadLog ? ` · ${existingReadLog.activeSeconds}s active study · Checkpoint ${existingReadLog.checkpointScore}/${existingReadLog.checkpointTotal}` : ''}
+            </span>
+          </div>
+        ) : (
+          <div className="flex items-center gap-3 whitespace-nowrap">
+            <span className={`flex items-center gap-1 font-medium ${isScrollMet ? 'text-emerald-400' : 'text-slate-300'}`}>
+              {isScrollMet ? <CheckCircle2 className="w-3.5 h-3.5 shrink-0" /> : <ArrowDown className="w-3.5 h-3.5 text-amber-400 shrink-0" />}
+              <span>{isScrollMet ? 'Scrolled to End' : 'Scroll to End'}</span>
+            </span>
+            <span className="text-slate-600" aria-hidden="true">·</span>
+            <span className={`flex items-center gap-1 font-mono tabular-nums font-semibold ${isTimerMet ? 'text-emerald-400' : isTabVisible ? 'text-amber-300' : 'text-orange-400'}`}>
+              {isTimerMet ? (
+                <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+              ) : isTabVisible ? (
+                <Clock className="w-3.5 h-3.5 shrink-0" />
+              ) : (
+                <PauseCircle className="w-3.5 h-3.5 shrink-0" />
+              )}
+              <span>
+                {isTimerMet
+                  ? 'Time Verified'
+                  : isTabVisible
+                  ? `${formatTimer(elapsedSeconds)} / ${formatTimer(targetSeconds)}`
+                  : 'Paused'}
+              </span>
+            </span>
+            <span className="text-slate-600" aria-hidden="true">·</span>
+            <span className={`flex items-center gap-1 font-medium ${isCheckpointMet ? 'text-emerald-400' : 'text-slate-300'}`}>
+              {isCheckpointMet ? (
+                <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+              ) : (
+                <HelpCircle className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+              )}
+              <span className="tabular-nums">
+                {isCheckpointMet ? 'Checkpoint Passed' : `Checkpoint ${checkpointCorrectCount}/${checkpointQuestions.length}`}
+              </span>
+            </span>
+          </div>
+        )}
+      </div>
+
       {/* Reader Scrollable Content */}
-      <div className="flex-1 overflow-y-auto px-4 py-5 space-y-5 touch-pan-y max-w-2xl mx-auto w-full">
+      <div
+        ref={scrollContainerRef}
+        onScroll={checkScrollCompletion}
+        className="flex-1 overflow-y-auto px-4 py-5 space-y-5 touch-pan-y max-w-2xl mx-auto w-full"
+      >
         {/* Topic Header Banner */}
         <div className="space-y-2 border-b border-slate-800/80 pb-4">
           <div className="flex items-center gap-2 text-xs text-slate-400">
@@ -1036,6 +1238,9 @@ export const LessonNoteReader: React.FC = () => {
           })}
         </div>
 
+        {/* Bottom Scroll Sentinel */}
+        <div ref={bottomSentinelRef} className="h-1 w-full" aria-hidden="true" />
+
         {/* Dynamic Key Takeaways Box */}
         <div className="bg-gradient-to-br from-slate-900 to-indigo-950/40 border border-indigo-800/50 rounded-2xl p-4 space-y-2.5">
           <div className="flex items-center justify-between gap-2">
@@ -1057,20 +1262,151 @@ export const LessonNoteReader: React.FC = () => {
           </ul>
         </div>
 
+        {/* Inline 1-2 Question Reading Checkpoint */}
+        {checkpointQuestions.length > 0 && (
+          <div className="bg-slate-900/95 border border-slate-700/80 rounded-2xl p-4 space-y-4">
+            <div className="flex items-center justify-between gap-2 pb-2.5 border-b border-slate-800">
+              <div className="flex items-center gap-2 text-xs font-bold text-white">
+                <HelpCircle className="w-4 h-4 text-[#84CC16] shrink-0" />
+                <span>Quick Reading Checkpoint</span>
+              </div>
+              <span className={`text-[11px] font-mono tabular-nums font-bold ${isCheckpointMet ? 'text-[#84CC16]' : 'text-amber-400'}`}>
+                {isAlreadyVerified
+                  ? 'Completed'
+                  : `${checkpointCorrectCount}/${checkpointQuestions.length} Correct`}
+              </span>
+            </div>
+
+            {isAlreadyVerified ? (
+              <div className="flex items-center justify-between gap-3 text-xs text-emerald-300 bg-emerald-950/40 border border-emerald-800/50 rounded-xl p-3">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-[#84CC16] shrink-0" />
+                  <span>
+                    You already passed this lesson checkpoint and claimed your reading XP.
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <p className="text-[11px] text-slate-400 leading-relaxed">
+                  Answer {checkpointQuestions.length === 1 ? 'this quick check' : 'both quick checks'} correctly to confirm your understanding and unlock Mark Read XP.
+                </p>
+
+                {checkpointQuestions.map((q, qIdx) => {
+                  const selectedIdx = checkpointSelections[q.id];
+                  const hasSelected = selectedIdx !== undefined;
+                  const isCorrect = hasSelected && selectedIdx === q.correctOptionIndex;
+
+                  return (
+                    <div key={q.id} className="space-y-2 pt-2 first:pt-0 border-t border-slate-800/70 first:border-t-0">
+                      <p className="text-xs font-semibold text-white leading-snug">
+                        <span className="text-[#84CC16] font-mono mr-1.5">Q{qIdx + 1}.</span>
+                        {cleanMathText(q.question)}
+                      </p>
+
+                      <div className="grid grid-cols-1 gap-1.5">
+                        {q.options.map((opt, optIdx) => {
+                          const isSelected = selectedIdx === optIdx;
+                          const isThisCorrect = isSelected && optIdx === q.correctOptionIndex;
+                          const isThisWrong = isSelected && optIdx !== q.correctOptionIndex;
+
+                          return (
+                            <button
+                              key={optIdx}
+                              type="button"
+                              onClick={() => handleSelectCheckpointOption(q.id, optIdx, q.correctOptionIndex)}
+                              className={`w-full text-left px-3 py-2 rounded-xl border text-xs transition-all duration-150 flex items-center justify-between gap-2 cursor-pointer ${
+                                isThisCorrect
+                                  ? 'bg-[#84CC16]/15 border-[#84CC16] text-white font-semibold'
+                                  : isThisWrong
+                                  ? 'bg-[#FF5B00]/15 border-[#FF5B00] text-orange-200'
+                                  : 'bg-slate-950/70 hover:bg-slate-800 border-slate-800 text-slate-300'
+                              }`}
+                            >
+                              <span className="leading-snug">
+                                <span className="font-mono font-bold text-slate-400 mr-2">
+                                  {String.fromCharCode(65 + optIdx)}.
+                                </span>
+                                {cleanMathText(opt)}
+                              </span>
+                              {isThisCorrect && (
+                                <span className="text-[10px] font-bold text-[#84CC16] shrink-0 flex items-center gap-1">
+                                  <Check className="w-3.5 h-3.5" />
+                                  <span>Correct</span>
+                                </span>
+                              )}
+                              {isThisWrong && (
+                                <span className="text-[10px] font-bold text-[#FF5B00] shrink-0">
+                                  Try again
+                                </span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {hasSelected && (
+                        <p className={`text-[11px] leading-relaxed ${isCorrect ? 'text-emerald-300' : 'text-orange-300'}`}>
+                          {isCorrect
+                            ? `Verified: ${cleanMathText(q.explanation)}`
+                            : 'Not quite — review the lesson note above and pick the accurate answer.'}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="h-20" />
       </div>
 
       {/* Sticky Bottom Action Bar */}
       <div className="bg-slate-900/95 backdrop-blur-md border-t border-slate-800 p-3 shrink-0 flex items-center justify-between gap-3 z-30">
-        <button
-          onClick={handleCompleteReading}
-          className="flex-1 py-2.5 px-3 rounded-xl border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-        >
-          <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-          <span>Mark Read (+50 XP)</span>
-        </button>
+        {isAlreadyVerified ? (
+          <button
+            type="button"
+            disabled
+            className="flex-1 py-2.5 px-3 rounded-xl border border-emerald-700/60 bg-emerald-950/60 text-emerald-300 text-xs font-bold flex items-center justify-center gap-1.5 cursor-default whitespace-nowrap truncate"
+          >
+            <CheckCircle2 className="w-4 h-4 text-[#84CC16] shrink-0" />
+            <span>{justClaimedSuccess ? 'Verified Read! +XP Claimed' : 'Verified Read (XP Claimed)'}</span>
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={handleCompleteReading}
+            disabled={!canClaimMarkRead}
+            className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all whitespace-nowrap truncate ${
+              canClaimMarkRead
+                ? 'bg-[#84CC16] hover:bg-[#A3E635] text-slate-950 shadow-md shadow-[#84CC16]/25 cursor-pointer'
+                : 'border border-slate-700 bg-slate-800/80 text-slate-400 cursor-not-allowed'
+            }`}
+          >
+            {canClaimMarkRead ? (
+              <>
+                <CheckCircle2 className="w-4 h-4 text-slate-950 shrink-0" />
+                <span>Mark Read (+50 XP)</span>
+              </>
+            ) : (
+              <>
+                <Lock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                <span className="tabular-nums">
+                  {!isTimerMet
+                    ? `Read ${formatTimer(targetSeconds - elapsedSeconds)} left`
+                    : !isScrollMet
+                    ? 'Scroll to Bottom'
+                    : 'Pass Checkpoint'}
+                </span>
+              </>
+            )}
+          </button>
+        )}
 
         <button
+          type="button"
           onClick={() => {
             if (matchingExam) {
               closeNoteReader();
@@ -1078,9 +1414,9 @@ export const LessonNoteReader: React.FC = () => {
             }
           }}
           disabled={!matchingExam}
-          className="flex-1 py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-bold flex items-center justify-center gap-1.5 transition-colors shadow-md shadow-emerald-950/50 cursor-pointer"
+          className="flex-1 py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-bold flex items-center justify-center gap-1.5 transition-colors shadow-md shadow-emerald-950/50 cursor-pointer whitespace-nowrap truncate"
         >
-          <Award className="w-4 h-4" />
+          <Award className="w-4 h-4 shrink-0" />
           <span>Take Topic Quiz (+300 XP)</span>
         </button>
       </div>

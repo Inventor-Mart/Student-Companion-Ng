@@ -68,6 +68,21 @@ export interface AwardXPResult {
   reason: string;
 }
 
+export interface VerifiedLessonReadLog {
+  noteId: string;
+  topicTitle: string;
+  subject: string;
+  classLevel: NigerianClassLevel;
+  term: string;
+  weekNumber: number;
+  activeSeconds: number;
+  targetSeconds: number;
+  checkpointScore: number;
+  checkpointTotal: number;
+  xpAwarded: number;
+  completedAt: string;
+}
+
 export interface StudentProfile {
   id: string;
   name: string;
@@ -82,6 +97,8 @@ export interface StudentProfile {
   uniformPhotoUrl: string | null;
   downloadedSubjectIds: string[];
   completedQuizIds: string[];
+  completedReadNoteIds?: string[];
+  verifiedReadingLogs?: VerifiedLessonReadLog[];
   schoolCode?: string;
   isSubscribed?: boolean;
   subscriptionPlan?: StudentSubscriptionPlan;
