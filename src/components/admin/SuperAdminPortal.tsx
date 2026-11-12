@@ -476,8 +476,8 @@ export const SuperAdminPortal: React.FC = () => {
 
   if (portalView === 'school_admin') {
     return (
-      <div className="flex-1 w-full flex flex-col overflow-hidden">
-        <div className="bg-[#0B1526] px-4 py-2 border-b border-slate-800 flex items-center justify-between text-xs">
+      <div className="flex-1 min-h-0 w-full flex flex-col overflow-hidden">
+        <div className="bg-[#0B1526] px-4 py-2 border-b border-slate-800 flex items-center justify-between text-xs shrink-0">
           <span className="text-slate-400">Viewing School Admin Portal</span>
           <button
             onClick={() => setPortalView('directory')}
