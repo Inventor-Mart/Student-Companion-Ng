@@ -3229,6 +3229,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setExamResults([]);
     setIsParentPinUnlocked(false);
     setTargetSignUpRole(null);
+    setIsOffline(false);
     setCurrentScreen('landing');
   };
 

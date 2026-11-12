@@ -7,7 +7,6 @@ import {
   WifiOff,
   Smartphone,
   Maximize2,
-  RotateCcw,
   GraduationCap,
   Users,
   ShieldCheck,
@@ -17,7 +16,8 @@ import {
   BookOpen,
   Home,
   TrendingUp,
-  Sparkles
+  Sparkles,
+  CheckCircle2
 } from 'lucide-react';
 
 interface InAppControlsDrawerProps {
@@ -31,7 +31,6 @@ export const InAppControlsDrawer: React.FC<InAppControlsDrawerProps> = ({
 }) => {
   const {
     currentRole,
-    setCurrentRole,
     isOffline,
     setIsOffline,
     isDeviceFrame,
@@ -52,6 +51,15 @@ export const InAppControlsDrawer: React.FC<InAppControlsDrawerProps> = ({
   } = useApp();
 
   if (!isOpen) return null;
+
+  const showOfflineToggle = currentRole === 'student' || isSuperAdmin;
+  const showDeviceFrameToggle = isSuperAdmin;
+  const showDeviceSection = showOfflineToggle || showDeviceFrameToggle;
+  const showSyllabusLink =
+    isSuperAdmin ||
+    currentRole === 'student' ||
+    currentRole === 'parent' ||
+    currentRole === 'school_admin';
 
   const roles: { id: UserRole; label: string; icon: React.ReactNode; desc: string; badge: string }[] = [
     {
@@ -98,6 +106,9 @@ export const InAppControlsDrawer: React.FC<InAppControlsDrawerProps> = ({
     }
   ];
 
+  const roleLabelFormatted =
+    (currentUserProfile?.role || currentRole).replace('_', ' ');
+
   return (
     <div className="absolute inset-0 z-50 flex overflow-hidden">
       {/* Dimmed Backdrop */}
@@ -106,19 +117,16 @@ export const InAppControlsDrawer: React.FC<InAppControlsDrawerProps> = ({
         className="absolute inset-0 bg-black/60 backdrop-blur-[2px] transition-opacity"
       />
 
-      {/* Slide-in Drawer (Anchored inside the Phone Screen) */}
+      {/* Slide-in Drawer (Anchored inside the App Viewport) */}
       <div className="relative ml-auto w-full max-w-[320px] h-full bg-[#0D1829] border-l border-[#1E304F] text-slate-100 flex flex-col shadow-2xl z-10 animate-in slide-in-from-right duration-200">
         
         {/* Drawer Header */}
-        <div className="flex items-center justify-between px-4 py-3.5 border-b border-[#1E304F] bg-[#0A1322]">
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-[#84E000]" />
-            <h3 className="text-sm font-bold text-white tracking-tight">App Controls</h3>
-          </div>
+        <div className="flex items-center justify-between px-4 py-3 border-b border-[#1E304F] bg-[#0A1322]">
+          <h3 className="text-sm font-bold text-white tracking-tight">Account Menu</h3>
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-lg bg-[#162746] hover:bg-[#1E355D] active:scale-95 flex items-center justify-center text-slate-300 hover:text-white transition-all cursor-pointer"
-            aria-label="Close menu"
+            className="w-11 h-11 rounded-xl bg-[#162746] hover:bg-[#1E355D] active:scale-95 flex items-center justify-center text-slate-300 hover:text-white transition-all cursor-pointer"
+            aria-label="Close Account Menu"
           >
             <X className="w-4 h-4" />
           </button>
@@ -128,33 +136,33 @@ export const InAppControlsDrawer: React.FC<InAppControlsDrawerProps> = ({
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-5 text-xs">
           
           {/* Active Account Card */}
-          <div className="p-3 rounded-2xl bg-[#091222] border border-[#1E304F]">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
+          <div className="p-3.5 rounded-2xl bg-[#091222] border border-[#1E304F]">
+            <span className="text-[10px] font-bold tracking-wider text-slate-400 block mb-1">
               Active Account
             </span>
-            <div className="flex items-center justify-between">
-              <div>
-                <h4 className="font-bold text-white text-sm">
+            <div className="flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <h4 className="font-bold text-white text-sm truncate">
                   {currentUserProfile?.fullName || (student?.name && student.name !== '' ? student.name : 'Registered Member')}
                 </h4>
-                <p className="text-[11px] text-slate-400 capitalize">
-                  {currentUserProfile?.role || currentRole} • {currentRole === 'student' ? student?.classLevel || 'Student' : 'Portal Access'}
+                <p className="text-[11px] text-slate-400 capitalize truncate">
+                  {roleLabelFormatted} • {currentRole === 'student' ? student?.classLevel || 'Student' : 'Portal Access'}
                 </p>
               </div>
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#84E000]/15 text-[#84E000] border border-[#84E000]/30 uppercase">
+              <span className="text-[11px] font-bold text-[#84E000] shrink-0">
                 Active
               </span>
             </div>
           </div>
 
-          {/* Section 1: Active Role & Security Gate */}
+          {/* Section 1: Active Portal & Security Gate */}
           <div>
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-2 px-1">
+            <span className="text-[10px] font-bold tracking-wider text-slate-400 block mb-2 px-1">
               Active Portal & Security Gate
             </span>
-            <div className="p-3 rounded-2xl bg-[#101C31] border border-[#1C2F4D] space-y-2">
+            <div className="p-3.5 rounded-2xl bg-[#101C31] border border-[#1C2F4D] space-y-2.5">
               <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-[#15253F] border border-emerald-500/40 flex items-center justify-center text-emerald-400">
+                <div className="w-9 h-9 rounded-xl bg-[#15253F] border border-emerald-500/40 flex items-center justify-center text-emerald-400 shrink-0">
                   {currentRole === 'student' && <GraduationCap className="w-4 h-4" />}
                   {currentRole === 'growth_partner' && <TrendingUp className="w-4 h-4 text-emerald-400" />}
                   {currentRole === 'parent' && <ShieldCheck className="w-4 h-4 text-[#FF5B00]" />}
@@ -162,8 +170,8 @@ export const InAppControlsDrawer: React.FC<InAppControlsDrawerProps> = ({
                   {currentRole === 'school_admin' && <Building2 className="w-4 h-4 text-purple-400" />}
                   {currentRole === 'admin' && <Sparkles className="w-4 h-4 text-amber-400" />}
                 </div>
-                <div>
-                  <span className="font-bold text-white text-xs block capitalize">
+                <div className="min-w-0">
+                  <span className="font-bold text-white text-xs block truncate">
                     {currentRole === 'student'
                       ? 'Student Learning Portal'
                       : currentRole === 'growth_partner'
@@ -176,16 +184,17 @@ export const InAppControlsDrawer: React.FC<InAppControlsDrawerProps> = ({
                       ? 'School Admin Portal'
                       : 'Super Admin Console'}
                   </span>
-                  <span className="text-[10px] text-emerald-400 font-semibold">
-                    ✓ Authenticated Access
+                  <span className="text-[11px] text-emerald-400 font-semibold flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3 shrink-0" />
+                    <span>Authenticated Access</span>
                   </span>
                 </div>
               </div>
 
               {isSuperAdmin ? (
-                <div className="space-y-2 pt-1 border-t border-slate-800">
+                <div className="space-y-2 pt-2 border-t border-slate-800">
                   <div className="flex items-center justify-between text-[10px]">
-                    <span className="text-emerald-400 font-bold">👑 Super Admin Mode Active</span>
+                    <span className="text-emerald-400 font-bold">Super Admin Mode Active</span>
                     <span className="text-slate-400 font-mono">martorefe@gmail.com</span>
                   </div>
                   <p className="text-[10px] text-slate-300">
@@ -200,14 +209,14 @@ export const InAppControlsDrawer: React.FC<InAppControlsDrawerProps> = ({
                           switchRole(r.id);
                           onClose();
                         }}
-                        className={`flex items-center gap-1.5 p-2 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
+                        className={`flex items-center gap-1.5 px-2.5 min-h-[44px] rounded-xl text-xs font-semibold border transition-all cursor-pointer whitespace-nowrap ${
                           currentRole === r.id
                             ? 'bg-emerald-950 border-emerald-500 text-emerald-300 font-bold'
                             : 'bg-[#15253F] hover:bg-[#1D3254] border-slate-800 text-slate-200'
                         }`}
                       >
                         {r.icon}
-                        <span>{r.label}</span>
+                        <span className="truncate">{r.label}</span>
                       </button>
                     ))}
                   </div>
@@ -217,29 +226,16 @@ export const InAppControlsDrawer: React.FC<InAppControlsDrawerProps> = ({
                         stopImpersonation();
                         onClose();
                       }}
-                      className="w-full mt-2 py-1.5 px-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-extrabold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                      className="w-full mt-2 min-h-[44px] px-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-extrabold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
                     >
                       <span>Exit Impersonation (Back to Admin)</span>
                     </button>
                   )}
                 </div>
               ) : (
-                <>
-                  <p className="text-[10px] text-slate-400 leading-relaxed pt-1 border-t border-slate-800">
-                    To access another portal (e.g. as a Student, Parent, Tutor, or School Admin), you must sign in with an account registered for that role.
-                  </p>
-
-                  <button
-                    onClick={() => {
-                      signOutApp();
-                      onClose();
-                    }}
-                    className="w-full mt-1 py-1.5 px-3 rounded-xl bg-[#15253F] hover:bg-[#1D3254] border border-[#233C68] text-slate-200 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-                  >
-                    <LogOut className="w-3.5 h-3.5 text-slate-400" />
-                    <span>Switch to Another Persona / Account</span>
-                  </button>
-                </>
+                <p className="text-[11px] text-slate-400 leading-relaxed pt-2 border-t border-slate-800">
+                  To access another portal (Student, Parent, Tutor, Growth Partner, or School Admin), sign out below and sign in with an account registered for that role.
+                </p>
               )}
             </div>
           </div>
@@ -247,13 +243,15 @@ export const InAppControlsDrawer: React.FC<InAppControlsDrawerProps> = ({
           {/* Student Class Switcher inside Menu Drawer */}
           {currentRole === 'student' && (
             <div>
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-2 px-1">
+              <span className="text-[10px] font-bold tracking-wider text-slate-400 block mb-2 px-1">
                 Active Secondary Class Level
               </span>
-              <div className="p-3 rounded-2xl bg-[#101C31] border border-[#1C2F4D]">
-                <div className="flex items-center justify-between text-xs mb-2">
-                  <span className="text-slate-300 font-semibold">Active Class: <strong className="text-[#84E000]">{student.classLevel}</strong></span>
-                  <span className="text-[10px] text-slate-400">All 6 Unlocked</span>
+              <div className="p-3.5 rounded-2xl bg-[#101C31] border border-[#1C2F4D]">
+                <div className="flex items-center justify-between text-xs mb-2.5">
+                  <span className="text-slate-300 font-semibold">
+                    Active Class: <strong className="text-[#84E000]">{student.classLevel}</strong>
+                  </span>
+                  <span className="text-[11px] text-slate-400">All 6 Unlocked</span>
                 </div>
                 <div className="grid grid-cols-3 gap-1.5">
                   {(['JSS 1', 'JSS 2', 'JSS 3', 'SS 1', 'SS 2', 'SS 3'] as NigerianClassLevel[]).map(lvl => (
@@ -261,7 +259,7 @@ export const InAppControlsDrawer: React.FC<InAppControlsDrawerProps> = ({
                       key={lvl}
                       type="button"
                       onClick={() => updateStudentClass(lvl, lvl.startsWith('JSS') ? 'Junior' : (student.stream === 'Junior' ? 'Science' : (student.stream || 'Science')))}
-                      className={`py-1.5 px-2 rounded-xl text-xs font-bold transition-all text-center cursor-pointer ${
+                      className={`min-h-[44px] px-2 rounded-xl text-xs font-bold transition-all text-center cursor-pointer whitespace-nowrap ${
                         student.classLevel === lvl
                           ? 'bg-[#84E000] text-slate-950 font-black shadow-sm ring-1 ring-white'
                           : 'bg-[#15253F] hover:bg-[#1D3254] text-slate-200 border border-[#223B63]'
@@ -275,72 +273,78 @@ export const InAppControlsDrawer: React.FC<InAppControlsDrawerProps> = ({
             </div>
           )}
 
-          {/* Section 2: Device & Network Settings */}
-          <div>
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-2 px-1">
-              Device & Network Settings
-            </span>
-            <div className="space-y-2">
-              {/* Offline Mode Toggle */}
-              <button
-                onClick={() => setIsOffline((prev) => !prev)}
-                className={`w-full flex items-center justify-between p-2.5 rounded-xl border transition-all cursor-pointer ${
-                  isOffline
-                    ? 'bg-amber-950/40 border-amber-600/50 text-amber-200'
-                    : 'bg-[#101C31] border-[#1C2F4D] text-slate-200 hover:bg-[#162846]'
-                }`}
-              >
-                <div className="flex items-center gap-2.5">
-                  <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${isOffline ? 'bg-amber-900/40 text-amber-400' : 'bg-[#0C1525] text-emerald-400'}`}>
-                    {isOffline ? <WifiOff className="w-4 h-4" /> : <Wifi className="w-4 h-4" />}
-                  </div>
-                  <div className="text-left">
-                    <span className="font-semibold block">
-                      {isOffline ? 'Offline Mode (Active)' : 'Online Mode'}
-                    </span>
-                    <span className="text-[10px] text-slate-400">
-                      {isOffline ? 'Cached offline curriculum & CBT access' : 'Connected to high-speed cloud network'}
-                    </span>
-                  </div>
-                </div>
-                <div className={`w-9 h-5 rounded-full p-0.5 transition-colors ${isOffline ? 'bg-amber-500' : 'bg-slate-700'}`}>
-                  <div className={`w-4 h-4 rounded-full bg-white transition-transform ${isOffline ? 'translate-x-4' : 'translate-x-0'}`} />
-                </div>
-              </button>
+          {/* Section 2: Device & Network Settings (Student Offline Mode & Super Admin Controls) */}
+          {showDeviceSection && (
+            <div>
+              <span className="text-[10px] font-bold tracking-wider text-slate-400 block mb-2 px-1">
+                Device & Network Settings
+              </span>
+              <div className="space-y-2">
+                {/* Offline Mode Toggle (Student & Super Admin only) */}
+                {showOfflineToggle && (
+                  <button
+                    onClick={() => setIsOffline((prev) => !prev)}
+                    className={`w-full flex items-center justify-between p-3 min-h-[48px] rounded-xl border transition-all cursor-pointer ${
+                      isOffline
+                        ? 'bg-amber-950/40 border-amber-600/50 text-amber-200'
+                        : 'bg-[#101C31] border-[#1C2F4D] text-slate-200 hover:bg-[#162846]'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${isOffline ? 'bg-amber-900/40 text-amber-400' : 'bg-[#0C1525] text-emerald-400'}`}>
+                        {isOffline ? <WifiOff className="w-4 h-4" /> : <Wifi className="w-4 h-4" />}
+                      </div>
+                      <div className="text-left">
+                        <span className="font-semibold block">
+                          {isOffline ? 'Offline Mode (Active)' : 'Online Mode'}
+                        </span>
+                        <span className="text-[10px] text-slate-400">
+                          {isOffline ? 'Cached offline curriculum & CBT access' : 'Connected to high-speed cloud network'}
+                        </span>
+                      </div>
+                    </div>
+                    <div className={`w-9 h-5 rounded-full p-0.5 transition-colors shrink-0 ${isOffline ? 'bg-amber-500' : 'bg-slate-700'}`}>
+                      <div className={`w-4 h-4 rounded-full bg-white transition-transform ${isOffline ? 'translate-x-4' : 'translate-x-0'}`} />
+                    </div>
+                  </button>
+                )}
 
-              {/* Viewport Frame Toggle */}
-              <button
-                onClick={() => setIsDeviceFrame((prev) => !prev)}
-                className="w-full flex items-center justify-between p-2.5 rounded-xl border border-[#1C2F4D] bg-[#101C31] hover:bg-[#162846] text-slate-200 transition-all cursor-pointer"
-              >
-                <div className="flex items-center gap-2.5">
-                  <div className="w-7 h-7 rounded-lg bg-[#0C1525] flex items-center justify-center text-slate-300">
-                    {isDeviceFrame ? <Maximize2 className="w-4 h-4" /> : <Smartphone className="w-4 h-4 text-emerald-400" />}
-                  </div>
-                  <div className="text-left">
-                    <span className="font-semibold block">
-                      {isDeviceFrame ? 'Full-Screen View' : 'Android Frame View'}
-                    </span>
-                    <span className="text-[10px] text-slate-400">
-                      Toggle responsive desktop framing
-                    </span>
-                  </div>
-                </div>
-                <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
-              </button>
+                {/* Viewport Frame Toggle (Super Admin developer/preview only) */}
+                {showDeviceFrameToggle && (
+                  <button
+                    onClick={() => setIsDeviceFrame((prev) => !prev)}
+                    className="w-full flex items-center justify-between p-3 min-h-[48px] rounded-xl border border-[#1C2F4D] bg-[#101C31] hover:bg-[#162846] text-slate-200 transition-all cursor-pointer"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-lg bg-[#0C1525] flex items-center justify-center text-slate-300 shrink-0">
+                        {isDeviceFrame ? <Maximize2 className="w-4 h-4" /> : <Smartphone className="w-4 h-4 text-emerald-400" />}
+                      </div>
+                      <div className="text-left">
+                        <span className="font-semibold block">
+                          {isDeviceFrame ? 'Full-Screen View' : 'Android Frame View'}
+                        </span>
+                        <span className="text-[10px] text-slate-400">
+                          Toggle responsive desktop framing
+                        </span>
+                      </div>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-slate-500 shrink-0" />
+                  </button>
+                )}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Section 3: Cloud Sync & Account */}
           <div>
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-2 px-1">
+            <span className="text-[10px] font-bold tracking-wider text-slate-400 block mb-2 px-1">
               Account & Cloud Sync
             </span>
-            <div className="p-2.5 rounded-xl border border-[#1C2F4D] bg-[#101C31]">
+            <div className="p-3 rounded-xl border border-[#1C2F4D] bg-[#101C31]">
               {currentUser ? (
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 truncate">
-                    <div className="w-7 h-7 rounded-full bg-emerald-600/30 border border-emerald-500/50 flex items-center justify-center text-emerald-300 font-bold text-xs shrink-0">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2.5 truncate">
+                    <div className="w-8 h-8 rounded-full bg-emerald-600/30 border border-emerald-500/50 flex items-center justify-center text-emerald-300 font-bold text-xs shrink-0">
                       {(currentUser.displayName || currentUser.email || 'U')[0].toUpperCase()}
                     </div>
                     <div className="truncate">
@@ -354,17 +358,17 @@ export const InAppControlsDrawer: React.FC<InAppControlsDrawerProps> = ({
                   </div>
                   <button
                     onClick={logoutUser}
-                    className="p-1.5 text-slate-400 hover:text-rose-400 transition-colors"
-                    title="Sign Out"
+                    className="px-2.5 min-h-[36px] rounded-lg bg-[#15253F] hover:bg-[#1D3254] border border-[#233C68] text-[11px] font-semibold text-slate-300 hover:text-white transition-colors shrink-0 cursor-pointer whitespace-nowrap"
+                    title="Disconnect Google Sync"
                   >
-                    <LogOut className="w-4 h-4" />
+                    Unlink
                   </button>
                 </div>
               ) : (
                 <button
                   onClick={loginWithGoogle}
                   disabled={authLoading}
-                  className="w-full py-2 px-3 rounded-lg bg-[#162746] hover:bg-[#1E355D] border border-[#233C68] flex items-center justify-center gap-2 text-white font-medium transition-all cursor-pointer"
+                  className="w-full min-h-[44px] px-3 rounded-lg bg-[#162746] hover:bg-[#1E355D] border border-[#233C68] flex items-center justify-center gap-2 text-white font-medium transition-all cursor-pointer"
                 >
                   <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24">
                     <path
@@ -390,42 +394,44 @@ export const InAppControlsDrawer: React.FC<InAppControlsDrawerProps> = ({
             </div>
           </div>
 
-          {/* Section 4: Quick Navigation & Reset */}
+          {/* Section 4: Navigation & Single Log Out */}
           <div>
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-2 px-1">
+            <span className="text-[10px] font-bold tracking-wider text-slate-400 block mb-2 px-1">
               Navigation
             </span>
-            <div className="space-y-1.5">
+            <div className="space-y-2">
               <button
                 onClick={() => {
                   setCurrentScreen('landing');
                   onClose();
                 }}
-                className="w-full flex items-center gap-2.5 p-2 rounded-xl bg-[#101C31] hover:bg-[#162846] border border-[#1C2F4D] text-slate-200 transition-all cursor-pointer"
+                className="w-full flex items-center gap-2.5 px-3 min-h-[44px] rounded-xl bg-[#101C31] hover:bg-[#162846] border border-[#1C2F4D] text-slate-200 transition-all cursor-pointer"
               >
-                <Home className="w-4 h-4 text-[#84E000]" />
+                <Home className="w-4 h-4 text-[#84E000] shrink-0" />
                 <span className="font-semibold">Return to Landing Page</span>
               </button>
 
-              <button
-                onClick={() => {
-                  setCurrentScreen('know_more');
-                  onClose();
-                }}
-                className="w-full flex items-center gap-2.5 p-2 rounded-xl bg-[#101C31] hover:bg-[#162846] border border-[#1C2F4D] text-slate-200 transition-all cursor-pointer"
-              >
-                <BookOpen className="w-4 h-4 text-sky-400" />
-                <span className="font-semibold">Open "Know More" Syllabus</span>
-              </button>
+              {showSyllabusLink && (
+                <button
+                  onClick={() => {
+                    setCurrentScreen('know_more');
+                    onClose();
+                  }}
+                  className="w-full flex items-center gap-2.5 px-3 min-h-[44px] rounded-xl bg-[#101C31] hover:bg-[#162846] border border-[#1C2F4D] text-slate-200 transition-all cursor-pointer"
+                >
+                  <BookOpen className="w-4 h-4 text-sky-400 shrink-0" />
+                  <span className="font-semibold">Open "Know More" Syllabus</span>
+                </button>
+              )}
 
               <button
                 onClick={() => {
                   signOutApp();
                   onClose();
                 }}
-                className="w-full flex items-center gap-2.5 p-2 rounded-xl bg-rose-950/20 hover:bg-rose-950/40 border border-rose-900/50 text-rose-300 transition-all cursor-pointer mt-2"
+                className="w-full flex items-center gap-2.5 px-3 min-h-[44px] rounded-xl bg-rose-950/20 hover:bg-rose-950/40 border border-rose-900/50 text-rose-300 transition-all cursor-pointer mt-2"
               >
-                <LogOut className="w-4 h-4 text-rose-400" />
+                <LogOut className="w-4 h-4 text-rose-400 shrink-0" />
                 <span className="font-semibold">Log Out / Switch Account</span>
               </button>
             </div>
@@ -435,8 +441,8 @@ export const InAppControlsDrawer: React.FC<InAppControlsDrawerProps> = ({
 
         {/* Drawer Footer */}
         <div className="px-4 py-3 border-t border-[#1E304F] bg-[#0A1322] flex items-center justify-between text-[11px] text-slate-400">
-          <span>Student Companion v2.0</span>
-          <span className="text-[#84E000] font-semibold">🇳🇬 Nigeria</span>
+          <span>Student Companion</span>
+          <span className="text-[#84E000] font-semibold">Nigeria</span>
         </div>
       </div>
     </div>

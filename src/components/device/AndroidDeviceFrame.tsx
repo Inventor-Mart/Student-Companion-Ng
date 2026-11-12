@@ -38,15 +38,17 @@ export const AndroidDeviceFrame: React.FC<{ children: React.ReactNode }> = ({ ch
 
           <div className="flex items-center gap-2.5">
             {currentRole === 'student' && <HeaderClassSwitcher />}
-            {isOffline && (
-              <span className="flex items-center gap-1.5 text-xs text-amber-400 bg-amber-950/60 border border-amber-800/60 px-2.5 py-1 rounded-full font-medium">
+            {isOffline && (currentRole === 'student' || isSuperAdmin) && (
+              <span className="flex items-center gap-1.5 text-xs text-amber-400 bg-amber-950/60 border border-amber-800/60 px-2.5 py-1 rounded-full font-medium whitespace-nowrap shrink-0">
                 <WifiOff className="w-3.5 h-3.5" />
                 Offline
               </span>
             )}
             <button
               onClick={() => setIsControlsOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#14233C] hover:bg-[#1D3254] active:scale-95 text-slate-200 hover:text-white border border-[#223B63] transition-all cursor-pointer text-xs font-semibold"
+              className="flex items-center gap-1.5 px-3 min-h-[40px] rounded-lg bg-[#14233C] hover:bg-[#1D3254] active:scale-95 text-slate-200 hover:text-white border border-[#223B63] transition-all cursor-pointer text-xs font-semibold whitespace-nowrap shrink-0"
+              title="Open Account Menu"
+              aria-label="Open Account Menu"
             >
               <SlidersHorizontal className="w-3.5 h-3.5 text-[#84E000]" />
               <span>Menu</span>
@@ -88,7 +90,7 @@ export const AndroidDeviceFrame: React.FC<{ children: React.ReactNode }> = ({ ch
 
             {/* Status Icons */}
             <div className="flex items-center gap-1.5 text-slate-400">
-              {isOffline ? (
+              {isOffline && (currentRole === 'student' || isSuperAdmin) ? (
                 <WifiOff className="w-3.5 h-3.5 text-amber-400" />
               ) : (
                 <Wifi className="w-3.5 h-3.5 text-slate-300" />
@@ -120,8 +122,9 @@ export const AndroidDeviceFrame: React.FC<{ children: React.ReactNode }> = ({ ch
               {/* In-App Menu Drawer Trigger */}
               <button
                 onClick={() => setIsControlsOpen(true)}
-                className="flex items-center gap-1 px-2 py-1 rounded-lg bg-[#14233C] hover:bg-[#1D3254] active:scale-95 text-slate-200 hover:text-white border border-[#223B63] transition-all cursor-pointer text-[11px] font-semibold"
-                title="Open Role Switcher & Controls"
+                className="flex items-center gap-1 px-2.5 min-h-[36px] rounded-lg bg-[#14233C] hover:bg-[#1D3254] active:scale-95 text-slate-200 hover:text-white border border-[#223B63] transition-all cursor-pointer text-[11px] font-semibold whitespace-nowrap shrink-0"
+                title="Open Account Menu"
+                aria-label="Open Account Menu"
               >
                 <SlidersHorizontal className="w-3.5 h-3.5 text-[#84E000]" />
                 <span>Menu</span>
