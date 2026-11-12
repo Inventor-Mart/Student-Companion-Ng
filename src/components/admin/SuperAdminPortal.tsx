@@ -29,7 +29,10 @@ import {
   Trash2,
   ShieldAlert,
   Radio,
-  FileText
+  FileText,
+  GitBranch,
+  RefreshCw,
+  UploadCloud
 } from 'lucide-react';
 import { SchoolAdminPortal } from './SchoolAdminPortal';
 import { OTACompetitionManager } from './OTACompetitionManager';
@@ -50,6 +53,7 @@ export const SuperAdminPortal: React.FC = () => {
     isSuperAdmin,
     isFirebaseConnected,
     currentRole,
+    currentUserProfile,
     getSchoolAccreditationMetrics
   } = useApp();
 
@@ -58,6 +62,81 @@ export const SuperAdminPortal: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedUserForEdit, setSelectedUserForEdit] = useState<RegisteredUserProfile | null>(null);
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
+
+  // GitHub Repository Sync state
+  const [gitStatus, setGitStatus] = useState<{
+    configured: boolean;
+    repo: string;
+    branch: string;
+    aheadCount: number;
+    latestCommit: string;
+    hasUncommitted: boolean;
+  } | null>(null);
+  const [isLoadingGitStatus, setIsLoadingGitStatus] = useState<boolean>(false);
+  const [isPushingGit, setIsPushingGit] = useState<boolean>(false);
+  const [gitSyncFeedback, setGitSyncFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  const authorizedAdminEmail = currentUserProfile?.email || (isSuperAdmin ? 'martorefe@gmail.com' : '');
+
+  const fetchGitStatus = React.useCallback(async () => {
+    if (!authorizedAdminEmail) return;
+    setIsLoadingGitStatus(true);
+    try {
+      const res = await fetch(`/api/git/status?adminEmail=${encodeURIComponent(authorizedAdminEmail)}`);
+      const data = await res.json();
+      if (data.success) {
+        setGitStatus({
+          configured: data.configured,
+          repo: data.repo,
+          branch: data.branch,
+          aheadCount: data.aheadCount,
+          latestCommit: data.latestCommit,
+          hasUncommitted: data.hasUncommitted
+        });
+      }
+    } catch {
+      // Ignore transient network errors on passive status check
+    } finally {
+      setIsLoadingGitStatus(false);
+    }
+  }, [authorizedAdminEmail]);
+
+  React.useEffect(() => {
+    fetchGitStatus();
+  }, [fetchGitStatus]);
+
+  const handleSyncToGithub = async () => {
+    if (!authorizedAdminEmail) return;
+    setIsPushingGit(true);
+    setGitSyncFeedback(null);
+    try {
+      const res = await fetch('/api/git/push', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ adminEmail: authorizedAdminEmail })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setGitSyncFeedback({
+          type: 'success',
+          message: data.message || `Synced commits to ${data.repo} (${data.branch}).`
+        });
+        await fetchGitStatus();
+      } else {
+        setGitSyncFeedback({
+          type: 'error',
+          message: data.error || 'Failed to push updates to GitHub.'
+        });
+      }
+    } catch (err: any) {
+      setGitSyncFeedback({
+        type: 'error',
+        message: err?.message || 'Network error syncing repository.'
+      });
+    } finally {
+      setIsPushingGit(false);
+    }
+  };
 
   // Forum moderation state
   const [forumReports, setForumReports] = useState<ForumReport[]>(() => getStoredForumReports());
@@ -518,6 +597,78 @@ export const SuperAdminPortal: React.FC = () => {
             <div className="text-[10px] text-slate-500">JSS1, JSS2, JSS3 English</div>
           </div>
         </div>
+      </div>
+
+      {/* GitHub Repository Sync Panel */}
+      <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-[#0D1527] border border-slate-700 flex items-center justify-center text-[#84E000] shrink-0">
+              <GitBranch className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-sm font-bold text-white tracking-tight">GitHub Repository Sync</h2>
+                <span className="text-[11px] font-mono text-slate-300">
+                  {gitStatus?.repo || 'Inventor-Mart/Student-Companion-Ng'} · {gitStatus?.branch || 'main'}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 text-[11px] text-slate-400 mt-0.5 font-mono tabular-nums">
+                <span>HEAD: {gitStatus?.latestCommit || '...'}</span>
+                <span aria-hidden="true">·</span>
+                <span className={gitStatus && gitStatus.aheadCount > 0 ? 'text-[#FF5B00] font-bold' : 'text-emerald-400'}>
+                  {gitStatus ? `${gitStatus.aheadCount} commit(s) ahead` : 'Checking status...'}
+                </span>
+                <span aria-hidden="true">·</span>
+                <span className={gitStatus?.configured ? 'text-[#84E000]' : 'text-amber-400'}>
+                  {gitStatus?.configured ? 'Secrets Token Active' : 'Token Pending'}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={fetchGitStatus}
+              disabled={isLoadingGitStatus}
+              className="px-3 py-2 rounded-xl bg-slate-950 hover:bg-slate-800 border border-slate-700 text-slate-300 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isLoadingGitStatus ? 'animate-spin' : ''}`} />
+              <span>Refresh</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleSyncToGithub}
+              disabled={isPushingGit}
+              className="px-4 py-2 rounded-xl bg-[#84E000] hover:bg-[#75c900] text-slate-950 text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer shadow-sm disabled:opacity-50"
+            >
+              {isPushingGit ? (
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <UploadCloud className="w-3.5 h-3.5" />
+              )}
+              <span>{isPushingGit ? 'Pushing...' : 'Sync to GitHub (main)'}</span>
+            </button>
+          </div>
+        </div>
+
+        {gitSyncFeedback && (
+          <div
+            className={`p-3 rounded-xl border text-xs flex items-center gap-2 ${
+              gitSyncFeedback.type === 'success'
+                ? 'bg-emerald-950/70 border-emerald-700 text-emerald-200'
+                : 'bg-rose-950/70 border-rose-700 text-rose-200'
+            }`}
+          >
+            {gitSyncFeedback.type === 'success' ? (
+              <CheckCircle2 className="w-4 h-4 text-[#84E000] shrink-0" />
+            ) : (
+              <XCircle className="w-4 h-4 text-rose-400 shrink-0" />
+            )}
+            <span>{gitSyncFeedback.message}</span>
+          </div>
+        )}
       </div>
 
       {/* User Directory Section */}

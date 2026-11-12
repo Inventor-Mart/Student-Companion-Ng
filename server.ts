@@ -2,6 +2,8 @@ import express from 'express';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 import { GoogleGenAI, Type } from '@google/genai';
 import { Resend } from 'resend';
 import nodemailer from 'nodemailer';
@@ -1873,6 +1875,152 @@ app.post('/api/paystack/verify-payment', async (req, res) => {
   }
 });
 
+// =========================================================================
+// GIT HUB REPOSITORY SYNC ROUTES (Authorized Existing Super Admins Only)
+// =========================================================================
+const execFileAsync = promisify(execFile);
+const AUTHORIZED_GIT_ADMINS = ['martorefe@gmail.com', 'wowrealities@gmail.com'];
+const TARGET_GITHUB_OWNER = 'Inventor-Mart';
+const TARGET_GITHUB_REPO = 'Student-Companion-Ng';
+const TARGET_GITHUB_BRANCH = 'main';
+
+function scrubGitToken(text: string, token: string): string {
+  if (!text) return '';
+  if (!token) return text;
+  return text.split(token).join('***');
+}
+
+app.get('/api/git/status', async (req, res) => {
+  const adminEmail = String(req.query.adminEmail || '').toLowerCase().trim();
+  if (!adminEmail || !AUTHORIZED_GIT_ADMINS.includes(adminEmail)) {
+    return res.status(403).json({
+      success: false,
+      error: 'Unauthorized: Super Admin privileges required.',
+    });
+  }
+
+  const token = (process.env.GITHUB_TOKEN || process.env.GH_TOKEN || '').trim();
+  try {
+    const [branchOut, headOut, statusOut] = await Promise.all([
+      execFileAsync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: __dirname }),
+      execFileAsync('git', ['rev-parse', '--short', 'HEAD'], { cwd: __dirname }),
+      execFileAsync('git', ['status', '--porcelain'], { cwd: __dirname }),
+    ]);
+
+    let aheadCount = 0;
+    try {
+      const aheadOut = await execFileAsync(
+        'git',
+        ['rev-list', '--count', `origin/${TARGET_GITHUB_BRANCH}..HEAD`],
+        { cwd: __dirname }
+      );
+      aheadCount = Number(aheadOut.stdout.trim()) || 0;
+    } catch {
+      aheadCount = 0;
+    }
+
+    return res.json({
+      success: true,
+      configured: Boolean(token),
+      repo: `${TARGET_GITHUB_OWNER}/${TARGET_GITHUB_REPO}`,
+      branch: branchOut.stdout.trim() || TARGET_GITHUB_BRANCH,
+      aheadCount,
+      latestCommit: headOut.stdout.trim(),
+      hasUncommitted: Boolean(statusOut.stdout.trim()),
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      success: false,
+      error: scrubGitToken(err?.message || 'Unable to inspect local git repository.', token),
+    });
+  }
+});
+
+app.post('/api/git/push', async (req, res) => {
+  const adminEmail = String(req.body?.adminEmail || '').toLowerCase().trim();
+  if (!adminEmail || !AUTHORIZED_GIT_ADMINS.includes(adminEmail)) {
+    return res.status(403).json({
+      success: false,
+      error: 'Unauthorized: Super Admin privileges required to sync repository.',
+    });
+  }
+
+  const token = (process.env.GITHUB_TOKEN || process.env.GH_TOKEN || '').trim();
+  if (!token) {
+    return res.status(400).json({
+      success: false,
+      error:
+        'GITHUB_TOKEN is not available in the running server environment. Ensure GITHUB_TOKEN is saved in Secrets and restart the dev server.',
+    });
+  }
+
+  try {
+    const statusOut = await execFileAsync('git', ['status', '--porcelain'], { cwd: __dirname });
+    if (statusOut.stdout.trim()) {
+      const commitMsg =
+        String(req.body?.commitMessage || '').trim() ||
+        `chore: sync Student Companion updates [${new Date().toISOString()}]`;
+      await execFileAsync('git', ['add', '-A'], { cwd: __dirname });
+      await execFileAsync('git', ['commit', '-m', commitMsg], { cwd: __dirname });
+    }
+
+    let aheadCount = 0;
+    try {
+      const aheadOut = await execFileAsync(
+        'git',
+        ['rev-list', '--count', `origin/${TARGET_GITHUB_BRANCH}..HEAD`],
+        { cwd: __dirname }
+      );
+      aheadCount = Number(aheadOut.stdout.trim()) || 0;
+    } catch {
+      aheadCount = 0;
+    }
+
+    const authenticatedUrl = `https://x-access-token:${encodeURIComponent(token)}@github.com/${TARGET_GITHUB_OWNER}/${TARGET_GITHUB_REPO}.git`;
+
+    await execFileAsync('git', ['push', authenticatedUrl, TARGET_GITHUB_BRANCH], {
+      cwd: __dirname,
+      env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+      timeout: 45000,
+    });
+
+    // Update local origin/main tracking ref so ahead count reflects pushed state
+    try {
+      await execFileAsync('git', ['fetch', authenticatedUrl, TARGET_GITHUB_BRANCH], {
+        cwd: __dirname,
+        env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+        timeout: 20000,
+      });
+      await execFileAsync(
+        'git',
+        ['update-ref', `refs/remotes/origin/${TARGET_GITHUB_BRANCH}`, 'HEAD'],
+        { cwd: __dirname }
+      );
+    } catch {
+      // Non-fatal if remote tracking ref update fails after successful push
+    }
+
+    const headOut = await execFileAsync('git', ['rev-parse', '--short', 'HEAD'], { cwd: __dirname });
+
+    return res.json({
+      success: true,
+      repo: `${TARGET_GITHUB_OWNER}/${TARGET_GITHUB_REPO}`,
+      branch: TARGET_GITHUB_BRANCH,
+      pushedCommits: aheadCount,
+      latestCommit: headOut.stdout.trim(),
+      message:
+        aheadCount > 0
+          ? `Successfully pushed ${aheadCount} commit(s) to ${TARGET_GITHUB_OWNER}/${TARGET_GITHUB_REPO} (${TARGET_GITHUB_BRANCH}).`
+          : `${TARGET_GITHUB_OWNER}/${TARGET_GITHUB_REPO} (${TARGET_GITHUB_BRANCH}) is up to date.`,
+    });
+  } catch (err: any) {
+    const rawMsg = err?.stderr || err?.message || 'GitHub push failed.';
+    return res.status(500).json({
+      success: false,
+      error: scrubGitToken(String(rawMsg), token),
+    });
+  }
+});
 
 // Vite Middleware for Dev or Static Files for Prod
 async function startServer() {
