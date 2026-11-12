@@ -426,5 +426,19 @@ service cloud.firestore {
       allow get, list: if true;
       allow create, update, delete: if isAdmin();
     }
+
+    // 20. Termly Drills Collection (CBT candidates read; server / authenticated users save & update)
+    match /termly_drills/{drillId} {
+      allow get, list: if true;
+      allow create, update: if true;
+      allow delete: if isAdmin();
+    }
+
+    // 21. Certificate Drills Collection (BECE, WAEC, NECO, JAMB)
+    match /certificate_drills/{drillId} {
+      allow get, list: if true;
+      allow create, update: if true;
+      allow delete: if isAdmin();
+    }
   }
 }

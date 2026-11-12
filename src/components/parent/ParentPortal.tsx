@@ -261,12 +261,11 @@ export const ParentPortal: React.FC = () => {
       if (isAdmin) {
         setIsKeySettingsOpen(true);
         setPaystackError('Paystack Public Key not configured yet. Please configure your key below.');
-        setIsProcessingPaystack(false);
-        return;
       } else {
-        // Safe standard Paystack sandbox key
-        activeKey = 'pk_test_e5be598dc42f3a5332f170c0c0e5a6e87f6e8d1a';
+        setPaystackError('Paystack live payment gateway is not yet configured. Please notify the school administrator or support.');
       }
+      setIsProcessingPaystack(false);
+      return;
     }
 
     const payerEmail = currentUserProfile?.email || 'wowrealities@gmail.com';
@@ -287,43 +286,45 @@ export const ParentPortal: React.FC = () => {
             { display_name: 'Platform', variable_name: 'platform', value: 'Student Companion NG' }
           ]
         },
-        callback: async (response: { reference: string }) => {
-          setIsProcessingPaystack(true);
-          try {
-            // Verify reference on backend server before credit
-            const verifyRes = await fetch('/api/paystack/verify-payment', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                reference: response.reference,
-                amountNaira: topUpAmount,
-                email: payerEmail,
-                parentId: currentUserProfile?.id || (payerEmail ? payerEmail.replace(/[^a-zA-Z0-9_-]/g, '_') : 'parent_default'),
-                wardName,
-                purpose: 'parent_wallet_topup'
-              })
-            });
-
-            const verifyData = await verifyRes.json();
-            if (verifyData.success) {
-              fundParentWallet(topUpAmount);
-              setVerifiedReceipt({
-                reference: response.reference,
-                amount: topUpAmount,
-                channel: verifyData.channel || paymentChannel,
-                date: new Date().toLocaleTimeString()
+        callback: function(response: { reference: string }) {
+          (async () => {
+            setIsProcessingPaystack(true);
+            try {
+              // Verify reference on backend server before credit
+              const verifyRes = await fetch('/api/paystack/verify-payment', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  reference: response.reference,
+                  amountNaira: topUpAmount,
+                  email: payerEmail,
+                  parentId: currentUserProfile?.id || (payerEmail ? payerEmail.replace(/[^a-zA-Z0-9_-]/g, '_') : 'parent_default'),
+                  wardName,
+                  purpose: 'parent_wallet_topup'
+                })
               });
-              setIsTopUpModalOpen(false);
-            } else {
-              setPaystackError(verifyData.error || 'Payment reference verification failed at backend.');
+
+              const verifyData = await verifyRes.json();
+              if (verifyData.success) {
+                fundParentWallet(topUpAmount);
+                setVerifiedReceipt({
+                  reference: response.reference,
+                  amount: topUpAmount,
+                  channel: verifyData.channel || paymentChannel,
+                  date: new Date().toLocaleTimeString()
+                });
+                setIsTopUpModalOpen(false);
+              } else {
+                setPaystackError(verifyData.error || 'Payment reference verification failed at backend.');
+              }
+            } catch (err: any) {
+              setPaystackError(err?.message || 'Network error verifying Paystack transaction');
+            } finally {
+              setIsProcessingPaystack(false);
             }
-          } catch (err: any) {
-            setPaystackError(err?.message || 'Network error verifying Paystack transaction');
-          } finally {
-            setIsProcessingPaystack(false);
-          }
+          })();
         },
-        onClose: () => {
+        onClose: function() {
           setIsProcessingPaystack(false);
         }
       });
@@ -1126,11 +1127,11 @@ export const ParentPortal: React.FC = () => {
                   type="text"
                   value={inputPublicKey}
                   onChange={(e) => setInputPublicKey(e.target.value)}
-                  placeholder="pk_live_... or pk_test_..."
+                  placeholder="pk_live_..."
                   className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white font-mono text-xs focus:outline-none focus:border-emerald-500"
                 />
                 <span className="text-[10px] text-slate-400 block mt-0.5">
-                  Begins with <strong className="text-slate-300">pk_live_</strong> for live bank debits or <strong className="text-slate-300">pk_test_</strong> for test sandbox.
+                  Begins with <strong className="text-slate-300">pk_live_</strong> for live card, bank debit, and USSD payments.
                 </span>
               </div>
 
@@ -1150,18 +1151,8 @@ export const ParentPortal: React.FC = () => {
                 </span>
               </div>
 
-              {/* Quick Preset: Test Sandbox Key */}
-              <div className="pt-1">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setInputPublicKey('pk_test_e5be598dc42f3a5332f170c0c0e5a6e87f6e8d1a');
-                    setInputSecretKey('sk_test_e5be598dc42f3a5332f170c0c0e5a6e87f6e8d1a');
-                  }}
-                  className="w-full py-1.5 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-emerald-400 text-[11px] font-bold border border-slate-700 flex items-center justify-center gap-1.5 cursor-pointer"
-                >
-                  <span>Load Paystack Sandbox Test Keys</span>
-                </button>
+              <div className="pt-1 text-[11px] text-slate-400">
+                <span>Enter your live API keys from <a href="https://dashboard.paystack.com/#/settings/developer" target="_blank" rel="noreferrer" className="text-emerald-400 underline">dashboard.paystack.com</a> to enable real-time card and bank transfers.</span>
               </div>
 
               <div className="pt-2 flex items-center gap-2">

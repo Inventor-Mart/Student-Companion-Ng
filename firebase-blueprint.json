@@ -676,6 +676,44 @@
         "updatedAt": { "type": "string", "maxLength": 100 }
       },
       "required": ["id", "examType", "subject", "year", "title", "totalQuestions"]
+    },
+    "TermlyDrill": {
+      "title": "TermlyDrill",
+      "description": "Generated and cached 40-question NERDC termly mock examination paper",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "classLevel": { "type": "string", "maxLength": 50 },
+        "term": { "type": "string", "maxLength": 50 },
+        "subject": { "type": "string", "maxLength": 100 },
+        "title": { "type": "string", "maxLength": 200 },
+        "durationMinutes": { "type": "number" },
+        "totalQuestions": { "type": "number" },
+        "xpReward": { "type": "number" },
+        "questions": { "type": "array" },
+        "createdAt": { "type": "string", "maxLength": 100 },
+        "updatedAt": { "type": "string", "maxLength": 100 }
+      },
+      "required": ["id", "classLevel", "term", "subject", "title", "durationMinutes", "totalQuestions", "questions"]
+    },
+    "CertificateDrill": {
+      "title": "CertificateDrill",
+      "description": "Generated and cached national certificate examination paper (BECE, WAEC, NECO, JAMB)",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "board": { "type": "string", "enum": ["BECE", "WAEC", "NECO", "JAMB"], "maxLength": 50 },
+        "classLevel": { "type": "string", "maxLength": 50 },
+        "subject": { "type": "string", "maxLength": 100 },
+        "title": { "type": "string", "maxLength": 200 },
+        "durationMinutes": { "type": "number" },
+        "totalQuestions": { "type": "number" },
+        "xpReward": { "type": "number" },
+        "questions": { "type": "array" },
+        "createdAt": { "type": "string", "maxLength": 100 },
+        "updatedAt": { "type": "string", "maxLength": 100 }
+      },
+      "required": ["id", "board", "subject", "title", "durationMinutes", "totalQuestions", "questions"]
     }
   },
   "firestore": {
@@ -684,6 +722,18 @@
         "$ref": "#/entities/TestConnection"
       },
       "description": "Connectivity test probe"
+    },
+    "/termly_drills/{drillId}": {
+      "schema": {
+        "$ref": "#/entities/TermlyDrill"
+      },
+      "description": "Cached 40-question NERDC termly objective mock examination papers"
+    },
+    "/certificate_drills/{drillId}": {
+      "schema": {
+        "$ref": "#/entities/CertificateDrill"
+      },
+      "description": "Cached official national certificate examination papers (BECE, WAEC, NECO, JAMB)"
     },
     "/students/{studentId}": {
       "schema": {

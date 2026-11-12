@@ -12,7 +12,8 @@ import {
   Copy,
   ChevronRight,
   Flame,
-  Award
+  Award,
+  Lock
 } from 'lucide-react';
 
 interface AiStudyCoachProps {
@@ -95,7 +96,84 @@ export const AiStudyCoach: React.FC<AiStudyCoachProps> = ({
   initialSubject = 'Mathematics',
   initialTopic
 }) => {
-  const { student, addStudentXP } = useApp();
+  const { student, openStudentSubscriptionModal, checkStudentFeatureAccess, unlockStudentAddOn } = useApp();
+  const coachAccess = checkStudentFeatureAccess('ai_coach');
+
+  if (!coachAccess.hasAccess) {
+    return (
+      <div className="flex-1 w-full overflow-y-auto px-4 py-8 max-w-lg mx-auto flex flex-col items-center justify-center text-center space-y-6 text-slate-100">
+        <div className="w-16 h-16 rounded-3xl bg-purple-950/80 border-2 border-purple-500/70 flex items-center justify-center text-purple-400 shadow-xl shadow-purple-950/60">
+          <Brain className="w-8 h-8" />
+        </div>
+
+        <div className="space-y-2">
+          <span className="text-[10px] font-bold tracking-widest text-purple-400 uppercase bg-purple-950/80 border border-purple-800/80 px-3 py-1 rounded-full inline-block">
+            Elite Feature & Modular Add-On
+          </span>
+          <h2 className="text-xl font-black text-white">
+            SC AI 24/7 Study Coach is Locked
+          </h2>
+          <p className="text-xs text-slate-300 max-w-md mx-auto leading-relaxed">
+            Get instant, 24/7 step-by-step solutions, WAEC & JAMB past question breakdowns, and tailored concept explanations aligned strictly with the Nigerian NERDC curriculum.
+          </p>
+        </div>
+
+        {/* Feature Highlights */}
+        <div className="w-full bg-slate-900/90 border border-slate-800 rounded-2xl p-4 text-left space-y-2.5">
+          <div className="text-xs font-bold text-white flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-purple-400" />
+            <span>AI Coach Capabilities:</span>
+          </div>
+          <ul className="space-y-2 text-xs text-slate-300">
+            <li className="flex items-start gap-2">
+              <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+              <span><strong className="text-white">Instant Step-by-Step Solver:</strong> WAEC, NECO & JAMB calculations with clear marking scheme steps.</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+              <span><strong className="text-white">Nigerian Curriculum Grounded:</strong> Aligned to JSS1–SS3 Nigerian scheme of work and syllabus.</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+              <span><strong className="text-white">24/7 Availability:</strong> Unlimited questions, revisions, and study aids anytime.</span>
+            </li>
+          </ul>
+        </div>
+
+        {/* Two Live Activation Paths */}
+        <div className="w-full space-y-2.5">
+          <button
+            type="button"
+            onClick={() => unlockStudentAddOn('ai_coach')}
+            className="w-full py-3.5 px-4 bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-600 hover:from-purple-500 hover:to-indigo-500 text-white font-black text-xs rounded-xl shadow-lg shadow-purple-950/60 flex items-center justify-center gap-2 cursor-pointer transition-all"
+          >
+            <Sparkles className="w-4 h-4 text-purple-200" />
+            <span>Unlock SC AI Coach Only (₦10,000 / term)</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => openStudentSubscriptionModal('elite')}
+            className="w-full py-3 px-4 bg-gradient-to-r from-amber-600 via-yellow-600 to-amber-600 hover:from-amber-500 hover:to-yellow-500 text-slate-950 font-black text-xs rounded-xl shadow-md transition-all cursor-pointer flex items-center justify-center gap-2"
+          >
+            <span>Upgrade to Elite Tier (₦60,000 / term)</span>
+          </button>
+          <p className="text-[10px] text-slate-400">
+            Elite includes AI Coach + Termly Tournament + Exam Prep + ₦16,000 Pre-paid Tutor Balance.
+          </p>
+
+          <button
+            type="button"
+            onClick={() => openStudentSubscriptionModal()}
+            className="text-xs text-slate-400 hover:text-slate-200 underline pt-1 cursor-pointer"
+          >
+            Compare All 4 Plans
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   const isSS3 = student.classLevel === 'SS 3';
   const isJSS3 = student.classLevel === 'JSS 3';
   const isJunior = student.classLevel.startsWith('JSS');
@@ -165,13 +243,6 @@ export const AiStudyCoach: React.FC<AiStudyCoachProps> = ({
       if (!customPrompt) {
         setUserPrompt('');
       }
-
-      addStudentXP({
-        feature: 'ai-coach',
-        baseXP: 45,
-        difficulty: 'medium',
-        reason: `SC AI Study Guidance (${subject})`
-      });
     } catch (err: any) {
       console.error('Study Coach Error:', err);
       setErrorMessage(

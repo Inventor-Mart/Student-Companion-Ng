@@ -4,6 +4,7 @@ import { CBT_EXAMS_DATABASE } from '../../data/cbtExamData';
 import { CBTExam, CBTExamResult } from '../../types';
 import { renderFormattedSpan } from '../../utils/mathFormatter';
 import { ExamPrepUnlockModal } from './exam-prep/ExamPrepUnlockModal';
+import { TermlyDrillHub } from './TermlyDrillHub';
 import {
   Timer,
   Flag,
@@ -95,7 +96,7 @@ const CBTExamCatalog: React.FC<{ onSelectExam: (exam: CBTExam) => void; onOpenFo
 
   const boardTabs = [
     { id: 'ALL', label: 'All Exam Types' },
-    { id: 'TERM_MOCK', label: 'Termly Mock' },
+    { id: 'TERM_MOCK', label: 'Termly Drill & Mock' },
     { id: 'BECE', label: 'BECE Junior WAEC' },
     { id: 'WAEC', label: 'WAEC WASSCE' },
     { id: 'JAMB_UTME', label: 'JAMB UTME' },
@@ -239,6 +240,15 @@ const CBTExamCatalog: React.FC<{ onSelectExam: (exam: CBTExam) => void; onOpenFo
           </button>
         ))}
       </div>
+
+      {/* Interactive NERDC Termly & National Certificate Drill Hub */}
+      <TermlyDrillHub
+        onStartExam={handleStartExam}
+        onOpenUnlockModal={(sub) => {
+          setTargetSubjectToUnlock(sub);
+          setUnlockModalOpen(true);
+        }}
+      />
 
       {/* Exam Cards */}
       <div className="space-y-3">

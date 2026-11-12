@@ -51,16 +51,20 @@ export const AspirantSubscriptionModal: React.FC<AspirantSubscriptionModalProps>
     setIsProcessing(true);
     try {
       if (selectedMethod === 'paystack' && typeof (window as any).PaystackPop !== 'undefined') {
-        let activeKey = '';
+        let activeKey = import.meta.env.VITE_PAYSTACK_PUBLIC_KEY || '';
         try {
           const cfgRes = await fetch('/api/paystack/config');
-          const cfg = await cfgRes.json();
-          activeKey = cfg.publicKey;
+          if (cfgRes.ok) {
+            const cfg = await cfgRes.json();
+            if (cfg.publicKey) activeKey = cfg.publicKey;
+          }
         } catch {
-          // fallback
+          // ignore
         }
         if (!activeKey) {
-          activeKey = 'pk_test_e5be598dc42f3a5332f170c0c0e5a6e87f6e8d1a';
+          setIsProcessing(false);
+          alert('Paystack live payment gateway is not yet configured. Please contact support or pay via Parent Escrow Wallet.');
+          return;
         }
 
         const txRef = `PSTK_ASP_${Date.now()}_${Math.floor(Math.random() * 100000)}`;
@@ -78,31 +82,33 @@ export const AspirantSubscriptionModal: React.FC<AspirantSubscriptionModalProps>
               { display_name: 'Tier', variable_name: 'aspirant_tier', value: selectedTier }
             ]
           },
-          callback: async (response: { reference: string }) => {
-            try {
-              await fetch('/api/paystack/verify-payment', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  reference: response.reference,
-                  amountNaira: tierCost,
-                  email: payerEmail,
-                  studentName: student.name,
-                  purpose: 'aspirant_tier_subscription',
-                  plan: `Aspirant ${selectedTier}`
-                })
-              });
-            } catch (e) {
-              console.warn('Backend payment verification logged:', e);
-            }
+          callback: function(response: { reference: string }) {
+            (async () => {
+              try {
+                await fetch('/api/paystack/verify-payment', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    reference: response.reference,
+                    amountNaira: tierCost,
+                    email: payerEmail,
+                    studentName: student.name,
+                    purpose: 'aspirant_tier_subscription',
+                    plan: `Aspirant ${selectedTier}`
+                  })
+                });
+              } catch (e) {
+                console.warn('Backend payment verification logged:', e);
+              }
 
-            const ok = subscribeAspirantTier(selectedTier, 'paystack');
-            if (ok) {
-              setIsProcessing(false);
-              onClose();
-            }
+              const ok = subscribeAspirantTier(selectedTier, 'paystack');
+              if (ok) {
+                setIsProcessing(false);
+                onClose();
+              }
+            })();
           },
-          onClose: () => {
+          onClose: function() {
             setIsProcessing(false);
           }
         });

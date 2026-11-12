@@ -49,7 +49,9 @@ export const StudentDashboard: React.FC = () => {
     launchVirtualClassroom,
     examPrepState,
     schoolMaterials,
-    linkStudentToSchool
+    linkStudentToSchool,
+    openStudentSubscriptionModal,
+    checkStudentFeatureAccess
   } = useApp();
 
   const [isLinkSchoolModalOpen, setIsLinkSchoolModalOpen] = useState(false);
@@ -255,6 +257,27 @@ export const StudentDashboard: React.FC = () => {
                     + Link School Code
                   </button>
                 )}
+                {(() => {
+                  const currentPlan = student.subscriptionPlan || (student.isSubscribed ? 'basic' : 'free');
+                  return (
+                    <button
+                      type="button"
+                      onClick={() => openStudentSubscriptionModal()}
+                      className={`text-[10px] font-bold px-2 py-0.5 rounded border transition-colors cursor-pointer flex items-center gap-1 ${
+                        currentPlan === 'elite'
+                          ? 'bg-purple-950/90 text-purple-300 border-purple-600'
+                          : currentPlan === 'standard'
+                          ? 'bg-emerald-950/90 text-emerald-300 border-emerald-600'
+                          : currentPlan === 'basic'
+                          ? 'bg-blue-950/90 text-blue-300 border-blue-600'
+                          : 'bg-amber-950/80 text-amber-300 border-amber-600/70'
+                      }`}
+                      title="Click to view subscription tiers"
+                    >
+                      {currentPlan === 'elite' ? '👑 Elite Scholar' : currentPlan === 'standard' ? '★ Standard Tier' : currentPlan === 'basic' ? 'Basic Tier' : 'Free Tier'}
+                    </button>
+                  );
+                })()}
               </div>
               <p className="text-xs text-slate-400 mt-0.5">
                 {displaySchool} · {student.classLevel} ({student.stream})
@@ -308,6 +331,71 @@ export const StudentDashboard: React.FC = () => {
             })}
           </div>
         </div>
+
+        {/* Live Academic Term Subscription Banner */}
+        {(() => {
+          const currentPlan = student.subscriptionPlan || (student.isSubscribed ? 'basic' : 'free');
+          return (
+            <div className={`mt-3 p-3 rounded-2xl border text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 ${
+              currentPlan === 'elite'
+                ? 'bg-gradient-to-r from-purple-950/70 via-slate-900 to-indigo-950/60 border-purple-600/60 text-purple-200'
+                : currentPlan === 'standard'
+                ? 'bg-gradient-to-r from-emerald-950/70 via-slate-900 to-teal-950/60 border-emerald-600/60 text-emerald-200'
+                : currentPlan === 'basic'
+                ? 'bg-gradient-to-r from-blue-950/70 via-slate-900 to-slate-900 border-blue-600/60 text-blue-200'
+                : 'bg-gradient-to-r from-amber-950/70 via-slate-900 to-slate-900 border-amber-600/60 text-amber-200'
+            }`}>
+              <div className="flex items-center gap-2.5">
+                <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 border ${
+                  currentPlan === 'elite'
+                    ? 'bg-purple-900/60 border-purple-500 text-purple-300'
+                    : currentPlan === 'standard'
+                    ? 'bg-emerald-900/60 border-emerald-500 text-emerald-300'
+                    : currentPlan === 'basic'
+                    ? 'bg-blue-900/60 border-blue-500 text-blue-300'
+                    : 'bg-amber-900/60 border-amber-500 text-amber-300'
+                }`}>
+                  {currentPlan === 'elite' ? <Sparkles className="w-4 h-4" /> : currentPlan === 'free' ? <Lock className="w-4 h-4" /> : <ShieldCheck className="w-4 h-4" />}
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-white text-xs">
+                      {currentPlan === 'elite'
+                        ? '👑 Elite Scholar Plan Active'
+                        : currentPlan === 'standard'
+                        ? '★ Standard Plan Active (₦15,000 / term)'
+                        : currentPlan === 'basic'
+                        ? 'Basic Plan Active (₦8,000 / term)'
+                        : 'Free Tier Active (Preview Mode)'}
+                    </span>
+                    {student.termExpiresAt && (
+                      <span className="text-[10px] text-slate-400 font-mono">
+                        Valid until {new Date(student.termExpiresAt).toLocaleDateString()}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-slate-300 mt-0.5 leading-snug">
+                    {currentPlan === 'free'
+                      ? 'Weeks 1 & 2 lesson notes and 2 games unlocked (1 daily life). Upgrade to Basic (₦8,000) for all 12 weeks or Standard (₦15,000) for all features.'
+                      : currentPlan === 'basic'
+                      ? 'All 12 weeks of NERDC lesson notes unlocked. Upgrade to Standard Plan for all 10-question quizzes, unlimited games, termly drills & weekly contests.'
+                      : currentPlan === 'standard'
+                      ? '100% full notes, all 10 quiz questions, unlimited arcade games, termly drills & weekly championships active.'
+                      : 'Complete access to all notes, SC AI Coach, 3-Day Championship, and ₦16,000 Pre-paid Tutor Booking balance.'}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => openStudentSubscriptionModal(currentPlan === 'free' ? 'basic' : currentPlan === 'basic' ? 'standard' : 'elite')}
+                className="py-1.5 px-3 bg-white text-slate-950 font-bold text-xs rounded-xl shadow-sm hover:bg-slate-100 transition-colors shrink-0 cursor-pointer"
+              >
+                {currentPlan === 'elite' ? 'Manage Subscription' : currentPlan === 'free' ? 'Upgrade Plan (₦8,000)' : 'Upgrade Plan'}
+              </button>
+            </div>
+          );
+        })()}
 
         {/* XP Progress Bar */}
         <div className="mt-3 pt-2.5 border-t border-slate-800/80">
@@ -736,7 +824,14 @@ export const StudentDashboard: React.FC = () => {
       <div className="grid grid-cols-2 gap-2.5">
         {/* CBT Simulator Quick Start */}
         <button
-          onClick={() => startExam(drillConfig.exam)}
+          onClick={() => {
+            const check = checkStudentFeatureAccess('termly_drill');
+            if (!check.hasAccess) {
+              openStudentSubscriptionModal('standard');
+              return;
+            }
+            startExam(drillConfig.exam);
+          }}
           className="bg-slate-900/90 hover:bg-slate-800/90 border border-slate-800 hover:border-emerald-700/60 rounded-2xl p-3.5 text-left flex flex-col justify-between transition-all group"
         >
           <div className="w-8 h-8 rounded-xl bg-amber-950/80 border border-amber-700/40 flex items-center justify-center text-amber-400 mb-2">

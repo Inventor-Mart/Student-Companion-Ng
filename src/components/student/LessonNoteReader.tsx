@@ -327,6 +327,11 @@ export const LessonNoteReader: React.FC = () => {
     checkStudentFeatureAccess
   } = useApp();
 
+  // Generate a guaranteed 10-question topic-specific quiz based on this exact topic
+  const matchingExam = useMemo(() => {
+    return activeReadingNote ? getTopicSpecificQuiz(activeReadingNote) : null;
+  }, [activeReadingNote]);
+
   if (!activeReadingNote) return null;
 
   const access = checkStudentFeatureAccess('scheme_weeks', { weekNumber: activeReadingNote.weekNumber });
@@ -434,11 +439,6 @@ export const LessonNoteReader: React.FC = () => {
       </div>
     );
   }
-
-  // Generate a guaranteed 10-question topic-specific quiz based on this exact topic
-  const matchingExam = useMemo(() => {
-    return getTopicSpecificQuiz(activeReadingNote);
-  }, [activeReadingNote]);
 
   const handleCompleteReading = () => {
     addStudentXP({
@@ -1050,10 +1050,13 @@ export const LessonNoteReader: React.FC = () => {
 
         <button
           onClick={() => {
-            closeNoteReader();
-            startExam(matchingExam);
+            if (matchingExam) {
+              closeNoteReader();
+              startExam(matchingExam);
+            }
           }}
-          className="flex-1 py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center justify-center gap-1.5 transition-colors shadow-md shadow-emerald-950/50 cursor-pointer"
+          disabled={!matchingExam}
+          className="flex-1 py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-bold flex items-center justify-center gap-1.5 transition-colors shadow-md shadow-emerald-950/50 cursor-pointer"
         >
           <Award className="w-4 h-4" />
           <span>Take Topic Quiz (+300 XP)</span>

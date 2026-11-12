@@ -107,16 +107,20 @@ export const ExamPrepUnlockModal: React.FC<ExamPrepUnlockModalProps> = ({
     setIsProcessing(true);
     try {
       if (selectedMethod === 'paystack' && typeof (window as any).PaystackPop !== 'undefined') {
-        let activeKey = '';
+        let activeKey = import.meta.env.VITE_PAYSTACK_PUBLIC_KEY || '';
         try {
           const cfgRes = await fetch('/api/paystack/config');
-          const cfg = await cfgRes.json();
-          activeKey = cfg.publicKey;
+          if (cfgRes.ok) {
+            const cfg = await cfgRes.json();
+            if (cfg.publicKey) activeKey = cfg.publicKey;
+          }
         } catch {
-          // fallback
+          // ignore
         }
         if (!activeKey) {
-          activeKey = 'pk_test_e5be598dc42f3a5332f170c0c0e5a6e87f6e8d1a';
+          setIsProcessing(false);
+          alert('Paystack live payment gateway is not yet configured. Please contact the administrator or pay via Parent Escrow Wallet.');
+          return;
         }
 
         const txRef = `PSTK_EXAM_${Date.now()}_${Math.floor(Math.random() * 100000)}`;
@@ -134,39 +138,41 @@ export const ExamPrepUnlockModal: React.FC<ExamPrepUnlockModalProps> = ({
               { display_name: 'Plan', variable_name: 'plan', value: planType === 'full' ? 'Full Exam Prep Pass' : `Single Subject: ${selectedSubject}` }
             ]
           },
-          callback: async (response: { reference: string }) => {
-            try {
-              await fetch('/api/paystack/verify-payment', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  reference: response.reference,
-                  amountNaira: activeFee,
-                  email: payerEmail,
-                  studentName: student.name,
-                  purpose: 'exam_prep_unlock',
-                  plan: planType === 'full' ? 'Full Exam Prep' : `Single Subject: ${selectedSubject}`
-                })
-              });
-            } catch (e) {
-              console.warn('Backend payment verification logged:', e);
-            }
+          callback: function(response: { reference: string }) {
+            (async () => {
+              try {
+                await fetch('/api/paystack/verify-payment', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    reference: response.reference,
+                    amountNaira: activeFee,
+                    email: payerEmail,
+                    studentName: student.name,
+                    purpose: 'exam_prep_unlock',
+                    plan: planType === 'full' ? 'Full Exam Prep' : `Single Subject: ${selectedSubject}`
+                  })
+                });
+              } catch (e) {
+                console.warn('Backend payment verification logged:', e);
+              }
 
-            let success = false;
-            if (planType === 'full') {
-              success = unlockExamPrep('paystack');
-            } else {
-              success = unlockSingleSubjectExam(selectedSubject, 'paystack');
-            }
+              let success = false;
+              if (planType === 'full') {
+                success = unlockExamPrep('paystack');
+              } else {
+                success = unlockSingleSubjectExam(selectedSubject, 'paystack');
+              }
 
-            if (success) {
-              playSound.levelUp();
-              setIsProcessing(false);
-              if (onSuccess) onSuccess();
-              onClose();
-            }
+              if (success) {
+                playSound.levelUp();
+                setIsProcessing(false);
+                if (onSuccess) onSuccess();
+                onClose();
+              }
+            })();
           },
-          onClose: () => {
+          onClose: function() {
             setIsProcessing(false);
           }
         });

@@ -2,7 +2,7 @@ import express from 'express';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI, Type } from '@google/genai';
 import { Resend } from 'resend';
 import nodemailer from 'nodemailer';
 
@@ -289,71 +289,120 @@ Return valid JSON only formatted as an array of objects with the following schem
   }
 });
 
-// 2d. Gemini Multimodal Secondary School Uniform Inspector (Strict Mode)
-app.post('/api/ai/verify-uniform', async (req, res) => {
+// 2d. NERDC 40-Question Termly Drill Generator with Firestore Caching
+app.post('/api/gemini/generate-termly-drill', async (req, res) => {
   try {
-    const { imageBase64, studentName, schoolName, classLevel } = req.body;
+    const {
+      classLevel = 'SS 1',
+      term = '2nd Term',
+      subject = 'Mathematics',
+      forceFresh = false,
+      studentId,
+      topicsContext = []
+    } = req.body;
 
-    if (!imageBase64) {
-      return res.status(400).json({ success: false, error: 'Uniform photo is required for verification' });
+    if (!subject) {
+      return res.status(400).json({ success: false, error: 'Subject is required' });
     }
 
-    // Parse data URL or clean base64 string
-    let mimeType = 'image/jpeg';
-    let cleanBase64 = String(imageBase64).trim();
-    const match = cleanBase64.match(/^data:(image\/[a-zA-Z+.-]+);base64,(.+)$/);
-    if (match) {
-      mimeType = match[1];
-      cleanBase64 = match[2];
+    const sanitizedClass = String(classLevel).trim();
+    const sanitizedTerm = String(term).trim();
+    const sanitizedSubject = String(subject).trim();
+    const drillDocId = `${sanitizedClass}_${sanitizedTerm}_${sanitizedSubject}`.toLowerCase().replace(/[^a-z0-9_-]/g, '_');
+
+    const drillDocRef = doc(serverDb, 'termly_drills', drillDocId);
+
+    // If not requesting a fresh generation, check Firestore cache first
+    if (!forceFresh) {
+      try {
+        const snap = await getDoc(drillDocRef);
+        if (snap.exists()) {
+          const data = snap.data();
+          if (data && data.drill && Array.isArray(data.drill.questions) && data.drill.questions.length >= 20) {
+            console.log(`[Firestore Cache Hit] Returning cached termly drill for ${drillDocId}`);
+            return res.json({
+              success: true,
+              cached: true,
+              drillId: drillDocId,
+              drill: data.drill,
+              generatedAt: data.generatedAt || new Date().toISOString()
+            });
+          }
+        }
+      } catch (cacheErr) {
+        console.warn('Error reading from Firestore termly_drills cache, proceeding to generate fresh:', cacheErr);
+      }
     }
 
-    const systemInstruction = `You are the Official AI Uniform Inspector for Nigerian Secondary Schools on the Student Companion platform.
-Your mandate is to strictly evaluate uploaded student selfies and photos to verify if the student is actively wearing their official Nigerian secondary school uniform.
+    console.log(`[Drill Generation] Generating 40-question termly drill via Gemini for ${sanitizedClass} - ${sanitizedSubject} (${sanitizedTerm})...`);
 
-STRICT INSPECTION RULES:
-1. Collar Structure: A genuine Nigerian school uniform MUST feature a distinct, visible collar (e.g. turn-down shirt collar, blouse collar, school pinafore collar, or blazer).
-2. Institutional Signifiers: Look for school emblems, embroidered crests, chest pocket badges, or school neckties / cross-ties.
-3. IMMEDIATE REJECTION CRITERIA:
-   - Plain round-neck t-shirts, polo shirts without school crest, hoodies, singlets, sports jerseys, or sleepwear.
-   - Adult work attire, traditional/native wear, party dresses.
-   - Non-human photos, pet photos, landscape photos, or obscured/blank images where no uniform can be identified.
-4. If approved: Set "isUniform" to true, provide a confidence score (75-100), enumerate detected elements (e.g. ["Collared school shirt", "Embroidered chest crest", "School tie"]), and give an encouraging 1-sentence note.
-5. If rejected: Set "isUniform" to false, confidence (<50), and provide a clear, educational "rejectionReason" explaining why it failed and how to retake with a visible collar or badge.
+    const topicsList = Array.isArray(topicsContext) && topicsContext.length > 0
+      ? topicsContext.join('\n- ')
+      : 'Comprehensive 12-week NERDC termly syllabus topics covering all foundational, intermediate, and advanced concepts.';
 
-Return strictly valid JSON only matching the schema:
-{
-  "isUniform": boolean,
-  "confidence": number,
-  "detectedElements": string[],
-  "schoolCrestVisible": boolean,
-  "rejectionReason": string | null,
-  "feedback": string
-}`;
+    const systemInstruction = `You are the Chief Examiner and Senior Curriculum Specialist for the Nigerian Educational Research and Development Council (NERDC).
+You compose official secondary school termly examination papers strictly aligned with the NERDC national curriculum, WAEC, NECO, and BECE testing benchmarks.
+You produce unambiguous, pedagogically sound, 4-option objective questions (A, B, C, D) with step-by-step verified explanations and exact syllabus week/topic references.`;
 
-    const promptText = `Verify this photo for student: ${studentName || 'Student'}, declared school: ${schoolName || 'Secondary School'}, class: ${classLevel || 'SS 3'}. Does this image show a genuine collared school uniform?`;
+    const promptText = `Generate an official 40-question Termly Drill Examination for Nigerian secondary students with the following parameters:
+- Class Level: ${sanitizedClass}
+- Academic Term: ${sanitizedTerm}
+- Subject: ${sanitizedSubject}
+- Standard Official Time Allocation: 45 minutes
+- Total Objective Questions: EXACTLY 40 questions
 
-    const aiResponse = await getAi().models.generateContent({
+Syllabus Topics (Weeks 1 to 12):
+- ${topicsList}
+
+STRICT EXAM REQUIREMENTS:
+1. Provide EXACTLY 40 multiple-choice questions numbered id: 1 to 40.
+2. Even Distribution across Weeks 1 to 12:
+   - Weeks 1–4: Questions 1 to 13
+   - Weeks 5–8: Questions 14 to 26
+   - Weeks 9–12: Questions 27 to 40
+3. For each question:
+   - 'question': Clear, realistic exam question statement. For calculation subjects (Maths, Physics, Chemistry, Further Maths, Commerce), include practical numerical values or algebraic terms.
+   - 'options': Exactly 4 distinct, plausible options.
+   - 'correctOptionIndex': An integer (0 for Option A, 1 for Option B, 2 for Option C, 3 for Option D).
+   - 'explanation': Clear, step-by-step working, formula application, or rule explanation proving why the option is correct and why other distractors are incorrect.
+   - 'topicRef': Explicit week and topic reference (e.g. "Week 3: Quadratic Equations & Factorization").
+4. Difficulty Level: Rigorous, realistic NERDC standard appropriate for ${sanitizedClass}.`;
+
+    const response = await getAi().models.generateContent({
       model: 'gemini-3.8-flash',
-      contents: {
-        parts: [
-          {
-            inlineData: {
-              mimeType,
-              data: cleanBase64,
-            },
-          },
-          {
-            text: promptText,
-          },
-        ],
-      },
+      contents: promptText,
       config: {
         systemInstruction,
         responseMimeType: 'application/json',
-      },
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            title: { type: Type.STRING },
+            questions: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  id: { type: Type.INTEGER },
+                  question: { type: Type.STRING },
+                  options: {
+                    type: Type.ARRAY,
+                    items: { type: Type.STRING }
+                  },
+                  correctOptionIndex: { type: Type.INTEGER },
+                  explanation: { type: Type.STRING },
+                  topicRef: { type: Type.STRING }
+                },
+                required: ['id', 'question', 'options', 'correctOptionIndex', 'explanation', 'topicRef']
+              }
+            }
+          },
+          required: ['title', 'questions']
+        }
+      }
     });
 
-    const rawText = (aiResponse.text || '{}').trim();
+    const rawText = (response.text || '{}').trim();
     let parsed: any;
     try {
       parsed = JSON.parse(rawText);
@@ -362,15 +411,279 @@ Return strictly valid JSON only matching the schema:
       parsed = JSON.parse(cleanJson);
     }
 
+    const questionsList = Array.isArray(parsed.questions) ? parsed.questions : [];
+    if (questionsList.length === 0) {
+      throw new Error('AI generation did not return valid questions');
+    }
+
+    const formattedQuestions = questionsList.map((q: any, idx: number) => ({
+      id: idx + 1,
+      question: q.question || `Question ${idx + 1}`,
+      options: Array.isArray(q.options) && q.options.length === 4 ? q.options : ['Option A', 'Option B', 'Option C', 'Option D'],
+      correctOptionIndex: typeof q.correctOptionIndex === 'number' && q.correctOptionIndex >= 0 && q.correctOptionIndex <= 3 ? q.correctOptionIndex : 0,
+      explanation: q.explanation || 'Detailed step-by-step explanation based on NERDC curriculum.',
+      topicRef: q.topicRef || `Week ${Math.min(12, Math.floor(idx / 3.3) + 1)}`
+    }));
+
+    const drill = {
+      id: `drill_${drillDocId}_${Date.now()}`,
+      examType: 'TERM_MOCK',
+      title: parsed.title || `${sanitizedClass} ${sanitizedSubject} - ${sanitizedTerm} 40-Question Drill`,
+      subject: sanitizedSubject,
+      classLevel: sanitizedClass,
+      durationMinutes: 45,
+      year: new Date().getFullYear(),
+      xpReward: 200,
+      questions: formattedQuestions
+    };
+
+    // Cache to Firestore in termly_drills
+    try {
+      await setDoc(drillDocRef, {
+        id: drillDocId,
+        classLevel: sanitizedClass,
+        term: sanitizedTerm,
+        subject: sanitizedSubject,
+        drill,
+        questionCount: formattedQuestions.length,
+        generatedAt: new Date().toISOString(),
+        lastRequestedBy: studentId || 'anonymous'
+      });
+      console.log(`[Firestore Cache Write] Successfully cached 40-question drill in /termly_drills/${drillDocId}`);
+    } catch (saveErr) {
+      console.warn('Failed to cache drill in Firestore:', saveErr);
+    }
+
     return res.json({
       success: true,
-      verification: parsed,
+      cached: false,
+      drillId: drillDocId,
+      drill,
+      generatedAt: new Date().toISOString()
     });
   } catch (error: any) {
-    console.error('Gemini Uniform Verification Error:', error);
+    console.error('Termly Drill Generation Error:', error);
     return res.status(500).json({
       success: false,
-      error: error?.message || 'Failed to inspect school uniform with Gemini AI',
+      error: error?.message || 'Failed to generate 40-question Termly Drill'
+    });
+  }
+});
+
+// 2e. Official National Certificate Examination Drill Generator (BECE, WAEC, NECO, JAMB)
+app.post('/api/gemini/generate-certificate-drill', async (req, res) => {
+  try {
+    const {
+      board = 'WAEC',
+      classLevel = 'SS 3',
+      subject = 'Mathematics',
+      forceFresh = false,
+      studentId
+    } = req.body;
+
+    if (!subject) {
+      return res.status(400).json({ success: false, error: 'Subject is required' });
+    }
+
+    const rawBoard = String(board).trim().toUpperCase();
+    const boardKey = rawBoard.includes('BECE')
+      ? 'BECE'
+      : rawBoard.includes('JAMB')
+      ? 'JAMB'
+      : rawBoard.includes('NECO')
+      ? 'NECO'
+      : 'WAEC';
+
+    const sanitizedSubject = String(subject).trim();
+    const drillDocId = `${boardKey.toLowerCase()}_${sanitizedSubject.toLowerCase().replace(/[^a-z0-9_-]/g, '_')}`;
+    const drillDocRef = doc(serverDb, 'certificate_drills', drillDocId);
+
+    // Board standard configurations
+    const boardConfig = {
+      BECE: {
+        examType: 'BECE',
+        boardName: 'BECE (Junior WAEC)',
+        targetQuestions: 60,
+        durationMinutes: 60,
+        xpReward: 250,
+        scope: '3-year NERDC Junior Secondary Curriculum (JSS 1 through JSS 3)'
+      },
+      WAEC: {
+        examType: 'WAEC',
+        boardName: 'WAEC (WASSCE Objective Paper 1)',
+        targetQuestions: 50,
+        durationMinutes: 60,
+        xpReward: 250,
+        scope: 'NERDC Senior Secondary Curriculum (SS 1 through SS 3) matching official West African Examinations Council standards'
+      },
+      NECO: {
+        examType: 'NECO',
+        boardName: 'NECO (SSCE Objective Paper 1)',
+        targetQuestions: 60,
+        durationMinutes: 60,
+        xpReward: 250,
+        scope: 'NERDC Senior Secondary Curriculum (SS 1 through SS 3) matching National Examinations Council standards'
+      },
+      JAMB: {
+        examType: 'JAMB_UTME',
+        boardName: 'JAMB (UTME Computer-Based Test)',
+        targetQuestions: 60,
+        durationMinutes: 45,
+        xpReward: 300,
+        scope: 'Official Joint Admissions and Matriculation Board (JAMB) UTME syllabus with speed-solving strategies and calculation traps'
+      }
+    }[boardKey];
+
+    // Check Firestore cache first if not requesting fresh compilation
+    if (!forceFresh) {
+      try {
+        const snap = await getDoc(drillDocRef);
+        if (snap.exists()) {
+          const data = snap.data();
+          if (data && data.drill && Array.isArray(data.drill.questions) && data.drill.questions.length >= 30) {
+            console.log(`[Firestore Certificate Cache Hit] Returning cached ${boardKey} drill for ${drillDocId}`);
+            return res.json({
+              success: true,
+              cached: true,
+              drillId: drillDocId,
+              board: boardKey,
+              drill: data.drill,
+              generatedAt: data.generatedAt || new Date().toISOString()
+            });
+          }
+        }
+      } catch (cacheErr) {
+        console.warn('Error reading from Firestore certificate_drills cache, proceeding to generate fresh:', cacheErr);
+      }
+    }
+
+    console.log(`[Certificate Drill Generation] Generating official ${boardConfig.targetQuestions}-question ${boardKey} paper for ${sanitizedSubject}...`);
+
+    const systemInstruction = `You are the Lead Psychometrician and Chief Examination Board Architect for Nigerian National Certificate Examinations.
+You prepare official papers for ${boardConfig.boardName}.
+You write authentic, rigorous, 4-option objective questions (options A, B, C, D) strictly faithful to official past examinations, national syllabus weighting, and official test standards.
+Every question must contain clear problem statements, verified answers, plausible distractors, and step-by-step educational explanations.`;
+
+    const promptText = `Generate an official authentic ${boardConfig.boardName} Examination Paper for Nigerian students:
+- Subject: ${sanitizedSubject}
+- Target Candidates: ${boardKey === 'BECE' ? 'Junior Secondary School Class 3 (JSS 3)' : 'Senior Secondary School Class 3 (SS 3) and University Aspirants'}
+- Official Syllabus Scope: ${boardConfig.scope}
+- Official Allocated Duration: ${boardConfig.durationMinutes} minutes
+- Total Number of Objective Questions: EXACTLY ${boardConfig.targetQuestions} questions
+
+STRICT BOARD SPECIFICATIONS:
+1. Provide EXACTLY ${boardConfig.targetQuestions} multiple-choice questions numbered id: 1 to ${boardConfig.targetQuestions}.
+2. Ensure full syllabus breadth across all foundational, core, and terminal examination topics.
+3. For calculation subjects (Mathematics, Physics, Chemistry, Further Mathematics, Commerce, Economics): Include realistic numbers, algebra, or diagrams references.
+4. For English Language / Literature: Include grammar concord, lexis & structure, idioms, figures of speech, and comprehension scenarios.
+5. For each question:
+   - 'question': Clear, realistic, unambiguous examination question statement.
+   - 'options': Exactly 4 distinct, plausible options.
+   - 'correctOptionIndex': An integer (0 for A, 1 for B, 2 for C, 3 for D).
+   - 'explanation': Clear, step-by-step verified working, formula proof, or grammatical concord rule.
+   - 'topicRef': Explicit syllabus topic area (e.g., "${boardKey} Core: Circle Theorems" or "${boardKey} Syllabus: Cell Biology").
+6. Difficulty and style: Strictly reflect official ${boardConfig.boardName} past question rigor.`;
+
+    const response = await getAi().models.generateContent({
+      model: 'gemini-3.8-flash',
+      contents: promptText,
+      config: {
+        systemInstruction,
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            title: { type: Type.STRING },
+            questions: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  id: { type: Type.INTEGER },
+                  question: { type: Type.STRING },
+                  options: {
+                    type: Type.ARRAY,
+                    items: { type: Type.STRING }
+                  },
+                  correctOptionIndex: { type: Type.INTEGER },
+                  explanation: { type: Type.STRING },
+                  topicRef: { type: Type.STRING }
+                },
+                required: ['id', 'question', 'options', 'correctOptionIndex', 'explanation', 'topicRef']
+              }
+            }
+          },
+          required: ['title', 'questions']
+        }
+      }
+    });
+
+    const rawText = (response.text || '{}').trim();
+    let parsed: any;
+    try {
+      parsed = JSON.parse(rawText);
+    } catch {
+      const cleanJson = rawText.replace(/^```json\n?/, '').replace(/\n?```$/, '').trim();
+      parsed = JSON.parse(cleanJson);
+    }
+
+    const questionsList = Array.isArray(parsed.questions) ? parsed.questions : [];
+    if (questionsList.length === 0) {
+      throw new Error(`AI generation did not return valid questions for ${boardKey}`);
+    }
+
+    const formattedQuestions = questionsList.map((q: any, idx: number) => ({
+      id: idx + 1,
+      question: q.question || `Question ${idx + 1}`,
+      options: Array.isArray(q.options) && q.options.length === 4 ? q.options : ['Option A', 'Option B', 'Option C', 'Option D'],
+      correctOptionIndex: typeof q.correctOptionIndex === 'number' && q.correctOptionIndex >= 0 && q.correctOptionIndex <= 3 ? q.correctOptionIndex : 0,
+      explanation: q.explanation || `Detailed explanation based on ${boardKey} national standards.`,
+      topicRef: q.topicRef || `${boardKey} Core Syllabus`
+    }));
+
+    const drill = {
+      id: `cert_${drillDocId}_${Date.now()}`,
+      examType: boardConfig.examType,
+      title: parsed.title || `${sanitizedSubject} - Official ${boardConfig.boardName} Drill`,
+      subject: sanitizedSubject,
+      classLevel: classLevel || (boardKey === 'BECE' ? 'JSS 3' : 'SS 3'),
+      durationMinutes: boardConfig.durationMinutes,
+      year: new Date().getFullYear(),
+      xpReward: boardConfig.xpReward,
+      questions: formattedQuestions
+    };
+
+    // Cache to Firestore in certificate_drills
+    try {
+      await setDoc(drillDocRef, {
+        id: drillDocId,
+        board: boardKey,
+        classLevel: classLevel || (boardKey === 'BECE' ? 'JSS 3' : 'SS 3'),
+        subject: sanitizedSubject,
+        drill,
+        questionCount: formattedQuestions.length,
+        durationMinutes: boardConfig.durationMinutes,
+        generatedAt: new Date().toISOString(),
+        lastRequestedBy: studentId || 'anonymous'
+      });
+      console.log(`[Firestore Certificate Write] Successfully cached ${formattedQuestions.length}-question ${boardKey} drill in /certificate_drills/${drillDocId}`);
+    } catch (saveErr) {
+      console.warn('Failed to cache certificate drill in Firestore:', saveErr);
+    }
+
+    return res.json({
+      success: true,
+      cached: false,
+      drillId: drillDocId,
+      board: boardKey,
+      drill,
+      generatedAt: new Date().toISOString()
+    });
+  } catch (error: any) {
+    console.error('Certificate Drill Generation Error:', error);
+    return res.status(500).json({
+      success: false,
+      error: error?.message || 'Failed to generate official certificate examination drill'
     });
   }
 });
@@ -988,30 +1301,7 @@ app.get('/api/partners/:partnerId/summary', async (req, res) => {
   }
 });
 
-// ==========================================
-// PAYSTACK PAYMENT & VERIFICATION GATEWAY
-// ==========================================
-
-let runtimePaystackPublicKey = process.env.VITE_PAYSTACK_PUBLIC_KEY || process.env.PAYSTACK_PUBLIC_KEY || '';
-let runtimePaystackSecretKey = process.env.PAYSTACK_SECRET_KEY || '';
-
-function getNigerianBankCode(bankName?: string): string {
-  if (!bankName) return '058';
-  const name = bankName.toLowerCase();
-  if (name.includes('gtbank') || name.includes('guaranty')) return '058';
-  if (name.includes('access')) return '044';
-  if (name.includes('zenith')) return '057';
-  if (name.includes('united bank') || name.includes('uba')) return '033';
-  if (name.includes('first bank')) return '011';
-  if (name.includes('stanbic')) return '221';
-  if (name.includes('fidelity')) return '070';
-  if (name.includes('kuda')) return '50211';
-  if (name.includes('opay')) return '999992';
-  if (name.includes('palmpay')) return '999991';
-  return '058';
-}
-
-// 5. Submit Withdrawal Request from Partner Digital Wallet (Automated Paystack Transfer)
+// 5. Submit Withdrawal Request from Partner Digital Wallet
 app.post('/api/partners/withdraw', async (req, res) => {
   try {
     const { partnerId, amountNaira } = req.body;
@@ -1025,63 +1315,6 @@ app.post('/api/partners/withdraw', async (req, res) => {
 
     const walletRef = doc(serverDb, 'partnerWallets', partnerId);
     const partnerRef = doc(serverDb, 'growthPartners', partnerId);
-
-    // Fetch partner details for bank settlement
-    const partnerSnapPre = await getDoc(partnerRef);
-    const partnerData = partnerSnapPre.exists() ? partnerSnapPre.data() : null;
-
-    let transferReference = `trf_${Date.now()}`;
-    let transferStatus = 'processed';
-    let paystackTransferCode: string | null = null;
-    const secretKey = runtimePaystackSecretKey || process.env.PAYSTACK_SECRET_KEY;
-
-    // If live Paystack secret key is present and partner has account details, disburse via Paystack Transfers
-    if (secretKey && partnerData?.accountNumber) {
-      try {
-        const bankCode = getNigerianBankCode(partnerData.bankName);
-        const recipientRes = await fetch('https://api.paystack.co/transferrecipient', {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${secretKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            type: 'nuban',
-            name: partnerData.accountName || partnerData.name || 'Growth Partner',
-            account_number: partnerData.accountNumber,
-            bank_code: bankCode,
-            currency: 'NGN',
-          }),
-        });
-
-        const recipientData = await recipientRes.json().catch(() => ({}));
-        if (recipientData.status && recipientData.data?.recipient_code) {
-          const recipientCode = recipientData.data.recipient_code;
-          const transferRes = await fetch('https://api.paystack.co/transfer', {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${secretKey}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              source: 'balance',
-              amount: amountNaira * 100, // in kobo
-              recipient: recipientCode,
-              reason: `Student Companion Partner Commission Payout - ${partnerData.name || partnerId}`,
-            }),
-          });
-
-          const transferData = await transferRes.json().catch(() => ({}));
-          if (transferData.status && transferData.data) {
-            transferReference = transferData.data.reference || transferReference;
-            paystackTransferCode = transferData.data.transfer_code || null;
-            transferStatus = transferData.data.status || 'success';
-          }
-        }
-      } catch (paystackErr) {
-        console.warn('[Paystack Transfer Notice] Live transfer call encountered an issue; updating local ledger:', paystackErr);
-      }
-    }
 
     const result = await runTransaction(serverDb, async (transaction) => {
       // 1. ALL READS FIRST
@@ -1123,35 +1356,12 @@ app.post('/api/partners/withdraw', async (req, res) => {
       };
     });
 
-    // Record ledger withdrawal in Firestore subcollection
-    try {
-      const txId = `tx_with_${Date.now()}`;
-      const txRef = doc(serverDb, 'partnerWallets', partnerId, 'transactions', txId);
-      await setDoc(txRef, {
-        id: txId,
-        partnerId,
-        type: 'withdrawal',
-        amountNaira,
-        reference: transferReference,
-        paystackTransferCode,
-        status: transferStatus,
-        bankName: partnerData?.bankName || 'Registered Bank',
-        accountNumber: partnerData?.accountNumber || '',
-        accountName: partnerData?.accountName || '',
-        createdAt: new Date().toISOString(),
-      });
-    } catch (txLogErr) {
-      console.warn('Could not record withdrawal transaction log:', txLogErr);
-    }
-
     return res.json({
       success: true,
       amountWithdrawn: amountNaira,
       remainingBalanceNaira: result.newBalance,
       totalWithdrawnNaira: result.newWithdrawn,
-      reference: transferReference,
-      status: transferStatus,
-      message: `Withdrawal of ₦${amountNaira.toLocaleString()} processed successfully to your registered bank account (${partnerData?.bankName || 'Bank'}).`,
+      message: `Withdrawal request of ₦${amountNaira.toLocaleString()} processed successfully to your registered bank account.`,
     });
   } catch (error: any) {
     console.error('Error in /api/partners/withdraw:', error);
@@ -1161,6 +1371,13 @@ app.post('/api/partners/withdraw', async (req, res) => {
     });
   }
 });
+
+// ==========================================
+// PAYSTACK PAYMENT & VERIFICATION GATEWAY
+// ==========================================
+
+let runtimePaystackPublicKey = process.env.VITE_PAYSTACK_PUBLIC_KEY || process.env.PAYSTACK_PUBLIC_KEY || '';
+let runtimePaystackSecretKey = process.env.PAYSTACK_SECRET_KEY || '';
 
 // 1. Get Paystack Public Config
 app.get('/api/paystack/config', (_req, res) => {
@@ -1446,6 +1663,18 @@ app.post('/api/paystack/verify-payment', async (req, res) => {
         channel: paymentChannel,
         tutorCreditsAwarded: planName === 'elite' ? 16000 : 0,
         message: `₦${amountNaira.toLocaleString()} ${planName.toUpperCase()} Termly Subscription successfully verified!`
+      });
+    }
+
+    if (purpose === 'drill_regeneration' || purpose === 'certificate_drill_regeneration') {
+      const { studentId, subject, board } = req.body;
+      return res.json({
+        success: true,
+        reference,
+        amountNaira,
+        purpose,
+        channel: paymentChannel,
+        message: `₦${amountNaira.toLocaleString()} fresh ${board ? board + ' ' : ''}drill paper generation fee verified.`
       });
     }
 

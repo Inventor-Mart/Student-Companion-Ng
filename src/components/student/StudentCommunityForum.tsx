@@ -26,11 +26,12 @@ import {
   Award,
   Sparkles,
   ShieldCheck,
-  School
+  School,
+  Lock
 } from 'lucide-react';
 
 export const StudentCommunityForum: React.FC = () => {
-  const { student, currentUser } = useApp();
+  const { student, currentUser, openStudentSubscriptionModal, checkStudentFeatureAccess } = useApp();
 
   // Channels for students
   const studentChannels = useMemo(() => {
@@ -413,33 +414,61 @@ export const StudentCommunityForum: React.FC = () => {
           </div>
         )}
 
-        <form onSubmit={handleSendMessage} className="flex items-end gap-2">
-          <div className="flex-1 relative">
-            <textarea
-              value={inputText}
-              onChange={e => {
-                setInputText(e.target.value);
-                if (inputWarning) setInputWarning(null);
-              }}
-              placeholder={`Post in #${currentChannel.title} (Max 500 characters)...`}
-              rows={2}
-              maxLength={500}
-              className="w-full bg-slate-950 text-xs sm:text-sm text-white px-3.5 py-2.5 rounded-xl border border-slate-700 focus:outline-none focus:border-emerald-500 resize-none placeholder-slate-500"
-            />
-            <div className="absolute right-2.5 bottom-2 text-[10px] text-slate-500">
-              {inputText.length}/500
-            </div>
-          </div>
+        {(() => {
+          const chatAccess = checkStudentFeatureAccess('chat');
+          if (!chatAccess.hasAccess) {
+            return (
+              <div className="bg-slate-950 border border-amber-600/40 rounded-xl p-3 flex flex-col sm:flex-row items-center justify-between gap-3 text-center sm:text-left">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-amber-950/80 border border-amber-600/60 flex items-center justify-center text-amber-400 shrink-0">
+                    <Lock className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-white">Student Academic Chat is Locked on Free Tier</h4>
+                    <p className="text-[11px] text-slate-400">Upgrade to Basic Plan (₦8,000 / term) or above to post questions and participate in study discussions.</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => openStudentSubscriptionModal('basic')}
+                  className="px-3.5 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold rounded-xl transition-all shadow-sm shrink-0 cursor-pointer"
+                >
+                  Unlock with Basic (₦8,000)
+                </button>
+              </div>
+            );
+          }
 
-          <button
-            type="submit"
-            disabled={!inputText.trim()}
-            className="p-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:hover:bg-emerald-600 text-white font-semibold transition-all shadow-md shadow-emerald-950/40 cursor-pointer shrink-0"
-            title="Send Message"
-          >
-            <Send className="w-4 h-4" />
-          </button>
-        </form>
+          return (
+            <form onSubmit={handleSendMessage} className="flex items-end gap-2">
+              <div className="flex-1 relative">
+                <textarea
+                  value={inputText}
+                  onChange={e => {
+                    setInputText(e.target.value);
+                    if (inputWarning) setInputWarning(null);
+                  }}
+                  placeholder={`Post in #${currentChannel.title} (Max 500 characters)...`}
+                  rows={2}
+                  maxLength={500}
+                  className="w-full bg-slate-950 text-xs sm:text-sm text-white px-3.5 py-2.5 rounded-xl border border-slate-700 focus:outline-none focus:border-emerald-500 resize-none placeholder-slate-500"
+                />
+                <div className="absolute right-2.5 bottom-2 text-[10px] text-slate-500">
+                  {inputText.length}/500
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={!inputText.trim()}
+                className="p-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:hover:bg-emerald-600 text-white font-semibold transition-all shadow-md shadow-emerald-950/40 cursor-pointer shrink-0"
+                title="Send Message"
+              >
+                <Send className="w-4 h-4" />
+              </button>
+            </form>
+          );
+        })()}
       </div>
 
       {/* Report Modal */}

@@ -377,20 +377,67 @@ export const GamesHub: React.FC = () => {
                 </div>
               </div>
 
-              <div className="flex items-center justify-between text-xs text-slate-400 pt-1 border-t border-slate-800/70">
-                <span className="flex items-center gap-1 font-mono">
-                  <Timer className="w-3.5 h-3.5" />
-                  {game.duration}
-                </span>
+              {(() => {
+                const access = checkStudentFeatureAccess('games', { gameId: game.id });
+                const todayStr = new Date().toISOString().split('T')[0];
+                const dailyData = student.addOns?.dailyGameAttempts;
+                const attemptsToday = dailyData?.date === todayStr ? (dailyData?.attempts?.[game.id] || 0) : 0;
+                const isFreeDailyExhausted = (student.subscriptionPlan || 'free') === 'free' && attemptsToday >= 1;
 
-                <button
-                  onClick={() => setActiveGame(game.id)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 ${game.btnColor} text-white text-xs font-bold rounded-xl transition-colors shadow-sm`}
-                >
-                  <Play className="w-3 h-3 fill-white" />
-                  <span>Play Game</span>
-                </button>
-              </div>
+                const handleLaunchGame = () => {
+                  if (!access.hasAccess) {
+                    openStudentSubscriptionModal(access.requiredPlan || 'basic');
+                    return;
+                  }
+                  if (isFreeDailyExhausted) {
+                    openStudentSubscriptionModal('basic');
+                    return;
+                  }
+                  if ((student.subscriptionPlan || 'free') === 'free') {
+                    recordDailyGameAttempt(game.id);
+                  }
+                  setActiveGame(game.id);
+                };
+
+                return (
+                  <div className="flex items-center justify-between text-xs text-slate-400 pt-1 border-t border-slate-800/70">
+                    <span className="flex items-center gap-1 font-mono">
+                      <Timer className="w-3.5 h-3.5" />
+                      {game.duration}
+                    </span>
+
+                    {!access.hasAccess ? (
+                      <button
+                        type="button"
+                        onClick={() => openStudentSubscriptionModal(access.requiredPlan || 'basic')}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold rounded-xl transition-colors shadow-sm cursor-pointer"
+                      >
+                        <Lock className="w-3 h-3" />
+                        <span>Locked ({access.requiredPlan === 'basic' ? 'Basic ₦8k' : 'Standard ₦15k'})</span>
+                      </button>
+                    ) : isFreeDailyExhausted ? (
+                      <button
+                        type="button"
+                        onClick={() => openStudentSubscriptionModal('basic')}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-600/90 hover:bg-amber-600 text-white text-xs font-bold rounded-xl transition-colors shadow-sm cursor-pointer"
+                        title="Free tier is limited to 1 life/attempt per day"
+                      >
+                        <Lock className="w-3 h-3" />
+                        <span>Daily Life Used (Upgrade)</span>
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={handleLaunchGame}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 ${game.btnColor} text-white text-xs font-bold rounded-xl transition-colors shadow-sm cursor-pointer`}
+                      >
+                        <Play className="w-3 h-3 fill-white" />
+                        <span>Play Game {(student.subscriptionPlan || 'free') === 'free' ? '(1 Life Left)' : ''}</span>
+                      </button>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           );
         })}

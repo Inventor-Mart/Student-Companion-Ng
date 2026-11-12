@@ -54,6 +54,7 @@ export const StudentSubscriptionModal: React.FC<StudentSubscriptionModalProps> =
 
   // Add-ons sub-tab
   const [activeTab, setActiveTab] = useState<'tiers' | 'addons'>('tiers');
+  const [selectedSingleSubject, setSelectedSingleSubject] = useState<string>('Mathematics');
 
   if (!isOpen) return null;
 
@@ -106,7 +107,7 @@ export const StudentSubscriptionModal: React.FC<StudentSubscriptionModalProps> =
       return;
     }
 
-    let activeKey = 'pk_test_e5be598dc42f3a5332f170c0c0e5a6e87f6e8d1a';
+    let activeKey = import.meta.env.VITE_PAYSTACK_PUBLIC_KEY || '';
     try {
       const configRes = await fetch('/api/paystack/config');
       if (configRes.ok) {
@@ -116,7 +117,13 @@ export const StudentSubscriptionModal: React.FC<StudentSubscriptionModalProps> =
         }
       }
     } catch {
-      // fallback
+      // ignore
+    }
+
+    if (!activeKey) {
+      setErrorMessage('Paystack live payment gateway is currently awaiting configuration. Please ensure your Paystack Public Key is set in Settings or contact support.');
+      setIsProcessing(false);
+      return;
     }
 
     const payerEmail = currentUserProfile?.email || 'student@companion.ng';
@@ -138,43 +145,45 @@ export const StudentSubscriptionModal: React.FC<StudentSubscriptionModalProps> =
             { display_name: 'Purpose', variable_name: 'purpose', value: 'student_tier_subscription' }
           ]
         },
-        callback: async (response: { reference: string }) => {
-          setIsProcessing(true);
-          try {
-            const verifyRes = await fetch('/api/paystack/verify-payment', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                reference: response.reference,
-                amountNaira: price,
-                email: payerEmail,
-                studentId: student.id || currentUserProfile?.id,
-                studentName: student.name,
-                parentId: currentUserProfile?.id,
-                plan: selectedPlan,
-                purpose: 'student_tier_subscription'
-              })
-            });
-
-            const verifyData = await verifyRes.json();
-            if (verifyData.success) {
-              await subscribeStudentTier(selectedPlan, 'paystack', response.reference);
-              setSuccessReceipt({
-                plan: selectedPlan.toUpperCase(),
-                amount: price,
-                reference: response.reference,
-                tutorBonus: selectedPlan === 'elite' ? 16000 : undefined
+        callback: function(response: { reference: string }) {
+          (async () => {
+            setIsProcessing(true);
+            try {
+              const verifyRes = await fetch('/api/paystack/verify-payment', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  reference: response.reference,
+                  amountNaira: price,
+                  email: payerEmail,
+                  studentId: student.id || currentUserProfile?.id,
+                  studentName: student.name,
+                  parentId: currentUserProfile?.id,
+                  plan: selectedPlan,
+                  purpose: 'student_tier_subscription'
+                })
               });
-            } else {
-              setErrorMessage(verifyData.error || 'Payment verification failed at server.');
+
+              const verifyData = await verifyRes.json();
+              if (verifyData.success) {
+                await subscribeStudentTier(selectedPlan, 'paystack', response.reference);
+                setSuccessReceipt({
+                  plan: selectedPlan.toUpperCase(),
+                  amount: price,
+                  reference: response.reference,
+                  tutorBonus: selectedPlan === 'elite' ? 16000 : undefined
+                });
+              } else {
+                setErrorMessage(verifyData.error || 'Payment verification failed at server.');
+              }
+            } catch (err: any) {
+              setErrorMessage(err?.message || 'Network error verifying Paystack transaction');
+            } finally {
+              setIsProcessing(false);
             }
-          } catch (err: any) {
-            setErrorMessage(err?.message || 'Network error verifying Paystack transaction');
-          } finally {
-            setIsProcessing(false);
-          }
+          })();
         },
-        onClose: () => {
+        onClose: function() {
           setIsProcessing(false);
         }
       });
@@ -186,22 +195,35 @@ export const StudentSubscriptionModal: React.FC<StudentSubscriptionModalProps> =
     }
   };
 
-  const handleAddOnUnlock = async (addon: 'ai_coach' | 'termly_competition' | 'termly_drill_all') => {
+  const handleAddOnUnlock = async (
+    addon: 'ai_coach' | 'termly_competition' | 'termly_drill_all' | 'termly_drill_single',
+    subjectArg?: string
+  ) => {
     setErrorMessage(null);
     setIsProcessing(true);
-    const prices = {
+    const targetSubject = addon === 'termly_drill_single' ? (subjectArg || selectedSingleSubject) : undefined;
+    const prices: Record<string, number> = {
       ai_coach: 10000,
       termly_competition: 10000,
-      termly_drill_all: 5000
+      termly_drill_all: 5000,
+      termly_drill_single: 1000
     };
     const price = prices[addon];
 
-    if (parentWallet.balanceNaira >= price) {
-      const res = await unlockStudentAddOn(addon, undefined, 'wallet');
+    // Check if user chose wallet or has sufficient wallet balance
+    if (paymentMethod === 'wallet' || parentWallet.balanceNaira >= price) {
+      if (parentWallet.balanceNaira < price) {
+        setErrorMessage(
+          `Insufficient Parent Escrow Wallet balance (₦${parentWallet.balanceNaira.toLocaleString()} available, ₦${price.toLocaleString()} required). Please switch to Paystack card payment.`
+        );
+        setIsProcessing(false);
+        return;
+      }
+      const res = await unlockStudentAddOn(addon, targetSubject, 'wallet');
       setIsProcessing(false);
       if (res.success) {
         setSuccessReceipt({
-          plan: addon.replace(/_/g, ' ').toUpperCase(),
+          plan: addon === 'termly_drill_single' ? `DRILL (${targetSubject})` : addon.replace(/_/g, ' ').toUpperCase(),
           amount: price,
           reference: `WALLET_${Date.now()}`
         });
@@ -211,33 +233,103 @@ export const StudentSubscriptionModal: React.FC<StudentSubscriptionModalProps> =
       return;
     }
 
-    // Paystack fallback
+    // Paystack Live Flow
     if (typeof (window as any).PaystackPop === 'undefined') {
-      setErrorMessage('Paystack SDK is loading. Please try again.');
+      setErrorMessage('Paystack checkout SDK is loading. Please check network connectivity and try again.');
+      setIsProcessing(false);
+      return;
+    }
+
+    let activeKey = import.meta.env.VITE_PAYSTACK_PUBLIC_KEY || '';
+    try {
+      const configRes = await fetch('/api/paystack/config');
+      if (configRes.ok) {
+        const configData = await configRes.json();
+        if (configData.publicKey) {
+          activeKey = configData.publicKey;
+        }
+      }
+    } catch {
+      // ignore
+    }
+
+    if (!activeKey) {
+      setErrorMessage('Paystack live payment gateway is awaiting configuration. Please configure your Paystack Public Key in Admin settings.');
       setIsProcessing(false);
       return;
     }
 
     const payerEmail = currentUserProfile?.email || 'student@companion.ng';
-    const txRef = `ADDON_${addon.toUpperCase()}_${Date.now()}`;
-    const handler = (window as any).PaystackPop.setup({
-      key: 'pk_test_e5be598dc42f3a5332f170c0c0e5a6e87f6e8d1a',
-      email: payerEmail,
-      amount: price * 100,
-      currency: 'NGN',
-      ref: txRef,
-      callback: async (response: { reference: string }) => {
-        await unlockStudentAddOn(addon, undefined, 'paystack', response.reference);
-        setSuccessReceipt({
-          plan: addon.replace(/_/g, ' ').toUpperCase(),
-          amount: price,
-          reference: response.reference
-        });
-        setIsProcessing(false);
-      },
-      onClose: () => setIsProcessing(false)
-    });
-    handler.openIframe();
+    const txRef = `ADDON_${addon.toUpperCase()}_${Date.now()}_${Math.floor(Math.random() * 100000)}`;
+    const purposeMap: Record<string, string> = {
+      ai_coach: 'ai_coach_unlock',
+      termly_competition: 'termly_competition_unlock',
+      termly_drill_all: 'termly_drill_unlock',
+      termly_drill_single: 'termly_drill_unlock'
+    };
+
+    try {
+      const handler = (window as any).PaystackPop.setup({
+        key: activeKey,
+        email: payerEmail,
+        amount: Math.round(price * 100),
+        currency: 'NGN',
+        ref: txRef,
+        channels: ['card', 'bank', 'ussd', 'bank_transfer'],
+        metadata: {
+          custom_fields: [
+            { display_name: 'Student Name', variable_name: 'student_name', value: student.name || 'Student' },
+            { display_name: 'Addon', variable_name: 'addon', value: addon },
+            { display_name: 'Subject', variable_name: 'subject', value: targetSubject || 'All Subjects' },
+            { display_name: 'Purpose', variable_name: 'purpose', value: purposeMap[addon] }
+          ]
+        },
+        callback: function(response: { reference: string }) {
+          (async () => {
+            setIsProcessing(true);
+            try {
+              const verifyRes = await fetch('/api/paystack/verify-payment', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  reference: response.reference,
+                  amountNaira: price,
+                  email: payerEmail,
+                  studentId: student.id || currentUserProfile?.id,
+                  studentName: student.name,
+                  parentId: currentUserProfile?.id,
+                  subject: targetSubject,
+                  purpose: purposeMap[addon]
+                })
+              });
+
+              const verifyData = await verifyRes.json();
+              if (verifyData.success) {
+                await unlockStudentAddOn(addon, targetSubject, 'paystack', response.reference);
+                setSuccessReceipt({
+                  plan: addon === 'termly_drill_single' ? `DRILL (${targetSubject})` : addon.replace(/_/g, ' ').toUpperCase(),
+                  amount: price,
+                  reference: response.reference
+                });
+              } else {
+                setErrorMessage(verifyData.error || 'Server could not verify Paystack payment.');
+              }
+            } catch (err: any) {
+              setErrorMessage(err?.message || 'Network error verifying Paystack transaction.');
+            } finally {
+              setIsProcessing(false);
+            }
+          })();
+        },
+        onClose: function() {
+          setIsProcessing(false);
+        }
+      });
+      handler.openIframe();
+    } catch (err: any) {
+      setErrorMessage(err?.message || 'Failed to open Paystack checkout window.');
+      setIsProcessing(false);
+    }
   };
 
   return (
@@ -665,7 +757,7 @@ export const StudentSubscriptionModal: React.FC<StudentSubscriptionModalProps> =
               </p>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
               {/* Add-on 1: SC AI Coach */}
               <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 flex flex-col justify-between space-y-3">
                 <div className="space-y-1.5">
@@ -720,7 +812,7 @@ export const StudentSubscriptionModal: React.FC<StudentSubscriptionModalProps> =
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold text-emerald-300 flex items-center gap-1.5">
                       <Award className="w-4 h-4 text-emerald-400" />
-                      <span>Termly CBT Drills</span>
+                      <span>Term Drills (All Subjects)</span>
                     </span>
                     <span className="text-xs font-black font-mono text-white">₦5,000</span>
                   </div>
@@ -735,6 +827,45 @@ export const StudentSubscriptionModal: React.FC<StudentSubscriptionModalProps> =
                   className="w-full py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-800 text-white text-xs font-bold cursor-pointer transition-colors"
                 >
                   {student.addOns?.termlyDrillAllSubjects ? 'Unlocked ✓' : 'Unlock All Subjects (₦5,000)'}
+                </button>
+              </div>
+
+              {/* Add-on 4: Termly CBT Drill (Single Subject) */}
+              <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 flex flex-col justify-between space-y-3">
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-teal-300 flex items-center gap-1.5">
+                      <BookOpen className="w-4 h-4 text-teal-400" />
+                      <span>Single Subject Drill</span>
+                    </span>
+                    <span className="text-xs font-black font-mono text-white">₦1,000</span>
+                  </div>
+                  <p className="text-[11px] text-slate-400">
+                    Unlock CBT drills and past questions for one specific subject of your choice.
+                  </p>
+                  <div className="pt-1">
+                    <select
+                      value={selectedSingleSubject}
+                      onChange={(e) => setSelectedSingleSubject(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-teal-500"
+                    >
+                      {['Mathematics', 'English Language', 'Physics', 'Chemistry', 'Biology', 'Economics', 'Government', 'Literature in English', 'Civic Education', 'Agricultural Science'].map((sub) => (
+                        <option key={sub} value={sub}>
+                          {sub} {student.addOns?.termlyDrillSingleSubjects?.includes(sub) ? '(Unlocked ✓)' : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleAddOnUnlock('termly_drill_single', selectedSingleSubject)}
+                  disabled={isProcessing || Boolean(student.addOns?.termlyDrillAllSubjects || student.addOns?.termlyDrillSingleSubjects?.includes(selectedSingleSubject))}
+                  className="w-full py-2 rounded-xl bg-teal-600 hover:bg-teal-500 disabled:bg-slate-800 text-white text-xs font-bold cursor-pointer transition-colors"
+                >
+                  {student.addOns?.termlyDrillAllSubjects || student.addOns?.termlyDrillSingleSubjects?.includes(selectedSingleSubject)
+                    ? `${selectedSingleSubject} Unlocked ✓`
+                    : `Unlock ${selectedSingleSubject} (₦1,000)`}
                 </button>
               </div>
             </div>

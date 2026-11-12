@@ -120,7 +120,7 @@ export const SchoolAdminPortal: React.FC = () => {
     const payerEmail = currentUserProfile?.email || 'admin@school.edu.ng';
     const txRef = `SCHL_${plan.toUpperCase()}_${Date.now()}_${Math.floor(Math.random() * 100000)}`;
 
-    let activeKey = 'pk_test_e5be598dc42f3a5332f170c0c0e5a6e87f6e8d1a';
+    let activeKey = import.meta.env.VITE_PAYSTACK_PUBLIC_KEY || '';
     try {
       const configRes = await fetch('/api/paystack/config');
       if (configRes.ok) {
@@ -130,7 +130,13 @@ export const SchoolAdminPortal: React.FC = () => {
         }
       }
     } catch {
-      // fallback
+      // ignore
+    }
+
+    if (!activeKey) {
+      setIsProcessingPaystack(false);
+      alert('Paystack live payment gateway is not yet configured. Please configure your Paystack Public Key in Admin settings.');
+      return;
     }
 
     try {
@@ -149,43 +155,45 @@ export const SchoolAdminPortal: React.FC = () => {
             { display_name: 'Purpose', variable_name: 'purpose', value: 'school_direct_subscription' }
           ]
         },
-        callback: async (response: { reference: string }) => {
-          setIsProcessingPaystack(true);
-          try {
-            const verifyRes = await fetch('/api/paystack/verify-payment', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                reference: response.reference,
-                amountNaira,
-                email: payerEmail,
-                adminId: currentUserProfile?.id,
-                schoolName: selectedSchool,
-                schoolCode: adminSchoolCode,
-                plan,
-                purpose: 'school_direct_subscription'
-              })
-            });
-
-            const verifyData = await verifyRes.json();
-            if (verifyData.success) {
-              await subscribeSchoolAdmin(plan, response.reference);
-              setPaymentSuccessReceipt({
-                reference: response.reference,
-                amount: amountNaira,
-                plan: plan === 'termly' ? 'Termly Pass (3 Months)' : 'Monthly Pass',
-                expiresAt: verifyData.expiresAt || new Date(Date.now() + (plan === 'termly' ? 90 : 30) * 86400000).toISOString()
+        callback: function(response: { reference: string }) {
+          (async () => {
+            setIsProcessingPaystack(true);
+            try {
+              const verifyRes = await fetch('/api/paystack/verify-payment', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  reference: response.reference,
+                  amountNaira,
+                  email: payerEmail,
+                  adminId: currentUserProfile?.id,
+                  schoolName: selectedSchool,
+                  schoolCode: adminSchoolCode,
+                  plan,
+                  purpose: 'school_direct_subscription'
+                })
               });
-            } else {
-              setPaystackError(verifyData.error || 'Payment reference verification failed at backend.');
+
+              const verifyData = await verifyRes.json();
+              if (verifyData.success) {
+                await subscribeSchoolAdmin(plan, response.reference);
+                setPaymentSuccessReceipt({
+                  reference: response.reference,
+                  amount: amountNaira,
+                  plan: plan === 'termly' ? 'Termly Pass (3 Months)' : 'Monthly Pass',
+                  expiresAt: verifyData.expiresAt || new Date(Date.now() + (plan === 'termly' ? 90 : 30) * 86400000).toISOString()
+                });
+              } else {
+                setPaystackError(verifyData.error || 'Payment reference verification failed at backend.');
+              }
+            } catch (err: any) {
+              setPaystackError(err?.message || 'Network error verifying Paystack transaction');
+            } finally {
+              setIsProcessingPaystack(false);
             }
-          } catch (err: any) {
-            setPaystackError(err?.message || 'Network error verifying Paystack transaction');
-          } finally {
-            setIsProcessingPaystack(false);
-          }
+          })();
         },
-        onClose: () => {
+        onClose: function() {
           setIsProcessingPaystack(false);
         }
       });

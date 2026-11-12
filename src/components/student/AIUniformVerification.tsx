@@ -11,7 +11,8 @@ import {
   RefreshCw,
   Image as ImageIcon,
   AlertCircle,
-  RotateCcw
+  RotateCcw,
+  Lock
 } from 'lucide-react';
 
 export const AIUniformVerificationModal: React.FC = () => {
@@ -19,7 +20,9 @@ export const AIUniformVerificationModal: React.FC = () => {
     isUniformModalOpen,
     setIsUniformModalOpen,
     verifySchoolUniform,
-    student
+    student,
+    openStudentSubscriptionModal,
+    checkStudentFeatureAccess
   } = useApp();
 
   const [selectedImage, setSelectedImage] = useState<string | null>(student.uniformPhotoUrl || null);
@@ -226,14 +229,59 @@ export const AIUniformVerificationModal: React.FC = () => {
 
         {/* Modal Body */}
         <div className="p-4 overflow-y-auto space-y-4 touch-pan-y">
-          
+          {(() => {
+            const aiVerifAccess = checkStudentFeatureAccess('ai_verification');
+            if (!aiVerifAccess.hasAccess) {
+              return (
+                <div className="text-center py-6 px-2 space-y-4">
+                  <div className="w-14 h-14 rounded-2xl bg-amber-950/80 border border-amber-600/70 flex items-center justify-center text-amber-400 mx-auto shadow-lg shadow-amber-950/60">
+                    <Lock className="w-7 h-7" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <span className="text-[10px] font-bold tracking-widest text-amber-400 uppercase bg-amber-950/80 border border-amber-800/80 px-2.5 py-0.5 rounded-full inline-block">
+                      Free Tier Restriction
+                    </span>
+                    <h3 className="text-base font-bold text-white">AI Uniform Verification is Locked</h3>
+                    <p className="text-xs text-slate-300 max-w-sm mx-auto leading-relaxed">
+                      Free Tier accounts cannot use the AI verification function. Upgrade to the <strong className="text-white">Basic Plan (₦8,000 / term)</strong> to verify your uniform, earn <strong className="text-amber-400">+500 XP</strong>, and compete on the Student of the Week leaderboard!
+                    </p>
+                  </div>
+                  <div className="pt-2 flex flex-col gap-2 max-w-xs mx-auto">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsUniformModalOpen(false);
+                        openStudentSubscriptionModal('basic');
+                      }}
+                      className="w-full py-3 px-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs rounded-xl shadow-md transition-all cursor-pointer flex items-center justify-center gap-2"
+                    >
+                      <Sparkles className="w-4 h-4 text-emerald-300" />
+                      <span>Unlock with Basic Plan (₦8,000)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsUniformModalOpen(false)}
+                      className="text-xs text-slate-400 hover:text-white py-1 cursor-pointer"
+                    >
+                      Close
+                    </button>
+                  </div>
+                </div>
+              );
+            }
+
+            return null;
+          })()}
+
           {/* Instructions */}
-          <div className="text-xs text-slate-300 bg-slate-950/70 p-3 rounded-2xl border border-slate-800 space-y-1">
-            <span className="font-semibold text-emerald-400 block">Authenticate Your Student Identity</span>
-            <p className="text-[11px] text-slate-400 leading-relaxed">
-              Take a selfie or upload a photo wearing your secondary school uniform (crest, collar or necktie visible). Our SC AI verifies the school uniform to award you <strong className="text-amber-400">500 Bonus XP</strong> and your verified badge.
-            </p>
-          </div>
+          {checkStudentFeatureAccess('ai_verification').hasAccess && (
+            <>
+              <div className="text-xs text-slate-300 bg-slate-950/70 p-3 rounded-2xl border border-slate-800 space-y-1">
+                <span className="font-semibold text-emerald-400 block">Authenticate Your Student Identity</span>
+                <p className="text-[11px] text-slate-400 leading-relaxed">
+                  Take a selfie or upload a photo wearing your secondary school uniform (crest, collar or necktie visible). Our SC AI verifies the school uniform to award you <strong className="text-amber-400">500 Bonus XP</strong> and your verified badge.
+                </p>
+              </div>
 
           {/* Photo Preview / Live Camera View */}
           <div className="relative w-full aspect-4/3 bg-slate-950 rounded-2xl overflow-hidden border border-slate-800 flex items-center justify-center shadow-inner">
@@ -436,45 +484,49 @@ export const AIUniformVerificationModal: React.FC = () => {
               <span>You must snap or upload a picture before verifying.</span>
             </div>
           )}
+            </>
+          )}
         </div>
 
         {/* Modal Footer */}
-        <div className="p-3 bg-slate-950/90 border-t border-slate-800 flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => {
-              stopCamera();
-              setIsUniformModalOpen(false);
-            }}
-            className="flex-1 py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition-colors cursor-pointer"
-          >
-            Close
-          </button>
+        {checkStudentFeatureAccess('ai_verification').hasAccess && (
+          <div className="p-3 bg-slate-950/90 border-t border-slate-800 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                stopCamera();
+                setIsUniformModalOpen(false);
+              }}
+              className="flex-1 py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition-colors cursor-pointer"
+            >
+              Close
+            </button>
 
-          <button
-            type="button"
-            onClick={handleStartScan}
-            disabled={!selectedImage || isScanning || isSuccess}
-            className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-md cursor-pointer ${
-              !selectedImage
-                ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700/50'
-                : isSuccess
-                ? 'bg-emerald-950 text-emerald-400 border border-emerald-700 cursor-default'
-                : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-900/30 active:scale-[0.98]'
-            }`}
-          >
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>
-              {!selectedImage
-                ? 'Select Photo First'
-                : isSuccess
-                ? 'Verified ✓'
-                : isScanning
-                ? 'Scanning Uniform...'
-                : 'Verify Uniform'}
-            </span>
-          </button>
-        </div>
+            <button
+              type="button"
+              onClick={handleStartScan}
+              disabled={!selectedImage || isScanning || isSuccess}
+              className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-md cursor-pointer ${
+                !selectedImage
+                  ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700/50'
+                  : isSuccess
+                  ? 'bg-emerald-950 text-emerald-400 border border-emerald-700 cursor-default'
+                  : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-900/30 active:scale-[0.98]'
+              }`}
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>
+                {!selectedImage
+                  ? 'Select Photo First'
+                  : isSuccess
+                  ? 'Verified ✓'
+                  : isScanning
+                  ? 'Scanning Uniform...'
+                  : 'Verify Uniform'}
+              </span>
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

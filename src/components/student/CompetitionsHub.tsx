@@ -63,7 +63,10 @@ export const CompetitionsHub: React.FC = () => {
     currentStudentChampionship,
     requestChampionshipEntry,
     submitChampionshipStageResult,
-    setCurrentRole
+    setCurrentRole,
+    openStudentSubscriptionModal,
+    checkStudentFeatureAccess,
+    unlockStudentAddOn
   } = useApp();
 
   const [otaConfig, setOtaConfig] = useState<OTACompetitionConfig>(DEFAULT_OTA_COMPETITION_CONFIG);
@@ -121,6 +124,11 @@ export const CompetitionsHub: React.FC = () => {
   };
 
   const handleEnterWeeklyChallenge = () => {
+    const weeklyAccess = checkStudentFeatureAccess('weekly_competition');
+    if (!weeklyAccess.hasAccess) {
+      openStudentSubscriptionModal('standard');
+      return;
+    }
     confetti({
       particleCount: 50,
       spread: 60,
@@ -218,7 +226,8 @@ export const CompetitionsHub: React.FC = () => {
   };
 
   // Determine user registration and stage completion
-  const regStatus = currentStudentChampionship?.status;
+  const isEliteOrUnlocked = student.subscriptionPlan === 'elite' || !!student.addOns?.termlyCompetitionUnlocked;
+  const regStatus = isEliteOrUnlocked ? (currentStudentChampionship?.status || 'approved') : currentStudentChampionship?.status;
   const currentStage = currentStudentChampionship?.currentStage || 1;
   const stageResults = currentStudentChampionship?.stageResults || {};
 
@@ -386,16 +395,34 @@ export const CompetitionsHub: React.FC = () => {
               </div>
 
               {!regStatus ? (
-                <div className="space-y-2 pt-1">
+                <div className="space-y-3 pt-1">
                   <p className="text-xs text-slate-300 leading-relaxed">
-                    Parents authorize the <NairaText amount={registrationFee} /> registration fee securely from their escrow wallet. Once approved, all 3 competition papers are unlocked in progressive order.
+                    Access all 3 national championship papers, win Android smartphones, tablets & educational grants. Unlock directly with Paystack / Parent Wallet, or upgrade to the Elite Scholar Plan.
                   </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => unlockStudentAddOn('termly_competition')}
+                      className="py-3 px-3 bg-gradient-to-r from-amber-600 via-yellow-600 to-amber-600 hover:from-amber-500 hover:to-yellow-500 text-slate-950 font-black text-xs rounded-xl shadow-md cursor-pointer flex items-center justify-center gap-1.5 transition-all"
+                    >
+                      <Trophy className="w-4 h-4" />
+                      <span>Unlock Championship (₦10,000)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => openStudentSubscriptionModal('elite')}
+                      className="py-3 px-3 bg-purple-950/80 hover:bg-purple-900 border border-purple-500/70 text-purple-200 hover:text-white font-bold text-xs rounded-xl cursor-pointer flex items-center justify-center gap-1.5 transition-all"
+                    >
+                      <Sparkles className="w-4 h-4 text-purple-400" />
+                      <span>Get Elite Tier (₦60,000 / term)</span>
+                    </button>
+                  </div>
                   <button
+                    type="button"
                     onClick={requestChampionshipEntry}
-                    className="w-full py-3 px-4 bg-gradient-to-r from-amber-600 via-amber-500 to-amber-600 hover:from-amber-500 hover:to-amber-400 text-white font-bold text-xs rounded-xl shadow-lg shadow-amber-950/50 flex items-center justify-center gap-2 cursor-pointer transition-all"
+                    className="w-full py-2 px-3 bg-slate-900 hover:bg-slate-850 text-slate-400 hover:text-slate-200 border border-slate-800 text-[11px] rounded-xl cursor-pointer transition-colors"
                   >
-                    <Trophy className="w-4 h-4 fill-white" />
-                    <span>Request Parent Approval for 3-Day Championship (<NairaText amount={registrationFee} />)</span>
+                    Or Request Parent Escrow Authorization (<NairaText amount={registrationFee} />)
                   </button>
                 </div>
               ) : regStatus === 'pending_parent' ? (
@@ -991,13 +1018,25 @@ export const CompetitionsHub: React.FC = () => {
               )}
             </div>
 
-            <button
-              onClick={handleEnterWeeklyChallenge}
-              className="w-full py-3 px-4 bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-white text-xs font-bold rounded-2xl transition-all shadow-lg shadow-amber-950/60 flex items-center justify-center gap-2 cursor-pointer"
-            >
-              <Play className="w-4 h-4 fill-white" />
-              <span>Take {weeklyConfig.weekLabel || 'Week 8'} Competition Quiz Now (+700 XP)</span>
-            </button>
+            {!checkStudentFeatureAccess('weekly_competition').hasAccess ? (
+              <button
+                type="button"
+                onClick={() => openStudentSubscriptionModal('standard')}
+                className="w-full py-3 px-4 bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold rounded-2xl transition-all shadow-lg shadow-amber-950/60 flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <Lock className="w-4 h-4 text-amber-200" />
+                <span>Weekly Competition Locked · Unlock with Standard Plan (₦15,000 / term)</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleEnterWeeklyChallenge}
+                className="w-full py-3 px-4 bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-white text-xs font-bold rounded-2xl transition-all shadow-lg shadow-amber-950/60 flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <Play className="w-4 h-4 fill-white" />
+                <span>Take {weeklyConfig.weekLabel || 'Week 8'} Competition Quiz Now (+700 XP)</span>
+              </button>
+            )}
           </div>
         </div>
       )}

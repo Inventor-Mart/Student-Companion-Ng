@@ -696,3 +696,27 @@ Therefore: $25_{10} = 11001_2$.`,
     associatedQuizId: 'jamb-government-nigeria-2025'
   }
 ];
+
+export function getOfficialSubjectsForClass(classLevel: string, stream?: string): string[] {
+  const conf = (OFFICIAL_SUBJECTS_BY_CLASS as Record<string, any>)[classLevel];
+  if (!conf) return ['Mathematics', 'English Language'];
+  if (Array.isArray(conf)) return conf;
+  if (stream && conf[stream]) return conf[stream];
+  const all = [...(conf.Science || []), ...(conf['Non-Science'] || [])];
+  return Array.from(new Set(all));
+}
+
+export function get12WeekTopicsForDrill(classLevel: string, term: string, subject: string): string[] {
+  const normSubject = subject.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const matched = NIGERIAN_CURRICULUM_TOPICS.filter(
+    t => t.classLevel === classLevel &&
+         (t.term === term || (!term && t.term === '2nd Term')) &&
+         t.subject.toLowerCase().replace(/[^a-z0-9]/g, '').includes(normSubject.slice(0, 5))
+  );
+  if (matched.length > 0) {
+    const sorted = [...matched].sort((a, b) => a.weekNumber - b.weekNumber);
+    return sorted.map(t => `Week ${t.weekNumber}: ${t.topicTitle}`);
+  }
+  return [];
+}
+
