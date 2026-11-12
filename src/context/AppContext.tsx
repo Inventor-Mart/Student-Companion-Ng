@@ -94,8 +94,8 @@ interface AppContextType {
   setIsOffline: (val: boolean | ((prev: boolean) => boolean)) => void;
   isLandingView: boolean;
   setIsLandingView: (val: boolean | ((prev: boolean) => boolean)) => void;
-  currentScreen: 'landing' | 'signin' | 'signup' | 'know_more' | 'app';
-  setCurrentScreen: (screen: 'landing' | 'signin' | 'signup' | 'know_more' | 'app') => void;
+  currentScreen: 'splash' | 'landing' | 'signin' | 'signup' | 'know_more' | 'app';
+  setCurrentScreen: (screen: 'splash' | 'landing' | 'signin' | 'signup' | 'know_more' | 'app') => void;
 
   // Progressive Verification & Onboarding
   currentUserProfile: RegisteredUserProfile | null;
@@ -429,7 +429,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isDeviceFrame, setIsDeviceFrame] = useState<boolean>(false);
   const [isOffline, setIsOffline] = useState<boolean>(false);
   const [isLandingView, setIsLandingView] = useState<boolean>(false);
-  const [currentScreen, setCurrentScreen] = useState<'landing' | 'signin' | 'signup' | 'know_more' | 'app'>('app');
+  const [currentScreen, setCurrentScreen] = useState<'splash' | 'landing' | 'signin' | 'signup' | 'know_more' | 'app'>('splash');
   const [activeStudentTab, setActiveStudentTab] = useState<'dashboard' | 'syllabus' | 'cbt' | 'competitions' | 'formulas' | 'tutors' | 'games' | 'ai-coach' | 'community' | 'exam-prep' | 'aspirant-cbt' | 'admission-guide' | 'mock-tournaments' | 'educator-importer'>('dashboard');
   const [activeReadingNote, setActiveReadingNote] = useState<CurriculumTopic | null>(null);
   const [activeExam, setActiveExam] = useState<CBTExam | null>(null);

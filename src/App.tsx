@@ -32,6 +32,7 @@ import { BroadcastNewsTicker } from './components/student/BroadcastNewsTicker';
 import { PopupAnnouncementModal } from './components/student/PopupAnnouncementModal';
 import { StudentSubscriptionModal } from './components/student/StudentSubscriptionModal';
 import { XPAwardNotification } from './components/student/XPAwardNotification';
+import { SplashScreen } from './components/common/SplashScreen';
 
 const AppContent: React.FC = () => {
   const [quotaExceeded, setQuotaExceeded] = React.useState(false);
@@ -60,6 +61,18 @@ const AppContent: React.FC = () => {
     targetSubscriptionPlan,
     closeStudentSubscriptionModal
   } = useApp();
+
+  // Screen 0: Sleek Deep Navy Splash Screen with Lottie Animation
+  if (currentScreen === 'splash') {
+    return (
+      <SplashScreen
+        durationMs={3000}
+        onFinish={() => {
+          setCurrentScreen('signin');
+        }}
+      />
+    );
+  }
 
   // Screen 1: The New Concept Landing Page (Public Discovery)
   if (currentScreen === 'landing') {
