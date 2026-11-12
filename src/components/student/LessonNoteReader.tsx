@@ -546,6 +546,28 @@ export const LessonNoteReader: React.FC = () => {
           </p>
         </div>
 
+        {/* Optional Super Admin PDF Study Handout */}
+        {activeReadingNote.attachmentDataUrl && activeReadingNote.attachmentName && (
+          <div className="bg-slate-900 border border-[#84E000]/40 rounded-xl p-3 flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <span className="text-[10px] font-bold text-[#84E000] uppercase tracking-wider block">
+                Official Study Handout (PDF)
+              </span>
+              <span className="text-xs font-semibold text-white truncate block">
+                {activeReadingNote.attachmentName}
+              </span>
+            </div>
+            <a
+              href={activeReadingNote.attachmentDataUrl}
+              download={activeReadingNote.attachmentName}
+              className="px-3 min-h-[38px] rounded-lg bg-[#84E000] hover:bg-[#75c700] text-slate-950 text-xs font-bold flex items-center gap-1.5 shrink-0 whitespace-nowrap"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>Download PDF</span>
+            </a>
+          </div>
+        )}
+
         {/* Subtopics Outline */}
         <div className="bg-slate-900/40 rounded-xl p-3 border border-slate-800/80 space-y-1.5">
           <h4 className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider">

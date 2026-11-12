@@ -108,6 +108,34 @@ export interface CurriculumTopic {
   keyTakeaways: string[];
   associatedQuizId: string;
   isDownloaded?: boolean;
+  attachmentName?: string;
+  attachmentDataUrl?: string;
+  isAdminOverride?: boolean;
+  updatedAt?: string;
+}
+
+export type AdminLessonNoteStream = AcademicStream | 'All';
+
+export interface AdminLessonNote {
+  id: string;
+  classLevel: Exclude<NigerianClassLevel, 'University Aspirant'>;
+  stream: AdminLessonNoteStream;
+  subject: string;
+  term: '1st Term' | '2nd Term' | '3rd Term';
+  weekNumber: number;
+  topicTitle: string;
+  subtopics: string[];
+  readingTimeMinutes: number;
+  summary: string;
+  contentMarkdown: string;
+  keyTakeaways: string[];
+  associatedQuizId: string;
+  uploadMode: 'markdown' | 'structured';
+  attachmentName?: string;
+  attachmentDataUrl?: string;
+  uploadedBy: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export type ExamType = 'JAMB_UTME' | 'WAEC' | 'NECO' | 'BECE' | 'TERM_MOCK';

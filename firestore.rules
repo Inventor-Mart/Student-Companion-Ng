@@ -258,6 +258,30 @@ service cloud.firestore {
              (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 100));
     }
 
+    function isValidAdminLessonNote(data) {
+      return data.keys().hasAll(['id', 'classLevel', 'stream', 'subject', 'term', 'weekNumber', 'topicTitle', 'subtopics', 'readingTimeMinutes', 'summary', 'contentMarkdown', 'keyTakeaways', 'associatedQuizId', 'uploadMode', 'uploadedBy', 'createdAt', 'updatedAt']) &&
+             data.keys().hasOnly(['id', 'classLevel', 'stream', 'subject', 'term', 'weekNumber', 'topicTitle', 'subtopics', 'readingTimeMinutes', 'summary', 'contentMarkdown', 'keyTakeaways', 'associatedQuizId', 'uploadMode', 'attachmentName', 'attachmentDataUrl', 'uploadedBy', 'createdAt', 'updatedAt']) &&
+             data.id is string && isValidId(data.id) &&
+             data.classLevel in ['JSS 1', 'JSS 2', 'JSS 3', 'SS 1', 'SS 2', 'SS 3'] &&
+             data.stream in ['Junior', 'Science', 'Non-Science', 'All'] &&
+             data.subject is string && data.subject.size() >= 2 && data.subject.size() <= 100 &&
+             data.term in ['1st Term', '2nd Term', '3rd Term'] &&
+             data.weekNumber is number && data.weekNumber >= 1 && data.weekNumber <= 13 &&
+             data.topicTitle is string && data.topicTitle.size() >= 2 && data.topicTitle.size() <= 200 &&
+             data.subtopics is list && data.subtopics.size() <= 20 && (data.subtopics.size() == 0 || data.subtopics[0] is string) &&
+             data.readingTimeMinutes is number && data.readingTimeMinutes >= 1 && data.readingTimeMinutes <= 180 &&
+             data.summary is string && data.summary.size() >= 2 && data.summary.size() <= 1000 &&
+             data.contentMarkdown is string && data.contentMarkdown.size() >= 2 && data.contentMarkdown.size() <= 120000 &&
+             data.keyTakeaways is list && data.keyTakeaways.size() <= 15 && (data.keyTakeaways.size() == 0 || data.keyTakeaways[0] is string) &&
+             data.associatedQuizId is string && data.associatedQuizId.size() <= 128 &&
+             data.uploadMode in ['markdown', 'structured'] &&
+             (!('attachmentName' in data) || (data.attachmentName is string && data.attachmentName.size() <= 200)) &&
+             (!('attachmentDataUrl' in data) || (data.attachmentDataUrl is string && data.attachmentDataUrl.size() <= 650000)) &&
+             data.uploadedBy is string && data.uploadedBy.size() <= 150 &&
+             data.createdAt is string && data.createdAt.size() <= 100 &&
+             data.updatedAt is string && data.updatedAt.size() <= 100;
+    }
+
     // --- COLLECTION RULES ---
 
     // 1. Students Collection
@@ -439,6 +463,14 @@ service cloud.firestore {
       allow get, list: if true;
       allow create, update: if true;
       allow delete: if isAdmin();
+    }
+
+    // 22. Super Admin Uploaded Curriculum Lesson Notes (Public read; Admin only create/update/delete)
+    match /admin_lesson_notes/{noteId} {
+      allow get, list: if true;
+      allow create: if isAdmin() && isValidId(noteId) && incoming().id == noteId && isValidAdminLessonNote(incoming());
+      allow update: if isAdmin() && isValidId(noteId) && incoming().id == existing().id && incoming().createdAt == existing().createdAt && isValidAdminLessonNote(incoming());
+      allow delete: if isAdmin() && isValidId(noteId);
     }
   }
 }

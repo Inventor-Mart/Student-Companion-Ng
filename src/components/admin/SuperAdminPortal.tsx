@@ -36,6 +36,7 @@ import {
 } from 'lucide-react';
 import { SchoolAdminPortal } from './SchoolAdminPortal';
 import { OTACompetitionManager } from './OTACompetitionManager';
+import { LessonNotesManager } from './LessonNotesManager';
 import { NairaText, NairaSign } from '../../utils/currency';
 import { ForumReport, ForumMessage } from '../../types';
 import {
@@ -54,10 +55,11 @@ export const SuperAdminPortal: React.FC = () => {
     isFirebaseConnected,
     currentRole,
     currentUserProfile,
-    getSchoolAccreditationMetrics
+    getSchoolAccreditationMetrics,
+    adminLessonNotes
   } = useApp();
 
-  const [portalView, setPortalView] = useState<'directory' | 'school_admin' | 'forum_moderation' | 'ota_competitions'>('directory');
+  const [portalView, setPortalView] = useState<'directory' | 'school_admin' | 'forum_moderation' | 'ota_competitions' | 'lesson_notes'>('directory');
   const [roleFilter, setRoleFilter] = useState<'all' | UserRole>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedUserForEdit, setSelectedUserForEdit] = useState<RegisteredUserProfile | null>(null);
@@ -474,6 +476,12 @@ export const SuperAdminPortal: React.FC = () => {
     );
   }
 
+  if (portalView === 'lesson_notes') {
+    return (
+      <LessonNotesManager onBack={() => setPortalView('directory')} />
+    );
+  }
+
   if (portalView === 'school_admin') {
     return (
       <div className="flex-1 min-h-0 w-full flex flex-col overflow-hidden">
@@ -528,8 +536,22 @@ export const SuperAdminPortal: React.FC = () => {
 
           <div className="flex flex-wrap items-center gap-2">
             <button
+              onClick={() => setPortalView('lesson_notes')}
+              className="flex items-center gap-1.5 px-3 min-h-[40px] rounded-xl bg-[#84E000]/15 hover:bg-[#84E000]/25 border border-[#84E000]/50 text-[#84E000] text-xs font-bold transition-all cursor-pointer shadow-sm whitespace-nowrap"
+              title="Upload or edit weekly curriculum lesson notes across JSS 1 - SS 3"
+            >
+              <BookOpen className="w-3.5 h-3.5 text-[#84E000]" />
+              <span>Lesson Notes</span>
+              {adminLessonNotes.length > 0 && (
+                <span className="px-1.5 py-0.5 rounded-full bg-[#84E000] text-slate-950 text-[10px] font-black tabular-nums">
+                  {adminLessonNotes.length}
+                </span>
+              )}
+            </button>
+
+            <button
               onClick={() => setPortalView('ota_competitions')}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-600/60 text-[#84E000] text-xs font-bold transition-all cursor-pointer shadow-sm"
+              className="flex items-center gap-1.5 px-3 min-h-[40px] rounded-xl bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-600/60 text-[#84E000] text-xs font-bold transition-all cursor-pointer shadow-sm whitespace-nowrap"
               title="Manage Live Tickers, Pop-Up Announcements & Competition Arena"
             >
               <Radio className="w-3.5 h-3.5 text-[#84E000]" />
@@ -538,7 +560,7 @@ export const SuperAdminPortal: React.FC = () => {
 
             <button
               onClick={() => setPortalView('forum_moderation')}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-950/70 hover:bg-amber-900 border border-amber-700/60 text-amber-300 text-xs font-bold transition-all cursor-pointer shadow-sm relative"
+              className="flex items-center gap-1.5 px-3 min-h-[40px] rounded-xl bg-amber-950/70 hover:bg-amber-900 border border-amber-700/60 text-amber-300 text-xs font-bold transition-all cursor-pointer shadow-sm relative whitespace-nowrap"
             >
               <ShieldAlert className="w-3.5 h-3.5" />
               <span>Forum Moderation</span>
@@ -551,7 +573,7 @@ export const SuperAdminPortal: React.FC = () => {
 
             <button
               onClick={() => setPortalView('school_admin')}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-purple-950/70 hover:bg-purple-900 border border-purple-700/60 text-purple-300 text-xs font-bold transition-all cursor-pointer shadow-sm"
+              className="flex items-center gap-1.5 px-3 min-h-[40px] rounded-xl bg-purple-950/70 hover:bg-purple-900 border border-purple-700/60 text-purple-300 text-xs font-bold transition-all cursor-pointer shadow-sm whitespace-nowrap"
             >
               <School className="w-3.5 h-3.5" />
               <span>School Admin View</span>

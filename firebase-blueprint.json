@@ -714,6 +714,33 @@
         "updatedAt": { "type": "string", "maxLength": 100 }
       },
       "required": ["id", "board", "subject", "title", "durationMinutes", "totalQuestions", "questions"]
+    },
+    "AdminLessonNote": {
+      "title": "AdminLessonNote",
+      "description": "Super Admin uploaded weekly lesson note overriding built-in curriculum notes for any class, term, week, and subject",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+        "classLevel": { "type": "string", "enum": ["JSS 1", "JSS 2", "JSS 3", "SS 1", "SS 2", "SS 3"] },
+        "stream": { "type": "string", "enum": ["Junior", "Science", "Non-Science", "All"] },
+        "subject": { "type": "string", "minLength": 2, "maxLength": 100 },
+        "term": { "type": "string", "enum": ["1st Term", "2nd Term", "3rd Term"] },
+        "weekNumber": { "type": "number" },
+        "topicTitle": { "type": "string", "minLength": 2, "maxLength": 200 },
+        "subtopics": { "type": "array" },
+        "readingTimeMinutes": { "type": "number" },
+        "summary": { "type": "string", "minLength": 2, "maxLength": 1000 },
+        "contentMarkdown": { "type": "string", "minLength": 2, "maxLength": 120000 },
+        "keyTakeaways": { "type": "array" },
+        "associatedQuizId": { "type": "string", "maxLength": 128 },
+        "uploadMode": { "type": "string", "enum": ["markdown", "structured"] },
+        "attachmentName": { "type": "string", "maxLength": 200 },
+        "attachmentDataUrl": { "type": "string", "maxLength": 650000 },
+        "uploadedBy": { "type": "string", "maxLength": 150 },
+        "createdAt": { "type": "string", "maxLength": 100 },
+        "updatedAt": { "type": "string", "maxLength": 100 }
+      },
+      "required": ["id", "classLevel", "stream", "subject", "term", "weekNumber", "topicTitle", "subtopics", "readingTimeMinutes", "summary", "contentMarkdown", "keyTakeaways", "associatedQuizId", "uploadMode", "uploadedBy", "createdAt", "updatedAt"]
     }
   },
   "firestore": {
@@ -830,6 +857,12 @@
         "$ref": "#/entities/PastQuestionPaper"
       },
       "description": "Uploaded past question paper summaries and indices"
+    },
+    "/admin_lesson_notes/{noteId}": {
+      "schema": {
+        "$ref": "#/entities/AdminLessonNote"
+      },
+      "description": "Super Admin published weekly curriculum lesson note overrides across JSS 1 to SS 3"
     }
   }
 }

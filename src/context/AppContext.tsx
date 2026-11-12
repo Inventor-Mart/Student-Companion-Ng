@@ -44,8 +44,10 @@ import {
   AwardXPOptions,
   AwardXPResult,
   AppFeatureId,
-  DailyExplorationState
+  DailyExplorationState,
+  AdminLessonNote
 } from '../types';
+import { subscribeToAdminLessonNotes } from '../services/lessonNoteService';
 import {
   calculateDynamicXP,
   calculateRank as calculateRankFromXP,
@@ -218,6 +220,7 @@ interface AppContextType {
 
   // School Administrator & Institutional Publishing
   schoolMaterials: SchoolMaterial[];
+  adminLessonNotes: AdminLessonNote[];
   publishSchoolMaterial: (material: Omit<SchoolMaterial, 'id' | 'createdAt'>) => void;
   deleteSchoolMaterial: (id: string) => void;
   verifySchoolAdmin: (status: 'verified' | 'pending_verification') => void;
@@ -600,6 +603,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     safeSetItem('sc_school_materials', JSON.stringify(schoolMaterials));
   }, [schoolMaterials]);
+
+  // Super Admin Uploaded Weekly Curriculum Lesson Notes (Firestore live sync + local fallback)
+  const [adminLessonNotes, setAdminLessonNotes] = useState<AdminLessonNote[]>([]);
+  useEffect(() => {
+    const unsub = subscribeToAdminLessonNotes(setAdminLessonNotes);
+    return () => unsub();
+  }, []);
 
   // Calculate Rank based on XP
   const calculateRank = (xp: number): StudentRank => {
@@ -3411,6 +3421,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         switchRole,
         loginAsDeveloper,
         schoolMaterials,
+        adminLessonNotes,
         publishSchoolMaterial,
         deleteSchoolMaterial,
         verifySchoolAdmin,

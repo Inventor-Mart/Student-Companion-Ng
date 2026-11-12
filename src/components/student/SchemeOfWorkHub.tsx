@@ -3,6 +3,7 @@ import { useApp } from '../../context/AppContext';
 import { NIGERIAN_CURRICULUM_TOPICS, OFFICIAL_SUBJECTS_BY_CLASS } from '../../data/curriculumData';
 import { NigerianClassLevel, CurriculumTopic, AcademicStream } from '../../types';
 import { cleanMathText } from '../../utils/mathFormatter';
+import { normalizeSubjectKey, resolveAdminLessonNote } from '../../services/lessonNoteService';
 import {
   Search,
   BookOpen,
@@ -179,7 +180,8 @@ export const SchemeOfWorkHub: React.FC = () => {
     setActiveStudentTab,
     updateStudentClass,
     openStudentSubscriptionModal,
-    checkStudentFeatureAccess
+    checkStudentFeatureAccess,
+    adminLessonNotes
   } = useApp();
 
   const [viewMode, setViewMode] = useState<'class' | 'matrix'>('class');
@@ -190,6 +192,7 @@ export const SchemeOfWorkHub: React.FC = () => {
   const [expandedMatrixClass, setExpandedMatrixClass] = useState<NigerianClassLevel | 'ALL'>('ALL');
 
   // 3-tier dropdown explorer state
+  const [explorerTerm, setExplorerTerm] = useState<'1st Term' | '2nd Term' | '3rd Term'>('2nd Term');
   const [explorerSubject, setExplorerSubject] = useState<string>('Mathematics');
   const [explorerWeek, setExplorerWeek] = useState<number>(1);
 
@@ -222,17 +225,19 @@ export const SchemeOfWorkHub: React.FC = () => {
     }
   }, [student.classLevel]);
 
-  // Determine official subjects list for current selection in class view
+  // Determine official subjects list + any custom Super Admin subjects for current class/stream
   const getOfficialSubjects = (): { subject: string; stream: AcademicStream }[] => {
     const targetClass = selectedClass === 'University Aspirant' ? 'SS 3' : selectedClass;
+    let baseList: { subject: string; stream: AcademicStream }[] = [];
+
     if (targetClass === 'JSS 1' || targetClass === 'JSS 2' || targetClass === 'JSS 3') {
-      return OFFICIAL_SUBJECTS_BY_CLASS[targetClass].map((s: string) => ({ subject: s, stream: 'Junior' as AcademicStream }));
+      baseList = OFFICIAL_SUBJECTS_BY_CLASS[targetClass].map((s: string) => ({ subject: s, stream: 'Junior' as AcademicStream }));
     } else {
       const seniorConfig = OFFICIAL_SUBJECTS_BY_CLASS[targetClass as 'SS 1' | 'SS 2' | 'SS 3'];
       if (selectedStream === 'Science') {
-        return seniorConfig.Science.map((s: string) => ({ subject: s, stream: 'Science' as AcademicStream }));
+        baseList = seniorConfig.Science.map((s: string) => ({ subject: s, stream: 'Science' as AcademicStream }));
       } else if (selectedStream === 'Non-Science') {
-        return seniorConfig['Non-Science'].map((s: string) => ({ subject: s, stream: 'Non-Science' as AcademicStream }));
+        baseList = seniorConfig['Non-Science'].map((s: string) => ({ subject: s, stream: 'Non-Science' as AcademicStream }));
       } else {
         const combined: { subject: string; stream: AcademicStream }[] = [];
         seniorConfig.Science.forEach((s: string) => combined.push({ subject: s, stream: 'Science' }));
@@ -241,14 +246,42 @@ export const SchemeOfWorkHub: React.FC = () => {
             combined.push({ subject: s, stream: 'Non-Science' });
           }
         });
-        return combined;
+        baseList = combined;
       }
     }
+
+    // Merge any custom subjects uploaded by Super Admin for this class/stream
+    adminLessonNotes
+      .filter(n => n.classLevel === targetClass)
+      .forEach(n => {
+        const noteStream: AcademicStream =
+          n.stream === 'All'
+            ? targetClass.startsWith('JSS')
+              ? 'Junior'
+              : selectedStream === 'Non-Science'
+              ? 'Non-Science'
+              : 'Science'
+            : n.stream;
+        const streamMatches =
+          targetClass.startsWith('JSS') ||
+          selectedStream === 'All' ||
+          n.stream === 'All' ||
+          n.stream === selectedStream;
+
+        if (
+          streamMatches &&
+          !baseList.some(item => normalizeSubjectKey(item.subject) === normalizeSubjectKey(n.subject))
+        ) {
+          baseList.push({ subject: n.subject, stream: noteStream });
+        }
+      });
+
+    return baseList;
   };
 
   const officialSubjectsWithStream = getOfficialSubjects();
 
-  // Helper to get or synthesize a high-yield topic for any official subject
+  // Helper to get Super Admin override OR built-in curriculum topic OR synthesized fallback
   const getTopicForSubject = (
     subjectName: string,
     streamOverride?: AcademicStream,
@@ -256,8 +289,46 @@ export const SchemeOfWorkHub: React.FC = () => {
     weekOverride?: number
   ): CurriculumTopic => {
     const stream = streamOverride || (selectedClass.startsWith('JSS') ? 'Junior' : (selectedStream === 'Non-Science' ? 'Non-Science' : 'Science'));
-    const term = termOverride || (selectedTerm === 'All' ? '2nd Term' : selectedTerm);
+    const term = termOverride || (selectedTerm === 'All' ? explorerTerm : selectedTerm);
+    const weekNumToCheck = weekOverride !== undefined ? weekOverride : undefined;
 
+    // 1. Check Super Admin Uploaded Lesson Note Overrides first
+    if (weekNumToCheck !== undefined) {
+      const exactAdminOverride = resolveAdminLessonNote(
+        adminLessonNotes,
+        selectedClass,
+        subjectName,
+        term,
+        weekNumToCheck,
+        stream
+      );
+      if (exactAdminOverride) return exactAdminOverride;
+    } else {
+      const targetSub = normalizeSubjectKey(subjectName);
+      const anyWeekAdminNote = adminLessonNotes
+        .filter(
+          n =>
+            n.classLevel === (selectedClass === 'University Aspirant' ? 'SS 3' : selectedClass) &&
+            normalizeSubjectKey(n.subject) === targetSub &&
+            (termOverride ? n.term === termOverride : selectedTerm === 'All' || n.term === selectedTerm) &&
+            (n.stream === stream || n.stream === 'All')
+        )
+        .sort((a, b) => a.weekNumber - b.weekNumber)[0];
+
+      if (anyWeekAdminNote) {
+        const resolved = resolveAdminLessonNote(
+          adminLessonNotes,
+          selectedClass,
+          subjectName,
+          anyWeekAdminNote.term,
+          anyWeekAdminNote.weekNumber,
+          stream
+        );
+        if (resolved) return resolved;
+      }
+    }
+
+    // 2. Fallback to Built-in Curriculum Topics
     const existing =
       NIGERIAN_CURRICULUM_TOPICS.find(
         t =>
@@ -360,19 +431,27 @@ This digital module is aligned with the Nigerian Educational Research and Develo
     return item.subject.toLowerCase().includes(searchQuery.toLowerCase());
   });
 
-  // List of available weeks (10 standard weeks, or up to 12 for exam/revision schemes)
+  // List of available weeks (Weeks 1 to 13 across any Term)
   const maxWeeksForSubject = Math.max(
-    10,
+    13,
     ...NIGERIAN_CURRICULUM_TOPICS.filter(
       t =>
         t.classLevel === selectedClass &&
         t.subject.toLowerCase() === explorerSubject.toLowerCase() &&
-        t.term === '2nd Term'
-    ).map(t => t.weekNumber)
+        t.term === explorerTerm
+    ).map(t => t.weekNumber),
+    ...adminLessonNotes
+      .filter(
+        n =>
+          n.classLevel === (selectedClass === 'University Aspirant' ? 'SS 3' : selectedClass) &&
+          normalizeSubjectKey(n.subject) === normalizeSubjectKey(explorerSubject) &&
+          n.term === explorerTerm
+      )
+      .map(n => n.weekNumber)
   );
 
   const availableWeeksForSubject = Array.from({ length: maxWeeksForSubject }, (_, i) => i + 1).map(wk => {
-    const note = getTopicForSubject(explorerSubject, undefined, '2nd Term', wk);
+    const note = getTopicForSubject(explorerSubject, undefined, explorerTerm, wk);
     const isLocked = !checkStudentFeatureAccess('scheme_weeks', { weekNumber: wk }).hasAccess;
     return {
       weekNumber: wk,
@@ -456,13 +535,19 @@ This digital module is aligned with the Nigerian Educational Research and Develo
                 Lesson Notes Explorer
               </h3>
               <p className="text-[11px] text-slate-400">
-                Organized 2nd Term curriculum notes by Subject, Week & Topic
+                Organized {explorerTerm} curriculum notes by Subject, Week (1–13) & Topic
               </p>
             </div>
           </div>
-          <span className="text-[10px] font-bold text-emerald-400 bg-emerald-950/80 px-2.5 py-1 rounded-lg border border-emerald-800/80">
-            {selectedClass} · 2nd Term
-          </span>
+          <select
+            value={explorerTerm}
+            onChange={e => setExplorerTerm(e.target.value as '1st Term' | '2nd Term' | '3rd Term')}
+            className="text-[11px] font-bold text-emerald-400 bg-emerald-950/80 px-2.5 py-1.5 rounded-lg border border-emerald-800/80 focus:outline-none cursor-pointer"
+          >
+            <option value="1st Term">{selectedClass} · 1st Term</option>
+            <option value="2nd Term">{selectedClass} · 2nd Term</option>
+            <option value="3rd Term">{selectedClass} · 3rd Term</option>
+          </select>
         </div>
 
         {/* 3 Dropdown Selectors */}
@@ -918,7 +1003,11 @@ This digital module is aligned with the Nigerian Educational Research and Develo
               </div>
             ) : (
               filteredSubjects.map(item => {
-                const topic = getTopicForSubject(item.subject, item.stream);
+                const topic = getTopicForSubject(
+                  item.subject,
+                  item.stream,
+                  selectedTerm === 'All' ? undefined : selectedTerm
+                );
                 const isDownloaded = student.downloadedSubjectIds.includes(topic.id);
                 const isTopicLocked = !checkStudentFeatureAccess('scheme_weeks', { weekNumber: topic.weekNumber }).hasAccess;
 
