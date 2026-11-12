@@ -211,18 +211,23 @@ export const StudentDashboard: React.FC = () => {
       {/* =========================================================================
           RESTORED TOP PROFILE, RANK STATUS, TIER PILL & SCHOOL LINK HEADER
          ========================================================================= */}
-      <div className="bg-[#14203D] border-2 border-slate-800 rounded-3xl p-4 shadow-xl space-y-3">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex items-center gap-3">
-            {/* Avatar with Circular Ring & Verified Badge */}
-            <div className="relative">
+      <div className="relative overflow-hidden bg-gradient-to-br from-[#0F1A30] via-[#142343] to-[#0A1222] border-2 border-[#84CC16]/70 rounded-3xl p-4 sm:p-5 shadow-[0_16px_36px_rgba(0,0,0,0.5),0_0_30px_rgba(132,204,22,0.25)] space-y-3.5">
+        {/* Ambient glowing radial lights in corners */}
+        <div className="absolute -top-14 -left-14 w-40 h-40 bg-[#84CC16]/20 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute -bottom-14 -right-14 w-44 h-44 bg-[#FF5B00]/15 rounded-full blur-3xl pointer-events-none" />
+
+        {/* Hero Profile Row: Signature Image 1 Layout */}
+        <div className="flex items-center justify-between gap-3 relative z-10">
+          <div className="flex items-center gap-3.5 min-w-0">
+            {/* 3D Glowing Avatar Halo */}
+            <div className="relative shrink-0">
               <button
                 type="button"
                 onClick={() => {
                   playSound.tileTap();
                   avatarFileInputRef.current?.click();
                 }}
-                className="relative group w-14 h-14 rounded-full overflow-hidden ring-3 ring-[#84CC16] hover:ring-[#A3E635] shadow-[0_0_15px_rgba(132,204,22,0.35)] transition-all cursor-pointer flex items-center justify-center bg-slate-900"
+                className="relative group w-16 h-16 rounded-full overflow-hidden ring-4 ring-[#84CC16] ring-offset-2 ring-offset-[#101C34] shadow-[0_0_24px_rgba(132,204,22,0.65)] transition-all cursor-pointer flex items-center justify-center bg-slate-900"
                 title="Click avatar to update photo"
               >
                 {student.uniformPhotoUrl ? (
@@ -232,22 +237,22 @@ export const StudentDashboard: React.FC = () => {
                     className="w-full h-full object-cover"
                   />
                 ) : (
-                  <div className="w-full h-full bg-gradient-to-br from-[#1E293B] via-[#0F172A] to-[#101C34] flex items-center justify-center text-white font-extrabold text-sm tracking-wider">
+                  <div className="w-full h-full bg-gradient-to-br from-[#1E293B] via-[#0F172A] to-[#101C34] flex items-center justify-center text-white font-black text-lg tracking-wider">
                     {getInitials(displayName)}
                   </div>
                 )}
 
                 <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity">
-                  <Camera className="w-4 h-4 text-[#84CC16]" />
+                  <Camera className="w-5 h-5 text-[#84CC16]" />
                 </div>
               </button>
 
               {student.uniformVerified && (
                 <div
-                  className="absolute -bottom-0.5 -right-0.5 bg-[#84CC16] text-slate-950 rounded-full p-0.5 shadow-md"
+                  className="absolute -bottom-0.5 -right-0.5 bg-[#84CC16] text-slate-950 rounded-full p-1 shadow-[0_0_10px_#84CC16]"
                   title="Uniform Verified Scholar"
                 >
-                  <ShieldCheck className="w-3.5 h-3.5 stroke-[2.5]" />
+                  <ShieldCheck className="w-4 h-4 stroke-[2.5]" />
                 </div>
               )}
 
@@ -260,102 +265,130 @@ export const StudentDashboard: React.FC = () => {
               />
             </div>
 
-            {/* Student Name, Rank Badge, Tier Package & School Link */}
-            <div>
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <h2 className="text-base font-black text-white tracking-tight">
+            {/* Name, Rank Badge & Signature Image 1 XP Capsule */}
+            <div className="min-w-0 space-y-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-lg sm:text-xl font-black text-white tracking-tight drop-shadow-sm truncate">
                   {displayName}
                 </h2>
-
-                {/* Restored Student Rank Status (Fresher / Scholar / Prefect) */}
-                <span className="text-[11px] font-black text-[#84CC16] bg-[#84CC16]/15 border border-[#84CC16]/40 rounded-lg px-2 py-0.5">
-                  {student.rank || 'Scholar'} 🏆
+                <span className="text-xs font-black text-[#84CC16] bg-[#84CC16]/20 border border-[#84CC16]/60 rounded-xl px-2.5 py-0.5 shadow-[0_0_10px_rgba(132,204,22,0.3)] flex items-center gap-1">
+                  {student.classLevel} {student.rank || 'Scholar'} 🏆
                 </span>
-
-                {/* Restored Subscription Tier Pill Button */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    playSound.tileTap();
-                    openStudentSubscriptionModal();
-                  }}
-                  className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-lg border transition-all cursor-pointer flex items-center gap-1 active:scale-95 shadow-xs ${
-                    currentPlan === 'elite'
-                      ? 'bg-purple-950 text-purple-200 border-purple-500 shadow-purple-500/20'
-                      : currentPlan === 'standard'
-                      ? 'bg-[#84CC16]/20 text-[#84CC16] border-[#84CC16] shadow-[#84CC16]/20'
-                      : currentPlan === 'basic'
-                      ? 'bg-blue-950 text-blue-300 border-blue-500'
-                      : 'bg-amber-950 text-amber-300 border-amber-600/80 hover:bg-amber-900/60'
-                  }`}
-                  title="Click to view subscription packages"
-                >
-                  {currentPlan === 'elite' ? '👑 Elite Scholar' : currentPlan === 'standard' ? '★ Standard Plan' : currentPlan === 'basic' ? 'Basic Plan' : 'Free Tier (Upgrade)'}
-                </button>
               </div>
 
-              {/* School & School Code Linker */}
-              <div className="flex items-center gap-2 text-xs text-slate-300 mt-1 flex-wrap">
-                <span className="font-medium text-slate-300">
-                  {displaySchool} · {student.classLevel} ({student.stream || 'General'})
-                </span>
-
-                {/* Restored Link School Code button */}
-                {student.schoolCode ? (
-                  <span className="text-[10px] font-mono font-bold text-purple-300 bg-purple-950 border border-purple-700/80 rounded px-1.5 py-0.2">
-                    Code: {student.schoolCode}
+              {/* Reference Image 1: Signature XP Progress Capsule */}
+              <div className="flex items-center gap-2">
+                <div className="relative w-40 sm:w-56 h-6 bg-[#0B1323] rounded-full p-0.5 border border-[#84CC16]/60 shadow-inner overflow-hidden flex items-center">
+                  <motion.div
+                    initial={{ width: 0 }}
+                    animate={{ width: `${Math.min(100, Math.max(10, rankProgress.percent))}%` }}
+                    transition={{ duration: 0.9, ease: 'easeOut' }}
+                    className="h-full rounded-full bg-gradient-to-r from-[#84CC16] via-[#A3E635] to-[#84CC16] shadow-[0_0_12px_#84CC16]"
+                  />
+                  <span className="absolute inset-0 flex items-center justify-center text-[11px] font-black font-mono text-slate-950 tracking-wide select-none drop-shadow-xs">
+                    {student.xp.toLocaleString()} / 1,000 XP
                   </span>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      playSound.tileTap();
-                      setIsLinkSchoolModalOpen(true);
-                    }}
-                    className="text-[10px] font-bold text-[#84CC16] hover:text-[#A3E635] underline cursor-pointer"
-                  >
-                    + Link School Code
-                  </button>
-                )}
+                </div>
               </div>
             </div>
           </div>
 
-          {/* Right Header: Calmed Living Streak Flame */}
-          <div className="flex flex-col items-end shrink-0">
+          {/* Right Header: Glowing Living Streak Flame */}
+          <div className="flex flex-col items-end shrink-0 relative z-10">
             <motion.div
               animate={{
-                scale: [1, 1.04, 1],
+                scale: [1, 1.05, 1],
                 filter: [
-                  'drop-shadow(0 0 3px rgba(255,91,0,0.3))',
-                  'drop-shadow(0 0 7px rgba(255,91,0,0.5))',
-                  'drop-shadow(0 0 3px rgba(255,91,0,0.3))'
+                  'drop-shadow(0 0 6px rgba(255,91,0,0.5))',
+                  'drop-shadow(0 0 14px rgba(255,91,0,0.8))',
+                  'drop-shadow(0 0 6px rgba(255,91,0,0.5))'
                 ]
               }}
               transition={{ duration: 4.5, repeat: Infinity, ease: 'easeInOut' }}
-              className="flex items-center gap-1.5 bg-[#101C34] border border-[#FF5B00]/60 rounded-2xl px-3 py-1.5 text-white shadow-md cursor-pointer"
+              className="flex items-center gap-1.5 bg-gradient-to-r from-[#FF5B00] to-[#E04F00] border border-orange-300/40 rounded-2xl px-3.5 py-1.5 text-white shadow-[0_4px_16px_rgba(255,91,0,0.4)] cursor-pointer"
               onClick={() => {
                 playSound.tileTap();
               }}
               title="Daily Study Streak"
             >
-              <Flame className="w-5 h-5 text-[#FF5B00] fill-[#FF5B00]" />
-              <span className="text-sm font-extrabold font-mono tabular-nums text-white">
-                {student.streakDays || 3}d
+              <Flame className="w-5 h-5 text-white fill-white drop-shadow-sm" />
+              <span className="text-base font-black font-mono tabular-nums text-white">
+                {student.streakDays || 3}
               </span>
             </motion.div>
-            <span className="text-[10px] text-amber-400 font-bold mt-1">Study Streak</span>
+            <span className="text-[10px] text-orange-300 font-extrabold mt-1">Study Streak</span>
           </div>
         </div>
 
-        {/* Quick Class Switcher (JSS 1 through SS 3 + Aspirant switch) */}
-        <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-300 uppercase tracking-wider">
+        {/* Secondary Row: Tier Package Button & School Code Link */}
+        <div className="pt-2.5 border-t border-slate-800/80 flex items-center justify-between gap-2 flex-wrap relative z-10">
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Restored Subscription Tier Pill Button */}
+            <button
+              type="button"
+              onClick={() => {
+                playSound.tileTap();
+                openStudentSubscriptionModal();
+              }}
+              className={`text-xs font-black px-3 py-1 rounded-xl border-2 transition-all cursor-pointer flex items-center gap-1.5 active:scale-95 shadow-md ${
+                currentPlan === 'elite'
+                  ? 'bg-gradient-to-r from-purple-900 to-indigo-900 text-purple-200 border-purple-400 shadow-purple-500/30'
+                  : currentPlan === 'standard'
+                  ? 'bg-[#84CC16]/25 text-[#84CC16] border-[#84CC16] shadow-[#84CC16]/30'
+                  : currentPlan === 'basic'
+                  ? 'bg-blue-950 text-blue-300 border-blue-400 shadow-blue-500/20'
+                  : 'bg-amber-950/80 text-amber-300 border-amber-500 shadow-amber-500/20 hover:bg-amber-900'
+              }`}
+              title="Click to view subscription packages"
+            >
+              {currentPlan === 'elite' ? '👑 Elite Scholar' : currentPlan === 'standard' ? '★ Standard Plan' : currentPlan === 'basic' ? 'Basic Plan' : 'Free Tier (Upgrade) ★'}
+            </button>
+
+            {/* School & Link School Code */}
+            <div className="flex items-center gap-1.5 text-xs text-slate-300">
+              <span className="font-semibold text-slate-200">
+                {displaySchool}
+              </span>
+              {student.schoolCode ? (
+                <span className="text-[10px] font-mono font-bold text-[#84CC16] bg-[#84CC16]/15 border border-[#84CC16]/40 rounded-lg px-2 py-0.5">
+                  Code: {student.schoolCode}
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    playSound.tileTap();
+                    setIsLinkSchoolModalOpen(true);
+                  }}
+                  className="text-[11px] font-black text-[#84CC16] hover:text-[#A3E635] underline cursor-pointer bg-[#84CC16]/10 px-2.5 py-0.5 rounded-lg border border-[#84CC16]/30"
+                >
+                  + Link School Code
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Aspirant Hub Switch */}
+          <button
+            type="button"
+            onClick={() => {
+              playSound.tileTap();
+              updateStudentClass('University Aspirant', 'Science');
+            }}
+            className="text-[11px] text-amber-300 font-black bg-gradient-to-r from-amber-500/20 to-orange-500/20 hover:from-amber-500/30 hover:to-orange-500/30 px-2.5 py-1 rounded-xl border border-amber-500/40 shrink-0 cursor-pointer transition-all shadow-xs"
+          >
+            ★ Aspirant Hub
+          </button>
+        </div>
+
+        {/* Quick Class Switcher (JSS 1 through SS 3) */}
+        <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between gap-2 relative z-10">
+          <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-300 uppercase tracking-wider shrink-0">
             <GraduationCap className="w-3.5 h-3.5 text-[#84CC16]" />
             <span>Class:</span>
           </div>
 
-          <div className="flex items-center gap-1 overflow-x-auto pb-0.5">
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5">
             {(['JSS 1', 'JSS 2', 'JSS 3', 'SS 1', 'SS 2', 'SS 3'] as NigerianClassLevel[]).map((lvl) => {
               const isActive = student.classLevel === lvl;
               return (
@@ -366,10 +399,10 @@ export const StudentDashboard: React.FC = () => {
                     playSound.tileTap();
                     updateStudentClass(lvl, lvl.startsWith('JSS') ? 'Junior' : (student.stream === 'Junior' ? 'Science' : (student.stream || 'Science')));
                   }}
-                  className={`py-1 px-2.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
+                  className={`py-1 px-3 rounded-xl text-xs font-black transition-all cursor-pointer ${
                     isActive
-                      ? 'bg-[#84CC16] text-slate-950 shadow-md shadow-[#84CC16]/30'
-                      : 'bg-[#101C34] text-slate-400 hover:text-white border border-slate-800'
+                      ? 'bg-[#84CC16] text-slate-950 shadow-[0_0_12px_rgba(132,204,22,0.5)] border border-[#A3E635]'
+                      : 'bg-[#101C34] text-slate-300 hover:text-white border border-slate-700/80 hover:border-slate-500'
                   }`}
                 >
                   {lvl}
@@ -377,50 +410,17 @@ export const StudentDashboard: React.FC = () => {
               );
             })}
           </div>
-
-          <button
-            type="button"
-            onClick={() => {
-              playSound.tileTap();
-              updateStudentClass('University Aspirant', 'Science');
-            }}
-            className="text-[10px] text-amber-400 font-bold bg-amber-500/10 hover:bg-amber-500/20 px-2 py-1 rounded-xl border border-amber-500/30 shrink-0 cursor-pointer transition-colors"
-          >
-            ★ Aspirant Hub
-          </button>
-        </div>
-
-        {/* XP Progress Bar */}
-        <div className="pt-1.5 border-t border-slate-800/80">
-          <div className="flex items-center justify-between text-xs mb-1">
-            <span className="text-slate-300 font-bold flex items-center gap-1">
-              <Award className="w-3.5 h-3.5 text-[#84CC16]" />
-              <strong className="text-white font-mono tabular-nums">{student.xp.toLocaleString()} XP</strong>
-            </span>
-            <span className="text-[11px] text-slate-400">
-              Next Rank: <strong className="text-[#84CC16] font-bold">{rankProgress.nextRank}</strong> ({rankProgress.percent}%)
-            </span>
-          </div>
-
-          <div className="w-full h-2.5 bg-[#0D1527] rounded-full overflow-hidden p-0.5 border border-slate-800">
-            <motion.div
-              initial={{ width: 0 }}
-              animate={{ width: `${Math.min(100, Math.max(5, rankProgress.percent))}%` }}
-              transition={{ duration: 0.8, ease: 'easeOut' }}
-              className="h-full rounded-full bg-gradient-to-r from-[#84CC16] via-[#A3E635] to-[#84CC16] shadow-[0_0_8px_#84CC16]"
-            />
-          </div>
         </div>
 
         {/* Restored Parent Link Code Voucher Strip */}
-        <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between gap-2.5 flex-wrap">
+        <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between gap-2.5 flex-wrap relative z-10">
           <div className="flex items-center gap-2">
-            <div className="p-1.5 rounded-xl bg-[#84CC16]/20 border border-[#84CC16]/40 text-[#84CC16]">
+            <div className="p-1.5 rounded-xl bg-[#84CC16]/20 border border-[#84CC16]/50 text-[#84CC16] shadow-[0_0_8px_rgba(132,204,22,0.3)]">
               <KeyRound className="w-3.5 h-3.5" />
             </div>
             <div>
               <div className="flex items-center gap-1.5">
-                <span className="text-[10px] font-black text-slate-300 uppercase tracking-wider">
+                <span className="text-[10px] font-black text-slate-200 uppercase tracking-wider">
                   Parent Link Code
                 </span>
                 <button
@@ -435,19 +435,19 @@ export const StudentDashboard: React.FC = () => {
                 </button>
               </div>
               <p className="text-[10px] text-slate-400 leading-none mt-0.5">
-                Give this code to your parent to link their guardian portal.
+                Share this code with your parent to link their guardian portal.
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-1.5">
-            <span className="font-mono font-black text-xs tracking-wider text-[#84CC16] bg-[#101C34] px-2.5 py-1 rounded-xl border border-slate-700/80 shadow-inner select-all">
+            <span className="font-mono font-black text-xs tracking-wider text-[#84CC16] bg-[#0C1527] px-3 py-1 rounded-xl border border-[#84CC16]/40 shadow-inner select-all">
               {studentLinkCode}
             </span>
             <button
               type="button"
               onClick={handleCopyLinkCode}
-              className="py-1 px-2.5 rounded-xl bg-[#84CC16] hover:bg-[#A3E635] active:scale-95 text-slate-950 text-[10px] font-black flex items-center gap-1 transition-all cursor-pointer shadow-sm"
+              className="py-1 px-3 rounded-xl bg-[#84CC16] hover:bg-[#A3E635] active:scale-95 text-slate-950 text-[10px] font-black flex items-center gap-1 transition-all cursor-pointer shadow-[0_0_10px_rgba(132,204,22,0.4)]"
               title="Copy link code"
             >
               {isCopiedLinkCode ? <Check className="w-3 h-3 stroke-[3]" /> : <Copy className="w-3 h-3" />}
