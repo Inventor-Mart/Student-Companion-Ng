@@ -40,6 +40,52 @@ const TERM_OPTIONS = [
 
 type CertificateBoard = 'BECE' | 'WAEC' | 'NECO' | 'JAMB';
 
+// Parse raw or nested error messages into clean student-friendly messages
+const formatDrillErrorMessage = (rawError?: string | null): string => {
+  if (!rawError) return 'Failed to initialize examination paper. Please try again.';
+  const str = String(rawError).trim();
+  try {
+    const parsed = JSON.parse(str);
+    if (parsed.error && parsed.error.message) {
+      return formatDrillErrorMessage(parsed.error.message);
+    }
+    if (parsed.message) {
+      return formatDrillErrorMessage(parsed.message);
+    }
+  } catch {}
+
+  if (
+    str.includes('503') ||
+    str.includes('high demand') ||
+    str.includes('UNAVAILABLE') ||
+    str.includes('spikes in demand')
+  ) {
+    return 'The AI examination engine is experiencing temporary high demand across national curriculum servers. Spikes are brief.';
+  }
+
+  if (str.includes('429') || str.includes('quota') || str.includes('RESOURCE_EXHAUSTED')) {
+    return 'Examination generation capacity is temporarily saturated. Please wait a brief moment.';
+  }
+
+  return str;
+};
+
+// Check if error is transient (qualifying for automatic countdown retry)
+const isTransientDrillError = (rawError?: string | null): boolean => {
+  if (!rawError) return false;
+  const str = String(rawError).toLowerCase();
+  return (
+    str.includes('503') ||
+    str.includes('high demand') ||
+    str.includes('unavailable') ||
+    str.includes('temporarily') ||
+    str.includes('spikes') ||
+    str.includes('network') ||
+    str.includes('timeout') ||
+    str.includes('429')
+  );
+};
+
 export const TermlyDrillHub: React.FC<TermlyDrillHubProps> = ({ onStartExam, onOpenUnlockModal }) => {
   const {
     student,
@@ -78,6 +124,7 @@ export const TermlyDrillHub: React.FC<TermlyDrillHubProps> = ({ onStartExam, onO
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [generationStep, setGenerationStep] = useState<string>('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [retryCountdown, setRetryCountdown] = useState<number | null>(null);
 
   // Fresh Paper Modal
   const [isFreshModalOpen, setIsFreshModalOpen] = useState<boolean>(false);
@@ -205,9 +252,16 @@ export const TermlyDrillHub: React.FC<TermlyDrillHubProps> = ({ onStartExam, onO
     return () => { active = false; };
   }, [currentExamSpec.collection, currentExamSpec.docId]);
 
+  // Reset error and countdown when user changes exam filters
+  useEffect(() => {
+    setErrorMessage(null);
+    setRetryCountdown(null);
+  }, [selectedClass, selectedTerm, selectedSubject, drillMode, activeBoard]);
+
   // Launch or generate drill
   const handleLaunchDrill = async (forceFresh = false) => {
     setErrorMessage(null);
+    setRetryCountdown(null);
 
     // Check single-subject / exam access
     if (!isSubjectExamUnlocked(selectedSubject)) {
@@ -243,19 +297,46 @@ export const TermlyDrillHub: React.FC<TermlyDrillHubProps> = ({ onStartExam, onO
       }
 
       if (!res.success || !res.drill) {
-        setErrorMessage(res.error || `Failed to initialize ${currentExamSpec.questionsCount}-question drill. Please try again.`);
+        const cleanErr = formatDrillErrorMessage(res.error);
+        setErrorMessage(cleanErr);
+        if (isTransientDrillError(res.error)) {
+          setRetryCountdown(5);
+        } else {
+          setRetryCountdown(null);
+        }
         setIsGenerating(false);
         return;
       }
 
+      setRetryCountdown(null);
       setIsCachedInFirestore(true);
       setIsGenerating(false);
       onStartExam(res.drill);
     } catch (err: any) {
-      setErrorMessage(err?.message || 'Error communicating with exam server');
+      const cleanErr = formatDrillErrorMessage(err?.message);
+      setErrorMessage(cleanErr);
+      if (isTransientDrillError(err?.message)) {
+        setRetryCountdown(5);
+      } else {
+        setRetryCountdown(null);
+      }
       setIsGenerating(false);
     }
   };
+
+  // Automatic retry countdown handler
+  useEffect(() => {
+    if (retryCountdown === null) return;
+    if (retryCountdown > 0) {
+      const timer = setTimeout(() => {
+        setRetryCountdown(prev => (prev !== null ? prev - 1 : null));
+      }, 1000);
+      return () => clearTimeout(timer);
+    } else if (retryCountdown === 0) {
+      setRetryCountdown(null);
+      handleLaunchDrill(false);
+    }
+  }, [retryCountdown]);
 
   // Fresh Paper Pay & Generate Handler
   const handleFreshPaperCheckout = async () => {
@@ -581,19 +662,60 @@ export const TermlyDrillHub: React.FC<TermlyDrillHubProps> = ({ onStartExam, onO
           </div>
         )}
 
-        {/* Error Notification */}
+        {/* Error / Recovery Notification */}
         {errorMessage && (
-          <div className="bg-rose-950/40 border border-rose-800/60 rounded-xl p-3 text-xs text-rose-300 flex items-start gap-2">
-            <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
-            <div className="space-y-1">
-              <p className="font-semibold">{errorMessage}</p>
-              <button
-                type="button"
-                onClick={() => handleLaunchDrill(false)}
-                className="underline hover:text-rose-200 cursor-pointer font-bold text-[11px]"
-              >
-                Retry Generation
-              </button>
+          <div className="bg-amber-950/30 border border-amber-800/50 rounded-xl p-3.5 text-xs text-amber-200 flex items-start gap-2.5">
+            <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+            <div className="space-y-2 flex-1">
+              <p className="font-medium text-slate-200 leading-relaxed">{errorMessage}</p>
+
+              {retryCountdown !== null ? (
+                <div className="flex items-center justify-between gap-3 pt-1">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-amber-300">
+                    <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
+                    <span>Auto-retrying in <span className="font-mono tabular-nums text-white font-bold">{retryCountdown}s</span>...</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setRetryCountdown(null);
+                        handleLaunchDrill(false);
+                      }}
+                      className="px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-[11px] cursor-pointer transition-colors"
+                    >
+                      Retry Now
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setRetryCountdown(null);
+                        setErrorMessage(null);
+                      }}
+                      className="text-slate-400 hover:text-white text-[11px] cursor-pointer transition-colors"
+                    >
+                      Dismiss
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center gap-3 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => handleLaunchDrill(false)}
+                    className="px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-[11px] cursor-pointer transition-colors"
+                  >
+                    Retry Generation
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setErrorMessage(null)}
+                    className="text-slate-400 hover:text-white text-[11px] cursor-pointer transition-colors"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         )}

@@ -62,6 +62,95 @@ function getAi(): GoogleGenAI {
   return aiInstance;
 }
 
+// Check if error is a transient upstream capacity or network issue
+function isTransientGeminiError(err: any): boolean {
+  const msg = String(err?.message || err || '');
+  const status = err?.status || err?.code;
+  return (
+    status === 503 ||
+    status === 429 ||
+    msg.includes('503') ||
+    msg.includes('high demand') ||
+    msg.includes('UNAVAILABLE') ||
+    msg.includes('temporarily') ||
+    msg.includes('RESOURCE_EXHAUSTED') ||
+    msg.includes('spikes in demand')
+  );
+}
+
+// Format raw or nested JSON error messages into human-readable strings
+function sanitizeGeminiErrorMessage(err: any, fallbackMessage: string): string {
+  if (!err) return fallbackMessage;
+  const raw = typeof err === 'string' ? err : err.message || '';
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed.error && parsed.error.message) {
+      return sanitizeGeminiErrorMessage(parsed.error.message, fallbackMessage);
+    }
+  } catch {}
+  if (
+    raw.includes('503') ||
+    raw.includes('high demand') ||
+    raw.includes('UNAVAILABLE') ||
+    raw.includes('spikes in demand')
+  ) {
+    return 'The AI examination engine is experiencing temporary high demand across national servers. Please retry in a few moments.';
+  }
+  if (raw.includes('429') || raw.includes('RESOURCE_EXHAUSTED') || raw.includes('quota')) {
+    return 'Examination generation capacity is temporarily saturated. Please retry in a moment.';
+  }
+  return raw || fallbackMessage;
+}
+
+// Resilient Gemini generation helper with exponential backoff and fallback model
+async function generateGeminiWithResilience(params: {
+  primaryModel?: string;
+  fallbackModel?: string;
+  contents: any;
+  config: any;
+  label?: string;
+}): Promise<any> {
+  const primaryModel = params.primaryModel || 'gemini-3.8-flash';
+  const fallbackModel = params.fallbackModel || 'gemini-flash-latest';
+  const label = params.label || 'Gemini Request';
+
+  // Attempt 1: Primary model
+  try {
+    return await getAi().models.generateContent({
+      model: primaryModel,
+      contents: params.contents,
+      config: params.config,
+    });
+  } catch (err: any) {
+    if (!isTransientGeminiError(err)) {
+      throw err;
+    }
+    console.warn(`[${label}] Primary model ${primaryModel} reported high demand / 503. Retrying with 1500ms backoff...`);
+    await new Promise(r => setTimeout(r, 1500));
+
+    // Attempt 2: Retry primary model after 1.5s backoff
+    try {
+      return await getAi().models.generateContent({
+        model: primaryModel,
+        contents: params.contents,
+        config: params.config,
+      });
+    } catch (retryErr: any) {
+      if (!isTransientGeminiError(retryErr)) {
+        throw retryErr;
+      }
+      console.warn(`[${label}] Primary model retry congested. Delegating to fallback model ${fallbackModel}...`);
+
+      // Attempt 3: Delegate to fallback model
+      return await getAi().models.generateContent({
+        model: fallbackModel,
+        contents: params.contents,
+        config: params.config,
+      });
+    }
+  }
+}
+
 // 1. Nigerian Secondary AI Study Coach & Exam Master
 app.post('/api/gemini/study-tutor', async (req, res) => {
   try {
@@ -108,12 +197,14 @@ Strict Pedagogical Guidelines:
       parts: [{ text: String(prompt) }],
     });
 
-    const response = await getAi().models.generateContent({
-      model: 'gemini-3.8-flash',
+    const response = await generateGeminiWithResilience({
+      primaryModel: 'gemini-3.8-flash',
+      fallbackModel: 'gemini-flash-latest',
       contents,
       config: {
         systemInstruction,
       },
+      label: 'StudyTutor'
     });
 
     const text = response.text || 'No response generated.';
@@ -121,8 +212,9 @@ Strict Pedagogical Guidelines:
   } catch (error: any) {
     console.error('Gemini Study Tutor Error:', error);
     const status = error?.status || 500;
+    const sanitized = sanitizeGeminiErrorMessage(error, 'Failed to generate study explanation with Gemini AI');
     return res.status(status).json({
-      error: error?.message || 'Failed to generate study explanation with Gemini AI',
+      error: sanitized,
     });
   }
 });
@@ -364,12 +456,13 @@ STRICT EXAM REQUIREMENTS:
    - 'question': Clear, realistic exam question statement. For calculation subjects (Maths, Physics, Chemistry, Further Maths, Commerce), include practical numerical values or algebraic terms.
    - 'options': Exactly 4 distinct, plausible options.
    - 'correctOptionIndex': An integer (0 for Option A, 1 for Option B, 2 for Option C, 3 for Option D).
-   - 'explanation': Clear, step-by-step working, formula application, or rule explanation proving why the option is correct and why other distractors are incorrect.
+   - 'explanation': Concise, high-yield step-by-step working or rule (1-2 sentences) showing why the option is correct.
    - 'topicRef': Explicit week and topic reference (e.g. "Week 3: Quadratic Equations & Factorization").
 4. Difficulty Level: Rigorous, realistic NERDC standard appropriate for ${sanitizedClass}.`;
 
-    const response = await getAi().models.generateContent({
-      model: 'gemini-3.8-flash',
+    const response = await generateGeminiWithResilience({
+      primaryModel: 'gemini-3.8-flash',
+      fallbackModel: 'gemini-flash-latest',
       contents: promptText,
       config: {
         systemInstruction,
@@ -399,7 +492,8 @@ STRICT EXAM REQUIREMENTS:
           },
           required: ['title', 'questions']
         }
-      }
+      },
+      label: `TermlyDrill:${sanitizedClass}-${sanitizedSubject}`
     });
 
     const rawText = (response.text || '{}').trim();
@@ -463,9 +557,10 @@ STRICT EXAM REQUIREMENTS:
     });
   } catch (error: any) {
     console.error('Termly Drill Generation Error:', error);
+    const sanitizedMsg = sanitizeGeminiErrorMessage(error, 'Failed to generate 40-question Termly Drill');
     return res.status(500).json({
       success: false,
-      error: error?.message || 'Failed to generate 40-question Termly Drill'
+      error: sanitizedMsg
     });
   }
 });
@@ -584,8 +679,9 @@ STRICT BOARD SPECIFICATIONS:
    - 'topicRef': Explicit syllabus topic area (e.g., "${boardKey} Core: Circle Theorems" or "${boardKey} Syllabus: Cell Biology").
 6. Difficulty and style: Strictly reflect official ${boardConfig.boardName} past question rigor.`;
 
-    const response = await getAi().models.generateContent({
-      model: 'gemini-3.8-flash',
+    const response = await generateGeminiWithResilience({
+      primaryModel: 'gemini-3.8-flash',
+      fallbackModel: 'gemini-flash-latest',
       contents: promptText,
       config: {
         systemInstruction,
@@ -615,7 +711,8 @@ STRICT BOARD SPECIFICATIONS:
           },
           required: ['title', 'questions']
         }
-      }
+      },
+      label: `CertificateDrill:${boardKey}-${sanitizedSubject}`
     });
 
     const rawText = (response.text || '{}').trim();
@@ -681,9 +778,10 @@ STRICT BOARD SPECIFICATIONS:
     });
   } catch (error: any) {
     console.error('Certificate Drill Generation Error:', error);
+    const sanitizedMsg = sanitizeGeminiErrorMessage(error, 'Failed to generate official certificate examination drill');
     return res.status(500).json({
       success: false,
-      error: error?.message || 'Failed to generate official certificate examination drill'
+      error: sanitizedMsg
     });
   }
 });
