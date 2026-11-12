@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
-import { ForumChannel, ForumMessage, ForumReport } from '../../types';
+import { ForumMessage, ForumReport } from '../../types';
 import {
   INITIAL_FORUM_CHANNELS,
   getStoredForumMessages,
@@ -9,6 +9,8 @@ import {
   saveStoredForumReports
 } from '../../data/forumData';
 import { filterMessageText } from '../../utils/profanityFilter';
+import { playSound } from '../../utils/audioSynthesis';
+import { motion } from 'motion/react';
 import {
   MessageSquare,
   HeartHandshake,
@@ -51,6 +53,7 @@ export const ParentCommunityForum: React.FC = () => {
 
   // Handle reaction toggle
   const handleToggleReaction = (msgId: string, reactionType: 'thumbsUp' | 'lightbulb' | 'fire' | 'clap') => {
+    playSound.tileTap();
     const currentUserId = currentUser?.uid || currentUserProfile?.id || 'current-parent';
     setMessages(prev => {
       const updated = prev.map(msg => {
@@ -82,10 +85,12 @@ export const ParentCommunityForum: React.FC = () => {
     // Run safety & profanity screening
     const filterResult = filterMessageText(inputText);
     if (!filterResult.isClean) {
+      playSound.buzz();
       setInputWarning(filterResult.warningMessage || 'Please review your message for community safety.');
       return;
     }
 
+    playSound.correct();
     setInputWarning(null);
 
     const newMsg: ForumMessage = {
@@ -118,8 +123,8 @@ export const ParentCommunityForum: React.FC = () => {
   // Submit report
   const handleSubmitReport = () => {
     if (!reportingMessage) return;
+    playSound.tileTap();
 
-    // Create report record for Super Admin moderation
     const newReport: ForumReport = {
       id: `rep-${Date.now()}`,
       messageId: reportingMessage.id,
@@ -142,6 +147,7 @@ export const ParentCommunityForum: React.FC = () => {
       return updated;
     });
 
+    playSound.correct();
     setReportSubmitted(true);
     setTimeout(() => {
       setReportingMessage(null);
@@ -150,154 +156,161 @@ export const ParentCommunityForum: React.FC = () => {
   };
 
   return (
-    <div className="flex-1 w-full flex flex-col bg-slate-950 text-slate-100 h-full overflow-hidden rounded-2xl border border-slate-800 shadow-xl">
+    <div className="flex-1 min-h-0 h-full w-full flex flex-col bg-[#101C34] text-slate-100 overflow-hidden rounded-3xl border-2 border-[#84CC16]/30 shadow-2xl">
       {/* Top Header Banner */}
-      <div className="bg-slate-900/95 border-b border-slate-800 px-4 py-3 shrink-0">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-indigo-600 to-purple-700 flex items-center justify-center text-white shadow-md shadow-indigo-950/50">
-              <HeartHandshake className="w-4 h-4" />
+      <div className="bg-gradient-to-r from-[#14203D] via-[#0F1B33] to-[#14203D] border-b border-slate-800 px-4 py-3.5 shrink-0">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-[#FF5B00] to-[#E04F00] flex items-center justify-center text-white shadow-lg shadow-[#FF5B00]/25 shrink-0">
+              <HeartHandshake className="w-5 h-5" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-sm font-bold text-white">Parents&apos; Discussion Lounge</h2>
-                <span className="text-[10px] bg-indigo-950 text-indigo-300 font-semibold px-2 py-0.5 rounded-full border border-indigo-800/60 flex items-center gap-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-sm font-black text-white tracking-tight">Parents&apos; Discussion Lounge</h2>
+                <span className="text-[10px] bg-[#84CC16]/15 text-[#84CC16] font-black px-2 py-0.5 rounded-lg border border-[#84CC16]/40 flex items-center gap-1">
                   <ShieldCheck className="w-3 h-3" />
                   Parents Only
                 </span>
               </div>
-              <p className="text-[11px] text-slate-400">
+              <p className="text-[11px] text-slate-300 mt-0.5">
                 Share academic guidance, exam tips, and child progress insights with fellow Nigerian parents
               </p>
             </div>
           </div>
         </div>
 
-        {/* Channel Selector Pills */}
-        <div className="flex items-center gap-2 mt-3 overflow-x-auto pb-1 scrollbar-none">
+        {/* Channel Selector Grid Tabs */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-3">
           {parentChannels.map(ch => {
             const isActive = ch.id === activeChannelId;
             return (
               <button
                 key={ch.id}
+                type="button"
                 onClick={() => {
+                  playSound.tileTap();
                   setActiveChannelId(ch.id);
                   setReplyingTo(null);
                 }}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold shrink-0 transition-all cursor-pointer ${
+                className={`flex items-center gap-2 px-3 py-2 rounded-2xl text-xs font-extrabold transition-all cursor-pointer active:scale-97 border ${
                   isActive
-                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-900/40'
-                    : 'bg-slate-800/80 text-slate-300 hover:bg-slate-800 hover:text-white border border-slate-700/60'
+                    ? 'bg-[#84CC16] text-slate-950 border-[#A3E635] shadow-lg shadow-[#84CC16]/25'
+                    : 'bg-[#0D1527] text-slate-300 hover:bg-[#18264A] hover:text-white border-slate-800'
                 }`}
               >
-                {ch.category === 'parenting' && <HeartHandshake className="w-3.5 h-3.5" />}
-                {ch.category === 'exams' && <Award className="w-3.5 h-3.5" />}
-                {ch.category === 'general' && <Coffee className="w-3.5 h-3.5" />}
-                <span>{ch.title}</span>
+                {ch.category === 'parenting' && <HeartHandshake className="w-3.5 h-3.5 shrink-0" />}
+                {ch.category === 'exams' && <Award className="w-3.5 h-3.5 shrink-0" />}
+                {ch.category === 'general' && <Coffee className="w-3.5 h-3.5 shrink-0" />}
+                <span className="truncate">{ch.title}</span>
               </button>
             );
           })}
         </div>
       </div>
 
-      {/* Channel Purpose Banner */}
-      <div className="bg-slate-900/40 px-4 py-2 border-b border-slate-800/60 text-[11px] text-slate-400 flex items-center justify-between">
-        <span className="truncate">{currentChannel.description}</span>
-        <span className="text-[10px] text-indigo-400 font-medium shrink-0 ml-2">
+      {/* Channel Purpose Strip */}
+      <div className="bg-[#0D1527]/90 px-4 py-2 border-b border-slate-800/80 text-[11px] text-slate-300 flex items-center justify-between shrink-0">
+        <span className="truncate">{currentChannel?.description}</span>
+        <span className="text-[10px] text-[#FF5B00] font-black shrink-0 ml-2 uppercase tracking-wider">
           {channelMessages.length} contributions
         </span>
       </div>
 
       {/* Messages Scroll Area */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3.5">
+      <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-3.5 touch-pan-y">
         {channelMessages.length === 0 ? (
-          <div className="h-64 flex flex-col items-center justify-center text-center p-6 text-slate-500">
-            <MessageSquare className="w-8 h-8 text-slate-600 mb-2" />
-            <p className="text-xs font-semibold text-slate-400">No discussions in this lounge yet</p>
-            <p className="text-[11px] text-slate-500 max-w-xs mt-1">
+          <div className="h-56 flex flex-col items-center justify-center text-center p-6 text-slate-400">
+            <MessageSquare className="w-9 h-9 text-[#84CC16] mb-2 opacity-75" />
+            <p className="text-xs font-bold text-white">No discussions in this lounge yet</p>
+            <p className="text-[11px] text-slate-400 max-w-xs mt-1">
               Start a topic to ask for advice or share experiences on child academics!
             </p>
           </div>
         ) : (
-          channelMessages.map(msg => {
+          channelMessages.map((msg, idx) => {
             const currentUserId = currentUser?.uid || currentUserProfile?.id || 'current-parent';
             const isMe = msg.senderId === currentUserId;
 
             return (
-              <div
+              <motion.div
                 key={msg.id}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: Math.min(idx * 0.03, 0.2), duration: 0.25 }}
                 className={`flex flex-col space-y-1.5 max-w-2xl ${
                   isMe ? 'ml-auto items-end' : 'mr-auto items-start'
                 }`}
               >
                 {/* Sender Metadata Header */}
                 <div className="flex items-center gap-1.5 text-[11px] px-1">
-                  <span className={`font-bold ${isMe ? 'text-indigo-400' : 'text-slate-200'}`}>
+                  <span className={`font-black ${isMe ? 'text-[#84CC16]' : 'text-white'}`}>
                     {isMe ? 'You' : msg.senderName}
                   </span>
-                  <span className="text-[10px] font-semibold bg-indigo-950 text-indigo-300 px-1.5 py-0.5 rounded border border-indigo-800/60 flex items-center gap-1">
-                    <UserCheck className="w-2.5 h-2.5 text-indigo-400" />
+                  <span className="text-[10px] font-bold bg-[#14203D] text-[#FF5B00] px-1.5 py-0.5 rounded-lg border border-[#FF5B00]/30 flex items-center gap-1">
+                    <UserCheck className="w-2.5 h-2.5 text-[#FF5B00]" />
                     Verified Parent
                   </span>
-                  <span className="text-slate-500 text-[10px]">· {msg.createdAt}</span>
+                  <span className="text-slate-400 text-[10px]">· {msg.createdAt}</span>
                 </div>
 
                 {/* Reply snippet preview */}
                 {msg.replyToText && (
-                  <div className="text-[11px] bg-slate-900/80 border-l-2 border-indigo-500 px-2.5 py-1 rounded text-slate-400 flex items-center gap-1.5 max-w-lg italic">
-                    <CornerDownRight className="w-3 h-3 text-indigo-400 shrink-0" />
+                  <div className="text-[11px] bg-[#0D1527] border border-slate-700/80 px-2.5 py-1 rounded-xl text-slate-300 flex items-center gap-1.5 max-w-lg italic">
+                    <CornerDownRight className="w-3 h-3 text-[#84CC16] shrink-0" />
                     <span className="truncate">{msg.replyToText}</span>
                   </div>
                 )}
 
                 {/* Message Bubble Card */}
                 <div
-                  className={`relative p-3.5 rounded-2xl text-xs sm:text-[13px] leading-relaxed shadow-sm max-w-xl break-words ${
+                  className={`relative p-3.5 rounded-2xl text-xs sm:text-[13px] leading-relaxed shadow-md max-w-xl break-words ${
                     isMe
-                      ? 'bg-indigo-950/80 text-indigo-50 border border-indigo-700/60 rounded-tr-sm'
-                      : 'bg-slate-900 text-slate-200 border border-slate-800 rounded-tl-sm'
+                      ? 'bg-[#18294A] text-white border-2 border-[#84CC16]/50 rounded-tr-sm'
+                      : 'bg-[#14203D] text-slate-100 border border-slate-700/80 rounded-tl-sm'
                   }`}
                 >
                   <p>{msg.text}</p>
 
                   {/* Reaction counts and actions row */}
-                  <div className="mt-2.5 pt-2 border-t border-slate-800/60 flex items-center justify-between gap-2">
-                    {/* Reaction Badges */}
+                  <div className="mt-2.5 pt-2 border-t border-slate-700/60 flex items-center justify-between gap-2">
                     <div className="flex items-center gap-1.5">
-                      {/* Thumbs Up / Helpful */}
                       <button
+                        type="button"
                         onClick={() => handleToggleReaction(msg.id, 'thumbsUp')}
-                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-medium transition-colors ${
+                        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-[10px] font-bold transition-all cursor-pointer active:scale-95 ${
                           msg.reactions.thumbsUp.includes(currentUserId)
-                            ? 'bg-indigo-900/80 text-indigo-300 border border-indigo-700'
-                            : 'bg-slate-800/80 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                            ? 'bg-[#84CC16] text-slate-950 shadow-xs'
+                            : 'bg-[#0D1527] text-slate-300 hover:text-white border border-slate-700'
                         }`}
                         title="Agree"
                       >
-                        <ThumbsUp className="w-2.5 h-2.5" />
-                        <span>{msg.reactions.thumbsUp.length || 0}</span>
+                        <ThumbsUp className="w-3 h-3" />
+                        <span className="tabular-nums">{msg.reactions.thumbsUp.length || 0}</span>
                       </button>
 
-                      {/* Lightbulb (Helpful Advice) */}
                       <button
+                        type="button"
                         onClick={() => handleToggleReaction(msg.id, 'lightbulb')}
-                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-medium transition-colors ${
+                        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-[10px] font-bold transition-all cursor-pointer active:scale-95 ${
                           msg.reactions.lightbulb.includes(currentUserId)
-                            ? 'bg-amber-900/80 text-amber-300 border border-amber-700'
-                            : 'bg-slate-800/80 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                            ? 'bg-[#FF5B00] text-white shadow-xs'
+                            : 'bg-[#0D1527] text-slate-300 hover:text-white border border-slate-700'
                         }`}
                         title="Valuable Advice"
                       >
-                        <Lightbulb className="w-2.5 h-2.5" />
-                        <span>{msg.reactions.lightbulb.length || 0}</span>
+                        <Lightbulb className="w-3 h-3" />
+                        <span className="tabular-nums">{msg.reactions.lightbulb.length || 0}</span>
                       </button>
                     </div>
 
-                    {/* Reply & Report actions */}
-                    <div className="flex items-center gap-2 text-[11px] text-slate-400">
+                    <div className="flex items-center gap-2 text-[11px] text-slate-300">
                       <button
-                        onClick={() => setReplyingTo(msg)}
-                        className="hover:text-indigo-400 transition-colors flex items-center gap-1"
+                        type="button"
+                        onClick={() => {
+                          playSound.tileTap();
+                          setReplyingTo(msg);
+                        }}
+                        className="hover:text-[#84CC16] transition-colors flex items-center gap-1 cursor-pointer font-semibold"
                         title="Reply to message"
                       >
                         <CornerDownRight className="w-3 h-3" />
@@ -306,8 +319,12 @@ export const ParentCommunityForum: React.FC = () => {
 
                       {!isMe && (
                         <button
-                          onClick={() => setReportingMessage(msg)}
-                          className="hover:text-rose-400 transition-colors p-1"
+                          type="button"
+                          onClick={() => {
+                            playSound.tileTap();
+                            setReportingMessage(msg);
+                          }}
+                          className="hover:text-[#FF5B00] transition-colors p-1 cursor-pointer"
                           title="Report message"
                         >
                           <Flag className="w-3 h-3" />
@@ -316,35 +333,37 @@ export const ParentCommunityForum: React.FC = () => {
                     </div>
                   </div>
                 </div>
-              </div>
+              </motion.div>
             );
           })
         )}
       </div>
 
       {/* Compose Box (Bottom Fixed Bar) */}
-      <div className="bg-slate-900/95 border-t border-slate-800 p-3 shrink-0">
-        {/* Reply indicator */}
+      <div className="bg-[#0D1527] border-t border-slate-800 p-3 shrink-0">
         {replyingTo && (
-          <div className="mb-2 px-3 py-1.5 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-between text-xs text-slate-300">
+          <div className="mb-2 px-3 py-1.5 rounded-xl bg-[#14203D] border border-[#84CC16]/40 flex items-center justify-between text-xs text-slate-200">
             <div className="flex items-center gap-1.5 min-w-0">
-              <CornerDownRight className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
-              <span className="font-semibold text-white">Replying to {replyingTo.senderName}:</span>
+              <CornerDownRight className="w-3.5 h-3.5 text-[#84CC16] shrink-0" />
+              <span className="font-bold text-white">Replying to {replyingTo.senderName}:</span>
               <span className="truncate text-slate-400 italic text-[11px]">{replyingTo.text}</span>
             </div>
             <button
-              onClick={() => setReplyingTo(null)}
-              className="p-1 hover:text-white rounded text-slate-400"
+              type="button"
+              onClick={() => {
+                playSound.tileTap();
+                setReplyingTo(null);
+              }}
+              className="p-1 hover:text-white rounded text-slate-400 cursor-pointer"
             >
               <X className="w-3.5 h-3.5" />
             </button>
           </div>
         )}
 
-        {/* Safety Warning */}
         {inputWarning && (
-          <div className="mb-2 px-3 py-2 rounded-xl bg-amber-950/80 border border-amber-700/60 flex items-center gap-2 text-xs text-amber-200">
-            <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+          <div className="mb-2 px-3 py-2 rounded-xl bg-[#FF5B00]/15 border border-[#FF5B00]/50 flex items-center gap-2 text-xs text-orange-200">
+            <AlertTriangle className="w-4 h-4 text-[#FF5B00] shrink-0" />
             <span>{inputWarning}</span>
           </div>
         )}
@@ -357,12 +376,12 @@ export const ParentCommunityForum: React.FC = () => {
                 setInputText(e.target.value);
                 if (inputWarning) setInputWarning(null);
               }}
-              placeholder={`Contribute to #${currentChannel.title} (Max 500 characters)...`}
+              placeholder={`Contribute to #${currentChannel?.title || 'Lounge'} (Max 500 characters)...`}
               rows={2}
               maxLength={500}
-              className="w-full bg-slate-950 text-xs sm:text-sm text-white px-3.5 py-2.5 rounded-xl border border-slate-700 focus:outline-none focus:border-indigo-500 resize-none placeholder-slate-500"
+              className="w-full bg-[#14203D] text-xs sm:text-sm text-white px-3.5 py-2.5 rounded-2xl border-2 border-slate-700 focus:outline-none focus:border-[#84CC16] resize-none placeholder-slate-400"
             />
-            <div className="absolute right-2.5 bottom-2 text-[10px] text-slate-500">
+            <div className="absolute right-3 bottom-2 text-[10px] font-mono text-slate-400">
               {inputText.length}/500
             </div>
           </div>
@@ -370,7 +389,7 @@ export const ParentCommunityForum: React.FC = () => {
           <button
             type="submit"
             disabled={!inputText.trim()}
-            className="p-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:hover:bg-indigo-600 text-white font-semibold transition-all shadow-md shadow-indigo-950/40 cursor-pointer shrink-0"
+            className="p-3.5 rounded-2xl bg-[#FF5B00] hover:bg-[#e05000] disabled:opacity-40 text-white font-black transition-all shadow-lg shadow-[#FF5B00]/25 cursor-pointer shrink-0 active:scale-95"
             title="Share with Parents"
           >
             <Send className="w-4 h-4" />
@@ -380,16 +399,20 @@ export const ParentCommunityForum: React.FC = () => {
 
       {/* Report Modal */}
       {reportingMessage && (
-        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-sm w-full p-4 space-y-3.5 shadow-2xl">
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#101C34] border-2 border-[#FF5B00]/50 rounded-3xl max-w-sm w-full p-5 space-y-3.5 shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
-              <div className="flex items-center gap-2 text-rose-400 font-bold text-sm">
+              <div className="flex items-center gap-2 text-[#FF5B00] font-black text-sm">
                 <Flag className="w-4 h-4" />
                 <span>Report Content</span>
               </div>
               <button
-                onClick={() => setReportingMessage(null)}
-                className="text-slate-400 hover:text-white p-1"
+                type="button"
+                onClick={() => {
+                  playSound.tileTap();
+                  setReportingMessage(null);
+                }}
+                className="text-slate-400 hover:text-white p-1 cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -397,20 +420,20 @@ export const ParentCommunityForum: React.FC = () => {
 
             {reportSubmitted ? (
               <div className="py-6 text-center space-y-2">
-                <CheckCircle2 className="w-10 h-10 text-emerald-400 mx-auto" />
-                <p className="text-sm font-bold text-white">Report Submitted</p>
-                <p className="text-xs text-slate-400">
+                <CheckCircle2 className="w-10 h-10 text-[#84CC16] mx-auto" />
+                <p className="text-sm font-black text-white">Report Submitted</p>
+                <p className="text-xs text-slate-300">
                   Thank you for helping maintain a supportive, safe forum.
                 </p>
               </div>
             ) : (
               <>
-                <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-800 text-xs text-slate-300 italic">
+                <div className="bg-[#14203D] p-3 rounded-2xl border border-slate-800 text-xs text-slate-200 italic">
                   &quot;{reportingMessage.text.slice(0, 100)}...&quot;
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-xs font-semibold text-slate-300 block">
+                  <label className="text-xs font-bold text-slate-200 block">
                     Reason for report:
                   </label>
                   {[
@@ -420,14 +443,15 @@ export const ParentCommunityForum: React.FC = () => {
                   ].map(item => (
                     <label
                       key={item.id}
-                      className="flex items-center gap-2 p-2 rounded-lg bg-slate-850 hover:bg-slate-800 border border-slate-700/60 cursor-pointer text-xs text-slate-200"
+                      onClick={() => playSound.tileTap()}
+                      className="flex items-center gap-2.5 p-2.5 rounded-xl bg-[#14203D] hover:bg-[#19284C] border border-slate-700/80 cursor-pointer text-xs text-slate-100"
                     >
                       <input
                         type="radio"
                         name="parentReportReason"
                         checked={reportReason === item.id}
                         onChange={() => setReportReason(item.id as any)}
-                        className="text-indigo-500 focus:ring-indigo-500"
+                        className="accent-[#84CC16]"
                       />
                       <span>{item.label}</span>
                     </label>
@@ -436,14 +460,19 @@ export const ParentCommunityForum: React.FC = () => {
 
                 <div className="flex gap-2 pt-1">
                   <button
-                    onClick={() => setReportingMessage(null)}
-                    className="flex-1 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold"
+                    type="button"
+                    onClick={() => {
+                      playSound.tileTap();
+                      setReportingMessage(null);
+                    }}
+                    className="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold cursor-pointer"
                   >
                     Cancel
                   </button>
                   <button
+                    type="button"
                     onClick={handleSubmitReport}
-                    className="flex-1 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow-md shadow-rose-950/40"
+                    className="flex-1 py-2.5 rounded-xl bg-[#FF5B00] hover:bg-[#e05000] text-white text-xs font-black shadow-md shadow-[#FF5B00]/25 cursor-pointer"
                   >
                     Submit Report
                   </button>
