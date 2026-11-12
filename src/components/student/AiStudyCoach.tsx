@@ -96,7 +96,7 @@ export const AiStudyCoach: React.FC<AiStudyCoachProps> = ({
   initialSubject = 'Mathematics',
   initialTopic
 }) => {
-  const { student, openStudentSubscriptionModal, checkStudentFeatureAccess, unlockStudentAddOn } = useApp();
+  const { student, openStudentSubscriptionModal, checkStudentFeatureAccess, unlockStudentAddOn, addStudentXP } = useApp();
   const coachAccess = checkStudentFeatureAccess('ai_coach');
 
   if (!coachAccess.hasAccess) {
@@ -243,6 +243,13 @@ export const AiStudyCoach: React.FC<AiStudyCoachProps> = ({
       if (!customPrompt) {
         setUserPrompt('');
       }
+
+      addStudentXP({
+        feature: 'ai-coach',
+        baseXP: 45,
+        difficulty: 'medium',
+        reason: `SC AI Study Guidance (${subject})`
+      });
     } catch (err: any) {
       console.error('Study Coach Error:', err);
       setErrorMessage(

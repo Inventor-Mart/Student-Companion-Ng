@@ -13,6 +13,7 @@ import {
   UserRole,
   StudentProfile,
   NigerianClassLevel,
+  AcademicStream,
   CurriculumTopic,
   CBTExam,
   CBTExamResult,
@@ -38,8 +39,19 @@ import {
   StudentSubscriptionTier,
   StudentSubscriptionPlan,
   StudentAddOnEntitlements,
-  WalletTransaction
+  WalletTransaction,
+  LinkedWard,
+  AwardXPOptions,
+  AwardXPResult,
+  AppFeatureId,
+  DailyExplorationState
 } from '../types';
+import {
+  calculateDynamicXP,
+  calculateRank as calculateRankFromXP,
+  getExplorerStatus,
+  ALL_APP_FEATURES
+} from '../utils/xpEconomy';
 import {
   generateCuratedStudyCalendar,
   UNLOCK_FEE_NAIRA,
@@ -150,7 +162,9 @@ interface AppContextType {
   // Student State & Actions
   student: StudentProfile;
   updateStudentClass: (classLevel: any, stream: any) => void;
-  addStudentXP: (amount: number, reason?: string) => void;
+  addStudentXP: (amountOrOptions: number | AwardXPOptions, reason?: string) => AwardXPResult | undefined;
+  lastXPAward: AwardXPResult | null;
+  dismissLastXPAward: () => void;
   verifySchoolUniform: (photoUrl: string) => void;
   updateStudentAvatar: (photoUrl: string) => void;
   toggleDownloadNote: (topicId: string) => void;
@@ -258,6 +272,13 @@ interface AppContextType {
   targetSubscriptionPlan: StudentSubscriptionPlan | null;
   openStudentSubscriptionModal: (targetPlan?: StudentSubscriptionPlan) => void;
   closeStudentSubscriptionModal: () => void;
+
+  // Multi-Ward Linking & Management
+  linkedWards: LinkedWard[];
+  activeWardId: string | null;
+  linkWardByCode: (codeOrEmail: string) => Promise<{ success: boolean; ward?: LinkedWard; message?: string }>;
+  unlinkWard: (studentId: string) => Promise<void>;
+  setActiveWard: (studentId: string) => void;
 }
 
 const INITIAL_EMPTY_STUDENT: StudentProfile = {
@@ -582,10 +603,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Calculate Rank based on XP
   const calculateRank = (xp: number): StudentRank => {
-    if (xp >= 15000) return 'Senior Boy';
-    if (xp >= 7500) return 'Prefect';
-    if (xp >= 2500) return 'Scholar';
-    return 'Fresher';
+    return calculateRankFromXP(xp);
   };
 
   // Safe local storage persistence fallbacks
@@ -800,45 +818,66 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const addStudentXP = useCallback((amount: number, reason?: string) => {
-    setTimeout(() => {
-      setStudent(prev => {
-        const newXP = prev.xp + amount;
-        const newRank = calculateRank(newXP);
-        const rankChanged = newRank !== prev.rank;
-        const updated = {
-          ...prev,
+  const [lastXPAward, setLastXPAward] = useState<AwardXPResult | null>(null);
+
+  const dismissLastXPAward = useCallback(() => {
+    setLastXPAward(null);
+  }, []);
+
+  const addStudentXP = useCallback((amountOrOptions: number | AwardXPOptions, reason?: string): AwardXPResult | undefined => {
+    const opts: AwardXPOptions =
+      typeof amountOrOptions === 'number'
+        ? { baseXP: amountOrOptions, reason: reason || 'Academic Activity Completed' }
+        : amountOrOptions;
+
+    let computedResult: AwardXPResult | undefined;
+
+    setStudent(prev => {
+      const { result, updatedExploration } = calculateDynamicXP(opts, prev.dailyExploration);
+      computedResult = result;
+
+      const newXP = prev.xp + result.totalXPAwarded;
+      const newRank = calculateRankFromXP(newXP);
+      const rankChanged = newRank !== prev.rank;
+
+      const updated = {
+        ...prev,
+        xp: newXP,
+        rank: newRank,
+        dailyExploration: updatedExploration,
+      };
+
+      if (currentUser && !isOffline) {
+        const docRef = doc(db, 'students', currentUser.uid);
+        const path = `students/${currentUser.uid}`;
+        updateDoc(docRef, {
           xp: newXP,
-          rank: newRank
-        };
+          rank: newRank,
+          streakDays: prev.streakDays,
+          lastStudyDate: new Date().toISOString().split('T')[0],
+          dailyExploration: updatedExploration,
+        }).catch(err => {
+          handleFirestoreError(err, OperationType.UPDATE, path);
+        });
+      }
 
-        if (currentUser && !isOffline) {
-          const docRef = doc(db, 'students', currentUser.uid);
-          const path = `students/${currentUser.uid}`;
-          updateDoc(docRef, {
-            xp: newXP,
-            rank: newRank,
-            streakDays: prev.streakDays,
-            lastStudyDate: new Date().toISOString().split('T')[0]
-          }).catch(err => {
-            handleFirestoreError(err, OperationType.UPDATE, path);
+      setLastXPAward(result);
+
+      // Only fire confetti celebration on actual rank level-up
+      if (rankChanged) {
+        try {
+          confetti({
+            particleCount: 60,
+            spread: 70,
+            origin: { y: 0.7 }
           });
-        }
+        } catch {}
+      }
 
-        // Only fire confetti celebration on actual rank level-up
-        if (rankChanged) {
-          try {
-            confetti({
-              particleCount: 50,
-              spread: 60,
-              origin: { y: 0.7 }
-            });
-          } catch {}
-        }
+      return updated;
+    });
 
-        return updated;
-      });
-    }, 0);
+    return computedResult;
   }, [currentUser, isOffline]);
 
   const updateStudentClass = (classLevel: any, stream?: any) => {
@@ -1117,28 +1156,209 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const saveExamResult = (result: CBTExamResult) => {
-    setExamResults(prev => [result, ...prev]);
-    addStudentXP(result.xpAwarded);
+    const computed = addStudentXP({
+      feature: 'cbt',
+      baseXP: Math.max(25, result.score * 5),
+      difficulty: result.totalQuestions >= 40 ? 'hard' : result.totalQuestions >= 20 ? 'medium' : 'easy',
+      questionCount: result.totalQuestions,
+      scorePercentage: result.percentage,
+      reason: `Completed ${result.examTitle} (${result.score}/${result.totalQuestions})`
+    });
+
+    const finalXP = computed?.totalXPAwarded || result.xpAwarded;
+    const finalResult: CBTExamResult = { ...result, xpAwarded: finalXP };
+
+    setExamResults(prev => [finalResult, ...prev]);
 
     if (currentUser && !isOffline) {
       const resultDocRef = doc(db, 'students', currentUser.uid, 'examResults', result.id);
       const path = `students/${currentUser.uid}/examResults/${result.id}`;
       setDoc(resultDocRef, {
-        id: result.id,
+        id: finalResult.id,
         studentId: currentUser.uid,
-        examId: result.examId,
-        examTitle: result.examTitle,
-        subject: result.subject,
-        score: result.score,
-        totalQuestions: result.totalQuestions,
-        percentage: result.percentage,
-        timeSpentSeconds: result.timeSpentSeconds,
-        xpAwarded: result.xpAwarded,
-        date: result.date
+        examId: finalResult.examId,
+        examTitle: finalResult.examTitle,
+        subject: finalResult.subject,
+        score: finalResult.score,
+        totalQuestions: finalResult.totalQuestions,
+        percentage: finalResult.percentage,
+        timeSpentSeconds: finalResult.timeSpentSeconds,
+        xpAwarded: finalXP,
+        date: finalResult.date
       }).catch(err => {
         handleFirestoreError(err, OperationType.CREATE, path);
       });
     }
+  };
+
+  // Multi-Ward Linking State & Methods
+  const [linkedWards, setLinkedWards] = useState<LinkedWard[]>(() => {
+    const parent = currentUserProfile?.parentData;
+    if (parent?.linkedWards && Array.isArray(parent.linkedWards) && parent.linkedWards.length > 0) {
+      return parent.linkedWards;
+    }
+    if (parent?.wardName) {
+      return [{
+        studentId: student.id || 'std-primary-ward',
+        studentName: parent.wardName,
+        classLevel: student.classLevel || 'SS 3',
+        stream: student.stream || 'Science',
+        schoolName: student.school || 'Secondary School',
+        studentLinkCode: student.studentLinkCode || 'STU-8K2D',
+        linkedAt: new Date().toISOString(),
+        isPrimary: true
+      }];
+    }
+    return [];
+  });
+
+  const [activeWardId, setActiveWardId] = useState<string | null>(() => {
+    const parent = currentUserProfile?.parentData;
+    if (parent?.activeWardId) return parent.activeWardId;
+    return linkedWards[0]?.studentId || null;
+  });
+
+  const linkWardByCode = async (codeOrEmail: string): Promise<{ success: boolean; ward?: LinkedWard; message?: string }> => {
+    const term = codeOrEmail.trim();
+    if (!term) {
+      return { success: false, message: 'Please enter a Student Link Code or registered email.' };
+    }
+
+    const isEmail = term.includes('@');
+    const cleanTerm = term.toLowerCase();
+
+    // 1. Search in allRegisteredUsers
+    const matchedUser = allRegisteredUsers.find(u => {
+      if (u.role !== 'student') return false;
+      if (isEmail && u.email?.toLowerCase() === cleanTerm) return true;
+      const code = u.studentData?.studentLinkCode?.toLowerCase() || '';
+      return code === cleanTerm || code.replace(/[^a-z0-9]/gi, '') === cleanTerm.replace(/[^a-z0-9]/gi, '');
+    });
+
+    let matchedStudent: StudentProfile | null = matchedUser?.studentData || null;
+
+    // 2. Fallback to current student state if match
+    if (!matchedStudent && student.name) {
+      const code = (student.studentLinkCode || '').toLowerCase();
+      if ((isEmail && currentUser?.email?.toLowerCase() === cleanTerm) ||
+          code === cleanTerm ||
+          code.replace(/[^a-z0-9]/gi, '') === cleanTerm.replace(/[^a-z0-9]/gi, '')) {
+        matchedStudent = student;
+      }
+    }
+
+    if (!matchedStudent) {
+      return {
+        success: false,
+        message: isEmail
+          ? `No student found registered with email "${term}".`
+          : `No student found matching Link Code "${term}". Ask your ward to check their Student Dashboard for their 6-character code.`
+      };
+    }
+
+    // Check if already linked
+    if (linkedWards.some(w => w.studentId === matchedStudent!.id || w.studentLinkCode.toLowerCase() === (matchedStudent!.studentLinkCode || '').toLowerCase())) {
+      return {
+        success: false,
+        message: `${matchedStudent.name} is already linked to your parent account.`
+      };
+    }
+
+    const newWard: LinkedWard = {
+      studentId: matchedStudent.id || `std-${Date.now()}`,
+      studentName: matchedStudent.name,
+      classLevel: matchedStudent.classLevel,
+      stream: matchedStudent.stream,
+      schoolName: matchedStudent.school,
+      studentLinkCode: matchedStudent.studentLinkCode || `STU-${Math.floor(1000 + Math.random() * 9000)}`,
+      linkedAt: new Date().toISOString(),
+      isPrimary: linkedWards.length === 0
+    };
+
+    const updatedWards = [...linkedWards, newWard];
+    setLinkedWards(updatedWards);
+    setActiveWardId(newWard.studentId);
+
+    // Update parent profile
+    if (currentUserProfile) {
+      const updatedProfile: RegisteredUserProfile = {
+        ...currentUserProfile,
+        parentData: {
+          ...(currentUserProfile.parentData || { phone: '', pin: '' }),
+          linkedWards: updatedWards,
+          activeWardId: newWard.studentId,
+          wardName: newWard.studentName
+        }
+      };
+      setCurrentUserProfile(updatedProfile);
+      safeSetItem('sc_user_profile', JSON.stringify(updatedProfile));
+
+      if (currentUser && !isOffline) {
+        try {
+          await updateDoc(doc(db, 'users', currentUser.uid), {
+            'parentData.linkedWards': updatedWards,
+            'parentData.activeWardId': newWard.studentId,
+            'parentData.wardName': newWard.studentName
+          });
+        } catch (err) {
+          console.warn('Could not update parentData in Firestore:', err);
+        }
+      }
+    }
+
+    return {
+      success: true,
+      ward: newWard,
+      message: `Successfully linked ${newWard.studentName} (${newWard.classLevel})!`
+    };
+  };
+
+  const unlinkWard = async (studentId: string): Promise<void> => {
+    const updated = linkedWards.filter(w => w.studentId !== studentId);
+    setLinkedWards(updated);
+    const newActiveId = updated[0]?.studentId || null;
+    setActiveWardId(newActiveId);
+
+    if (currentUserProfile) {
+      const updatedProfile: RegisteredUserProfile = {
+        ...currentUserProfile,
+        parentData: {
+          ...(currentUserProfile.parentData || { phone: '', pin: '' }),
+          linkedWards: updated,
+          activeWardId: newActiveId || undefined,
+          wardName: updated[0]?.studentName || ''
+        }
+      };
+      setCurrentUserProfile(updatedProfile);
+      safeSetItem('sc_user_profile', JSON.stringify(updatedProfile));
+
+      if (currentUser && !isOffline) {
+        try {
+          await updateDoc(doc(db, 'users', currentUser.uid), {
+            'parentData.linkedWards': updated,
+            'parentData.activeWardId': newActiveId || null,
+            'parentData.wardName': updated[0]?.studentName || ''
+          });
+        } catch (err) {}
+      }
+    }
+  };
+
+  const setActiveWard = (studentId: string): void => {
+    setActiveWardId(studentId);
+    const targetWard = linkedWards.find(w => w.studentId === studentId);
+    if (!targetWard) return;
+
+    // Switch student context
+    setStudent(prev => ({
+      ...prev,
+      id: targetWard.studentId,
+      name: targetWard.studentName,
+      classLevel: targetWard.classLevel,
+      stream: (targetWard.stream as AcademicStream) || prev.stream || 'Science',
+      school: targetWard.schoolName,
+      studentLinkCode: targetWard.studentLinkCode
+    }));
   };
 
   // Parent PIN & Wallet
@@ -1427,7 +1647,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         origin: { y: 0.6 }
       });
     } catch {}
-    addStudentXP(150, "Unlocked 'Prepare For Exam'");
+    addStudentXP({
+      feature: 'exam-prep',
+      baseXP: 250,
+      paidAmountNgn: UNLOCK_FEE_NAIRA,
+      difficulty: 'hard',
+      reason: "Unlocked 'Prepare For Exam' Comprehensive Hub"
+    });
 
     return true;
   };
@@ -1489,7 +1715,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         origin: { y: 0.6 }
       });
     } catch {}
-    addStudentXP(50, `Unlocked '${subject}' Exam Pass`);
+    addStudentXP({
+      feature: 'exam-prep',
+      baseXP: 100,
+      paidAmountNgn: SINGLE_SUBJECT_EXAM_FEE_NAIRA,
+      difficulty: 'medium',
+      reason: `Unlocked '${subject}' Exam Pass`
+    });
 
     return true;
   };
@@ -1569,7 +1801,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ? prev.completedBlockIds.filter(id => id !== blockId)
         : [...prev.completedBlockIds, blockId];
       if (!exists) {
-        addStudentXP(50, 'Completed Study Block');
+        addStudentXP({
+          feature: 'exam-prep',
+          baseXP: 50,
+          difficulty: 'medium',
+          reason: 'Completed Intensive Study Block'
+        });
       }
       return { ...prev, completedBlockIds: next };
     });
@@ -1596,7 +1833,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setCompletedAspirantDrillIds(prev =>
       prev.includes(drillId) ? prev.filter(id => id !== drillId) : [...prev, drillId]
     );
-    addStudentXP(25, 'Completed Aspirant Daily Drill');
+    addStudentXP({
+      feature: 'aspirant-cbt',
+      baseXP: 35,
+      difficulty: 'medium',
+      reason: 'Completed Aspirant Daily Drill'
+    });
   };
 
   const subscribeAspirantTier = (
@@ -1644,7 +1886,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         origin: { y: 0.6 }
       });
     } catch {}
-    addStudentXP(100, `Upgraded to Aspirant ${tier.toUpperCase()}`);
+    addStudentXP({
+      feature: 'aspirant-cbt',
+      baseXP: tier === 'elite' ? 500 : 250,
+      paidAmountNgn: feeNaira,
+      difficulty: 'hard',
+      reason: `Subscribed to Aspirant ${tier.toUpperCase()} Monthly Pass`
+    });
 
     return true;
   };
@@ -1739,7 +1987,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return updated;
     });
 
-    addStudentXP(score * 15, `Championship Day ${day} (${subject})`);
+    addStudentXP({
+      feature: 'competitions',
+      baseXP: Math.max(50, score * 12),
+      difficulty: 'hard',
+      questionCount: totalQuestions,
+      scorePercentage,
+      reason: `National Championship Day ${day} (${subject})`
+    });
     confetti({ particleCount: 80, spread: 70, origin: { y: 0.6 } });
   };
 
@@ -1784,6 +2039,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         handleFirestoreError(err, OperationType.CREATE, path);
       });
     }
+
+    addStudentXP({
+      feature: 'tutors',
+      baseXP: 250,
+      paidAmountNgn: newBooking.amountNaira,
+      difficulty: 'hard',
+      reason: `Booked 1-on-1 Tutoring with ${newBooking.tutorName} (${newBooking.subject})`
+    });
 
     return newBooking;
   };
@@ -2577,6 +2840,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       origin: { y: 0.6 }
     });
 
+    if (plan !== 'free') {
+      const planAmount = prices[plan];
+      addStudentXP({
+        feature: 'general',
+        baseXP: 500,
+        paidAmountNgn: planAmount,
+        difficulty: 'hard',
+        reason: `Enrolled in ${plan.toUpperCase()} Academic Membership`
+      });
+    }
+
     return { success: true };
   };
 
@@ -3082,6 +3356,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         student,
         updateStudentClass,
         addStudentXP,
+        lastXPAward,
+        dismissLastXPAward,
         verifySchoolUniform,
         updateStudentAvatar,
         toggleDownloadNote,
@@ -3148,7 +3424,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         isStudentSubscriptionModalOpen,
         targetSubscriptionPlan,
         openStudentSubscriptionModal,
-        closeStudentSubscriptionModal
+        closeStudentSubscriptionModal,
+        linkedWards,
+        activeWardId,
+        linkWardByCode,
+        unlinkWard,
+        setActiveWard
       }}
     >
       {children}
