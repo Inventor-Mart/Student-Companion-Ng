@@ -13,13 +13,15 @@ import {
   Dna,
   Binary,
   Volume2,
+  VolumeX,
   Globe,
   Boxes,
   Sparkles,
   Coffee,
   Flame,
   Gem,
-  Lock
+  Lock,
+  ArrowRight
 } from 'lucide-react';
 
 import { MathSprintGame } from './games/MathSprintGame';
@@ -34,7 +36,8 @@ import { CurrentAffairsGame } from './games/CurrentAffairsGame';
 import { TetrisGame } from './games/TetrisGame';
 import { Match3Game } from './games/Match3Game';
 import { SnakeGame } from './games/SnakeGame';
-import { getSoundMuted, toggleSoundMuted } from '../../utils/audioSynthesis';
+import { getSoundMuted, toggleSoundMuted, playSound } from '../../utils/audioSynthesis';
+import { motion } from 'motion/react';
 
 type GameId =
   | 'hub'
@@ -62,6 +65,12 @@ export const GamesHub: React.FC = () => {
   const [activeGame, setActiveGame] = useState<GameId>('hub');
   const [filterCategory, setFilterCategory] = useState<'ALL' | 'RELAX' | 'STEM' | 'ARTS' | 'CIVICS'>('ALL');
   const [isMuted, setIsMuted] = useState<boolean>(getSoundMuted());
+
+  const handleToggleSound = () => {
+    const nextMuted = toggleSoundMuted();
+    setIsMuted(nextMuted);
+    if (!nextMuted) playSound.tileTap();
+  };
 
   const handleAwardGameXP = (amount: number, reason?: string) => {
     addStudentXP({
@@ -130,35 +139,38 @@ export const GamesHub: React.FC = () => {
       duration: '60 Seconds',
       xpReward: 150,
       icon: Zap,
-      accentColor: 'text-purple-400',
-      bgBorder: 'border-purple-800/40 from-slate-900 to-purple-950/40',
-      btnColor: 'bg-purple-600 hover:bg-purple-500'
+      accentColor: 'text-[#FF5B00]',
+      cardBorder: 'border-[#FF5B00]/40 hover:border-[#FF5B00]',
+      cardBg: 'from-[#1E162E] to-[#120E22]',
+      btnBg: 'bg-gradient-to-r from-[#FF5B00] to-[#FF7A18] hover:from-[#E04800] hover:to-[#FF5B00]'
     },
     {
       id: 'spelling_bee' as GameId,
       title: 'National Spelling Bee',
       subject: 'English & Vocabulary',
       category: 'ARTS',
-      description: 'Infinite-level spelling tournament with speech pronunciation, definitions & progressive difficulty',
-      duration: 'Endless Run (3 Lives)',
+      description: 'Infinite-level spelling tournament with speech pronunciation & definitions',
+      duration: 'Endless Run',
       xpReward: 300,
       icon: Volume2,
-      accentColor: 'text-amber-400',
-      bgBorder: 'border-amber-500/40 from-slate-900 via-slate-900 to-amber-950/40',
-      btnColor: 'bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-slate-950 font-black'
+      accentColor: 'text-[#84CC16]',
+      cardBorder: 'border-[#84CC16]/40 hover:border-[#84CC16]',
+      cardBg: 'from-[#12241C] to-[#0A1612]',
+      btnBg: 'bg-gradient-to-r from-[#84CC16] to-[#65A30D] text-slate-950 font-black hover:opacity-95'
     },
     {
       id: 'periodic_table' as GameId,
       title: 'Periodic Table Rush',
       subject: 'Chemistry',
       category: 'STEM',
-      description: 'Match element names to Latin & modern symbols (e.g. Potassium → K, Lead → Pb)',
+      description: 'Match element names to Latin & modern symbols (e.g. Potassium → K)',
       duration: '45 Seconds',
       xpReward: 180,
       icon: FlaskConical,
       accentColor: 'text-cyan-400',
-      bgBorder: 'border-cyan-800/40 from-slate-900 to-cyan-950/40',
-      btnColor: 'bg-cyan-600 hover:bg-cyan-500'
+      cardBorder: 'border-cyan-500/40 hover:border-cyan-400',
+      cardBg: 'from-[#112433] to-[#0A1520]',
+      btnBg: 'bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500'
     },
     {
       id: 'speed_concord' as GameId,
@@ -169,9 +181,10 @@ export const GamesHub: React.FC = () => {
       duration: '45 Seconds',
       xpReward: 200,
       icon: BookOpen,
-      accentColor: 'text-emerald-400',
-      bgBorder: 'border-emerald-800/40 from-slate-900 to-emerald-950/40',
-      btnColor: 'bg-emerald-600 hover:bg-emerald-500'
+      accentColor: 'text-[#84CC16]',
+      cardBorder: 'border-[#84CC16]/40 hover:border-[#84CC16]',
+      cardBg: 'from-[#15261F] to-[#0D1814]',
+      btnBg: 'bg-gradient-to-r from-[#84CC16] to-[#65A30D] text-slate-950 font-black'
     },
     {
       id: 'word_scramble' as GameId,
@@ -182,100 +195,108 @@ export const GamesHub: React.FC = () => {
       duration: '60 Seconds',
       xpReward: 250,
       icon: Binary,
-      accentColor: 'text-amber-400',
-      bgBorder: 'border-amber-800/40 from-slate-900 to-amber-950/40',
-      btnColor: 'bg-amber-600 hover:bg-amber-500'
+      accentColor: 'text-[#FF5B00]',
+      cardBorder: 'border-[#FF5B00]/40 hover:border-[#FF5B00]',
+      cardBg: 'from-[#241A16] to-[#140E0C]',
+      btnBg: 'bg-gradient-to-r from-[#FF5B00] to-[#FF7A18]'
     },
     {
       id: 'nigerian_geo' as GameId,
-      title: 'Nigerian Geo & Civics Blitz',
-      subject: 'Civic Education & History',
+      title: 'Nigerian Geo Blitz',
+      subject: 'Civics & History',
       category: 'CIVICS',
-      description: 'Test recall on Nigeria’s 36 states, capitals, historical slogans & mineral wealth',
+      description: 'Test recall on Nigeria’s 36 states, capitals, slogans & mineral wealth',
       duration: '45 Seconds',
       xpReward: 180,
       icon: MapPin,
-      accentColor: 'text-emerald-400',
-      bgBorder: 'border-emerald-800/40 from-slate-900 to-emerald-950/40',
-      btnColor: 'bg-emerald-600 hover:bg-emerald-500'
+      accentColor: 'text-[#84CC16]',
+      cardBorder: 'border-[#84CC16]/40 hover:border-[#84CC16]',
+      cardBg: 'from-[#12241C] to-[#0B1712]',
+      btnBg: 'bg-gradient-to-r from-[#84CC16] to-[#65A30D] text-slate-950 font-black'
     },
     {
       id: 'formula_master' as GameId,
       title: 'Formula Master',
       subject: 'Physics & Calculations',
       category: 'STEM',
-      description: 'Pair physics & math physical quantities with their formulas and SI units',
+      description: 'Pair physics & math quantities with formulas and SI units',
       duration: '45 Seconds',
       xpReward: 200,
       icon: Zap,
-      accentColor: 'text-blue-400',
-      bgBorder: 'border-blue-800/40 from-slate-900 to-blue-950/40',
-      btnColor: 'bg-blue-600 hover:bg-blue-500'
+      accentColor: 'text-[#FF5B00]',
+      cardBorder: 'border-[#FF5B00]/40 hover:border-[#FF5B00]',
+      cardBg: 'from-[#241818] to-[#140E0E]',
+      btnBg: 'bg-gradient-to-r from-[#FF5B00] to-[#FF7A18]'
     },
     {
       id: 'bio_sort' as GameId,
       title: 'Bio-Sort Classifier',
       subject: 'Biology & Living Things',
       category: 'STEM',
-      description: 'Rapid taxonomy sorting: classify animals into Vertebrate vs Invertebrate phyla',
+      description: 'Rapid taxonomy sorting: classify animals into Vertebrate vs Invertebrate',
       duration: '45 Seconds',
       xpReward: 180,
       icon: Dna,
-      accentColor: 'text-teal-400',
-      bgBorder: 'border-teal-800/40 from-slate-900 to-teal-950/40',
-      btnColor: 'bg-teal-600 hover:bg-teal-500'
+      accentColor: 'text-[#84CC16]',
+      cardBorder: 'border-[#84CC16]/40 hover:border-[#84CC16]',
+      cardBg: 'from-[#15261F] to-[#0D1814]',
+      btnBg: 'bg-gradient-to-r from-[#84CC16] to-[#65A30D] text-slate-950 font-black'
     },
     {
       id: 'current_affairs' as GameId,
-      title: 'Endless Current Affairs',
-      subject: 'Civics, History & Global Affairs',
+      title: 'Current Affairs & Civics',
+      subject: 'National & Global',
       category: 'CIVICS',
-      description: 'Infinite quiz stream: choose Nigeria (36 states, leaders, history) or The World (geopolitics, capitals)',
-      duration: 'Endless Run (3 Lives)',
-      xpReward: 300,
+      description: 'Fast-paced quiz on Nigerian leaders, governance, ECOWAS & national symbols',
+      duration: '60 Seconds',
+      xpReward: 220,
       icon: Globe,
-      accentColor: 'text-emerald-400',
-      bgBorder: 'border-emerald-500/40 from-slate-900 via-slate-900 to-teal-950/40',
-      btnColor: 'bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 font-black'
+      accentColor: 'text-amber-400',
+      cardBorder: 'border-amber-500/40 hover:border-amber-400',
+      cardBg: 'from-[#241D12] to-[#14100A]',
+      btnBg: 'bg-gradient-to-r from-amber-500 to-yellow-400 text-slate-950 font-black'
     },
     {
       id: 'snake' as GameId,
-      title: 'Classic Arcade Snake',
-      subject: 'Relaxation & Reflex Training',
+      title: 'Curriculum Snake',
+      subject: 'Reflexes & Brain Refresh',
       category: 'RELAX',
-      description: 'Classic slither action with speed-scaling difficulty, touch gestures, thumb D-pad & high-score tracking',
-      duration: 'Endless Slither',
-      xpReward: 150,
+      description: 'Eat academic topic orbs to grow without hitting walls. Clean, responsive & smooth.',
+      duration: 'Endless Run',
+      xpReward: 100,
       icon: Flame,
-      accentColor: 'text-emerald-400',
-      bgBorder: 'border-emerald-500/40 from-slate-900 via-slate-900 to-emerald-950/40',
-      btnColor: 'bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 font-black'
+      accentColor: 'text-[#84CC16]',
+      cardBorder: 'border-[#84CC16]/40 hover:border-[#84CC16]',
+      cardBg: 'from-[#12241C] to-[#0A1612]',
+      btnBg: 'bg-gradient-to-r from-[#84CC16] to-[#65A30D] text-slate-950 font-black'
     },
     {
       id: 'tetris' as GameId,
-      title: 'Block Drop: Tetris',
-      subject: 'Relaxation & Spatial Logic',
+      title: 'Formula Block Tetris',
+      subject: 'Spatial Logic & Relaxation',
       category: 'RELAX',
-      description: 'Stack and rotate classic falling bricks, complete lines, hold pieces, and unwind from intense study sessions',
+      description: 'Clear lines with falling tetrominoes. Smooth drop mechanics & score tracking.',
       duration: 'Endless Run',
-      xpReward: 150,
+      xpReward: 120,
       icon: Boxes,
-      accentColor: 'text-cyan-400',
-      bgBorder: 'border-cyan-500/40 from-slate-900 via-slate-900 to-cyan-950/40',
-      btnColor: 'bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400 text-slate-950 font-black'
+      accentColor: 'text-purple-400',
+      cardBorder: 'border-purple-500/40 hover:border-purple-400',
+      cardBg: 'from-[#201433] to-[#120B1F]',
+      btnBg: 'bg-gradient-to-r from-purple-600 to-indigo-600'
     },
     {
       id: 'match_3' as GameId,
-      title: 'Match-3 Gem Blitz',
-      subject: 'Relaxation & Jewel Strategy',
+      title: 'Elemental Match-3',
+      subject: 'Combo Reflexes',
       category: 'RELAX',
-      description: 'Endless chill jewel matching puzzle with chain cascades, laser power gems, rainbow stars & hint finder',
-      duration: 'Endless Chill',
+      description: 'Swap glowing element gems to create 3-in-a-row explosions and score multipliers.',
+      duration: 'Timed 90s',
       xpReward: 150,
       icon: Gem,
-      accentColor: 'text-pink-400',
-      bgBorder: 'border-pink-500/40 from-slate-900 via-slate-900 to-pink-950/40',
-      btnColor: 'bg-gradient-to-r from-pink-500 to-rose-400 hover:from-pink-400 hover:to-rose-300 text-slate-950 font-black'
+      accentColor: 'text-[#FF5B00]',
+      cardBorder: 'border-[#FF5B00]/40 hover:border-[#FF5B00]',
+      cardBg: 'from-[#26151E] to-[#160C11]',
+      btnBg: 'bg-gradient-to-r from-[#FF5B00] to-[#FF7A18]'
     }
   ];
 
@@ -284,99 +305,171 @@ export const GamesHub: React.FC = () => {
     return g.category === filterCategory;
   });
 
+  const containerVariants = {
+    hidden: { opacity: 0 },
+    visible: {
+      opacity: 1,
+      transition: {
+        staggerChildren: 0.05,
+        delayChildren: 0.03
+      }
+    }
+  };
+
+  const itemVariants = {
+    hidden: { opacity: 0, scale: 0.9, y: 20 },
+    visible: {
+      opacity: 1,
+      scale: 1,
+      y: 0,
+      transition: {
+        type: 'spring' as const,
+        stiffness: 300,
+        damping: 24
+      }
+    }
+  };
+
   return (
-    <div className="flex-1 w-full overflow-y-auto px-4 py-4 space-y-4 touch-pan-y text-slate-100">
-      <div>
-        <div className="flex items-center justify-between">
-          <h2 className="text-base font-bold text-white tracking-tight flex items-center gap-2">
-            <span>Games & Relaxation Hub</span>
-            <span className="text-[10px] text-cyan-400 font-normal px-2 py-0.5 rounded-full bg-cyan-950/80 border border-cyan-800/60 flex items-center gap-1">
-              <Coffee className="w-3 h-3" /> Study Breaks
-            </span>
-          </h2>
-          <div className="flex items-center gap-2">
+    <div className="flex-1 w-full overflow-y-auto px-4 py-4 space-y-4 touch-pan-y text-slate-100 bg-[#101C34] min-h-screen">
+      {/* =========================================================================
+          GAMES HERO & ARCADE STATS (Electric Orange & Lime Green Theme)
+         ========================================================================= */}
+      <div className="relative overflow-hidden rounded-3xl p-5 bg-gradient-to-r from-[#18264A] via-[#1E1238] to-[#18264A] border-2 border-[#84CC16]/40 shadow-2xl">
+        <div className="flex items-center justify-between gap-3 relative z-10">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-black text-[#84CC16] bg-[#84CC16]/10 px-2 py-0.5 rounded-full border border-[#84CC16]/30 uppercase tracking-wider">
+                Arcade & Brain Gym
+              </span>
+              <span className="text-[10px] font-bold text-[#FF5B00] bg-[#FF5B00]/10 px-2 py-0.5 rounded-full border border-[#FF5B00]/30">
+                {allGames.length} Games Ready
+              </span>
+            </div>
+            <h2 className="text-2xl font-black text-white tracking-tight mt-1 flex items-center gap-2">
+              <span>Games Hub</span>
+              <span>🎮</span>
+            </h2>
+            <p className="text-xs text-slate-300 mt-1 max-w-sm">
+              Reinforce WAEC, NECO & JAMB concepts with rapid brain challenges and earn streak XP!
+            </p>
+          </div>
+
+          {/* Quick Sound FX & Leaderboard Actions */}
+          <div className="flex flex-col items-end gap-2 shrink-0">
             <button
-              onClick={() => setIsMuted(toggleSoundMuted())}
-              className={`flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded border transition-colors cursor-pointer ${
+              type="button"
+              onClick={handleToggleSound}
+              className={`flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-xl border transition-all cursor-pointer active:scale-95 shadow-sm ${
                 isMuted
                   ? 'bg-rose-950/80 text-rose-300 border-rose-800'
-                  : 'bg-emerald-950/80 text-emerald-300 border-emerald-800'
+                  : 'bg-[#84CC16]/10 text-[#84CC16] border-[#84CC16]/40 hover:bg-[#84CC16]/20'
               }`}
-              title={isMuted ? 'Game Audio Muted' : 'Game Audio Active'}
             >
-              <Volume2 className={`w-3 h-3 ${isMuted ? 'text-rose-400' : 'text-emerald-400'}`} />
-              <span>{isMuted ? 'Muted' : 'Audio On'}</span>
+              {isMuted ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5 text-[#84CC16]" />}
+              <span>{isMuted ? 'Muted' : 'Audio Active'}</span>
             </button>
-            <span className="text-[11px] font-semibold text-emerald-400 bg-emerald-950 px-2 py-0.5 rounded border border-emerald-800">
-              {allGames.length} Games Available
-            </span>
+
+            <div className="flex items-center gap-1 text-[11px] font-bold text-amber-400 font-mono bg-amber-950/80 px-2.5 py-1 rounded-xl border border-amber-800/60">
+              <Trophy className="w-3.5 h-3.5 text-amber-400" />
+              <span>{student.xp.toLocaleString()} XP</span>
+            </div>
           </div>
         </div>
-        <p className="text-xs text-slate-400 mt-0.5">
-          Reinforce academic mastery or refresh your brain with addictive casual relaxation games
-        </p>
       </div>
 
-      {/* Category Filter Tabs */}
-      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+      {/* =========================================================================
+          CATEGORY FILTER TABS (Tactile Tap Sounds & Active Indicators)
+         ========================================================================= */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
         {[
-          { id: 'ALL', label: `All (${allGames.length})` },
-          { id: 'RELAX', label: 'Relax & Breaks ☕' },
-          { id: 'STEM', label: 'STEM & Science' },
-          { id: 'ARTS', label: 'English & Literature' },
-          { id: 'CIVICS', label: 'Civics & Geography' }
-        ].map(tab => (
-          <button
-            key={tab.id}
-            onClick={() => setFilterCategory(tab.id as any)}
-            className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors ${
-              filterCategory === tab.id
-                ? 'bg-emerald-600 text-white shadow-sm'
-                : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
+          { id: 'ALL', label: `All Games (${allGames.length})` },
+          { id: 'STEM', label: 'STEM & Calculations ⚡' },
+          { id: 'ARTS', label: 'English & Vocab 📚' },
+          { id: 'CIVICS', label: 'Civics & Geo 🗺️' },
+          { id: 'RELAX', label: 'Brain Refresh ☕' }
+        ].map(tab => {
+          const isActive = filterCategory === tab.id;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => {
+                playSound.tileTap();
+                setFilterCategory(tab.id as any);
+              }}
+              className={`px-3.5 py-2 rounded-2xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer active:scale-95 ${
+                isActive
+                  ? 'bg-[#84CC16] text-slate-950 shadow-md shadow-[#84CC16]/20 border border-white'
+                  : 'bg-[#14203D] text-slate-300 hover:text-white hover:bg-[#1A2A50] border border-slate-800'
+              }`}
+            >
+              {tab.label}
+            </button>
+          );
+        })}
       </div>
 
-      {/* Games Cards Grid */}
-      <div className="space-y-3">
-        {filteredGames.map(game => {
+      {/* =========================================================================
+          GAMES BENTO GRID (2-Column Responsive Layout Matching User Images)
+         ========================================================================= */}
+      <motion.div
+        variants={containerVariants}
+        initial="hidden"
+        animate="visible"
+        className="grid grid-cols-1 md:grid-cols-2 gap-3.5"
+      >
+        {filteredGames.map((game, idx) => {
           const Icon = game.icon;
 
           return (
-            <div
+            <motion.div
               key={game.id}
-              className={`bg-gradient-to-br ${game.bgBorder} rounded-2xl p-4 border space-y-3 shadow-sm transition-all`}
+              variants={itemVariants}
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              className={`bg-gradient-to-br ${game.cardBg} rounded-3xl p-4 border-2 ${game.cardBorder} shadow-xl flex flex-col justify-between space-y-3 cursor-pointer select-none group relative overflow-hidden`}
+              onClick={() => {
+                playSound.tileTap();
+                const access = checkStudentFeatureAccess('games', { gameId: game.id });
+                if (!access.hasAccess) {
+                  openStudentSubscriptionModal(access.requiredPlan || 'basic');
+                  return;
+                }
+                setActiveGame(game.id);
+              }}
             >
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex items-center gap-3">
-                  <div
-                    className={`w-11 h-11 rounded-2xl bg-slate-900/80 border border-slate-700/80 flex items-center justify-center ${game.accentColor} shrink-0`}
-                  >
-                    <Icon className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <h3 className="text-sm font-bold text-white">{game.title}</h3>
-                      <span className="text-[10px] text-slate-400">·</span>
-                      <span className={`text-[11px] font-semibold ${game.accentColor}`}>
+              <div>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-3">
+                    <div
+                      className={`w-12 h-12 rounded-2xl bg-[#101C34] border border-white/10 flex items-center justify-center ${game.accentColor} shrink-0 shadow-inner group-hover:scale-105 transition-transform`}
+                    >
+                      <Icon className="w-6 h-6 stroke-[2.2]" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <h3 className="text-sm font-black text-white group-hover:text-white tracking-tight">
+                          {game.title}
+                        </h3>
+                      </div>
+                      <span className={`text-[11px] font-bold ${game.accentColor} block mt-0.5`}>
                         {game.subject}
                       </span>
                     </div>
-                    <p className="text-xs text-slate-300 mt-0.5 leading-snug">
-                      {game.description}
-                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-1 text-[11px] font-extrabold text-[#84CC16] font-mono bg-[#84CC16]/10 px-2 py-0.5 rounded-lg border border-[#84CC16]/30 shrink-0">
+                    <Award className="w-3.5 h-3.5" />
+                    <span>+{game.xpReward} XP</span>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-1 text-[11px] font-bold text-amber-400 font-mono bg-amber-950/70 px-2 py-0.5 rounded border border-amber-800/60 shrink-0">
-                  <Award className="w-3.5 h-3.5" />
-                  <span>+{game.xpReward} XP</span>
-                </div>
+                <p className="text-xs text-slate-300 mt-2.5 leading-snug line-clamp-2">
+                  {game.description}
+                </p>
               </div>
 
+              {/* Bottom Card Action Bar */}
               {(() => {
                 const access = checkStudentFeatureAccess('games', { gameId: game.id });
                 const todayStr = new Date().toISOString().split('T')[0];
@@ -384,64 +477,63 @@ export const GamesHub: React.FC = () => {
                 const attemptsToday = dailyData?.date === todayStr ? (dailyData?.attempts?.[game.id] || 0) : 0;
                 const isFreeDailyExhausted = (student.subscriptionPlan || 'free') === 'free' && attemptsToday >= 1;
 
-                const handleLaunchGame = () => {
-                  if (!access.hasAccess) {
-                    openStudentSubscriptionModal(access.requiredPlan || 'basic');
-                    return;
-                  }
-                  if (isFreeDailyExhausted) {
-                    openStudentSubscriptionModal('basic');
-                    return;
-                  }
-                  if ((student.subscriptionPlan || 'free') === 'free') {
-                    recordDailyGameAttempt(game.id);
-                  }
-                  setActiveGame(game.id);
-                };
-
                 return (
-                  <div className="flex items-center justify-between text-xs text-slate-400 pt-1 border-t border-slate-800/70">
-                    <span className="flex items-center gap-1 font-mono">
-                      <Timer className="w-3.5 h-3.5" />
+                  <div className="flex items-center justify-between text-xs text-slate-400 pt-2.5 border-t border-white/10">
+                    <span className="flex items-center gap-1 font-mono text-[11px] text-slate-400">
+                      <Timer className="w-3.5 h-3.5 text-slate-400" />
                       {game.duration}
                     </span>
 
                     {!access.hasAccess ? (
                       <button
                         type="button"
-                        onClick={() => openStudentSubscriptionModal(access.requiredPlan || 'basic')}
-                        className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold rounded-xl transition-colors shadow-sm cursor-pointer"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          playSound.tileTap();
+                          openStudentSubscriptionModal(access.requiredPlan || 'basic');
+                        }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-[#FF5B00] hover:bg-[#E04800] text-white text-xs font-bold rounded-xl transition-all shadow-md cursor-pointer"
                       >
                         <Lock className="w-3 h-3" />
-                        <span>Locked ({access.requiredPlan === 'basic' ? 'Basic ₦8k' : 'Standard ₦15k'})</span>
+                        <span>Unlock ({access.requiredPlan === 'basic' ? 'Basic' : 'Standard'})</span>
                       </button>
                     ) : isFreeDailyExhausted ? (
                       <button
                         type="button"
-                        onClick={() => openStudentSubscriptionModal('basic')}
-                        className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-600/90 hover:bg-amber-600 text-white text-xs font-bold rounded-xl transition-colors shadow-sm cursor-pointer"
-                        title="Free tier is limited to 1 life/attempt per day"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          playSound.tileTap();
+                          openStudentSubscriptionModal('basic');
+                        }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-[#FF5B00]/90 text-white text-xs font-bold rounded-xl transition-all shadow-md cursor-pointer"
                       >
                         <Lock className="w-3 h-3" />
-                        <span>Daily Life Used (Upgrade)</span>
+                        <span>Daily Life Used</span>
                       </button>
                     ) : (
                       <button
                         type="button"
-                        onClick={handleLaunchGame}
-                        className={`flex items-center gap-1.5 px-3 py-1.5 ${game.btnColor} text-white text-xs font-bold rounded-xl transition-colors shadow-sm cursor-pointer`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          playSound.tileTap();
+                          if ((student.subscriptionPlan || 'free') === 'free') {
+                            recordDailyGameAttempt(game.id);
+                          }
+                          setActiveGame(game.id);
+                        }}
+                        className={`flex items-center gap-1.5 px-3.5 py-1.5 ${game.btnBg} text-white text-xs font-black rounded-xl transition-all shadow-md cursor-pointer group-hover:scale-105`}
                       >
                         <Play className="w-3 h-3 fill-white" />
-                        <span>Play Game {(student.subscriptionPlan || 'free') === 'free' ? '(1 Life Left)' : ''}</span>
+                        <span>Play Now</span>
                       </button>
                     )}
                   </div>
                 );
               })()}
-            </div>
+            </motion.div>
           );
         })}
-      </div>
+      </motion.div>
     </div>
   );
 };

@@ -52,6 +52,7 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { NairaText } from '../../utils/currency';
+import { playSound } from '../../utils/audioSynthesis';
 
 export const CompetitionsHub: React.FC = () => {
   const {
@@ -255,32 +256,32 @@ export const CompetitionsHub: React.FC = () => {
   const ALL_CLASSES: NigerianClassLevel[] = ['JSS 1', 'JSS 2', 'JSS 3', 'SS 1', 'SS 2', 'SS 3'];
 
   return (
-    <div className="flex-1 w-full overflow-y-auto px-4 py-4 space-y-4 touch-pan-y text-slate-100">
+    <div className="flex-1 w-full overflow-y-auto px-4 py-4 space-y-4 touch-pan-y text-slate-100 bg-[#101C34] min-h-screen">
       {/* Top Header */}
-      <div>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400">
-              <Trophy className="w-4 h-4" />
+      <div className="bg-[#14203D] border-2 border-[#84CC16]/40 rounded-3xl p-4 shadow-xl">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2.5">
+            <div className="w-10 h-10 rounded-2xl bg-[#84CC16]/20 border border-[#84CC16]/40 flex items-center justify-center text-[#84CC16] shadow-sm">
+              <Trophy className="w-5 h-5 stroke-[2.2]" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-white tracking-tight flex items-center gap-1.5">
+              <h2 className="text-base font-black text-white tracking-tight flex items-center gap-1.5">
                 <span>Student Competitions Arena</span>
               </h2>
-              <p className="text-[11px] text-slate-400">
+              <p className="text-xs text-slate-300">
                 3-Day Academic Termly Championship & Weekly Speed Challenges
               </p>
             </div>
           </div>
 
-          <span className="text-[10px] font-bold text-amber-400 bg-amber-950 px-2 py-0.5 rounded border border-amber-800 animate-pulse flex items-center gap-1">
-            📱 1st Prize: Android Smartphone
+          <span className="text-[10px] font-extrabold text-slate-950 bg-[#FF5B00] px-2.5 py-1 rounded-full uppercase shadow-md flex items-center gap-1">
+            📱 1st: Smartphone
           </span>
         </div>
       </div>
 
       {/* 5 Clean Navigation Tabs */}
-      <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-5 bg-slate-900 p-1 rounded-2xl border border-slate-800 text-xs">
+      <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-5 bg-[#14203D] p-1.5 rounded-2xl border border-slate-800 text-xs shadow-inner">
         {[
           { id: 'termly', label: '3-Day Championship 🏆', icon: Trophy },
           { id: 'schools', label: 'Inter-School League 🏫', icon: School },
@@ -293,11 +294,14 @@ export const CompetitionsHub: React.FC = () => {
           return (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id as any)}
-              className={`py-2 px-2 rounded-xl font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+              onClick={() => {
+                playSound.tileTap();
+                setActiveTab(tab.id as any);
+              }}
+              className={`py-2 px-2.5 rounded-xl font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95 ${
                 isActive
-                  ? 'bg-amber-600 text-white shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200'
+                  ? 'bg-[#84CC16] text-slate-950 shadow-md shadow-[#84CC16]/30 border border-white'
+                  : 'text-slate-300 hover:text-white hover:bg-[#1A2A50]'
               }`}
             >
               <Icon className="w-3.5 h-3.5 shrink-0" />
