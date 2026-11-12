@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { NIGERIAN_CURRICULUM_TOPICS } from '../../data/curriculumData';
 import { CBT_EXAMS_DATABASE } from '../../data/cbtExamData';
@@ -19,21 +19,24 @@ import {
   Trophy,
   Atom,
   GraduationCap,
-  MessageSquare,
-  Video,
-  Calendar,
-  Lock,
   Sparkles,
   KeyRound,
-  FileText,
-  X,
   Copy,
-  Check
+  Check,
+  Compass,
+  Star,
+  Clock,
+  Radio,
+  Sliders,
+  ChevronRight,
+  Wifi,
+  WifiOff,
+  Bell
 } from 'lucide-react';
-import { NairaText, NairaSign } from '../../utils/currency';
 import { AspirantDashboard } from './aspirant/AspirantDashboard';
-import { DailyExplorerHUD } from './DailyExplorerHUD';
 import { SchoolMaterial } from '../../types';
+import { playSound } from '../../utils/audioSynthesis';
+import { motion, AnimatePresence } from 'motion/react';
 
 export const StudentDashboard: React.FC = () => {
   const {
@@ -57,15 +60,30 @@ export const StudentDashboard: React.FC = () => {
   const [isLinkSchoolModalOpen, setIsLinkSchoolModalOpen] = useState(false);
   const [inputSchoolCode, setInputSchoolCode] = useState('');
   const [linkFeedback, setLinkFeedback] = useState<string | null>(null);
-  const [selectedSchoolMaterial, setSelectedSchoolMaterial] = useState<SchoolMaterial | null>(null);
-
-  const avatarFileInputRef = useRef<HTMLInputElement>(null);
   const [isExamPrepModalOpen, setIsExamPrepModalOpen] = useState(false);
   const [isCopiedLinkCode, setIsCopiedLinkCode] = useState(false);
   const [isParentLinkInfoOpen, setIsParentLinkInfoOpen] = useState(false);
+  const [isOfflineMode, setIsOfflineMode] = useState(false);
+  const [audioScrubProgress, setAudioScrubProgress] = useState(42);
+  const [isPlayingAudio, setIsPlayingAudio] = useState(false);
 
+  // Staggered pop sound trigger on initial mount
+  useEffect(() => {
+    const soundTimers: any[] = [];
+    for (let i = 0; i < 6; i++) {
+      const timer = setTimeout(() => {
+        playSound.tilePop(i);
+      }, 100 + i * 85);
+      soundTimers.push(timer);
+    }
+    return () => soundTimers.forEach(clearTimeout);
+  }, []);
+
+  const avatarFileInputRef = useRef<HTMLInputElement>(null);
   const studentLinkCode = student.studentLinkCode || 'STU-8K2D';
+
   const handleCopyLinkCode = () => {
+    playSound.tileTap();
     try {
       navigator.clipboard.writeText(studentLinkCode);
       setIsCopiedLinkCode(true);
@@ -76,7 +94,7 @@ export const StudentDashboard: React.FC = () => {
     }
   };
 
-  const displayName = student.name || currentUserProfile?.fullName || 'Registered Student';
+  const displayName = student.name || currentUserProfile?.fullName || 'Scholar';
   const displaySchool = student.school || 'Secondary School';
 
   const getInitials = (name?: string | null): string => {
@@ -101,1099 +119,681 @@ export const StudentDashboard: React.FC = () => {
     }
   };
 
-  // Pick jump back in note
-  const jumpBackNote = NIGERIAN_CURRICULUM_TOPICS[0];
+  // Determine current class drill & topic
+  const currentTopic = NIGERIAN_CURRICULUM_TOPICS[0];
 
-  // School Curriculum Materials published by verified administrator
-  const relevantMaterials = schoolMaterials.filter(
-    m => (student.schoolCode ? m.schoolCode.toUpperCase() === student.schoolCode.toUpperCase() : m.schoolName.toLowerCase().includes(displaySchool.toLowerCase())) &&
-         (m.classLevel === student.classLevel || m.classLevel === 'All Classes')
-  );
-
-  // Determine class-specific drill details & matching mock exam
   const getDrillConfig = (classLevel: string) => {
     if (classLevel === 'SS 3') {
       const exam = CBT_EXAMS_DATABASE.find(e => e.classLevel === 'SS 3') || CBT_EXAMS_DATABASE[0];
-      return {
-        title: 'JAMB / WAEC Drill',
-        subtitle: 'Timed WASSCE & UTME national mock practice',
-        exam
-      };
+      return { title: 'JAMB / WAEC Drill', subtitle: 'Timed national exam mock', exam };
     }
     if (classLevel === 'JSS 3') {
       const exam = CBT_EXAMS_DATABASE.find(e => e.classLevel === 'JSS 3') || CBT_EXAMS_DATABASE[0];
-      return {
-        title: 'BECE Junior Drill',
-        subtitle: 'Timed Junior Secondary Certificate mock',
-        exam
-      };
+      return { title: 'BECE Junior Drill', subtitle: 'Junior secondary mock', exam };
     }
-    if (classLevel === 'JSS 1' || classLevel === 'JSS 2') {
-      const exam =
-        CBT_EXAMS_DATABASE.find(e => e.classLevel === classLevel) ||
-        CBT_EXAMS_DATABASE.find(e => e.classLevel === 'JSS 1') ||
-        CBT_EXAMS_DATABASE[0];
-      return {
-        title: 'Junior Termly Drill',
-        subtitle: `${classLevel} continuous assessment practice`,
-        exam
-      };
-    }
-    // SS 1 or SS 2
-    const exam =
-      CBT_EXAMS_DATABASE.find(e => e.classLevel === classLevel) ||
-      CBT_EXAMS_DATABASE.find(e => e.classLevel === 'SS 1') ||
-      CBT_EXAMS_DATABASE[0];
-    return {
-      title: 'Senior Assessment Drill',
-      subtitle: `${classLevel} continuous assessment & mock`,
-      exam
-    };
+    const exam = CBT_EXAMS_DATABASE.find(e => e.classLevel === classLevel) || CBT_EXAMS_DATABASE[0];
+    return { title: 'Termly Assessment', subtitle: `${classLevel} Continuous Assessment`, exam };
   };
 
   const drillConfig = getDrillConfig(student.classLevel);
 
-  // Calculate XP percentage to next rank
-  // Ranks: Fresher (0-2500), Scholar (2500-7500), Prefect (7500-15000), Senior Boy (15000+)
-  const getRankProgress = (xp: number) => {
-    if (xp >= 15000) return { target: 20000, nextRank: 'Senior Prefect', percent: 100 };
-    if (xp >= 7500) return { target: 15000, nextRank: 'Senior Boy', percent: Math.round(((xp - 7500) / 7500) * 100) };
-    if (xp >= 2500) return { target: 7500, nextRank: 'Prefect', percent: Math.round(((xp - 2500) / 5000) * 100) };
-    return { target: 2500, nextRank: 'Scholar', percent: Math.round((xp / 2500) * 100) };
-  };
-
-  const rankProgress = getRankProgress(student.xp);
-
-  // Active or upcoming confirmed online tutoring session
-  const activeOnlineBooking = tutorBookings.find(
-    b => b.status === 'confirmed' && b.bookingType === 'online'
-  );
-
-  // Dedicated Aspirant Hub for School Leavers (WAEC, NECO & JAMB)
+  // Dedicated Aspirant Hub for University Aspirants
   if (student.classLevel === 'University Aspirant') {
     return <AspirantDashboard />;
   }
 
+  // Motion container and item animation variants for staggered cascade
+  const containerVariants = {
+    hidden: { opacity: 0 },
+    visible: {
+      opacity: 1,
+      transition: {
+        staggerChildren: 0.08,
+        delayChildren: 0.04
+      }
+    }
+  };
+
+  const tileVariants = {
+    hidden: { opacity: 0, scale: 0.88, y: 35 },
+    visible: {
+      opacity: 1,
+      scale: 1,
+      y: 0,
+      transition: {
+        type: 'spring' as const,
+        stiffness: 300,
+        damping: 22
+      }
+    }
+  };
+
   return (
-    <div className="flex-1 w-full overflow-y-auto px-4 py-4 space-y-4 touch-pan-y text-slate-100">
-      {/* Student Profile & Rank Header */}
-      <div className="bg-slate-900/90 rounded-2xl p-4 border border-slate-800 shadow-sm">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex items-center gap-3">
-            {/* Interactive Avatar with Upload Trigger and Initials Fallback */}
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => avatarFileInputRef.current?.click()}
-                className="relative group w-14 h-14 rounded-2xl overflow-hidden ring-2 ring-emerald-500/40 hover:ring-emerald-400 transition-all cursor-pointer focus:outline-none focus:ring-emerald-400 flex items-center justify-center bg-slate-800"
-                title="Click on avatar to choose a picture"
-              >
-                {student.uniformPhotoUrl ? (
-                  <img
-                    src={student.uniformPhotoUrl}
-                    alt={displayName}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <div className="w-full h-full bg-gradient-to-br from-emerald-600 via-teal-700 to-slate-900 flex items-center justify-center text-white font-black text-sm tracking-wider shadow-inner">
-                    {getInitials(displayName)}
-                  </div>
-                )}
-
-                {/* Hover overlay with camera icon */}
-                <div className="absolute inset-0 bg-black/60 backdrop-blur-[1px] opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center text-white transition-opacity">
-                  <Camera className="w-4 h-4 text-emerald-300" />
-                  <span className="text-[8px] font-bold mt-0.5">Change</span>
-                </div>
-              </button>
-
-              {/* Corner Camera Badge indicator */}
-              <button
-                type="button"
-                onClick={() => avatarFileInputRef.current?.click()}
-                className="absolute -top-1 -left-1 bg-slate-900 text-emerald-400 hover:text-emerald-300 rounded-full p-1 border border-slate-700 hover:border-emerald-500 transition-colors shadow-sm cursor-pointer"
-                title="Choose a picture"
-              >
-                <Camera className="w-2.5 h-2.5 stroke-[2.5]" />
-              </button>
-
-              {student.uniformVerified && (
-                <div
-                  className="absolute -bottom-1 -right-1 bg-emerald-500 text-slate-950 rounded-full p-0.5 shadow-md"
-                  title="Uniform Verified"
-                >
-                  <ShieldCheck className="w-3.5 h-3.5 stroke-[2.5]" />
+    <div className="flex-1 w-full overflow-y-auto px-4 py-4 space-y-4 touch-pan-y text-slate-100 bg-[#101C34] min-h-screen">
+      {/* =========================================================================
+          TOP HEADER: Profile, Rank Trophy, XP Bar & Streak Flame (Exact Image 1/2)
+         ========================================================================= */}
+      <div className="flex items-center justify-between gap-3 pt-1 pb-1">
+        <div className="flex items-center gap-3">
+          {/* Avatar with Circular Ring */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => {
+                playSound.tileTap();
+                avatarFileInputRef.current?.click();
+              }}
+              className="relative group w-13 h-13 rounded-full overflow-hidden ring-3 ring-[#84CC16] hover:ring-[#A3E635] shadow-[0_0_15px_rgba(132,204,22,0.4)] transition-all cursor-pointer flex items-center justify-center bg-slate-900"
+              title="Click avatar to update photo"
+            >
+              {student.uniformPhotoUrl ? (
+                <img
+                  src={student.uniformPhotoUrl}
+                  alt={displayName}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <div className="w-full h-full bg-gradient-to-br from-[#1E293B] via-[#0F172A] to-[#101C34] flex items-center justify-center text-white font-extrabold text-sm tracking-wider">
+                  {getInitials(displayName)}
                 </div>
               )}
 
-              {/* Hidden file input for avatar picker */}
-              <input
-                ref={avatarFileInputRef}
-                type="file"
-                accept="image/*"
-                onChange={handleAvatarFileChange}
-                className="hidden"
+              {/* Hover overlay with camera icon */}
+              <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity">
+                <Camera className="w-4 h-4 text-[#84CC16]" />
+              </div>
+            </button>
+
+            {student.uniformVerified && (
+              <div
+                className="absolute -bottom-0.5 -right-0.5 bg-[#84CC16] text-slate-950 rounded-full p-0.5 shadow-md"
+                title="Uniform Verified Scholar"
+              >
+                <ShieldCheck className="w-3.5 h-3.5 stroke-[2.5]" />
+              </div>
+            )}
+
+            <input
+              ref={avatarFileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleAvatarFileChange}
+              className="hidden"
+            />
+          </div>
+
+          {/* Student Class & Rank Title + XP Progress Bar */}
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-base font-extrabold text-white tracking-tight flex items-center gap-1.5">
+                <span>{student.classLevel} Scholar</span>
+                <span className="text-sm">🏆</span>
+              </h1>
+            </div>
+
+            {/* Glowing Lime Green XP Bar */}
+            <div className="mt-1 flex items-center gap-2">
+              <div className="relative w-36 h-5 rounded-full bg-[#0D1527] border border-slate-700/80 p-0.5 overflow-hidden shadow-inner flex items-center">
+                <motion.div
+                  initial={{ width: 0 }}
+                  animate={{ width: `${Math.min(100, Math.max(15, (student.xp / 1000) * 100))}%` }}
+                  transition={{ duration: 1, ease: 'easeOut' }}
+                  className="h-full rounded-full bg-gradient-to-r from-[#84CC16] via-[#A3E635] to-[#84CC16] shadow-[0_0_8px_#84CC16]"
+                />
+                <span className="absolute inset-0 flex items-center justify-center text-[10px] font-black font-mono tracking-tight text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">
+                  {student.xp.toLocaleString()}/1,000 XP
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Right Header: Living Flame Streak & Offline Switch */}
+        <div className="flex items-center gap-2.5">
+          {/* Animated Living Streak Flame Badge */}
+          <motion.div
+            animate={{
+              scale: [1, 1.08, 1],
+              filter: [
+                'drop-shadow(0 0 4px rgba(255,91,0,0.4))',
+                'drop-shadow(0 0 10px rgba(255,91,0,0.7))',
+                'drop-shadow(0 0 4px rgba(255,91,0,0.4))'
+              ]
+            }}
+            transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut' }}
+            className="flex items-center gap-1.5 bg-[#18264A] border border-[#FF5B00]/60 rounded-2xl px-3 py-1.5 text-white shadow-lg cursor-pointer"
+            onClick={() => {
+              playSound.tileTap();
+            }}
+          >
+            <Flame className="w-5 h-5 text-[#FF5B00] fill-[#FF5B00]" />
+            <span className="text-sm font-extrabold font-mono tabular-nums text-white">
+              {student.streakDays || 3}
+            </span>
+          </motion.div>
+
+          {/* Quick Class Switcher Pill */}
+          <div className="relative">
+            <select
+              value={student.classLevel}
+              onChange={(e) => {
+                playSound.tileTap();
+                updateStudentClass(e.target.value as NigerianClassLevel, student.stream || 'Science');
+              }}
+              className="bg-[#18264A] text-[11px] font-bold text-[#84CC16] border border-[#84CC16]/40 rounded-xl px-2.5 py-1.5 cursor-pointer appearance-none pr-6 focus:outline-none focus:ring-1 focus:ring-[#84CC16]"
+            >
+              {(['JSS 1', 'JSS 2', 'JSS 3', 'SS 1', 'SS 2', 'SS 3'] as NigerianClassLevel[]).map(c => (
+                <option key={c} value={c} className="bg-[#101C34] text-white">
+                  {c}
+                </option>
+              ))}
+            </select>
+            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-1.5 text-[#84CC16]">
+              ▾
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* =========================================================================
+          MAIN HUB TILES: Staggered Cascade Bento Grid (Exact Image 1 Style)
+         ========================================================================= */}
+      <motion.div
+        variants={containerVariants}
+        initial="hidden"
+        animate="visible"
+        className="space-y-3.5"
+      >
+        {/* TILE 1: LESSON NOTES (Hero Full-Width Card - Electric Orange Gradient) */}
+        <motion.div
+          variants={tileVariants}
+          whileHover={{ scale: 1.015 }}
+          whileTap={{ scale: 0.985 }}
+          onClick={() => {
+            playSound.tileTap();
+            openNoteReader(currentTopic);
+          }}
+          className="relative overflow-hidden rounded-3xl p-5 bg-gradient-to-r from-[#FF5B00] via-[#FF6E1A] to-[#FF5B00] shadow-[0_12px_28px_rgba(255,91,0,0.35)] border-2 border-white/20 cursor-pointer select-none group"
+        >
+          {/* Subtle Background Radial & Contour Lines */}
+          <div className="absolute -top-12 -right-12 w-48 h-48 bg-white/15 rounded-full blur-2xl pointer-events-none" />
+
+          <div className="flex items-start justify-between relative z-10">
+            <div>
+              <span className="text-xs font-black uppercase tracking-wider text-white/80 block">
+                {student.classLevel} Syllabus · Week 4
+              </span>
+              <h2 className="text-2xl font-black text-white tracking-tight mt-0.5">
+                Lesson Notes
+              </h2>
+              <p className="text-xs font-medium text-white/90 mt-1 max-w-[220px] line-clamp-1">
+                {currentTopic.topicTitle}
+              </p>
+            </div>
+
+            {/* 3D Animated Open Books with Gears Visual */}
+            <div className="relative w-28 h-20 flex items-center justify-center shrink-0">
+              <motion.div
+                animate={{ rotate: [0, 8, -4, 0] }}
+                transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }}
+                className="relative"
+              >
+                {/* 3D Book Graphic */}
+                <div className="w-20 h-14 bg-white rounded-xl shadow-xl border-2 border-orange-200 transform -rotate-3 p-1.5 flex flex-col justify-between">
+                  <div className="flex items-center justify-between border-b border-orange-100 pb-0.5">
+                    <span className="w-2 h-2 rounded-full bg-[#FF5B00]" />
+                    <span className="text-[8px] font-bold text-slate-700">NERDC</span>
+                  </div>
+                  <div className="space-y-1">
+                    <div className="h-1 bg-slate-200 rounded w-full" />
+                    <div className="h-1 bg-slate-200 rounded w-3/4" />
+                  </div>
+                  <div className="flex justify-end">
+                    <div className="w-5 h-5 rounded-full bg-[#84CC16] flex items-center justify-center text-slate-950 shadow-md">
+                      <Play className="w-2.5 h-2.5 fill-slate-950 ml-0.5" />
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+
+              {/* Floating Decorative Gears */}
+              <motion.div
+                animate={{ rotate: 360 }}
+                transition={{ duration: 16, repeat: Infinity, ease: 'linear' }}
+                className="absolute -top-1 -right-1 text-yellow-300 drop-shadow-md text-base"
+              >
+                ⚙️
+              </motion.div>
+            </div>
+          </div>
+
+          {/* Interactive Scrub Bar with Play Button */}
+          <div className="mt-4 pt-3 border-t border-white/20 flex items-center gap-3 relative z-10">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                playSound.tileTap();
+                setIsPlayingAudio(!isPlayingAudio);
+              }}
+              className="w-8 h-8 rounded-full bg-white text-[#FF5B00] shadow-md flex items-center justify-center hover:scale-105 transition-transform shrink-0 cursor-pointer"
+            >
+              <Play className="w-4 h-4 fill-[#FF5B00] ml-0.5" />
+            </button>
+
+            {/* Scrub Slider */}
+            <div className="flex-1 relative flex items-center">
+              <div className="w-full h-2.5 rounded-full bg-black/20 overflow-hidden relative">
+                <div
+                  className="h-full bg-gradient-to-r from-yellow-300 to-[#84CC16] rounded-full transition-all"
+                  style={{ width: `${audioScrubProgress}%` }}
+                />
+              </div>
+              {/* Scrub thumb */}
+              <div
+                className="absolute w-4 h-4 rounded-full bg-white border-2 border-[#84CC16] shadow-md -translate-x-1/2 cursor-pointer hover:scale-125 transition-transform"
+                style={{ left: `${audioScrubProgress}%` }}
               />
             </div>
 
-            <div>
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <h2 className="text-base font-bold text-white tracking-tight leading-tight">
-                  {displayName}
-                </h2>
-                <span className="text-[11px] font-semibold text-emerald-400 bg-emerald-950/80 border border-emerald-800/60 rounded px-1.5 py-0.2">
-                  {student.rank}
-                </span>
-                {student.schoolCode ? (
-                  <span className="text-[10px] font-mono font-bold text-purple-300 bg-purple-950/90 border border-purple-700/70 rounded px-1.5 py-0.5">
-                    {student.schoolCode}
-                  </span>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setIsLinkSchoolModalOpen(true)}
-                    className="text-[10px] font-semibold text-purple-400 hover:text-purple-300 underline cursor-pointer"
-                  >
-                    + Link School Code
-                  </button>
-                )}
-                {(() => {
-                  const currentPlan = student.subscriptionPlan || (student.isSubscribed ? 'basic' : 'free');
-                  return (
-                    <button
-                      type="button"
-                      onClick={() => openStudentSubscriptionModal()}
-                      className={`text-[10px] font-bold px-2 py-0.5 rounded border transition-colors cursor-pointer flex items-center gap-1 ${
-                        currentPlan === 'elite'
-                          ? 'bg-purple-950/90 text-purple-300 border-purple-600'
-                          : currentPlan === 'standard'
-                          ? 'bg-emerald-950/90 text-emerald-300 border-emerald-600'
-                          : currentPlan === 'basic'
-                          ? 'bg-blue-950/90 text-blue-300 border-blue-600'
-                          : 'bg-amber-950/80 text-amber-300 border-amber-600/70'
-                      }`}
-                      title="Click to view subscription tiers"
-                    >
-                      {currentPlan === 'elite' ? '👑 Elite Scholar' : currentPlan === 'standard' ? '★ Standard Tier' : currentPlan === 'basic' ? 'Basic Tier' : 'Free Tier'}
-                    </button>
-                  );
-                })()}
-              </div>
-              <p className="text-xs text-slate-400 mt-0.5">
-                {displaySchool} · {student.classLevel} ({student.stream})
-              </p>
-            </div>
-          </div>
-
-          {/* Daily Streak Flame */}
-          <div className="flex flex-col items-end">
-            <div className="flex items-center gap-1 bg-amber-950/70 border border-amber-700/50 rounded-xl px-2.5 py-1 text-amber-300 shadow-inner">
-              <Flame className="w-4 h-4 text-amber-400 fill-amber-400" />
-              <span className="text-xs font-bold font-mono tabular-nums">{student.streakDays}d</span>
-            </div>
-            <span className="text-[10px] text-amber-400/80 font-medium mt-1">Study Streak</span>
-          </div>
-        </div>
-
-        {/* Quick Class Switcher (JSS 1 to SS 3 + University Aspirant) */}
-        <div className="mt-3.5 pt-3 border-t border-slate-800/80">
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="text-[11px] font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
-              <GraduationCap className="w-3.5 h-3.5 text-[#84E000]" />
-              <span>Select Active Class</span>
+            <span className="text-[11px] font-bold text-white font-mono">
+              12:45
             </span>
-            <button
-              type="button"
-              onClick={() => updateStudentClass('University Aspirant', 'Science')}
-              className="text-[10px] text-amber-400 hover:text-amber-300 font-bold flex items-center gap-1 cursor-pointer bg-amber-500/10 hover:bg-amber-500/20 px-2 py-0.5 rounded border border-amber-500/30 transition-colors"
-            >
-              ★ Switch to Aspirant Hub
-            </button>
           </div>
-          <div className="grid grid-cols-6 gap-1 p-1 bg-slate-950/80 border border-slate-800/90 rounded-xl">
-            {(['JSS 1', 'JSS 2', 'JSS 3', 'SS 1', 'SS 2', 'SS 3'] as NigerianClassLevel[]).map((lvl) => {
-              const isActive = student.classLevel === lvl;
-              return (
-                <button
-                  key={lvl}
-                  type="button"
-                  onClick={() => updateStudentClass(lvl, lvl.startsWith('JSS') ? 'Junior' : (student.stream === 'Junior' ? 'Science' : (student.stream || 'Science')))}
-                  className={`py-1.5 px-1 rounded-lg text-xs font-bold transition-all text-center cursor-pointer ${
-                    isActive
-                      ? 'bg-[#84E000] text-slate-950 shadow-md shadow-[#84E000]/30 ring-1 ring-white'
-                      : 'text-slate-400 hover:text-white hover:bg-slate-800/70'
-                  }`}
-                  title={`Switch to ${lvl}`}
-                >
-                  {lvl}
-                </button>
-              );
-            })}
-          </div>
-        </div>
+        </motion.div>
 
-        {/* Live Academic Term Subscription Banner */}
-        {(() => {
-          const currentPlan = student.subscriptionPlan || (student.isSubscribed ? 'basic' : 'free');
-          return (
-            <div className={`mt-3 p-3 rounded-2xl border text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 ${
-              currentPlan === 'elite'
-                ? 'bg-gradient-to-r from-purple-950/70 via-slate-900 to-indigo-950/60 border-purple-600/60 text-purple-200'
-                : currentPlan === 'standard'
-                ? 'bg-gradient-to-r from-emerald-950/70 via-slate-900 to-teal-950/60 border-emerald-600/60 text-emerald-200'
-                : currentPlan === 'basic'
-                ? 'bg-gradient-to-r from-blue-950/70 via-slate-900 to-slate-900 border-blue-600/60 text-blue-200'
-                : 'bg-gradient-to-r from-amber-950/70 via-slate-900 to-slate-900 border-amber-600/60 text-amber-200'
-            }`}>
-              <div className="flex items-center gap-2.5">
-                <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 border ${
-                  currentPlan === 'elite'
-                    ? 'bg-purple-900/60 border-purple-500 text-purple-300'
-                    : currentPlan === 'standard'
-                    ? 'bg-emerald-900/60 border-emerald-500 text-emerald-300'
-                    : currentPlan === 'basic'
-                    ? 'bg-blue-900/60 border-blue-500 text-blue-300'
-                    : 'bg-amber-900/60 border-amber-500 text-amber-300'
-                }`}>
-                  {currentPlan === 'elite' ? <Sparkles className="w-4 h-4" /> : currentPlan === 'free' ? <Lock className="w-4 h-4" /> : <ShieldCheck className="w-4 h-4" />}
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-white text-xs">
-                      {currentPlan === 'elite'
-                        ? '👑 Elite Scholar Plan Active'
-                        : currentPlan === 'standard'
-                        ? '★ Standard Plan Active (₦15,000 / term)'
-                        : currentPlan === 'basic'
-                        ? 'Basic Plan Active (₦8,000 / term)'
-                        : 'Free Tier Active (Preview Mode)'}
-                    </span>
-                    {student.termExpiresAt && (
-                      <span className="text-[10px] text-slate-400 font-mono">
-                        Valid until {new Date(student.termExpiresAt).toLocaleDateString()}
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-[11px] text-slate-300 mt-0.5 leading-snug">
-                    {currentPlan === 'free'
-                      ? 'Weeks 1 & 2 lesson notes and 2 games unlocked (1 daily life). Upgrade to Basic (₦8,000) for all 12 weeks or Standard (₦15,000) for all features.'
-                      : currentPlan === 'basic'
-                      ? 'All 12 weeks of NERDC lesson notes unlocked. Upgrade to Standard Plan for all 10-question quizzes, unlimited games, termly drills & weekly contests.'
-                      : currentPlan === 'standard'
-                      ? '100% full notes, all 10 quiz questions, unlimited arcade games, termly drills & weekly championships active.'
-                      : 'Complete access to all notes, SC AI Coach, 3-Day Championship, and ₦16,000 Pre-paid Tutor Booking balance.'}
-                  </p>
+        {/* 2-COLUMN ASYMMETRIC GRID: Quizzes & Coach */}
+        <div className="grid grid-cols-2 gap-3.5">
+          {/* TILE 2: INTERACTIVE QUIZZES (Multi-Ring Donut Visual) */}
+          <motion.div
+            variants={tileVariants}
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={() => {
+              playSound.tileTap();
+              startExam(drillConfig.exam);
+            }}
+            className="rounded-3xl p-4 bg-gradient-to-b from-[#1C1428] to-[#120E1E] border-2 border-[#FF5B00]/40 hover:border-[#FF5B00] shadow-xl flex flex-col justify-between cursor-pointer select-none group relative overflow-hidden"
+          >
+            {/* Background Glow */}
+            <div className="absolute top-0 right-0 w-24 h-24 bg-[#FF5B00]/10 rounded-full blur-xl pointer-events-none" />
+
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-[10px] font-bold text-[#FF5B00] uppercase tracking-wider">
+                  CBT Drills
+                </span>
+                <span className="text-[10px] font-black text-amber-400 bg-amber-400/10 px-1.5 py-0.5 rounded-md border border-amber-400/20">
+                  +50 XP
+                </span>
+              </div>
+              <h3 className="text-lg font-black text-white tracking-tight leading-tight">
+                Interactive Quizzes
+              </h3>
+            </div>
+
+            {/* Concentric Progress Rings Visual (Matching Image 1) */}
+            <div className="my-3 flex items-center justify-center">
+              <div className="relative w-28 h-28 flex items-center justify-center">
+                {/* Outer Ring - Lime Green */}
+                <svg className="w-full h-full -rotate-90">
+                  <circle
+                    cx="56"
+                    cy="56"
+                    r="46"
+                    stroke="#1E293B"
+                    strokeWidth="8"
+                    fill="transparent"
+                  />
+                  <motion.circle
+                    cx="56"
+                    cy="56"
+                    r="46"
+                    stroke="#84CC16"
+                    strokeWidth="8"
+                    strokeDasharray="289"
+                    strokeDashoffset="75"
+                    strokeLinecap="round"
+                    fill="transparent"
+                  />
+                </svg>
+
+                {/* Inner Ring - Electric Orange */}
+                <svg className="absolute w-20 h-20 -rotate-90">
+                  <circle
+                    cx="40"
+                    cy="40"
+                    r="32"
+                    stroke="#1E293B"
+                    strokeWidth="8"
+                    fill="transparent"
+                  />
+                  <motion.circle
+                    cx="40"
+                    cy="40"
+                    r="32"
+                    stroke="#FF5B00"
+                    strokeWidth="8"
+                    strokeDasharray="201"
+                    strokeDashoffset="60"
+                    strokeLinecap="round"
+                    fill="transparent"
+                  />
+                </svg>
+
+                {/* Center Checkmark */}
+                <div className="absolute w-10 h-10 rounded-full bg-white text-slate-950 flex items-center justify-center shadow-lg">
+                  <Check className="w-5 h-5 stroke-[3] text-slate-950" />
                 </div>
               </div>
-
-              <button
-                type="button"
-                onClick={() => openStudentSubscriptionModal(currentPlan === 'free' ? 'basic' : currentPlan === 'basic' ? 'standard' : 'elite')}
-                className="py-1.5 px-3 bg-white text-slate-950 font-bold text-xs rounded-xl shadow-sm hover:bg-slate-100 transition-colors shrink-0 cursor-pointer"
-              >
-                {currentPlan === 'elite' ? 'Manage Subscription' : currentPlan === 'free' ? 'Upgrade Plan (₦8,000)' : 'Upgrade Plan'}
-              </button>
             </div>
-          );
-        })()}
 
-        {/* XP Progress Bar */}
-        <div className="mt-3 pt-2.5 border-t border-slate-800/80">
-          <div className="flex items-center justify-between text-xs mb-1.5">
-            <span className="text-slate-400 font-medium flex items-center gap-1">
-              <Award className="w-3.5 h-3.5 text-emerald-400" />
-              <strong className="text-white font-mono tabular-nums">{student.xp.toLocaleString()} XP</strong>
-            </span>
-            <span className="text-[11px] text-slate-400">
-              Next Rank: <strong className="text-emerald-400 font-semibold">{rankProgress.nextRank}</strong> ({rankProgress.percent}%)
-            </span>
-          </div>
-
-          <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-gradient-to-r from-emerald-500 to-emerald-400 rounded-full transition-all duration-500"
-              style={{ width: `${Math.min(100, Math.max(5, rankProgress.percent))}%` }}
-            />
-          </div>
-        </div>
-
-        {/* Parent Link Code Voucher Card */}
-        <div className="mt-3 pt-2.5 border-t border-slate-800/80 flex items-center justify-between gap-2.5 flex-wrap">
-          <div className="flex items-center gap-2">
-            <div className="p-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
-              <KeyRound className="w-3.5 h-3.5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-1.5">
-                <span className="text-[10px] font-bold text-slate-300 uppercase tracking-wider">
-                  Parent Link Code
+            {/* Topic Stats Bullet Points */}
+            <div className="space-y-1.5 pt-1 border-t border-slate-800">
+              <div className="flex items-center justify-between text-[11px] text-slate-300">
+                <span className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-[#84CC16]" />
+                  <span>Mathematics</span>
                 </span>
-                <button
-                  type="button"
-                  onClick={() => setIsParentLinkInfoOpen(true)}
-                  className="text-[9px] text-emerald-400 hover:underline cursor-pointer"
-                >
-                  How to link?
-                </button>
+                <span className="font-bold text-[#84CC16] font-mono">85%</span>
               </div>
-              <p className="text-[10px] text-slate-400 leading-none mt-0.5">
-                Give this 6-character code to your parent to link their guardian portal.
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-1.5">
-            <span className="font-mono font-black text-xs tracking-wider text-[#84E000] bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-800 shadow-inner select-all">
-              {studentLinkCode}
-            </span>
-            <button
-              type="button"
-              onClick={handleCopyLinkCode}
-              className="py-1 px-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white text-[10px] font-bold flex items-center gap-1 transition-all cursor-pointer shadow-sm"
-              title="Copy link code"
-            >
-              {isCopiedLinkCode ? (
-                <>
-                  <Check className="w-3 h-3 stroke-[3]" />
-                  <span>Copied</span>
-                </>
-              ) : (
-                <>
-                  <Copy className="w-3 h-3" />
-                  <span>Copy</span>
-                </>
-              )}
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Daily Multi-Tool Study Diversity & XP Multiplier Tracker */}
-      <DailyExplorerHUD />
-
-      {/* 'Prepare For Exam' SC AI Daily Study Calendar & Tutor Booking Card */}
-      <div className="bg-gradient-to-r from-emerald-950/80 via-slate-900 to-teal-950/80 border border-emerald-500/50 rounded-2xl p-4 shadow-lg space-y-3 relative overflow-hidden">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shrink-0 shadow-inner">
-              <Calendar className="w-5 h-5 text-emerald-400" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-bold text-white tracking-tight">Prepare For Exam</span>
-                {examPrepState?.isUnlocked ? (
-                  <span className="text-[9px] font-bold text-emerald-300 bg-emerald-950 px-2 py-0.5 rounded border border-emerald-700 uppercase tracking-wide flex items-center gap-1">
-                    <Sparkles className="w-2.5 h-2.5" />
-                    <span>Active · ₦4,000 Tutor Credits</span>
-                  </span>
-                ) : (
-                  <span className="text-[9px] font-bold text-amber-300 bg-amber-950 px-2 py-0.5 rounded border border-amber-700 uppercase tracking-wide flex items-center gap-1">
-                    <Lock className="w-2.5 h-2.5" />
-                    <span>Locked · Unlock for ₦15,000</span>
-                  </span>
-                )}
-              </div>
-              <p className="text-xs text-slate-300 mt-0.5 font-medium">
-                {examPrepState?.isUnlocked
-                  ? (examPrepState.activeCalendar
-                      ? `Day-by-day timetable active for ${student.classLevel} with CBT drills & tutor booking links.`
-                      : 'Take the quick diagnostic survey to synthesize your daily timetable.')
-                  : `Structured SC AI daily study calendar for ${student.classLevel} with CBT drill shortcuts & ₦4,000 in included tutor credits.`}
-              </p>
-              <div className="flex items-center gap-2 text-[10px] text-slate-400 mt-1">
-                <span>{student.classLevel} Syllabus</span>
-                <span>·</span>
-                <span>Daily Practice Drills</span>
-                <span>·</span>
-                <span>1-on-1 Topic Tutor Support</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-1">
-          {examPrepState?.isUnlocked ? (
-            <button
-              type="button"
-              onClick={() => setActiveStudentTab('exam-prep')}
-              className="flex-1 py-2.5 px-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold rounded-xl transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
-            >
-              <Calendar className="w-4 h-4" />
-              <span>Open Daily Study Calendar</span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </button>
-          ) : (
-            <>
-              <button
-                type="button"
-                onClick={() => setIsExamPrepModalOpen(true)}
-                className="flex-1 py-2.5 px-4 bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 text-xs font-black rounded-xl transition-all shadow-md shadow-emerald-500/20 flex items-center justify-center gap-2 cursor-pointer active:scale-98"
-              >
-                <Lock className="w-3.5 h-3.5 text-slate-950" />
-                <span>Pay & Unlock (₦15,000)</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveStudentTab('exam-prep')}
-                className="py-2.5 px-3.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-              >
-                <span>Preview Syllabus</span>
-              </button>
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* 1-on-1 Online Classroom & Whiteboard Banner */}
-      <div className="bg-gradient-to-r from-emerald-950/90 via-slate-900 to-teal-950/70 border border-emerald-500/50 rounded-2xl p-4 shadow-lg space-y-3.5">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shrink-0 shadow-inner">
-              <Video className="w-5 h-5 animate-pulse" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-bold text-white tracking-tight">Interactive Whiteboard Classroom</span>
-                <span className="text-[9px] font-bold text-emerald-300 bg-emerald-950 px-2 py-0.5 rounded border border-emerald-700 uppercase tracking-wide">
-                  Live Board Ready
+              <div className="flex items-center justify-between text-[11px] text-slate-300">
+                <span className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-[#FF5B00]" />
+                  <span>English Lang</span>
                 </span>
-              </div>
-              <p className="text-xs text-slate-300 mt-0.5 font-medium">
-                {activeOnlineBooking
-                  ? `${activeOnlineBooking.subject} with ${activeOnlineBooking.tutorName} (Focus: ${activeOnlineBooking.topic})`
-                  : 'Live 1-on-1 digital teaching canvas with WAEC/JAMB formula stampers, low-data audio & chat.'}
-              </p>
-              <div className="flex items-center gap-2 text-[10px] text-slate-400 mt-1">
-                <span>Freehand Pen & Geometry</span>
-                <span>·</span>
-                <span>Cartesian Grid</span>
-                <span>·</span>
-                <span>Save Lesson Notes</span>
+                <span className="font-bold text-[#FF5B00] font-mono">72%</span>
               </div>
             </div>
-          </div>
-        </div>
+          </motion.div>
 
-        <div className="flex items-center gap-2 pt-1">
-          <button
-            onClick={() => launchVirtualClassroom(activeOnlineBooking?.id || `classroom-${student.id || Date.now()}`, 'student')}
-            className="flex-1 py-2.5 px-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold rounded-xl transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
-          >
-            <Video className="w-4 h-4" />
-            <span>{activeOnlineBooking ? 'Enter Booked Classroom' : 'Launch Interactive Whiteboard Now'}</span>
-          </button>
-          <button
-            onClick={() => setActiveStudentTab('tutors')}
-            className="py-2.5 px-3.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-xl border border-slate-700 transition-colors flex items-center gap-1.5 cursor-pointer shrink-0"
-          >
-            <span>Tutor Profiles</span>
-            <ArrowRight className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      </div>
-
-      {/* Nigerian Student Competitions (Weekly Challenge & Termly League) */}
-      <div className="bg-gradient-to-r from-amber-950/80 via-slate-900 to-amber-950/40 border border-amber-600/50 rounded-2xl p-3.5 shadow-md">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 shrink-0">
-              <Trophy className="w-4 h-4" />
-            </div>
-            <div>
-              <div className="flex items-center gap-1.5">
-                <span className="text-xs font-bold text-white">Student Competitions & Tournaments</span>
-                <span className="text-[9px] font-bold text-amber-300 bg-amber-950 px-1.5 py-0.2 rounded border border-amber-700 uppercase animate-pulse">
-                  Live
-                </span>
-              </div>
-              <p className="text-[11px] text-slate-300 mt-0.5">
-                Compete weekly for <NairaText amount={50000} /> airtime & termly for inter-school trophies!
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-2 mt-3">
-          <button
-            onClick={() => setActiveStudentTab('competitions')}
-            className="bg-amber-950/60 hover:bg-amber-900/60 border border-amber-700/50 rounded-xl p-2.5 text-left transition-colors group cursor-pointer"
-          >
-            <div className="flex items-center justify-between text-[11px] font-bold text-amber-300 mb-0.5">
-              <span>⚡ Weekly Challenge</span>
-              <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
-            </div>
-            <p className="text-[10px] text-slate-300 flex items-center gap-1">
-              <span>Week 8 Speed Quiz ·</span>
-              <span className="inline-flex items-center">
-                <NairaSign />50k Airtime Pool
-              </span>
-            </p>
-          </button>
-
-          <button
-            onClick={() => setActiveStudentTab('competitions')}
-            className="bg-indigo-950/60 hover:bg-indigo-900/60 border border-indigo-700/50 rounded-xl p-2.5 text-left transition-colors group cursor-pointer"
-          >
-            <div className="flex items-center justify-between text-[11px] font-bold text-indigo-300 mb-0.5">
-              <span>🏆 Termly League</span>
-              <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
-            </div>
-            <p className="text-[10px] text-slate-300">
-              Inter-School Standings & Cup
-            </p>
-          </button>
-        </div>
-      </div>
-
-      {/* Student Academic & Competition Chat Forum Banner */}
-      <div className="bg-gradient-to-r from-teal-950/80 via-slate-900 to-emerald-950/40 border border-teal-600/50 rounded-2xl p-3.5 shadow-md">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-teal-500/20 border border-teal-500/40 flex items-center justify-center text-teal-300 shrink-0">
-              <MessageSquare className="w-4 h-4" />
-            </div>
-            <div>
-              <div className="flex items-center gap-1.5">
-                <span className="text-xs font-bold text-white">Student Academic & Contest Forum</span>
-                <span className="text-[9px] font-bold text-teal-300 bg-teal-950 px-1.5 py-0.2 rounded border border-teal-700 uppercase">
-                  Community
-                </span>
-              </div>
-              <p className="text-[11px] text-slate-300 mt-0.5">
-                Chat with secondary school scholars across Nigeria on formulas, tough topics & contests!
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={() => setActiveStudentTab('community')}
-            className="flex items-center gap-1 px-3 py-1.5 bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold rounded-xl transition-colors shadow-sm shrink-0 cursor-pointer"
-          >
-            <span>Open Chat</span>
-            <ArrowRight className="w-3.5 h-3.5" />
-          </button>
-        </div>
-
-        <div className="flex items-center gap-2 mt-2.5 pt-2 border-t border-slate-800/80 text-[10px] text-slate-400">
-          <span className="flex items-center gap-1 text-emerald-400 font-medium">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-            Academics
-          </span>
-          <span>•</span>
-          <span className="flex items-center gap-1 text-amber-400 font-medium">
-            <Trophy className="w-3 h-3" />
-            Contests
-          </span>
-          <span>•</span>
-          <span className="text-slate-300">
-            JSS 1 - SS 3 Active Scholars
-          </span>
-        </div>
-      </div>
-
-      {/* Uniform Verification Banner (If Not Verified) */}
-      {!student.uniformVerified ? (
-        <div className="bg-gradient-to-r from-indigo-950/80 to-slate-900 border border-indigo-700/50 rounded-2xl p-3.5 flex items-center justify-between gap-3 shadow-sm">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-indigo-900/60 border border-indigo-600/40 flex items-center justify-center text-indigo-300 shrink-0">
-              <Camera className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-1.5">
-                <span className="text-xs font-bold text-white">SC AI Uniform Verification</span>
-                <span className="text-[10px] font-bold text-amber-400 bg-amber-950/80 border border-amber-800/60 rounded px-1.5 py-0.2">
-                  +500 XP
-                </span>
-              </div>
-              <p className="text-[11px] text-slate-300 mt-0.5">
-                Upload or snap your school uniform to verify identity & unlock badge.
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={() => setIsUniformModalOpen(true)}
-            className="px-3 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-xl shrink-0 transition-colors shadow-sm"
-          >
-            Verify Now
-          </button>
-        </div>
-      ) : (
-        <div className="bg-emerald-950/40 border border-emerald-800/50 rounded-2xl p-3 flex items-center justify-between text-xs text-emerald-300">
-          <div className="flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-            <span>King's College uniform verified! Badge active on your public profile.</span>
-          </div>
-          <button
-            onClick={() => setIsUniformModalOpen(true)}
-            className="text-[11px] text-emerald-400 underline hover:text-emerald-300 shrink-0"
-          >
-            View
-          </button>
-        </div>
-      )}
-
-      {/* Official School Materials & Assignments (From Verified Administrator) */}
-      {relevantMaterials.length > 0 && (
-        <div className="bg-slate-900/90 rounded-2xl p-4 border border-purple-500/30 space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-purple-400 animate-pulse" />
-              <span className="text-xs font-bold uppercase tracking-wider text-purple-300">
-                {displaySchool} Curriculum Materials
-              </span>
-            </div>
-            <span className="text-[10px] text-purple-400 font-mono font-bold bg-purple-950/80 px-2 py-0.5 rounded border border-purple-800">
-              {student.schoolCode || 'SCHL88'}
-            </span>
-          </div>
-
-          <div className="space-y-2">
-            {relevantMaterials.slice(0, 3).map(mat => (
-              <div
-                key={mat.id}
-                onClick={() => setSelectedSchoolMaterial(mat)}
-                className="p-3 rounded-xl bg-slate-950/80 border border-slate-800/80 hover:border-purple-500/60 transition-all cursor-pointer flex items-center justify-between gap-3 group"
-              >
-                <div className="space-y-0.5 min-w-0">
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded border uppercase ${
-                      mat.type === 'assignment' ? 'bg-amber-950 text-amber-300 border-amber-800' :
-                      mat.type === 'project' ? 'bg-emerald-950 text-emerald-300 border-emerald-800' :
-                      mat.type === 'past_question' ? 'bg-sky-950 text-sky-300 border-sky-800' :
-                      'bg-purple-950 text-purple-300 border-purple-800'
-                    }`}>
-                      {mat.type.replace('_', ' ')}
-                    </span>
-                    <span className="text-xs font-bold text-white group-hover:text-purple-300 transition-colors truncate">
-                      {mat.title}
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-slate-400 line-clamp-1">
-                    {mat.subject} · {mat.classLevel} {mat.dueDate ? `· Due: ${mat.dueDate}` : ''}
-                  </p>
-                </div>
-
-                <div className="flex items-center gap-1 text-[11px] text-purple-400 font-semibold shrink-0 group-hover:translate-x-0.5 transition-transform">
-                  <span>View</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Jump Back In Card */}
-      <div className="bg-slate-900/90 rounded-2xl p-4 border border-slate-800 space-y-2.5">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
-            Jump Back In
-          </span>
-          <span className="text-[11px] text-emerald-400 font-medium">
-            {jumpBackNote.subject} · Week {jumpBackNote.weekNumber}
-          </span>
-        </div>
-
-        <div>
-          <h3 className="text-sm font-semibold text-white leading-snug">
-            {jumpBackNote.topicTitle}
-          </h3>
-          <p className="text-xs text-slate-400 mt-1 line-clamp-2">
-            {jumpBackNote.summary}
-          </p>
-        </div>
-
-        <div className="flex items-center justify-between pt-1">
-          <div className="flex items-center gap-2 text-xs text-slate-400">
-            <span>{jumpBackNote.readingTimeMinutes} min read</span>
-            <span>·</span>
-            <span>4 Key Takeaways</span>
-          </div>
-
-          <button
-            onClick={() => openNoteReader(jumpBackNote)}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-xl transition-colors shadow-sm"
-          >
-            <span>Resume</span>
-            <ArrowRight className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      </div>
-
-      {/* High-Yield Action Cards */}
-      <div className="grid grid-cols-2 gap-2.5">
-        {/* CBT Simulator Quick Start */}
-        <button
-          onClick={() => {
-            const check = checkStudentFeatureAccess('termly_drill');
-            if (!check.hasAccess) {
-              openStudentSubscriptionModal('standard');
-              return;
-            }
-            startExam(drillConfig.exam);
-          }}
-          className="bg-slate-900/90 hover:bg-slate-800/90 border border-slate-800 hover:border-emerald-700/60 rounded-2xl p-3.5 text-left flex flex-col justify-between transition-all group"
-        >
-          <div className="w-8 h-8 rounded-xl bg-amber-950/80 border border-amber-700/40 flex items-center justify-center text-amber-400 mb-2">
-            <Award className="w-4 h-4" />
-          </div>
-          <div>
-            <div className="text-xs font-bold text-white group-hover:text-amber-300 transition-colors">
-              {drillConfig.title}
-            </div>
-            <p className="text-[11px] text-slate-400 mt-0.5">
-              {drillConfig.subtitle}
-            </p>
-          </div>
-          <div className="mt-2 text-[10px] text-emerald-400 font-semibold flex items-center gap-1">
-            <Play className="w-3 h-3 fill-emerald-400" />
-            <span>Start Practice</span>
-          </div>
-        </button>
-
-        {/* Scheme of Work Hub */}
-        <button
-          onClick={() => setActiveStudentTab('syllabus')}
-          className="bg-slate-900/90 hover:bg-slate-800/90 border border-slate-800 hover:border-indigo-700/60 rounded-2xl p-3.5 text-left flex flex-col justify-between transition-all group cursor-pointer"
-        >
-          <div className="w-8 h-8 rounded-xl bg-indigo-950/80 border border-indigo-700/40 flex items-center justify-center text-indigo-400 mb-2">
-            <BookOpen className="w-4 h-4" />
-          </div>
-          <div>
-            <div className="text-xs font-bold text-white group-hover:text-indigo-300 transition-colors">
-              Scheme of Work
-            </div>
-            <p className="text-[11px] text-slate-400 mt-0.5">
-              JSS1-SS3 Nigerian curriculum notes
-            </p>
-          </div>
-          <div className="mt-2 text-[10px] text-indigo-400 font-semibold flex items-center gap-1">
-            <span>Explore Syllabus</span>
-            <ArrowRight className="w-3 h-3" />
-          </div>
-        </button>
-
-        {/* Science Formulas & Periodic Table */}
-        <button
-          onClick={() => setActiveStudentTab('formulas')}
-          className="bg-slate-900/90 hover:bg-slate-800/90 border border-slate-800 hover:border-cyan-700/60 rounded-2xl p-3.5 text-left flex flex-col justify-between transition-all group cursor-pointer"
-        >
-          <div className="w-8 h-8 rounded-xl bg-cyan-950/80 border border-cyan-700/40 flex items-center justify-center text-cyan-400 mb-2">
-            <Atom className="w-4 h-4" />
-          </div>
-          <div>
-            <div className="text-xs font-bold text-white group-hover:text-cyan-300 transition-colors">
-              Formulas & Periodic Table
-            </div>
-            <p className="text-[11px] text-slate-400 mt-0.5">
-              Maths, Physics, Chemistry & Elements
-            </p>
-          </div>
-          <div className="mt-2 text-[10px] text-cyan-400 font-semibold flex items-center gap-1">
-            <span>Open Formula Bank</span>
-            <ArrowRight className="w-3 h-3" />
-          </div>
-        </button>
-
-        {/* Find Vetted Tutors */}
-        <button
-          onClick={() => setActiveStudentTab('tutors')}
-          className="bg-slate-900/90 hover:bg-slate-800/90 border border-slate-800 hover:border-emerald-700/60 rounded-2xl p-3.5 text-left flex flex-col justify-between transition-all group"
-        >
-          <div className="w-8 h-8 rounded-xl bg-emerald-950/80 border border-emerald-700/40 flex items-center justify-center text-emerald-400 mb-2">
-            <Users className="w-4 h-4" />
-          </div>
-          <div>
-            <div className="text-xs font-bold text-white group-hover:text-emerald-300 transition-colors">
-              Vetted Tutors
-            </div>
-            <p className="text-[11px] text-slate-400 mt-0.5">
-              NIN-verified physical & online lessons
-            </p>
-          </div>
-          <div className="mt-2 text-[10px] text-emerald-400 font-semibold flex items-center gap-1">
-            <span>Find Tutors</span>
-            <ArrowRight className="w-3 h-3" />
-          </div>
-        </button>
-
-        {/* Gaming Hub */}
-        <button
-          onClick={() => setActiveStudentTab('games')}
-          className="bg-slate-900/90 hover:bg-slate-800/90 border border-slate-800 hover:border-purple-700/60 rounded-2xl p-3.5 text-left flex flex-col justify-between transition-all group"
-        >
-          <div className="w-8 h-8 rounded-xl bg-purple-950/80 border border-purple-700/40 flex items-center justify-center text-purple-400 mb-2">
-            <Gamepad2 className="w-4 h-4" />
-          </div>
-          <div>
-            <div className="text-xs font-bold text-white group-hover:text-purple-300 transition-colors">
-              Math Sprint
-            </div>
-            <p className="text-[11px] text-slate-400 mt-0.5">
-              Speed arithmetic challenges for XP
-            </p>
-          </div>
-          <div className="mt-2 text-[10px] text-purple-400 font-semibold flex items-center gap-1">
-            <span>Play Game</span>
-            <ArrowRight className="w-3 h-3" />
-          </div>
-        </button>
-      </div>
-
-      {/* Student of the Week Spotlight Banner & Competitions Trigger */}
-      <div
-        onClick={() => setActiveStudentTab('competitions')}
-        className="bg-gradient-to-br from-amber-950/70 via-slate-900 to-slate-900 border border-amber-800/60 hover:border-amber-500/80 rounded-2xl p-3.5 shadow-sm cursor-pointer transition-all group"
-      >
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-1.5 text-amber-400 text-xs font-bold">
-            <Trophy className="w-4 h-4 text-amber-400 group-hover:scale-110 transition-transform" />
-            <span>Student of the Week & Weekly Challenge</span>
-          </div>
-          <span className="text-[10px] text-amber-300 font-semibold flex items-center gap-1">
-            <span>View Standings</span>
-            <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
-          </span>
-        </div>
-
-        <div className="flex items-center gap-3">
-          {student.uniformPhotoUrl ? (
-            <img
-              src={student.uniformPhotoUrl}
-              alt={displayName}
-              className="w-11 h-11 rounded-xl object-cover ring-1 ring-amber-500/50 shadow-inner shrink-0"
-            />
-          ) : (
-            <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-amber-600 via-amber-700 to-emerald-900 flex items-center justify-center text-white font-black text-xs ring-1 ring-amber-500/50 shadow-inner shrink-0">
-              {getInitials(displayName)}
-            </div>
-          )}
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <h4 className="text-xs font-bold text-white truncate">
-                {displayName}
-              </h4>
-              <span className="text-[10px] font-semibold text-emerald-400 bg-emerald-950 px-1.5 py-0.2 rounded border border-emerald-800">
-                {student.rank}
-              </span>
-            </div>
-            <p className="text-[11px] text-slate-400 truncate">
-              {displaySchool} · {student.classLevel} ({student.stream})
-            </p>
-            <div className="flex items-center gap-2 text-[10px] text-amber-300 font-mono mt-0.5">
-              <span>{student.xp.toLocaleString()} XP</span>
-              <span>·</span>
-              <span>{student.streakDays} Day Streak 🔥</span>
-              <span>·</span>
-              <span className="text-emerald-400 font-semibold inline-flex items-center">
-                <NairaSign />50k Prize Contender
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Pay & Unlock Modal */}
-      <ExamPrepUnlockModal
-        isOpen={isExamPrepModalOpen}
-        onClose={() => setIsExamPrepModalOpen(false)}
-        onSuccess={() => setActiveStudentTab('exam-prep')}
-      />
-
-      {/* Link School Code Modal */}
-      {isLinkSchoolModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-sm w-full p-5 space-y-4 shadow-2xl">
-            <div className="flex items-center justify-between pb-2 border-b border-slate-800">
-              <div className="flex items-center gap-2">
-                <KeyRound className="w-4 h-4 text-purple-400" />
-                <h3 className="text-sm font-bold text-white">Link Your School Code</h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setIsLinkSchoolModalOpen(false);
-                  setLinkFeedback(null);
-                }}
-                className="p-1 rounded-lg bg-slate-800 text-slate-400 hover:text-white transition-colors cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <p className="text-xs text-slate-400 leading-relaxed">
-              Enter the unique 6-character School Code (e.g. <span className="font-mono text-purple-300 font-bold">SCHL88</span>) provided by your school administrator or teacher.
-            </p>
-
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (!inputSchoolCode.trim()) return;
-                const ok = linkStudentToSchool(inputSchoolCode);
-                if (ok) {
-                  setLinkFeedback(`Linked successfully to school code ${inputSchoolCode.trim().toUpperCase()}!`);
-                  setTimeout(() => {
-                    setIsLinkSchoolModalOpen(false);
-                    setLinkFeedback(null);
-                  }, 1500);
-                }
+          {/* RIGHT COLUMN: AI Study Coach & Weekly Challenges */}
+          <div className="flex flex-col gap-3.5">
+            {/* TILE 3: AI STUDY COACH (Vibrant Lime Green with 3D Robot Face) */}
+            <motion.div
+              variants={tileVariants}
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => {
+                playSound.tileTap();
+                setActiveStudentTab('ai-coach');
               }}
-              className="space-y-3"
+              className="rounded-3xl p-4 bg-gradient-to-br from-[#84CC16] via-[#65A30D] to-[#4D7C0F] text-slate-950 shadow-xl border-2 border-white/20 cursor-pointer select-none group relative overflow-hidden"
             >
-              <div>
-                <input
-                  type="text"
-                  required
-                  maxLength={8}
-                  value={inputSchoolCode}
-                  onChange={(e) => setInputSchoolCode(e.target.value.toUpperCase())}
-                  placeholder="e.g. SCHL88"
-                  className="w-full bg-slate-950 border border-slate-700 focus:border-purple-500 rounded-xl py-2.5 px-3 text-sm font-mono font-black text-center tracking-widest text-white uppercase focus:outline-none transition-colors"
-                />
-              </div>
-
-              {linkFeedback && (
-                <div className="p-2 rounded-lg bg-emerald-950 border border-emerald-800 text-emerald-400 text-xs text-center font-medium">
-                  {linkFeedback}
-                </div>
-              )}
-
-              <button
-                type="submit"
-                className="w-full py-2.5 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer shadow"
-              >
-                Verify &amp; Link School
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* School Material Reader Modal */}
-      {selectedSchoolMaterial && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-lg w-full max-h-[85vh] overflow-y-auto p-5 space-y-4 shadow-2xl">
-            <div className="flex items-start justify-between gap-3 pb-3 border-b border-slate-800">
-              <div>
-                <span className="text-[10px] font-bold text-purple-300 uppercase tracking-wider block">
-                  {selectedSchoolMaterial.subject} · {selectedSchoolMaterial.classLevel}
-                </span>
-                <h3 className="text-base font-bold text-white mt-1">
-                  {selectedSchoolMaterial.title}
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setSelectedSchoolMaterial(null)}
-                className="p-1 rounded-lg bg-slate-800 text-slate-400 hover:text-white transition-colors cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="space-y-3">
-              <div className="flex items-center gap-2 text-xs text-slate-400 flex-wrap">
-                <span>By: {selectedSchoolMaterial.authorName}</span>
-                {selectedSchoolMaterial.dueDate && (
-                  <>
-                    <span>·</span>
-                    <span className="text-amber-400 font-semibold">Due: {selectedSchoolMaterial.dueDate}</span>
-                  </>
-                )}
-                {selectedSchoolMaterial.maxScore && (
-                  <>
-                    <span>·</span>
-                    <span className="text-emerald-400 font-mono font-semibold">{selectedSchoolMaterial.maxScore} Marks</span>
-                  </>
-                )}
-              </div>
-
-              <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 text-xs text-slate-200 whitespace-pre-wrap leading-relaxed font-sans">
-                {selectedSchoolMaterial.content}
-              </div>
-
-              {selectedSchoolMaterial.attachmentName && (
-                <div className="p-3 bg-purple-950/40 border border-purple-800/60 rounded-xl flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <FileText className="w-4 h-4 text-purple-400" />
-                    <span className="text-xs font-semibold text-white">{selectedSchoolMaterial.attachmentName}</span>
-                  </div>
-                  <span className="text-[10px] text-purple-300 font-medium">Worksheet Attached</span>
-                </div>
-              )}
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setSelectedSchoolMaterial(null)}
-              className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer"
-            >
-              Close
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Parent Link Info Explanation Modal */}
-      {isParentLinkInfoOpen && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-start justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2.5 rounded-2xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                  <KeyRound className="w-5 h-5" />
-                </div>
+              <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-base font-bold text-white">Your Student Link Code</h3>
-                  <span className="text-xs text-emerald-400 font-mono font-bold tracking-wider">{studentLinkCode}</span>
+                  <h3 className="text-lg font-black text-slate-950 tracking-tight leading-tight">
+                    AI Study Coach
+                  </h3>
+                  <p className="text-[11px] font-bold text-slate-900/90 mt-0.5">
+                    Ask any question 24/7
+                  </p>
                 </div>
               </div>
+
+              {/* 3D Cute Friendly Robot Face Graphic */}
+              <div className="mt-2 flex items-center justify-center">
+                <motion.div
+                  animate={{ y: [0, -4, 0] }}
+                  transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+                  className="relative"
+                >
+                  {/* Robot Head */}
+                  <div className="w-24 h-16 rounded-2xl bg-white border-3 border-slate-900 shadow-xl flex flex-col items-center justify-center relative p-1">
+                    {/* Glowing Digital Cyan Eyes */}
+                    <div className="flex items-center justify-around w-16">
+                      <motion.div
+                        animate={{ scaleY: [1, 0.1, 1] }}
+                        transition={{ duration: 3.5, repeat: Infinity, times: [0, 0.05, 0.1] }}
+                        className="w-4 h-4 rounded-md bg-[#00F0FF] shadow-[0_0_8px_#00F0FF]"
+                      />
+                      <motion.div
+                        animate={{ scaleY: [1, 0.1, 1] }}
+                        transition={{ duration: 3.5, repeat: Infinity, times: [0, 0.05, 0.1] }}
+                        className="w-4 h-4 rounded-md bg-[#00F0FF] shadow-[0_0_8px_#00F0FF]"
+                      />
+                    </div>
+                    {/* Robot Smile */}
+                    <div className="w-6 h-1 rounded-full bg-slate-800 mt-1.5" />
+
+                    {/* Headphones on sides */}
+                    <div className="absolute -left-2 w-3 h-8 rounded-full bg-slate-900" />
+                    <div className="absolute -right-2 w-3 h-8 rounded-full bg-slate-900" />
+                  </div>
+                </motion.div>
+              </div>
+
+              {/* Pulsing Audio Waves */}
+              <div className="flex items-center justify-center gap-1 mt-2">
+                {[4, 10, 16, 8, 14, 6].map((h, i) => (
+                  <motion.div
+                    key={i}
+                    animate={{ height: [`${h}px`, `${h * 1.5}px`, `${h}px`] }}
+                    transition={{ duration: 0.8, repeat: Infinity, delay: i * 0.1 }}
+                    className="w-1 rounded-full bg-slate-950"
+                  />
+                ))}
+              </div>
+            </motion.div>
+
+            {/* TILE 4: WEEKLY CHALLENGES (Star Shield & Timer) */}
+            <motion.div
+              variants={tileVariants}
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => {
+                playSound.tileTap();
+                setActiveStudentTab('competitions');
+              }}
+              className="rounded-3xl p-3.5 bg-gradient-to-b from-[#18264A] to-[#0E172B] border-2 border-indigo-500/40 hover:border-indigo-400 shadow-xl cursor-pointer select-none group"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold text-indigo-300 uppercase tracking-wider">
+                  National Cup
+                </span>
+                <span className="text-[9px] font-bold text-amber-400 bg-amber-400/10 px-1.5 py-0.5 rounded border border-amber-400/20">
+                  ₦50k Pool
+                </span>
+              </div>
+
+              <h4 className="text-sm font-black text-white tracking-tight mt-0.5">
+                Weekly Challenges
+              </h4>
+
+              {/* Golden Laurel Star Shield Visual */}
+              <div className="my-2 flex items-center justify-center">
+                <motion.div
+                  animate={{ scale: [1, 1.05, 1] }}
+                  transition={{ duration: 2, repeat: Infinity }}
+                  className="w-14 h-14 rounded-2xl bg-gradient-to-b from-yellow-400 to-amber-600 shadow-lg shadow-amber-500/30 flex items-center justify-center text-white border-2 border-yellow-200"
+                >
+                  <Star className="w-8 h-8 fill-white stroke-none drop-shadow" />
+                </motion.div>
+              </div>
+
+              <div className="flex items-center justify-center gap-1 text-[11px] font-bold text-amber-300 font-mono">
+                <Clock className="w-3.5 h-3.5 text-amber-400" />
+                <span>⏱️ 2:00:00 Left</span>
+              </div>
+
               <button
                 type="button"
-                onClick={() => setIsParentLinkInfoOpen(false)}
-                className="text-slate-400 hover:text-white p-1 rounded-lg cursor-pointer"
+                className="w-full mt-2 py-1 px-2 rounded-xl bg-white text-slate-950 text-[10px] font-black hover:bg-slate-100 transition-colors shadow-sm"
               >
-                <X className="w-5 h-5" />
+                Join Week 2 Challenge
               </button>
-            </div>
+            </motion.div>
+          </div>
+        </div>
 
-            <div className="space-y-2.5 text-xs text-slate-300 leading-relaxed">
-              <p>
-                Your <strong>6-character Student Link Code</strong> allows your parent, guardian, or sponsor to link their account with yours.
-              </p>
-              <div className="p-3 bg-slate-950/70 rounded-xl border border-slate-800 space-y-1.5">
-                <span className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider block">
-                  What your parent can do when linked:
-                </span>
-                <ul className="list-disc list-inside space-y-1 text-slate-300 text-[11px]">
-                  <li>View your weekly study streaks and completed curriculum topics</li>
-                  <li>Review your CBT mock exam scores (WAEC, JAMB, BECE)</li>
-                  <li>Fund your prep wallet and sponsor certified home or online tutors</li>
-                  <li>Receive automated WhatsApp or SMS progress summaries</li>
-                </ul>
+        {/* 2-COLUMN LOWER ROW: Tutor Marketplace & Hub Details */}
+        <div className="grid grid-cols-2 gap-3.5">
+          {/* TILE 5: TUTOR MARKETPLACE (Compass & Ratings) */}
+          <motion.div
+            variants={tileVariants}
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={() => {
+              playSound.tileTap();
+              setActiveStudentTab('tutors');
+            }}
+            className="rounded-3xl p-4 bg-[#14203D] border-2 border-blue-500/30 hover:border-blue-400 shadow-xl cursor-pointer select-none group flex flex-col justify-between"
+          >
+            <div>
+              <div className="w-10 h-10 rounded-2xl bg-blue-500/20 border border-blue-500/40 flex items-center justify-center text-blue-400 mb-2">
+                <Compass className="w-5 h-5" />
+              </div>
+              <h3 className="text-base font-black text-white tracking-tight leading-tight">
+                Tutor Marketplace
+              </h3>
+              <div className="flex items-center gap-1 text-amber-400 text-xs mt-1">
+                {'★★★★☆'}
+                <span className="text-[10px] text-slate-400 ml-1">4.8 (120)</span>
               </div>
             </div>
 
-            <div className="flex items-center justify-between pt-2">
-              <button
-                type="button"
-                onClick={handleCopyLinkCode}
-                className="py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-md shadow-emerald-950"
-              >
-                {isCopiedLinkCode ? <Check className="w-4 h-4 stroke-[3]" /> : <Copy className="w-4 h-4" />}
-                <span>{isCopiedLinkCode ? 'Link Code Copied!' : 'Copy Link Code'}</span>
-              </button>
+            {/* Tutor Face Stack */}
+            <div className="mt-3 pt-2.5 border-t border-slate-800 flex items-center justify-between">
+              <div className="flex -space-x-2 overflow-hidden">
+                <div className="inline-block h-6 w-6 rounded-full ring-2 ring-[#14203D] bg-emerald-600 text-[9px] font-bold flex items-center justify-center text-white">
+                  AO
+                </div>
+                <div className="inline-block h-6 w-6 rounded-full ring-2 ring-[#14203D] bg-purple-600 text-[9px] font-bold flex items-center justify-center text-white">
+                  EM
+                </div>
+                <div className="inline-block h-6 w-6 rounded-full ring-2 ring-[#14203D] bg-amber-600 text-[9px] font-bold flex items-center justify-center text-white">
+                  BK
+                </div>
+              </div>
+              <span className="text-[10px] font-bold text-[#84CC16]">
+                +10 Verified
+              </span>
+            </div>
+          </motion.div>
 
-              <button
-                type="button"
-                onClick={() => setIsParentLinkInfoOpen(false)}
-                className="py-2 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold cursor-pointer"
+          {/* TILE: INTERACTIVE WHITEBOARD / CLASSROOM ENTRY */}
+          <motion.div
+            variants={tileVariants}
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={() => {
+              playSound.tileTap();
+              launchVirtualClassroom(`live-${student.id || Date.now()}`, 'student');
+            }}
+            className="rounded-3xl p-4 bg-gradient-to-br from-[#101C34] to-[#1C2C4E] border-2 border-[#84CC16]/30 hover:border-[#84CC16] shadow-xl cursor-pointer select-none group flex flex-col justify-between"
+          >
+            <div>
+              <div className="w-10 h-10 rounded-2xl bg-[#84CC16]/20 border border-[#84CC16]/40 flex items-center justify-center text-[#84CC16] mb-2">
+                <Radio className="w-5 h-5 animate-pulse" />
+              </div>
+              <h3 className="text-base font-black text-white tracking-tight leading-tight">
+                Live Whiteboard
+              </h3>
+              <p className="text-[11px] text-slate-300 mt-1 line-clamp-2">
+                Instant digital canvas for math & science tutoring
+              </p>
+            </div>
+
+            <div className="mt-3 pt-2.5 border-t border-slate-800 flex items-center justify-between text-[10px] font-bold text-[#84CC16]">
+              <span>Enter Classroom</span>
+              <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+            </div>
+          </motion.div>
+        </div>
+
+        {/* TILE 6: GAMES HUB (Wide Arcade Card - Deep Purple / Retro Arcade Visual) */}
+        <motion.div
+          variants={tileVariants}
+          whileHover={{ scale: 1.015 }}
+          whileTap={{ scale: 0.985 }}
+          onClick={() => {
+            playSound.tileTap();
+            setActiveStudentTab('games');
+          }}
+          className="rounded-3xl p-5 bg-gradient-to-r from-[#1E1238] via-[#2A164D] to-[#1E1238] border-2 border-purple-500/40 hover:border-purple-400 shadow-xl cursor-pointer select-none group relative overflow-hidden"
+        >
+          {/* Subtle Arcade Radial Lighting */}
+          <div className="absolute top-0 right-1/4 w-32 h-32 bg-purple-600/20 rounded-full blur-2xl pointer-events-none" />
+
+          <div className="flex items-center justify-between relative z-10">
+            <div>
+              <span className="text-xs font-bold text-purple-300 uppercase tracking-wider block">
+                Brain Training & Arcade
+              </span>
+              <h3 className="text-2xl font-black text-white tracking-tight mt-0.5">
+                Games Hub
+              </h3>
+              <p className="text-xs text-slate-300 mt-1 max-w-[200px]">
+                Math Sprint, Bio Sort, Chemical Periodic Table, Speed Concord & Tetris
+              </p>
+            </div>
+
+            {/* Arcade Cabinet & Controller Graphic */}
+            <div className="flex items-center gap-2">
+              <motion.div
+                animate={{ rotate: [-3, 3, -3] }}
+                transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
+                className="w-14 h-20 rounded-xl bg-gradient-to-b from-purple-700 to-indigo-900 border-2 border-purple-300 shadow-lg flex flex-col items-center justify-between p-1.5"
               >
-                Close
-              </button>
+                <div className="w-full h-7 bg-slate-950 rounded border border-purple-400/50 flex items-center justify-center text-[8px] font-mono text-emerald-400 font-bold">
+                  ★ PLAY
+                </div>
+                <div className="w-3 h-3 rounded-full bg-red-500 shadow-sm" />
+                <div className="flex gap-1">
+                  <div className="w-2 h-2 rounded-full bg-yellow-400" />
+                  <div className="w-2 h-2 rounded-full bg-cyan-400" />
+                </div>
+              </motion.div>
+
+              <div className="text-2xl">🎮</div>
             </div>
           </div>
-        </div>
+
+          <div className="mt-3.5 pt-2.5 border-t border-purple-800/60 flex items-center justify-between text-xs font-bold text-purple-300">
+            <span>Play 12 Subject Games · Earn Streak XP</span>
+            <span className="flex items-center gap-1 text-white">
+              <span>Launch Arcade</span>
+              <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+            </span>
+          </div>
+        </motion.div>
+
+        {/* QUICK PARENT LINK & SCHOOL VOUCHER */}
+        <motion.div
+          variants={tileVariants}
+          className="p-3.5 rounded-2xl bg-[#0E172B] border border-slate-800 flex items-center justify-between gap-3 text-xs"
+        >
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-[#84CC16]/20 border border-[#84CC16]/40 flex items-center justify-center text-[#84CC16] shrink-0">
+              <KeyRound className="w-4 h-4" />
+            </div>
+            <div>
+              <span className="text-[11px] font-bold text-slate-300 block">
+                Parent Link Code: <span className="font-mono text-white font-black">{studentLinkCode}</span>
+              </span>
+              <span className="text-[10px] text-slate-400 block mt-0.5">
+                Share with parent for progress reports
+              </span>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleCopyLinkCode}
+            className="py-1.5 px-3 rounded-xl bg-[#18264A] hover:bg-[#223667] text-[#84CC16] font-bold text-xs flex items-center gap-1.5 border border-[#84CC16]/40 cursor-pointer active:scale-95 transition-all"
+          >
+            {isCopiedLinkCode ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+            <span>{isCopiedLinkCode ? 'Copied' : 'Copy'}</span>
+          </button>
+        </motion.div>
+      </motion.div>
+
+      {/* Subscription Modal Container */}
+      {isExamPrepModalOpen && (
+        <ExamPrepUnlockModal
+          isOpen={isExamPrepModalOpen}
+          onClose={() => setIsExamPrepModalOpen(false)}
+        />
       )}
     </div>
   );
