@@ -34,7 +34,7 @@ export const NationalMockTournaments: React.FC = () => {
   });
 
   return (
-    <div className="flex-1 w-full overflow-y-auto px-4 py-4 space-y-5 touch-pan-y text-slate-100">
+    <div className="flex-1 min-h-0 h-full w-full overflow-y-auto px-4 pt-4 pb-24 space-y-5 touch-pan-y text-slate-100">
       {/* 1. High-Stakes Hero Card */}
       <div className="p-5 sm:p-6 rounded-3xl bg-gradient-to-br from-slate-900 via-amber-950/70 to-slate-950 border border-amber-500/40 shadow-2xl relative overflow-hidden">
         {/* Glow Effects */}

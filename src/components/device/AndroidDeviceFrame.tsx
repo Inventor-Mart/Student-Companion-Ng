@@ -21,7 +21,7 @@ export const AndroidDeviceFrame: React.FC<{ children: React.ReactNode }> = ({ ch
   if (!isDeviceFrame) {
     // 100% Full-Screen Responsive View - Fills the entire preview pane
     return (
-      <main className="w-full h-screen min-h-screen bg-[#070D18] text-slate-100 flex flex-col relative overflow-hidden">
+      <main className="w-full h-screen h-dvh bg-[#070D18] text-slate-100 flex flex-col relative overflow-hidden">
         {/* Full-Screen In-App Mobile Top Bar */}
         <header className="h-12 sm:h-13 w-full bg-[#0B1526]/95 backdrop-blur-md px-4 sm:px-6 flex items-center justify-between border-b border-[#1A2C49] shrink-0 z-30 select-none">
           <div className="flex items-center gap-2.5">
@@ -55,7 +55,7 @@ export const AndroidDeviceFrame: React.FC<{ children: React.ReactNode }> = ({ ch
         </header>
 
         {/* Content Viewport filling 100% available width and height */}
-        <div className="w-full flex-1 flex flex-col bg-slate-950 relative overflow-hidden">
+        <div className="w-full flex-1 min-h-0 flex flex-col bg-slate-950 relative overflow-hidden">
           {children}
           <InAppControlsDrawer isOpen={isControlsOpen} onClose={() => setIsControlsOpen(false)} />
         </div>
@@ -130,7 +130,7 @@ export const AndroidDeviceFrame: React.FC<{ children: React.ReactNode }> = ({ ch
           </div>
 
           {/* Screen Body */}
-          <div className="relative flex-1 w-full overflow-hidden flex flex-col">
+          <div className="relative flex-1 min-h-0 w-full overflow-hidden flex flex-col">
             {children}
             {/* Native In-App Drawer Modal */}
             <InAppControlsDrawer isOpen={isControlsOpen} onClose={() => setIsControlsOpen(false)} />

@@ -173,7 +173,7 @@ export const StudentCommunityForum: React.FC = () => {
   };
 
   return (
-    <div className="flex-1 w-full flex flex-col bg-slate-950 text-slate-100 h-full overflow-hidden">
+    <div className="flex-1 min-h-0 w-full flex flex-col bg-slate-950 text-slate-100 h-full overflow-hidden">
       {/* Top Header Banner */}
       <div className="bg-slate-900/95 border-b border-slate-800 px-4 py-3 shrink-0">
         <div className="flex items-center justify-between">
@@ -232,7 +232,7 @@ export const StudentCommunityForum: React.FC = () => {
       </div>
 
       {/* Messages Scroll Area */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3.5">
+      <div className="flex-1 min-h-0 overflow-y-auto px-4 pt-4 pb-12 space-y-3.5">
         {channelMessages.length === 0 ? (
           <div className="h-64 flex flex-col items-center justify-center text-center p-6 text-slate-500">
             <MessageSquare className="w-8 h-8 text-slate-600 mb-2" />

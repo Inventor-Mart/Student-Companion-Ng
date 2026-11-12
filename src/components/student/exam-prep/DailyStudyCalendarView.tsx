@@ -72,7 +72,7 @@ export const DailyStudyCalendarView: React.FC<DailyStudyCalendarViewProps> = ({
   };
 
   return (
-    <div className="flex-1 w-full flex flex-col overflow-y-auto px-4 py-4 space-y-4 touch-pan-y text-slate-100">
+    <div className="flex-1 min-h-0 h-full w-full flex flex-col overflow-y-auto px-4 pt-4 pb-24 space-y-4 touch-pan-y text-slate-100">
       {/* 1. Header Card: Calendar Title, Class & Progress */}
       <div className="p-4 rounded-3xl bg-slate-900 border border-slate-800 shadow-sm relative overflow-hidden">
         <div className="flex items-start justify-between gap-3">

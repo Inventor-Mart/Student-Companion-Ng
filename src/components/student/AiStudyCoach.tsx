@@ -233,7 +233,7 @@ export const AiStudyCoach: React.FC<AiStudyCoachProps> = ({
   };
 
   return (
-    <div className="flex-1 w-full overflow-y-auto px-4 py-4 space-y-4 touch-pan-y text-slate-100 bg-[#101C34] min-h-screen">
+    <div className="flex-1 min-h-0 h-full w-full overflow-y-auto px-4 pt-4 pb-24 space-y-4 touch-pan-y text-slate-100 bg-[#101C34]">
       {/* =========================================================================
           COACH HERO: Vibrant Deep Navy, Electric Orange & Lime Green Theme
          ========================================================================= */}

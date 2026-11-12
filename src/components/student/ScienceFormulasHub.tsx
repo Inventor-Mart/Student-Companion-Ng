@@ -207,7 +207,7 @@ export const ScienceFormulasHub: React.FC = () => {
   }, [chemMass, chemMolarMass]);
 
   return (
-    <div className="flex-1 w-full overflow-y-auto px-4 py-4 space-y-4 touch-pan-y text-slate-100">
+    <div className="flex-1 min-h-0 h-full w-full overflow-y-auto px-4 pt-4 pb-24 space-y-4 touch-pan-y text-slate-100">
       {/* Header */}
       <div>
         <div className="flex items-center justify-between">

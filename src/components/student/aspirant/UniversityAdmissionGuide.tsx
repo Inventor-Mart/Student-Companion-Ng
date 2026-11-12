@@ -99,7 +99,7 @@ export const UniversityAdmissionGuide: React.FC = () => {
   const computedAggregate = calculateAggregate(calcJambScore, calcPostUtmeScore, 30, calcMethod);
 
   return (
-    <div className="flex-1 w-full overflow-y-auto px-4 py-4 space-y-5 touch-pan-y text-slate-100">
+    <div className="flex-1 min-h-0 h-full w-full overflow-y-auto px-4 pt-4 pb-24 space-y-5 touch-pan-y text-slate-100">
       {/* 1. Header Banner */}
       <div className="p-5 rounded-3xl bg-gradient-to-br from-slate-900 via-indigo-950/60 to-slate-950 border border-indigo-500/30 shadow-xl relative overflow-hidden">
         <div className="flex items-center gap-2 text-xs font-semibold text-indigo-400">

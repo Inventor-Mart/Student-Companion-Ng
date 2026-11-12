@@ -207,7 +207,7 @@ export const StudentDashboard: React.FC = () => {
   const currentPlan = student.subscriptionPlan || (student.isSubscribed ? 'basic' : 'free');
 
   return (
-    <div className="flex-1 w-full overflow-y-auto px-4 py-4 space-y-4 touch-pan-y text-slate-100 bg-[#101C34] min-h-screen">
+    <div className="flex-1 min-h-0 h-full w-full overflow-y-auto px-4 pt-4 pb-24 space-y-4 touch-pan-y text-slate-100 bg-[#101C34]">
       {/* =========================================================================
           RESTORED TOP PROFILE, RANK STATUS, TIER PILL & SCHOOL LINK HEADER
          ========================================================================= */}
@@ -960,9 +960,9 @@ export const StudentDashboard: React.FC = () => {
           </div>
         </div>
 
-        {/* 2-COLUMN GRID: Daily Study Calendar & Student Forum */}
+        {/* 2-COLUMN GRID: Prepare For Exam & Student Forum */}
         <div className="grid grid-cols-2 gap-3.5">
-          {/* TILE 9: EXAM PREP DAILY CALENDAR */}
+          {/* TILE 9: PREPARE FOR EXAM */}
           <motion.div
             variants={tileVariants}
             whileHover={{ scale: 1.02 }}
@@ -978,10 +978,10 @@ export const StudentDashboard: React.FC = () => {
                 <Calendar className="w-5 h-5 stroke-[2.2]" />
               </div>
               <h3 className="text-base font-black text-white tracking-tight leading-tight">
-                Study Calendar
+                Prepare For Exam
               </h3>
               <p className="text-[11px] text-slate-300 mt-1 line-clamp-2">
-                Personalized daily exam prep timetable & CBT shortcut drills
+                SC AI Daily Study Calendar, diagnostic profiler & tutor credits
               </p>
             </div>
 

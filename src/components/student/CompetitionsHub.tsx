@@ -256,7 +256,7 @@ export const CompetitionsHub: React.FC = () => {
   const ALL_CLASSES: NigerianClassLevel[] = ['JSS 1', 'JSS 2', 'JSS 3', 'SS 1', 'SS 2', 'SS 3'];
 
   return (
-    <div className="flex-1 w-full overflow-y-auto px-4 py-4 space-y-4 touch-pan-y text-slate-100 bg-[#101C34] min-h-screen">
+    <div className="flex-1 min-h-0 h-full w-full overflow-y-auto px-4 pt-4 pb-24 space-y-4 touch-pan-y text-slate-100 bg-[#101C34]">
       {/* Top Header */}
       <div className="bg-[#14203D] border-2 border-[#84CC16]/40 rounded-3xl p-4 shadow-xl">
         <div className="flex items-center justify-between gap-2">

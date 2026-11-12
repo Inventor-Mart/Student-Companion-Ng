@@ -324,7 +324,7 @@ export const AspirantCBTSimulator: React.FC = () => {
   // If Test is Not Active and Not Submitted: Show Setup & Past Question Catalog
   if (!isTestActive && !isSubmitted) {
     return (
-      <div className="flex-1 w-full overflow-y-auto px-4 py-4 space-y-5 touch-pan-y text-slate-100">
+      <div className="flex-1 min-h-0 h-full w-full overflow-y-auto px-4 pt-4 pb-24 space-y-5 touch-pan-y text-slate-100">
         {/* Top Header Card */}
         <div className="p-5 rounded-3xl bg-gradient-to-br from-slate-900 via-emerald-950/60 to-slate-950 border border-emerald-500/30 shadow-xl relative overflow-hidden">
           <div className="flex items-center gap-2 text-xs font-semibold text-emerald-400">
@@ -908,7 +908,7 @@ export const AspirantCBTSimulator: React.FC = () => {
 
   // Submitted Scorecard View
   return (
-    <div className="flex-1 w-full overflow-y-auto px-4 py-6 space-y-5 touch-pan-y text-slate-100 flex flex-col items-center">
+    <div className="flex-1 min-h-0 h-full w-full overflow-y-auto px-4 pt-6 pb-24 space-y-5 touch-pan-y text-slate-100 flex flex-col items-center">
       <div className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-3xl p-6 text-center space-y-4 shadow-2xl">
         <div className="w-16 h-16 rounded-3xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 mx-auto flex items-center justify-center">
           <Award className="w-8 h-8" />

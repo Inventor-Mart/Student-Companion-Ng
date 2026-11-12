@@ -201,7 +201,7 @@ const AppContent: React.FC = () => {
       <AndroidDeviceFrame>
         {/* Role Router */}
         {currentRole === 'student' && (
-          <div className="flex-1 w-full flex flex-col overflow-hidden relative">
+          <div className="flex-1 min-h-0 w-full flex flex-col overflow-hidden relative">
             {/* Note Reader View */}
             {activeReadingNote ? (
               <LessonNoteReader />
@@ -214,7 +214,7 @@ const AppContent: React.FC = () => {
                 {/* Over-The-Air TV Broadcast-Style Scrolling News Ticker */}
                 <BroadcastNewsTicker />
 
-                <div className="flex-1 w-full overflow-hidden flex flex-col">
+                <div className="flex-1 min-h-0 w-full overflow-hidden flex flex-col">
                   {activeStudentTab === 'dashboard' && <StudentDashboard />}
                   {activeStudentTab === 'aspirant-cbt' && <AspirantCBTSimulator />}
                   {activeStudentTab === 'admission-guide' && <UniversityAdmissionGuide />}

@@ -92,7 +92,7 @@ export const PrepareForExamHub: React.FC = () => {
 
   // LOCKED STATE: High-impact conversion deck
   return (
-    <div className="flex-1 w-full flex flex-col overflow-y-auto px-4 py-4 space-y-4 touch-pan-y text-slate-100">
+    <div className="flex-1 min-h-0 h-full w-full flex flex-col overflow-y-auto px-4 pt-4 pb-24 space-y-4 touch-pan-y text-slate-100">
       {/* 1. Hero Locked Banner */}
       <div className="p-5 rounded-3xl bg-gradient-to-br from-slate-900 via-slate-900/90 to-slate-950 border border-emerald-500/30 shadow-xl relative overflow-hidden">
         {/* Ambient Glows */}
