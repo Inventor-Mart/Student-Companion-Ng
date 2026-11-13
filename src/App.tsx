@@ -33,6 +33,7 @@ import { PopupAnnouncementModal } from './components/student/PopupAnnouncementMo
 import { StudentSubscriptionModal } from './components/student/StudentSubscriptionModal';
 import { XPAwardNotification } from './components/student/XPAwardNotification';
 import { SplashScreen } from './components/common/SplashScreen';
+import { ShieldAlert, LogOut, X } from 'lucide-react';
 
 const AppContent: React.FC = () => {
   const [quotaExceeded, setQuotaExceeded] = React.useState(false);
@@ -59,7 +60,11 @@ const AppContent: React.FC = () => {
     isSuperAdmin,
     isStudentSubscriptionModalOpen,
     targetSubscriptionPlan,
-    closeStudentSubscriptionModal
+    closeStudentSubscriptionModal,
+    securityStatus,
+    lastSecurityAlert,
+    dismissSecurityAlert,
+    signOutApp
   } = useApp();
 
   // Screen 0: Sleek Deep Navy Splash Screen with Lottie Animation
@@ -177,6 +182,50 @@ const AppContent: React.FC = () => {
     );
   }
 
+  // Account Suspension / IP or Device Block Gate (Non-bypassable except Super Admins)
+  if (
+    currentScreen === 'app' &&
+    isAuthenticated &&
+    !isSuperAdmin &&
+    (securityStatus.accountStatus === 'suspended' || securityStatus.isBlocked)
+  ) {
+    return (
+      <div className="w-full min-h-screen bg-[#070D18] text-slate-100 flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-[#0B1526] border border-rose-800/70 rounded-2xl p-6 space-y-4 text-center shadow-2xl">
+          <div className="w-14 h-14 rounded-2xl bg-rose-950/70 border border-rose-700/70 flex items-center justify-center text-rose-400 mx-auto">
+            <ShieldAlert className="w-7 h-7" />
+          </div>
+          <div className="space-y-1.5">
+            <h1 className="text-lg font-black text-white tracking-tight">
+              {securityStatus.accountStatus === 'suspended'
+                ? 'Account Suspended'
+                : 'Connection Temporarily Blocked'}
+            </h1>
+            <p className="text-xs text-slate-300 leading-relaxed">
+              {securityStatus.suspensionReason ||
+                securityStatus.blockReason ||
+                'Access from this account or device has been restricted by Student Companion Trust & Safety.'}
+            </p>
+          </div>
+          <div className="bg-slate-950 border border-slate-800 rounded-xl p-3 text-[11px] text-slate-400 font-mono">
+            Account: {currentUserProfile?.email || 'Authenticated Session'} · Status:{' '}
+            <span className="text-rose-400 font-bold uppercase">
+              {securityStatus.accountStatus === 'suspended' ? 'Suspended' : 'Blocked'}
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => signOutApp()}
+            className="w-full min-h-[44px] rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white text-xs font-bold flex items-center justify-center gap-2 cursor-pointer transition-colors"
+          >
+            <LogOut className="w-4 h-4 text-rose-400" />
+            <span>Sign Out</span>
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="w-full min-h-screen bg-[#070D18] flex flex-col items-center justify-center font-sans text-slate-100 selection:bg-[#FF5B00] selection:text-white relative">
       {/* Google Maps Quota Exceeded Sticky Banner */}
@@ -194,6 +243,26 @@ const AppContent: React.FC = () => {
             </a>{' '}
             for instructions to update your account.
           </span>
+        </div>
+      )}
+
+      {/* Global Security Shield Alert Banner */}
+      {lastSecurityAlert && (
+        <div className="w-full max-w-2xl px-4 pt-2 z-50">
+          <div className="bg-rose-950/95 border border-rose-700 text-rose-100 rounded-xl px-3.5 py-2.5 text-xs flex items-center justify-between gap-2 shadow-lg">
+            <div className="flex items-center gap-2">
+              <ShieldAlert className="w-4 h-4 text-rose-400 shrink-0" />
+              <span>{lastSecurityAlert}</span>
+            </div>
+            <button
+              type="button"
+              onClick={dismissSecurityAlert}
+              className="text-rose-300 hover:text-white p-1 cursor-pointer"
+              aria-label="Dismiss security alert"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       )}
 

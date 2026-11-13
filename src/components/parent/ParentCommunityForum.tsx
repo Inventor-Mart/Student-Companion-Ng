@@ -8,7 +8,7 @@ import {
   getStoredForumReports,
   saveStoredForumReports
 } from '../../data/forumData';
-import { filterMessageText } from '../../utils/profanityFilter';
+import { analyzeMessageSecurity } from '../../utils/securityGuard';
 import { playSound } from '../../utils/audioSynthesis';
 import { motion } from 'motion/react';
 import {
@@ -29,7 +29,7 @@ import {
 } from 'lucide-react';
 
 export const ParentCommunityForum: React.FC = () => {
-  const { currentUserProfile, currentUser } = useApp();
+  const { currentUserProfile, currentUser, submitSecurityReport } = useApp();
 
   // Channels for parents
   const parentChannels = useMemo(() => {
@@ -82,8 +82,14 @@ export const ParentCommunityForum: React.FC = () => {
     e.preventDefault();
     if (!inputText.trim()) return;
 
-    // Run safety & profanity screening
-    const filterResult = filterMessageText(inputText);
+    // Run safety, anti-spam burst, phishing link & profanity screening
+    const senderId = currentUser?.uid || currentUserProfile?.id || 'my-parent-id';
+    const filterResult = analyzeMessageSecurity(inputText, senderId, {
+      userId: senderId,
+      userEmail: currentUserProfile?.email || currentUser?.email || undefined,
+      userRole: 'parent',
+      location: `parent_forum:${activeChannelId}`
+    });
     if (!filterResult.isClean) {
       playSound.buzz();
       setInputWarning(filterResult.warningMessage || 'Please review your message for community safety.');
@@ -140,6 +146,13 @@ export const ParentCommunityForum: React.FC = () => {
 
     const existingReports = getStoredForumReports();
     saveStoredForumReports([newReport, ...existingReports]);
+
+    void submitSecurityReport({
+      category: reportReason === 'spam' ? 'spam' : 'abuse',
+      suspectIdentifier: reportingMessage.senderName || reportingMessage.senderId,
+      description: `Parent Forum Report (${reportReason}): "${reportingMessage.text}"`,
+      evidenceContext: `parent_forum:${reportingMessage.channelId}`
+    });
 
     setMessages(prev => {
       const updated = prev.map(m => (m.id === reportingMessage.id ? { ...m, isReported: true } : m));

@@ -63,7 +63,9 @@ export const ParentPortal: React.FC = () => {
     activeWardId,
     linkWardByCode,
     unlinkWard,
-    setActiveWard
+    setActiveWard,
+    securityStatus,
+    pinLockoutInfo
   } = useApp();
 
   const [enteredPin, setEnteredPin] = useState<string>('');
@@ -270,12 +272,23 @@ export const ParentPortal: React.FC = () => {
   // =========================================================================
   if (!isParentPinUnlocked) {
     const handlePinUnlock = () => {
+      if (pinLockoutInfo.isLocked) {
+        playSound.buzz();
+        const mins = Math.max(1, Math.ceil(pinLockoutInfo.remainingSeconds / 60));
+        setPinError(`PIN temporarily locked after 5 wrong attempts. Retry in ${mins} minute(s).`);
+        return;
+      }
       const ok = unlockParentPin(enteredPin);
       if (ok) {
         playSound.levelUp();
       } else {
         playSound.buzz();
-        setPinError('Incorrect PIN. Please enter your registered 4-digit PIN');
+        const remainingTries = Math.max(0, 5 - (pinLockoutInfo.attemptsUsed + 1));
+        setPinError(
+          remainingTries === 0
+            ? 'Security Lockout: 5 wrong PIN guesses detected. Wallet locked for 15 minutes.'
+            : `Incorrect PIN (${remainingTries} attempt${remainingTries === 1 ? '' : 's'} remaining before 15m lock)`
+        );
       }
     };
 
@@ -322,18 +335,21 @@ export const ParentPortal: React.FC = () => {
               className="w-40 mx-auto text-center tracking-[0.5em] text-2xl font-mono font-black py-2.5 bg-[#0A1222] border-2 border-slate-700 focus:border-[#84CC16] rounded-2xl text-[#84CC16] focus:outline-none shadow-inner"
             />
 
-            {pinError && (
+            {(pinError || pinLockoutInfo.isLocked) && (
               <span className="text-xs text-[#FF5B00] block font-bold">
-                {pinError}
+                {pinLockoutInfo.isLocked
+                  ? `Security Lockout: Too many failed PIN guesses. Retry in ${Math.max(1, Math.ceil(pinLockoutInfo.remainingSeconds / 60))} minute(s).`
+                  : pinError}
               </span>
             )}
 
             <button
               type="button"
+              disabled={pinLockoutInfo.isLocked}
               onClick={handlePinUnlock}
-              className="w-full py-3 px-4 bg-[#84CC16] hover:bg-[#A3E635] text-slate-950 text-xs font-black rounded-2xl transition-all shadow-lg shadow-[#84CC16]/30 cursor-pointer active:scale-97"
+              className="w-full py-3 px-4 bg-[#84CC16] hover:bg-[#A3E635] disabled:opacity-50 text-slate-950 text-xs font-black rounded-2xl transition-all shadow-lg shadow-[#84CC16]/30 cursor-pointer active:scale-97"
             >
-              Unlock Dashboard
+              {pinLockoutInfo.isLocked ? 'Locked for Security Review' : 'Unlock Dashboard'}
             </button>
           </div>
         </motion.div>
@@ -355,6 +371,15 @@ export const ParentPortal: React.FC = () => {
   const handlePaystackTopUp = async () => {
     playSound.tileTap();
     setPaystackError(null);
+    if (securityStatus.walletFrozen || currentUserProfile?.walletFrozen) {
+      playSound.buzz();
+      setPaystackError(
+        securityStatus.walletFrozenReason ||
+          currentUserProfile?.walletFrozenReason ||
+          'Wallet top-up is paused while this wallet is frozen for security review.'
+      );
+      return;
+    }
     setIsProcessingPaystack(true);
 
     if (typeof (window as any).PaystackPop === 'undefined') {
@@ -468,6 +493,21 @@ export const ParentPortal: React.FC = () => {
             : 'flex-1 min-h-0 h-full w-full overflow-y-auto px-4 pt-4 pb-24 space-y-4 touch-pan-y'
         }
       >
+        {/* Frozen Wallet Security Notice */}
+        {(securityStatus.walletFrozen || currentUserProfile?.walletFrozen) && (
+          <div className="shrink-0 bg-rose-950/80 border border-rose-700 text-rose-100 rounded-2xl px-4 py-3 text-xs flex items-start gap-2.5">
+            <ShieldCheck className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+            <div>
+              <strong className="text-white block">Wallet Temporarily Frozen by Trust &amp; Safety</strong>
+              <span className="text-rose-200">
+                {securityStatus.walletFrozenReason ||
+                  currentUserProfile?.walletFrozenReason ||
+                  'Top-ups, escrow releases, and drill charges are paused pending Super Admin review.'}
+              </span>
+            </div>
+          </div>
+        )}
+
         {/* Top Guardian Hero Header */}
         <div className="shrink-0 relative overflow-hidden bg-gradient-to-br from-[#0F1A30] via-[#142343] to-[#0A1222] border-2 border-[#84CC16]/60 rounded-3xl p-4 shadow-[0_14px_32px_rgba(0,0,0,0.45),0_0_24px_rgba(132,204,22,0.18)] space-y-3">
           <div className="absolute -top-12 -left-12 w-36 h-36 bg-[#84CC16]/15 rounded-full blur-3xl pointer-events-none" />

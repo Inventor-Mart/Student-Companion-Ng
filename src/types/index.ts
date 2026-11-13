@@ -437,6 +437,11 @@ export interface RegisteredUserProfile {
   growthPartnerData?: GrowthPartner;
   isSuperAdmin?: boolean;
   isDeveloper?: boolean;
+  accountStatus?: 'active' | 'suspended';
+  suspensionReason?: string;
+  suspendedAt?: string;
+  walletFrozen?: boolean;
+  walletFrozenReason?: string;
 }
 
 export interface SchoolMaterial {
@@ -928,6 +933,92 @@ export interface OTASchoolLeagueConfig {
   updatedBy: string;
 }
 
+// ==========================================
+// FRAUD, SPAM & HACKING SECURITY CENTER
+// ==========================================
 
+export type SecurityIncidentCategory =
+  | 'fraud'
+  | 'spam'
+  | 'hacking'
+  | 'brute_force'
+  | 'unauthorized_probe'
+  | 'payment_replay'
+  | 'withdrawal_anomaly'
+  | 'xp_anomaly'
+  | 'phishing_link'
+  | 'rate_limit'
+  | 'tampered_payload'
+  | 'abuse';
 
+export type SecuritySeverity = 'low' | 'medium' | 'high' | 'critical';
 
+export type SecurityIncidentStatus =
+  | 'open'
+  | 'auto_blocked'
+  | 'investigating'
+  | 'resolved'
+  | 'dismissed';
+
+export type SecurityBlockType =
+  | 'ip'
+  | 'device_fingerprint'
+  | 'account_suspend'
+  | 'wallet_freeze';
+
+export interface SecurityIncident {
+  id: string;
+  category: SecurityIncidentCategory;
+  severity: SecuritySeverity;
+  status: SecurityIncidentStatus;
+  source: 'server_guard' | 'client_guard' | 'user_report';
+  title: string;
+  description: string;
+  actorUserId?: string;
+  actorEmail?: string;
+  actorRole?: string;
+  ipAddress?: string;
+  deviceFingerprint?: string;
+  endpoint?: string;
+  actionTaken?: string;
+  resolvedBy?: string;
+  resolvedAt?: string;
+  createdAt: string;
+}
+
+export interface SecurityReport {
+  id: string;
+  reporterUserId: string;
+  reporterEmail?: string;
+  reporterName?: string;
+  reporterRole?: string;
+  category: 'fraud' | 'spam' | 'hacking' | 'abuse' | 'payment_anomaly';
+  suspectIdentifier?: string;
+  description: string;
+  evidenceContext?: string;
+  status: 'pending' | 'investigating' | 'resolved' | 'dismissed';
+  resolvedBy?: string;
+  createdAt: string;
+}
+
+export interface SecurityBlock {
+  id: string;
+  blockType: SecurityBlockType;
+  targetValue: string;
+  reason: string;
+  active: boolean;
+  createdBy: string;
+  expiresAt?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface SecurityStatusSnapshot {
+  accountStatus: 'active' | 'suspended';
+  suspensionReason?: string;
+  walletFrozen: boolean;
+  walletFrozenReason?: string;
+  isBlocked: boolean;
+  blockType?: SecurityBlockType;
+  blockReason?: string;
+}

@@ -38,6 +38,7 @@ import { SchoolAdminPortal } from './SchoolAdminPortal';
 import { OTACompetitionManager } from './OTACompetitionManager';
 import { LessonNotesManager } from './LessonNotesManager';
 import { EducatorQuestionImporter } from './EducatorQuestionImporter';
+import { SecurityTrustCenter } from './SecurityTrustCenter';
 import { NairaText, NairaSign } from '../../utils/currency';
 import { ForumReport, ForumMessage } from '../../types';
 import {
@@ -60,7 +61,7 @@ export const SuperAdminPortal: React.FC = () => {
     adminLessonNotes
   } = useApp();
 
-  const [portalView, setPortalView] = useState<'directory' | 'school_admin' | 'forum_moderation' | 'ota_competitions' | 'lesson_notes' | 'past_questions'>('directory');
+  const [portalView, setPortalView] = useState<'directory' | 'school_admin' | 'forum_moderation' | 'ota_competitions' | 'lesson_notes' | 'past_questions' | 'security_trust'>('directory');
   const [roleFilter, setRoleFilter] = useState<'all' | UserRole>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedUserForEdit, setSelectedUserForEdit] = useState<RegisteredUserProfile | null>(null);
@@ -477,6 +478,15 @@ export const SuperAdminPortal: React.FC = () => {
     );
   }
 
+  if (portalView === 'security_trust') {
+    return (
+      <SecurityTrustCenter
+        adminEmail={authorizedAdminEmail}
+        onBack={() => setPortalView('directory')}
+      />
+    );
+  }
+
   if (portalView === 'lesson_notes') {
     return (
       <LessonNotesManager onBack={() => setPortalView('directory')} />
@@ -590,6 +600,15 @@ export const SuperAdminPortal: React.FC = () => {
                   {forumReports.filter(r => r.status === 'pending').length}
                 </span>
               )}
+            </button>
+
+            <button
+              onClick={() => setPortalView('security_trust')}
+              className="flex items-center gap-1.5 px-3 min-h-[40px] rounded-xl bg-rose-950/75 hover:bg-rose-900 border border-rose-700/60 text-rose-200 text-xs font-bold transition-all cursor-pointer shadow-sm whitespace-nowrap"
+              title="Security & Trust Command Center: Fraud, Spam, Paystack Replay & Hacking Defense"
+            >
+              <ShieldAlert className="w-3.5 h-3.5 text-rose-400" />
+              <span>Security &amp; Trust</span>
             </button>
 
             <button

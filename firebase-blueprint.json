@@ -749,6 +749,82 @@
         "updatedAt": { "type": "string", "maxLength": 100 }
       },
       "required": ["id", "classLevel", "stream", "subject", "term", "weekNumber", "topicTitle", "subtopics", "readingTimeMinutes", "summary", "contentMarkdown", "keyTakeaways", "associatedQuizId", "uploadMode", "uploadedBy", "createdAt", "updatedAt"]
+    },
+    "SecurityIncident": {
+      "title": "SecurityIncident",
+      "description": "Automated or reported fraud, spam, abuse, or hacking telemetry incident",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "category": { "type": "string", "enum": ["fraud", "spam", "hacking", "brute_force", "unauthorized_probe", "payment_replay", "withdrawal_anomaly", "xp_anomaly", "phishing_link", "rate_limit", "tampered_payload", "abuse"] },
+        "severity": { "type": "string", "enum": ["low", "medium", "high", "critical"] },
+        "status": { "type": "string", "enum": ["open", "auto_blocked", "investigating", "resolved", "dismissed"] },
+        "source": { "type": "string", "enum": ["server_guard", "client_guard", "user_report"] },
+        "title": { "type": "string", "maxLength": 200 },
+        "description": { "type": "string", "maxLength": 2000 },
+        "actorUserId": { "type": "string", "maxLength": 128 },
+        "actorEmail": { "type": "string", "maxLength": 150 },
+        "actorRole": { "type": "string", "maxLength": 50 },
+        "ipAddress": { "type": "string", "maxLength": 100 },
+        "deviceFingerprint": { "type": "string", "maxLength": 150 },
+        "endpoint": { "type": "string", "maxLength": 200 },
+        "actionTaken": { "type": "string", "maxLength": 200 },
+        "resolvedBy": { "type": "string", "maxLength": 150 },
+        "resolvedAt": { "type": "string", "maxLength": 100 },
+        "createdAt": { "type": "string", "maxLength": 100 }
+      },
+      "required": ["id", "category", "severity", "status", "source", "title", "description", "createdAt"]
+    },
+    "SecurityReport": {
+      "title": "SecurityReport",
+      "description": "User-submitted fraud, spam, phishing, hacking, or safety report from Account Menu or forums",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "reporterUserId": { "type": "string", "maxLength": 128 },
+        "reporterEmail": { "type": "string", "maxLength": 150 },
+        "reporterName": { "type": "string", "maxLength": 120 },
+        "reporterRole": { "type": "string", "maxLength": 50 },
+        "category": { "type": "string", "enum": ["fraud", "spam", "hacking", "abuse", "payment_anomaly"] },
+        "suspectIdentifier": { "type": "string", "maxLength": 200 },
+        "description": { "type": "string", "maxLength": 2000 },
+        "evidenceContext": { "type": "string", "maxLength": 500 },
+        "status": { "type": "string", "enum": ["pending", "investigating", "resolved", "dismissed"] },
+        "resolvedBy": { "type": "string", "maxLength": 150 },
+        "createdAt": { "type": "string", "maxLength": 100 }
+      },
+      "required": ["id", "reporterUserId", "category", "description", "status", "createdAt"]
+    },
+    "SecurityBlock": {
+      "title": "SecurityBlock",
+      "description": "Active or historical enforcement block on an IP address, device fingerprint, user account, or wallet",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "blockType": { "type": "string", "enum": ["ip", "device_fingerprint", "account_suspend", "wallet_freeze"] },
+        "targetValue": { "type": "string", "maxLength": 200 },
+        "reason": { "type": "string", "maxLength": 500 },
+        "active": { "type": "boolean" },
+        "createdBy": { "type": "string", "maxLength": 150 },
+        "expiresAt": { "type": "string", "maxLength": 100 },
+        "createdAt": { "type": "string", "maxLength": 100 },
+        "updatedAt": { "type": "string", "maxLength": 100 }
+      },
+      "required": ["id", "blockType", "targetValue", "reason", "active", "createdBy", "createdAt"]
+    },
+    "ProcessedPaystackRef": {
+      "title": "ProcessedPaystackRef",
+      "description": "Immutable idempotency registry preventing Paystack transaction reference replay attacks",
+      "type": "object",
+      "properties": {
+        "reference": { "type": "string", "maxLength": 128 },
+        "amountNaira": { "type": "number" },
+        "purpose": { "type": "string", "maxLength": 100 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "ipAddress": { "type": "string", "maxLength": 100 },
+        "processedAt": { "type": "string", "maxLength": 100 }
+      },
+      "required": ["reference", "amountNaira", "purpose", "processedAt"]
     }
   },
   "firestore": {
@@ -871,6 +947,30 @@
         "$ref": "#/entities/AdminLessonNote"
       },
       "description": "Super Admin published weekly curriculum lesson note overrides across JSS 1 to SS 3"
+    },
+    "/security_incidents/{incidentId}": {
+      "schema": {
+        "$ref": "#/entities/SecurityIncident"
+      },
+      "description": "Platform fraud, spam, brute-force, and hacking incidents"
+    },
+    "/security_reports/{reportId}": {
+      "schema": {
+        "$ref": "#/entities/SecurityReport"
+      },
+      "description": "User-submitted security, fraud, spam, and safety reports"
+    },
+    "/security_blocks/{blockId}": {
+      "schema": {
+        "$ref": "#/entities/SecurityBlock"
+      },
+      "description": "Active and historical IP, device fingerprint, account suspension, and wallet freeze blocks"
+    },
+    "/processed_paystack_refs/{refId}": {
+      "schema": {
+        "$ref": "#/entities/ProcessedPaystackRef"
+      },
+      "description": "Idempotency registry preventing duplicate Paystack transaction replay"
     }
   }
 }

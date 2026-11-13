@@ -17,8 +17,10 @@ import {
   Home,
   TrendingUp,
   Sparkles,
-  CheckCircle2
+  CheckCircle2,
+  ShieldAlert
 } from 'lucide-react';
+import { ReportSecurityModal } from '../security/ReportSecurityModal';
 
 interface InAppControlsDrawerProps {
   isOpen: boolean;
@@ -50,7 +52,9 @@ export const InAppControlsDrawer: React.FC<InAppControlsDrawerProps> = ({
     updateStudentClass
   } = useApp();
 
-  if (!isOpen) return null;
+  const [isReportModalOpen, setIsReportModalOpen] = React.useState(false);
+
+  if (!isOpen && !isReportModalOpen) return null;
 
   const showOfflineToggle = currentRole === 'student' || isSuperAdmin;
   const showDeviceFrameToggle = isSuperAdmin;
@@ -110,6 +114,8 @@ export const InAppControlsDrawer: React.FC<InAppControlsDrawerProps> = ({
     (currentUserProfile?.role || currentRole).replace('_', ' ');
 
   return (
+    <>
+    {isOpen && (
     <div className="absolute inset-0 z-50 flex overflow-hidden">
       {/* Dimmed Backdrop */}
       <div
@@ -426,6 +432,17 @@ export const InAppControlsDrawer: React.FC<InAppControlsDrawerProps> = ({
 
               <button
                 onClick={() => {
+                  setIsReportModalOpen(true);
+                  onClose();
+                }}
+                className="w-full flex items-center gap-2.5 px-3 min-h-[44px] rounded-xl bg-amber-950/25 hover:bg-amber-950/45 border border-amber-700/50 text-amber-200 transition-all cursor-pointer"
+              >
+                <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0" />
+                <span className="font-semibold">Report Fraud, Spam or Security Issue</span>
+              </button>
+
+              <button
+                onClick={() => {
                   signOutApp();
                   onClose();
                 }}
@@ -446,5 +463,14 @@ export const InAppControlsDrawer: React.FC<InAppControlsDrawerProps> = ({
         </div>
       </div>
     </div>
+    )}
+    {isReportModalOpen && (
+      <ReportSecurityModal
+        isOpen={isReportModalOpen}
+        onClose={() => setIsReportModalOpen(false)}
+        defaultContext={`Account Menu (${currentRole})`}
+      />
+    )}
+    </>
   );
 };

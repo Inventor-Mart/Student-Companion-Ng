@@ -25,6 +25,12 @@ import {
   increment
 } from 'firebase/firestore';
 import firebaseConfig from './firebase-applet-config.json';
+import {
+  SecurityService,
+  findActiveBlock,
+  extractClientIp,
+  extractDeviceFingerprint
+} from './serverSecurity';
 
 dotenv.config();
 
@@ -44,10 +50,15 @@ app.use('/assets', express.static(path.resolve(__dirname, 'public/assets')));
 const serverApps = getServerApps();
 const serverApp = serverApps.length > 0 ? serverApps[0] : initServerFirebase(firebaseConfig, 'companion-server');
 const serverDb = getServerFirestore(serverApp, (firebaseConfig as any).firestoreDatabaseId);
+const securityService = new SecurityService(serverDb);
 
 // Health check endpoints for platform probes and control plane
 app.get('/health', (_req, res) => res.status(200).json({ status: 'ok', uptime: process.uptime() }));
 app.get('/api/health', (_req, res) => res.status(200).json({ status: 'ok', uptime: process.uptime() }));
+
+// Global Security Middleware (IP / Device Fingerprint Blocking & Sliding-Window Rate Limiting)
+app.use('/api', securityService.middleware());
+securityService.registerRoutes(app);
 
 // Initialize GoogleGenAI server-side with required User-Agent
 let aiInstance: GoogleGenAI | null = null;
@@ -1408,10 +1419,42 @@ app.post('/api/partners/withdraw', async (req, res) => {
   try {
     const { partnerId, amountNaira } = req.body;
 
-    if (!partnerId || typeof amountNaira !== 'number' || amountNaira <= 0) {
+    if (!partnerId || typeof amountNaira !== 'number' || !Number.isFinite(amountNaira) || amountNaira <= 0 || amountNaira > 5000000) {
+      await securityService.recordIncident({
+        category: 'tampered_payload',
+        severity: 'high',
+        status: 'open',
+        source: 'server_guard',
+        title: 'Invalid Partner Withdrawal Payload',
+        description: `Rejected malformed withdrawal request for partner "${partnerId}" (amount: ${amountNaira}).`,
+        actorUserId: partnerId ? String(partnerId) : undefined,
+        ipAddress: extractClientIp(req),
+        deviceFingerprint: extractDeviceFingerprint(req),
+        endpoint: '/api/partners/withdraw',
+        actionTaken: '400 Rejected'
+      });
       return res.status(400).json({
         success: false,
         error: 'Valid partnerId and positive amountNaira are required',
+      });
+    }
+
+    const freezeBlock = findActiveBlock({
+      userId: String(partnerId),
+      blockTypes: ['wallet_freeze', 'account_suspend']
+    });
+    if (freezeBlock) {
+      return res.status(403).json({
+        success: false,
+        error: `Withdrawal blocked: ${freezeBlock.reason}`,
+      });
+    }
+
+    const velocityAllowed = await securityService.checkWithdrawalVelocity(req, String(partnerId), amountNaira);
+    if (!velocityAllowed) {
+      return res.status(429).json({
+        success: false,
+        error: 'Unusual withdrawal frequency detected. Payouts temporarily paused for security review.',
       });
     }
 
@@ -1498,11 +1541,12 @@ app.get('/api/paystack/config', (_req, res) => {
 });
 
 // 2. Save / Update Paystack Keys (Admin Only: wowrealities@gmail.com, martorefe@gmail.com)
-app.post('/api/paystack/save-keys', (req, res) => {
+app.post('/api/paystack/save-keys', async (req, res) => {
   const { publicKey, secretKey, adminEmail } = req.body;
   const authorizedAdmins = ['martorefe@gmail.com', 'wowrealities@gmail.com'];
 
   if (!adminEmail || !authorizedAdmins.includes(String(adminEmail).toLowerCase().trim())) {
+    await securityService.logUnauthorizedProbe(req, '/api/paystack/save-keys', adminEmail);
     return res.status(403).json({ success: false, error: 'Unauthorized: Admin privileges required to update payment gateway keys.' });
   }
 
@@ -1525,11 +1569,81 @@ app.post('/api/paystack/save-keys', (req, res) => {
 // 3. Verify Payment with Paystack REST API and Credit Parent Escrow Wallet
 app.post('/api/paystack/verify-payment', async (req, res) => {
   try {
-    const { reference, amountNaira, email, parentId, wardName, purpose = 'parent_wallet_topup' } = req.body;
+    const { reference, amountNaira, email, parentId, studentId, wardName, purpose = 'parent_wallet_topup' } = req.body;
 
-    if (!reference || !amountNaira || amountNaira <= 0) {
+    if (!reference || typeof amountNaira !== 'number' || !Number.isFinite(amountNaira) || amountNaira <= 0 || amountNaira > 5000000) {
+      await securityService.recordIncident({
+        category: 'tampered_payload',
+        severity: 'high',
+        status: 'open',
+        source: 'server_guard',
+        title: 'Tampered Paystack Verification Payload',
+        description: `Rejected invalid payment verification (ref=${reference}, amountNaira=${amountNaira}) from ${email || extractClientIp(req)}.`,
+        actorUserId: parentId || studentId,
+        actorEmail: email,
+        ipAddress: extractClientIp(req),
+        deviceFingerprint: extractDeviceFingerprint(req),
+        endpoint: '/api/paystack/verify-payment',
+        actionTaken: '400 Rejected'
+      });
       return res.status(400).json({ success: false, error: 'Valid payment reference and positive amountNaira are required' });
     }
+
+    const walletBlock = findActiveBlock({
+      userId: parentId || studentId,
+      email,
+      blockTypes: ['wallet_freeze', 'account_suspend']
+    });
+    if (walletBlock) {
+      return res.status(403).json({
+        success: false,
+        error: `Payment blocked: ${walletBlock.reason}`
+      });
+    }
+
+    // Paystack Reference Replay Attack Prevention
+    const alreadyProcessed = await securityService.isPaystackRefProcessed(String(reference));
+    if (alreadyProcessed) {
+      const ip = extractClientIp(req);
+      const fp = extractDeviceFingerprint(req);
+      await securityService.recordIncident({
+        category: 'payment_replay',
+        severity: 'critical',
+        status: 'auto_blocked',
+        source: 'server_guard',
+        title: `Paystack Reference Replay Blocked (${reference})`,
+        description: `Duplicate attempt to reuse already-settled Paystack reference "${reference}" for ₦${Number(amountNaira).toLocaleString()}.`,
+        actorUserId: parentId || studentId,
+        actorEmail: email,
+        ipAddress: ip,
+        deviceFingerprint: fp,
+        endpoint: '/api/paystack/verify-payment',
+        actionTaken: '409 Replay Blocked + IP/Device Auto-Blocked (60m)'
+      });
+      await securityService.createOrActivateBlock({
+        blockType: 'ip',
+        targetValue: ip,
+        reason: `Automatic 60m block for Paystack transaction replay attempt (${reference})`,
+        createdBy: 'auto_shield',
+        durationMinutes: 60
+      });
+      if (fp !== 'unknown-fp') {
+        await securityService.createOrActivateBlock({
+          blockType: 'device_fingerprint',
+          targetValue: fp,
+          reason: `Automatic 60m block for Paystack transaction replay attempt (${reference})`,
+          createdBy: 'auto_shield',
+          durationMinutes: 60
+        });
+      }
+      return res.status(409).json({
+        success: false,
+        replayBlocked: true,
+        error: 'Security Alert: This payment reference has already been processed and cannot be replayed.'
+      });
+    }
+
+    await securityService.checkPaymentVelocity(req, String(parentId || studentId || ''), email, amountNaira);
 
     const secretKey = runtimePaystackSecretKey || process.env.PAYSTACK_SECRET_KEY || '';
     let paystackResponseData: any = null;
@@ -1587,6 +1701,16 @@ app.post('/api/paystack/verify-payment', async (req, res) => {
     } else {
       console.warn(`[Paystack Notice] PAYSTACK_SECRET_KEY not set. Recording reference ${reference} in verified sandbox mode.`);
     }
+
+    // Lock reference in idempotency registry before crediting balances or entitlements
+    await securityService.markPaystackRefProcessed({
+      reference: String(reference),
+      amountNaira: Number(amountNaira),
+      purpose: String(purpose),
+      userId: parentId || studentId,
+      ipAddress: extractClientIp(req),
+      processedAt: new Date().toISOString()
+    });
 
     if (purpose === 'school_direct_subscription') {
       const { adminId, schoolName, schoolCode, plan } = req.body;
@@ -1893,6 +2017,7 @@ function scrubGitToken(text: string, token: string): string {
 app.get('/api/git/status', async (req, res) => {
   const adminEmail = String(req.query.adminEmail || '').toLowerCase().trim();
   if (!adminEmail || !AUTHORIZED_GIT_ADMINS.includes(adminEmail)) {
+    await securityService.logUnauthorizedProbe(req, '/api/git/status', adminEmail);
     return res.status(403).json({
       success: false,
       error: 'Unauthorized: Super Admin privileges required.',
@@ -1939,6 +2064,7 @@ app.get('/api/git/status', async (req, res) => {
 app.post('/api/git/push', async (req, res) => {
   const adminEmail = String(req.body?.adminEmail || '').toLowerCase().trim();
   if (!adminEmail || !AUTHORIZED_GIT_ADMINS.includes(adminEmail)) {
+    await securityService.logUnauthorizedProbe(req, '/api/git/push', adminEmail);
     return res.status(403).json({
       success: false,
       error: 'Unauthorized: Super Admin privileges required to sync repository.',

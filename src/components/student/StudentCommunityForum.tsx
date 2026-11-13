@@ -8,7 +8,7 @@ import {
   getStoredForumReports,
   saveStoredForumReports
 } from '../../data/forumData';
-import { filterMessageText } from '../../utils/profanityFilter';
+import { analyzeMessageSecurity } from '../../utils/securityGuard';
 import {
   MessageSquare,
   GraduationCap,
@@ -31,7 +31,7 @@ import {
 } from 'lucide-react';
 
 export const StudentCommunityForum: React.FC = () => {
-  const { student, currentUser, openStudentSubscriptionModal, checkStudentFeatureAccess } = useApp();
+  const { student, currentUser, openStudentSubscriptionModal, checkStudentFeatureAccess, submitSecurityReport } = useApp();
 
   // Channels for students
   const studentChannels = useMemo(() => {
@@ -83,8 +83,14 @@ export const StudentCommunityForum: React.FC = () => {
     e.preventDefault();
     if (!inputText.trim()) return;
 
-    // Run safety & profanity screening
-    const filterResult = filterMessageText(inputText);
+    // Run safety, anti-spam burst, phishing link & profanity screening
+    const senderId = currentUser?.uid || student.id || 'my-student-id';
+    const filterResult = analyzeMessageSecurity(inputText, senderId, {
+      userId: senderId,
+      userEmail: currentUser?.email || undefined,
+      userRole: 'student',
+      location: `student_forum:${activeChannelId}`
+    });
     if (!filterResult.isClean) {
       setInputWarning(filterResult.warningMessage || 'Please review your message for community safety.');
       return;
@@ -142,6 +148,13 @@ export const StudentCommunityForum: React.FC = () => {
 
     const existingReports = getStoredForumReports();
     saveStoredForumReports([newReport, ...existingReports]);
+
+    void submitSecurityReport({
+      category: reportReason === 'spam' ? 'spam' : 'abuse',
+      suspectIdentifier: reportingMessage.senderName || reportingMessage.senderId,
+      description: `Student Forum Report (${reportReason}): "${reportingMessage.text}"`,
+      evidenceContext: `student_forum:${reportingMessage.channelId}`
+    });
 
     // Mark as reported locally
     setMessages(prev => {

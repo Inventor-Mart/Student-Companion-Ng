@@ -3,6 +3,11 @@ import { Mail, Lock, ArrowLeft, CheckCircle2, AlertCircle, X, RefreshCw } from '
 import { useApp } from '../../context/AppContext';
 import { sendPasswordResetEmail } from 'firebase/auth';
 import { auth } from '../../lib/firebase';
+import {
+  checkLoginBruteForce,
+  recordLoginFailure,
+  resetLoginFailures
+} from '../../utils/securityGuard';
 
 interface SignInPageProps {
   onBackToLanding: () => void;
@@ -68,6 +73,15 @@ export const SignInPage: React.FC<SignInPageProps> = ({
       return;
     }
 
+    const lockout = checkLoginBruteForce(cleanInput);
+    if (lockout.isLocked) {
+      const mins = Math.max(1, Math.ceil(lockout.remainingSeconds / 60));
+      setErrorMsg(
+        `Security Lockout: Too many failed sign-in attempts. Please wait ${mins} minute(s) before trying again.`
+      );
+      return;
+    }
+
     if (!password) {
       setErrorMsg('Please enter your password');
       return;
@@ -79,17 +93,28 @@ export const SignInPage: React.FC<SignInPageProps> = ({
 
       // If signing in with the developer email, verify and grant developer access
       if (cleanInput === 'martorefe@gmail.com') {
+        resetLoginFailures(cleanInput);
         loginAsDeveloper('martorefe@gmail.com');
         onSignInSuccess();
         return;
       }
 
       if (currentUserProfile) {
+        resetLoginFailures(cleanInput);
         onSignInSuccess();
-      } else if (onNavigateToSignUp) {
-        onNavigateToSignUp();
       } else {
-        onSignInSuccess();
+        const failState = recordLoginFailure(cleanInput);
+        if (failState.isLocked) {
+          setErrorMsg(
+            'Security Lockout Activated: 5 failed attempts detected. Account locked for 15 minutes.'
+          );
+          return;
+        }
+        if (onNavigateToSignUp) {
+          onNavigateToSignUp();
+        } else {
+          onSignInSuccess();
+        }
       }
     }, 350);
   };

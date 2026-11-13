@@ -46,8 +46,18 @@ import {
   AppFeatureId,
   DailyExplorationState,
   AdminLessonNote,
-  VerifiedLessonReadLog
+  VerifiedLessonReadLog,
+  SecurityStatusSnapshot
 } from '../types';
+import {
+  getSecurityHeaders,
+  checkPinBruteForce,
+  recordPinFailure,
+  resetPinFailures,
+  checkXPAnomaly,
+  analyzeMessageSecurity,
+  submitSecurityReportToServer
+} from '../utils/securityGuard';
 import { subscribeToAdminLessonNotes } from '../services/lessonNoteService';
 import {
   calculateDynamicXP,
@@ -290,6 +300,19 @@ interface AppContextType {
   linkWardByCode: (codeOrEmail: string) => Promise<{ success: boolean; ward?: LinkedWard; message?: string }>;
   unlinkWard: (studentId: string) => Promise<void>;
   setActiveWard: (studentId: string) => void;
+
+  // Fraud, Spam & Hacking Security Center
+  securityStatus: SecurityStatusSnapshot;
+  pinLockoutInfo: { isLocked: boolean; remainingSeconds: number; attemptsUsed: number };
+  lastSecurityAlert: string | null;
+  dismissSecurityAlert: () => void;
+  refreshSecurityStatus: () => Promise<void>;
+  submitSecurityReport: (payload: {
+    category: 'fraud' | 'spam' | 'hacking' | 'abuse' | 'payment_anomaly';
+    suspectIdentifier?: string;
+    description: string;
+    evidenceContext?: string;
+  }) => Promise<{ success: boolean; reportId?: string; error?: string }>;
 }
 
 const INITIAL_EMPTY_STUDENT: StudentProfile = {
@@ -533,6 +556,74 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     currentUserProfile?.isDeveloper
   );
 
+  // Real-time Security Shield & Enforcement Status
+  const [securityStatus, setSecurityStatus] = useState<SecurityStatusSnapshot>({
+    accountStatus: 'active',
+    walletFrozen: false,
+    isBlocked: false
+  });
+  const [pinLockoutInfo, setPinLockoutInfo] = useState<{
+    isLocked: boolean;
+    remainingSeconds: number;
+    attemptsUsed: number;
+  }>({ isLocked: false, remainingSeconds: 0, attemptsUsed: 0 });
+  const [lastSecurityAlert, setLastSecurityAlert] = useState<string | null>(null);
+  const dismissSecurityAlert = useCallback(() => setLastSecurityAlert(null), []);
+
+  const refreshSecurityStatus = useCallback(async () => {
+    const uid = currentUserProfile?.id || currentUser?.uid || '';
+    const email = currentUserProfile?.email || currentUser?.email || '';
+    if (uid) {
+      setPinLockoutInfo(checkPinBruteForce(uid));
+    }
+    try {
+      const qs = new URLSearchParams();
+      if (uid) qs.set('userId', uid);
+      if (email) qs.set('email', email);
+      const res = await fetch(`/api/security/status?${qs.toString()}`, {
+        headers: getSecurityHeaders({ userId: uid, userEmail: email })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setSecurityStatus({
+          accountStatus:
+            currentUserProfile?.accountStatus === 'suspended'
+              ? 'suspended'
+              : data.accountStatus || 'active',
+          suspensionReason:
+            currentUserProfile?.suspensionReason || data.suspensionReason,
+          walletFrozen: Boolean(
+            currentUserProfile?.walletFrozen || data.walletFrozen
+          ),
+          walletFrozenReason:
+            currentUserProfile?.walletFrozenReason || data.walletFrozenReason,
+          isBlocked: Boolean(data.isBlocked),
+          blockType: data.blockType,
+          blockReason: data.blockReason
+        });
+      }
+    } catch {
+      // Fallback to profile flags if offline
+      if (currentUserProfile) {
+        setSecurityStatus({
+          accountStatus: currentUserProfile.accountStatus || 'active',
+          suspensionReason: currentUserProfile.suspensionReason,
+          walletFrozen: Boolean(currentUserProfile.walletFrozen),
+          walletFrozenReason: currentUserProfile.walletFrozenReason,
+          isBlocked: false
+        });
+      }
+    }
+  }, [currentUserProfile, currentUser]);
+
+  useEffect(() => {
+    void refreshSecurityStatus();
+    const timer = setInterval(() => {
+      void refreshSecurityStatus();
+    }, 30000);
+    return () => clearInterval(timer);
+  }, [refreshSecurityStatus]);
+
   // Student State (Pristine - no mock personas)
   const [student, setStudent] = useState<StudentProfile>(() => {
     const saved = safeGetItem('sc_student');
@@ -550,6 +641,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     return INITIAL_EMPTY_STUDENT;
   });
+
+  const submitSecurityReport = useCallback(
+    async (payload: {
+      category: 'fraud' | 'spam' | 'hacking' | 'abuse' | 'payment_anomaly';
+      suspectIdentifier?: string;
+      description: string;
+      evidenceContext?: string;
+    }) => {
+      return submitSecurityReportToServer({
+        reporterUserId:
+          currentUserProfile?.id || currentUser?.uid || student.id || 'anonymous',
+        reporterEmail: currentUserProfile?.email || currentUser?.email || undefined,
+        reporterName: currentUserProfile?.fullName || student.name || 'Platform User',
+        reporterRole: currentRole,
+        ...payload
+      });
+    },
+    [currentUserProfile, currentUser, student, currentRole]
+  );
 
   const [examResults, setExamResults] = useState<CBTExamResult[]>(() => {
     const saved = safeGetItem('sc_exam_results');
@@ -847,10 +957,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, []);
 
   const addStudentXP = useCallback((amountOrOptions: number | AwardXPOptions, reason?: string): AwardXPResult | undefined => {
-    const opts: AwardXPOptions =
+    const rawOpts: AwardXPOptions =
       typeof amountOrOptions === 'number'
         ? { baseXP: amountOrOptions, reason: reason || 'Academic Activity Completed' }
         : amountOrOptions;
+
+    const anomaly = checkXPAnomaly(rawOpts.baseXP, rawOpts.feature || 'general', {
+      userId: currentUserProfile?.id || currentUser?.uid,
+      userEmail: currentUserProfile?.email || currentUser?.email || undefined
+    });
+    const opts: AwardXPOptions = anomaly.isAnomalous
+      ? { ...rawOpts, baseXP: anomaly.clampedXP }
+      : rawOpts;
 
     let computedResult: AwardXPResult | undefined;
 
@@ -1281,6 +1399,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const deductWalletForFreshDrill = async (subject: string, amountNaira = 500, board?: string): Promise<boolean> => {
+    if (securityStatus.walletFrozen || currentUserProfile?.walletFrozen) {
+      setLastSecurityAlert(
+        securityStatus.walletFrozenReason ||
+          currentUserProfile?.walletFrozenReason ||
+          'Wallet transactions are temporarily frozen pending security review.'
+      );
+      return false;
+    }
     const feeNaira = amountNaira || 500;
     const currentBalance = parentWallet.balanceNaira;
     if (currentBalance < feeNaira) {
@@ -1543,10 +1669,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Parent PIN & Wallet
   const unlockParentPin = (pin: string): boolean => {
+    const targetId = currentUserProfile?.id || currentUser?.uid || 'parent_default';
+    const currentLock = checkPinBruteForce(targetId);
+    if (currentLock.isLocked) {
+      setPinLockoutInfo(currentLock);
+      return false;
+    }
+
     if (pin === parentWallet.pin || pin === '1234') {
+      resetPinFailures(targetId);
+      setPinLockoutInfo({ isLocked: false, remainingSeconds: 0, attemptsUsed: 0 });
       setIsParentPinUnlocked(true);
       return true;
     }
+
+    const updatedLock = recordPinFailure(
+      targetId,
+      currentUserProfile?.email || currentUser?.email || undefined
+    );
+    setPinLockoutInfo(updatedLock);
     return false;
   };
 
@@ -1555,6 +1696,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const fundParentWallet = (amountNaira: number) => {
+    if (securityStatus.walletFrozen || currentUserProfile?.walletFrozen) {
+      setLastSecurityAlert(
+        securityStatus.walletFrozenReason ||
+          currentUserProfile?.walletFrozenReason ||
+          'Parent wallet top-up blocked because this wallet is frozen for security review.'
+      );
+      return;
+    }
     const newTx: any = {
       id: `tx-${Date.now().toString().slice(-6)}`,
       type: 'credit',
@@ -1597,6 +1746,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const approveTutorBooking = (bookingId: string): boolean => {
+    if (securityStatus.walletFrozen || currentUserProfile?.walletFrozen) {
+      setLastSecurityAlert(
+        securityStatus.walletFrozenReason ||
+          currentUserProfile?.walletFrozenReason ||
+          'Escrow approval blocked: wallet is currently frozen for security review.'
+      );
+      return false;
+    }
     const targetBooking = tutorBookings.find(b => b.id === bookingId);
     if (!targetBooking) return false;
 
@@ -2232,11 +2389,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const sendChatMessage = (tutorId: string, text: string, sender: 'student' | 'tutor') => {
+    const senderId = currentUserProfile?.id || currentUser?.uid || `${sender}_anon`;
+    const guard = analyzeMessageSecurity(text, senderId, {
+      userId: senderId,
+      userEmail: currentUserProfile?.email || currentUser?.email || undefined,
+      userRole: sender,
+      location: `tutor_chat:${tutorId}`
+    });
+    if (!guard.isClean) {
+      setLastSecurityAlert(guard.warningMessage || 'Message blocked by platform safety filter.');
+      return;
+    }
+
     const msgId = `msg-${Date.now()}`;
     const newMsg: ChatMessage = {
       id: msgId,
       sender,
-      text,
+      text: guard.sanitizedText,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     };
 
@@ -3614,7 +3783,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         activeWardId,
         linkWardByCode,
         unlinkWard,
-        setActiveWard
+        setActiveWard,
+        securityStatus,
+        pinLockoutInfo,
+        lastSecurityAlert,
+        dismissSecurityAlert,
+        refreshSecurityStatus,
+        submitSecurityReport
       }}
     >
       {children}

@@ -467,12 +467,84 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    function isValidSecurityIncident(data) {
+      return data.keys().hasAll(['id', 'category', 'severity', 'status', 'source', 'title', 'description', 'createdAt']) &&
+             data.id is string && isValidId(data.id) &&
+             data.category in ['fraud', 'spam', 'hacking', 'brute_force', 'unauthorized_probe', 'payment_replay', 'withdrawal_anomaly', 'xp_anomaly', 'phishing_link', 'rate_limit', 'tampered_payload', 'abuse'] &&
+             data.severity in ['low', 'medium', 'high', 'critical'] &&
+             data.status in ['open', 'auto_blocked', 'investigating', 'resolved', 'dismissed'] &&
+             data.source in ['server_guard', 'client_guard', 'user_report'] &&
+             data.title is string && data.title.size() >= 2 && data.title.size() <= 200 &&
+             data.description is string && data.description.size() >= 2 && data.description.size() <= 2000 &&
+             data.createdAt is string && data.createdAt.size() <= 100;
+    }
+
+    function isValidSecurityReport(data) {
+      return data.keys().hasAll(['id', 'reporterUserId', 'category', 'description', 'status', 'createdAt']) &&
+             data.id is string && isValidId(data.id) &&
+             data.reporterUserId is string && data.reporterUserId.size() <= 128 &&
+             data.category in ['fraud', 'spam', 'hacking', 'abuse', 'payment_anomaly'] &&
+             data.description is string && data.description.size() >= 5 && data.description.size() <= 2000 &&
+             data.status in ['pending', 'investigating', 'resolved', 'dismissed'] &&
+             data.createdAt is string && data.createdAt.size() <= 100;
+    }
+
+    function isValidSecurityBlock(data) {
+      return data.keys().hasAll(['id', 'blockType', 'targetValue', 'reason', 'active', 'createdBy', 'createdAt']) &&
+             data.id is string && isValidId(data.id) &&
+             data.blockType in ['ip', 'device_fingerprint', 'account_suspend', 'wallet_freeze'] &&
+             data.targetValue is string && data.targetValue.size() >= 1 && data.targetValue.size() <= 200 &&
+             data.reason is string && data.reason.size() >= 2 && data.reason.size() <= 500 &&
+             data.active is bool &&
+             data.createdBy is string && data.createdBy.size() <= 150 &&
+             data.createdAt is string && data.createdAt.size() <= 100;
+    }
+
+    function isValidProcessedPaystackRef(data) {
+      return data.keys().hasAll(['reference', 'amountNaira', 'purpose', 'processedAt']) &&
+             data.reference is string && data.reference.size() >= 3 && data.reference.size() <= 128 &&
+             data.amountNaira is number && data.amountNaira > 0 &&
+             data.purpose is string && data.purpose.size() <= 100 &&
+             data.processedAt is string && data.processedAt.size() <= 100;
+    }
+
     // 22. Super Admin Uploaded Curriculum Lesson Notes (Public read; Admin only create/update/delete)
     match /admin_lesson_notes/{noteId} {
       allow get, list: if true;
       allow create: if isAdmin() && isValidId(noteId) && incoming().id == noteId && isValidAdminLessonNote(incoming());
       allow update: if isAdmin() && isValidId(noteId) && incoming().id == existing().id && incoming().createdAt == existing().createdAt && isValidAdminLessonNote(incoming());
       allow delete: if isAdmin() && isValidId(noteId);
+    }
+
+    // 23. Security Incidents Collection (Automated & manual fraud/spam/hacking telemetry)
+    match /security_incidents/{incidentId} {
+      allow get, list: if true;
+      allow create: if isValidId(incidentId) && incoming().id == incidentId && isValidSecurityIncident(incoming());
+      allow update: if isValidId(incidentId) && incoming().id == existing().id && isValidSecurityIncident(incoming());
+      allow delete: if isAdmin();
+    }
+
+    // 24. Security Reports Collection (User-submitted fraud/spam/abuse reports)
+    match /security_reports/{reportId} {
+      allow get, list: if true;
+      allow create: if isValidId(reportId) && incoming().id == reportId && isValidSecurityReport(incoming());
+      allow update: if isValidId(reportId) && incoming().id == existing().id && isValidSecurityReport(incoming());
+      allow delete: if isAdmin();
+    }
+
+    // 25. Security Blocks Collection (IP, Device Fingerprint, Account Suspension, Wallet Freeze)
+    match /security_blocks/{blockId} {
+      allow get, list: if true;
+      allow create: if isValidId(blockId) && incoming().id == blockId && isValidSecurityBlock(incoming());
+      allow update: if isValidId(blockId) && incoming().id == existing().id && isValidSecurityBlock(incoming());
+      allow delete: if isAdmin();
+    }
+
+    // 26. Processed Paystack References (Immutable payment replay prevention ledger)
+    match /processed_paystack_refs/{refId} {
+      allow get, list: if true;
+      allow create: if isValidId(refId) && isValidProcessedPaystackRef(incoming());
+      allow update, delete: if false;
     }
   }
 }
