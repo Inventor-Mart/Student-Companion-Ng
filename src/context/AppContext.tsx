@@ -294,6 +294,11 @@ interface AppContextType {
   startImpersonation: (user: RegisteredUserProfile) => void;
   stopImpersonation: () => void;
   updateUserRecord: (userId: string, updates: Partial<RegisteredUserProfile>) => Promise<void>;
+  softDeleteUserRecord: (
+    userId: string,
+    reason: string,
+    adminEmailOverride?: string
+  ) => Promise<{ success: boolean; error?: string }>;
   switchRole: (role: UserRole) => void;
   loginAsDeveloper: (email?: string) => void;
 
@@ -672,6 +677,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (uid) {
       setPinLockoutInfo(checkPinBruteForce(uid));
     }
+
+    const resolveLocalStatus = (): 'active' | 'locked' | 'suspended' | 'deleted' => {
+      if (currentUserProfile?.accountStatus === 'deleted') return 'deleted';
+      if (currentUserProfile?.accountStatus === 'suspended') return 'suspended';
+      if (currentUserProfile?.accountStatus === 'locked') {
+        if (
+          !currentUserProfile.lockedUntil ||
+          new Date(currentUserProfile.lockedUntil).getTime() > Date.now()
+        ) {
+          return 'locked';
+        }
+      }
+      return 'active';
+    };
+
     try {
       const qs = new URLSearchParams();
       if (uid) qs.set('userId', uid);
@@ -681,13 +701,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
       if (res.ok) {
         const data = await res.json();
+        const localStatus = resolveLocalStatus();
+        const remoteStatus = (data.accountStatus || 'active') as
+          | 'active'
+          | 'locked'
+          | 'suspended'
+          | 'deleted';
+
+        const rank: Record<'active' | 'locked' | 'suspended' | 'deleted', number> = {
+          active: 0,
+          locked: 1,
+          suspended: 2,
+          deleted: 3
+        };
+        const effectiveStatus =
+          rank[localStatus] >= rank[remoteStatus] ? localStatus : remoteStatus;
+
         setSecurityStatus({
-          accountStatus:
-            currentUserProfile?.accountStatus === 'suspended'
-              ? 'suspended'
-              : data.accountStatus || 'active',
+          accountStatus: effectiveStatus,
+          lockedUntil: data.lockedUntil || currentUserProfile?.lockedUntil,
+          lockReason: data.lockReason || currentUserProfile?.lockReason,
           suspensionReason:
             currentUserProfile?.suspensionReason || data.suspensionReason,
+          deletedAt: data.deletedAt || currentUserProfile?.deletedAt,
+          deletionReason:
+            currentUserProfile?.deletionReason || data.deletionReason,
           walletFrozen: Boolean(
             currentUserProfile?.walletFrozen || data.walletFrozen
           ),
@@ -702,8 +740,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // Fallback to profile flags if offline
       if (currentUserProfile) {
         setSecurityStatus({
-          accountStatus: currentUserProfile.accountStatus || 'active',
+          accountStatus: resolveLocalStatus(),
+          lockedUntil: currentUserProfile.lockedUntil,
+          lockReason: currentUserProfile.lockReason,
           suspensionReason: currentUserProfile.suspensionReason,
+          deletedAt: currentUserProfile.deletedAt,
+          deletionReason: currentUserProfile.deletionReason,
           walletFrozen: Boolean(currentUserProfile.walletFrozen),
           walletFrozenReason: currentUserProfile.walletFrozenReason,
           isBlocked: false
@@ -4076,6 +4118,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const startImpersonation = (user: RegisteredUserProfile) => {
+    if (user.accountStatus === 'deleted') {
+      setLastSecurityAlert('Cannot impersonate a soft-deleted and scrubbed account.');
+      return;
+    }
     setAdminTermLockOverride(false);
     setImpersonatedUser(user);
     setCurrentRole(user.role);
@@ -4127,6 +4173,106 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         console.warn('Could not sync user update to Firestore:', err);
       });
     }
+  };
+
+  const softDeleteUserRecord = async (
+    userId: string,
+    reason: string,
+    adminEmailOverride?: string
+  ): Promise<{ success: boolean; error?: string }> => {
+    const targetUser = allRegisteredUsers.find(
+      u => u.id === userId || u.email.toLowerCase() === userId.toLowerCase()
+    );
+    const resolvedId = targetUser?.id || userId;
+    const resolvedEmail = targetUser?.email || (userId.includes('@') ? userId : undefined);
+
+    if (isSuperAdminEmail(resolvedEmail) || targetUser?.isSuperAdmin) {
+      return { success: false, error: 'Verified Super Admin accounts cannot be deleted.' };
+    }
+
+    const adminEmail =
+      adminEmailOverride || currentUserProfile?.email || currentUser?.email || SUPER_ADMIN_EMAIL;
+    const nowIso = new Date().toISOString();
+    const cleanReason =
+      String(reason || '').trim() || 'Account permanently closed by Super Admin for policy/security violation';
+
+    try {
+      const res = await fetch('/api/security/action', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getSecurityHeaders({ userEmail: adminEmail })
+        },
+        body: JSON.stringify({
+          adminEmail,
+          action: 'delete_account',
+          targetValue: resolvedId,
+          targetUserId: resolvedId,
+          targetEmail: resolvedEmail,
+          targetRole: targetUser?.role,
+          reason: cleanReason
+        })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        return { success: false, error: data.error || 'Server could not soft-delete account.' };
+      }
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Network error executing soft-delete.' };
+    }
+
+    const scrubbedEmail = `deleted_${resolvedId.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 16)}@scrubbed.local`;
+    const scrubbedFields: Partial<RegisteredUserProfile> = {
+      fullName: 'Deleted Account',
+      email: scrubbedEmail,
+      accountStatus: 'deleted',
+      deletedAt: nowIso,
+      deletedBy: adminEmail,
+      deletionReason: cleanReason,
+      lockedUntil: undefined,
+      lockReason: undefined,
+      suspensionReason: undefined,
+      walletFrozen: true,
+      walletFrozenReason: 'Account permanently closed',
+      studentData: undefined,
+      parentData: undefined,
+      tutorData: undefined,
+      adminData: undefined,
+      growthPartnerData: undefined
+    };
+
+    setAllRegisteredUsers(prev => {
+      const updated = prev.map(u => (u.id === resolvedId ? { ...u, ...scrubbedFields } : u));
+      safeSetItem('sc_all_users', JSON.stringify(updated));
+      return updated;
+    });
+
+    if (impersonatedUser && impersonatedUser.id === resolvedId) {
+      stopImpersonation();
+    }
+
+    if (currentUserProfile && currentUserProfile.id === resolvedId) {
+      const updatedSelf = { ...currentUserProfile, ...scrubbedFields };
+      setCurrentUserProfile(updatedSelf);
+      safeSetItem('sc_user_profile', JSON.stringify(updatedSelf));
+    }
+
+    if (!isOffline && isFirebaseConnected) {
+      setDoc(doc(db, 'users', resolvedId), {
+        fullName: 'Deleted Account',
+        email: scrubbedEmail,
+        accountStatus: 'deleted',
+        deletedAt: nowIso,
+        deletedBy: adminEmail,
+        deletionReason: cleanReason,
+        walletFrozen: true,
+        walletFrozenReason: 'Account permanently closed'
+      }, { merge: true }).catch(() => {});
+      deleteDoc(doc(db, 'students', resolvedId)).catch(() => {});
+      deleteDoc(doc(db, 'wallets', resolvedId)).catch(() => {});
+    }
+
+    return { success: true };
   };
 
   const loginAsDeveloper = (emailInput?: string) => {
@@ -4532,6 +4678,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         startImpersonation,
         stopImpersonation,
         updateUserRecord,
+        softDeleteUserRecord,
         switchRole,
         loginAsDeveloper,
         schoolMaterials,

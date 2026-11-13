@@ -34,7 +34,12 @@ import {
   RefreshCw,
   UploadCloud,
   Gift,
-  Wifi
+  Wifi,
+  Clock,
+  Lock,
+  Unlock,
+  UserX,
+  Snowflake
 } from 'lucide-react';
 import { SchoolAdminPortal } from './SchoolAdminPortal';
 import { OTACompetitionManager } from './OTACompetitionManager';
@@ -42,7 +47,8 @@ import { LessonNotesManager } from './LessonNotesManager';
 import { EducatorQuestionImporter } from './EducatorQuestionImporter';
 import { SecurityTrustCenter } from './SecurityTrustCenter';
 import { NairaText, NairaSign } from '../../utils/currency';
-import { ForumReport, ForumMessage } from '../../types';
+import { getSecurityHeaders } from '../../utils/securityGuard';
+import { ForumReport } from '../../types';
 import {
   getStoredForumReports,
   saveStoredForumReports,
@@ -55,9 +61,8 @@ export const SuperAdminPortal: React.FC = () => {
     allRegisteredUsers,
     startImpersonation,
     updateUserRecord,
+    softDeleteUserRecord,
     isSuperAdmin,
-    isFirebaseConnected,
-    currentRole,
     currentUserProfile,
     getSchoolAccreditationMetrics,
     adminLessonNotes
@@ -65,9 +70,13 @@ export const SuperAdminPortal: React.FC = () => {
 
   const [portalView, setPortalView] = useState<'directory' | 'school_admin' | 'forum_moderation' | 'ota_competitions' | 'lesson_notes' | 'past_questions' | 'security_trust' | 'aspirant_rewards'>('directory');
   const [roleFilter, setRoleFilter] = useState<'all' | UserRole>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'locked' | 'suspended' | 'deleted' | 'wallet_frozen'>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedUserForEdit, setSelectedUserForEdit] = useState<RegisteredUserProfile | null>(null);
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
+  const [directoryNotice, setDirectoryNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [actingUserId, setActingUserId] = useState<string | null>(null);
+  const [deleteModalTarget, setDeleteModalTarget] = useState<{ user: RegisteredUserProfile; reason: string } | null>(null);
 
   // Aspirant Referral Rewards Queue State
   const [aspirantRewardsList, setAspirantRewardsList] = useState<AspirantReferralReward[]>([]);
@@ -224,18 +233,35 @@ export const SuperAdminPortal: React.FC = () => {
   const [editClassLevel, setEditClassLevel] = useState<string>('JSS 3');
   const [editXP, setEditXP] = useState<number>(0);
   const [editUniformVerified, setEditUniformVerified] = useState<boolean>(false);
-  const [editWalletBalance, setEditWalletBalance] = useState<number>(0);
   const [editParentPin, setEditParentPin] = useState<string>('1234');
   const [editHourlyRate, setEditHourlyRate] = useState<number>(3000);
   const [editTutorVerified, setEditTutorVerified] = useState<boolean>(true);
   const [editAdminSchoolName, setEditAdminSchoolName] = useState<string>('');
   const [editAdminSchoolCode, setEditAdminSchoolCode] = useState<string>('SCHL88');
   const [editAdminVerified, setEditAdminVerified] = useState<boolean>(true);
+  const [editAccountStatus, setEditAccountStatus] = useState<'active' | 'locked' | 'suspended' | 'deleted'>('active');
+  const [editLockDurationMinutes, setEditLockDurationMinutes] = useState<number>(60);
+  const [editWalletFrozen, setEditWalletFrozen] = useState<boolean>(false);
+  const [editEnforcementReason, setEditEnforcementReason] = useState<string>('');
   const [selectedAccreditationDocUrl, setSelectedAccreditationDocUrl] = useState<string | null>(null);
+
+  const getEffectiveStatus = (u: RegisteredUserProfile): 'active' | 'locked' | 'suspended' | 'deleted' => {
+    if (u.accountStatus === 'deleted') return 'deleted';
+    if (u.accountStatus === 'suspended') return 'suspended';
+    if (u.accountStatus === 'locked') {
+      if (!u.lockedUntil || new Date(u.lockedUntil).getTime() > Date.now()) {
+        return 'locked';
+      }
+    }
+    return 'active';
+  };
 
   // Filtered Users
   const filteredUsers = allRegisteredUsers.filter(u => {
     if (roleFilter !== 'all' && u.role !== roleFilter) return false;
+    const effStatus = getEffectiveStatus(u);
+    if (statusFilter === 'wallet_frozen' && !u.walletFrozen) return false;
+    if (statusFilter !== 'all' && statusFilter !== 'wallet_frozen' && effStatus !== statusFilter) return false;
     if (!searchQuery.trim()) return true;
 
     const query = searchQuery.toLowerCase();
@@ -269,13 +295,113 @@ export const SuperAdminPortal: React.FC = () => {
     setEditClassLevel(u.studentData?.classLevel || 'JSS 3');
     setEditXP(u.studentData?.xp || 0);
     setEditUniformVerified(u.studentData?.uniformVerified || false);
-    setEditWalletBalance(35000); // default
     setEditParentPin(u.parentData?.pin || '1234');
     setEditHourlyRate(u.tutorData?.hourlyRate || 3000);
     setEditTutorVerified(u.tutorData?.verification?.isVerified || false);
     setEditAdminSchoolName(u.adminData?.schoolName || 'Secondary School');
     setEditAdminSchoolCode(u.adminData?.schoolCode || 'SCHL88');
     setEditAdminVerified(u.adminData?.verificationStatus === 'verified');
+    const eff = getEffectiveStatus(u);
+    setEditAccountStatus(eff);
+    setEditLockDurationMinutes(60);
+    setEditWalletFrozen(Boolean(u.walletFrozen));
+    setEditEnforcementReason(u.suspensionReason || u.lockReason || u.walletFrozenReason || u.deletionReason || '');
+  };
+
+  const dispatchServerAccountAction = async (payload: {
+    action: string;
+    user: RegisteredUserProfile;
+    durationMinutes?: number;
+    reason?: string;
+  }) => {
+    const res = await fetch('/api/security/action', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getSecurityHeaders({ userEmail: authorizedAdminEmail })
+      },
+      body: JSON.stringify({
+        adminEmail: authorizedAdminEmail,
+        action: payload.action,
+        targetValue: payload.user.id,
+        targetUserId: payload.user.id,
+        targetEmail: payload.user.email,
+        targetRole: payload.user.role,
+        durationMinutes: payload.durationMinutes,
+        reason: payload.reason
+      })
+    });
+    return res.json();
+  };
+
+  const handleQuickEnforcement = async (
+    u: RegisteredUserProfile,
+    action: 'lock_account' | 'unlock_account' | 'suspend_account' | 'unsuspend_account' | 'freeze_wallet' | 'unfreeze_wallet',
+    durationMinutes = 1440
+  ) => {
+    if (u.isSuperAdmin) {
+      setDirectoryNotice({ type: 'error', text: 'Verified Super Admin accounts cannot be restricted.' });
+      return;
+    }
+    setActingUserId(u.id);
+    setDirectoryNotice(null);
+    try {
+      const reason =
+        action === 'lock_account'
+          ? `24h timed lock issued from Directory by ${authorizedAdminEmail}`
+          : action === 'suspend_account'
+          ? `Account suspended indefinitely from Directory by ${authorizedAdminEmail}`
+          : action === 'freeze_wallet'
+          ? `Wallet frozen from Directory by ${authorizedAdminEmail}`
+          : `Updated by ${authorizedAdminEmail}`;
+      const data = await dispatchServerAccountAction({ action, user: u, durationMinutes, reason });
+      if (!data.success) {
+        setDirectoryNotice({ type: 'error', text: data.error || 'Security action failed.' });
+        return;
+      }
+
+      if (action === 'lock_account') {
+        await updateUserRecord(u.id, {
+          accountStatus: 'locked',
+          lockedUntil: data.lockedUntil || new Date(Date.now() + durationMinutes * 60 * 1000).toISOString(),
+          lockReason: reason
+        });
+      } else if (action === 'unlock_account') {
+        await updateUserRecord(u.id, {
+          accountStatus: 'active',
+          lockedUntil: undefined,
+          lockReason: undefined
+        });
+      } else if (action === 'suspend_account') {
+        await updateUserRecord(u.id, {
+          accountStatus: 'suspended',
+          suspensionReason: reason,
+          suspendedAt: new Date().toISOString()
+        });
+      } else if (action === 'unsuspend_account') {
+        await updateUserRecord(u.id, {
+          accountStatus: 'active',
+          suspensionReason: undefined
+        });
+      } else if (action === 'freeze_wallet') {
+        await updateUserRecord(u.id, {
+          walletFrozen: true,
+          walletFrozenReason: reason
+        });
+      } else if (action === 'unfreeze_wallet') {
+        await updateUserRecord(u.id, {
+          walletFrozen: false,
+          walletFrozenReason: undefined
+        });
+      }
+
+      setDirectoryNotice({ type: 'success', text: data.message || `Updated ${u.fullName}.` });
+      setTimeout(() => setDirectoryNotice(null), 3500);
+    } catch (err: any) {
+      setDirectoryNotice({ type: 'error', text: err?.message || 'Network error executing enforcement action.' });
+    } finally {
+      setActingUserId(null);
+    }
   };
 
   const handleToggleAdminAccreditation = async (user: RegisteredUserProfile, newStatus: 'verified' | 'pending_verification') => {
@@ -295,6 +421,10 @@ export const SuperAdminPortal: React.FC = () => {
   const handleSaveUserEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedUserForEdit) return;
+    if (selectedUserForEdit.accountStatus === 'deleted') {
+      setSelectedUserForEdit(null);
+      return;
+    }
 
     const updates: Partial<RegisteredUserProfile> = {
       fullName: editFullName,
@@ -337,12 +467,61 @@ export const SuperAdminPortal: React.FC = () => {
       };
     }
 
+    if (!selectedUserForEdit.isSuperAdmin) {
+      const prevStatus = getEffectiveStatus(selectedUserForEdit);
+      const reason = editEnforcementReason.trim() || `Updated in Super Admin Account Editor (${authorizedAdminEmail})`;
+
+      if (editAccountStatus === 'locked' && (prevStatus !== 'locked' || editEnforcementReason.trim())) {
+        const res = await dispatchServerAccountAction({
+          action: 'lock_account',
+          user: selectedUserForEdit,
+          durationMinutes: editLockDurationMinutes,
+          reason
+        });
+        updates.accountStatus = 'locked';
+        updates.lockedUntil = res.lockedUntil || new Date(Date.now() + editLockDurationMinutes * 60 * 1000).toISOString();
+        updates.lockReason = reason;
+        updates.suspensionReason = undefined;
+      } else if (editAccountStatus === 'suspended' && (prevStatus !== 'suspended' || editEnforcementReason.trim())) {
+        await dispatchServerAccountAction({
+          action: 'suspend_account',
+          user: selectedUserForEdit,
+          reason
+        });
+        updates.accountStatus = 'suspended';
+        updates.suspensionReason = reason;
+        updates.suspendedAt = new Date().toISOString();
+        updates.lockedUntil = undefined;
+        updates.lockReason = undefined;
+      } else if (editAccountStatus === 'active' && prevStatus !== 'active') {
+        if (prevStatus === 'locked') {
+          await dispatchServerAccountAction({ action: 'unlock_account', user: selectedUserForEdit, reason });
+        } else if (prevStatus === 'suspended') {
+          await dispatchServerAccountAction({ action: 'unsuspend_account', user: selectedUserForEdit, reason });
+        }
+        updates.accountStatus = 'active';
+        updates.lockedUntil = undefined;
+        updates.lockReason = undefined;
+        updates.suspensionReason = undefined;
+      }
+
+      if (editWalletFrozen !== Boolean(selectedUserForEdit.walletFrozen)) {
+        await dispatchServerAccountAction({
+          action: editWalletFrozen ? 'freeze_wallet' : 'unfreeze_wallet',
+          user: selectedUserForEdit,
+          reason
+        });
+        updates.walletFrozen = editWalletFrozen;
+        updates.walletFrozenReason = editWalletFrozen ? reason : undefined;
+      }
+    }
+
     await updateUserRecord(selectedUserForEdit.id, updates);
     setSaveSuccessMsg(`Updated profile for ${editFullName} successfully.`);
     setTimeout(() => {
       setSaveSuccessMsg(null);
       setSelectedUserForEdit(null);
-    }, 1200);
+    }, 1000);
   };
 
   if (portalView === 'forum_moderation') {
@@ -535,6 +714,18 @@ export const SuperAdminPortal: React.FC = () => {
       <SecurityTrustCenter
         adminEmail={authorizedAdminEmail}
         onBack={() => setPortalView('directory')}
+        onModifyAccount={(identifier) => {
+          const norm = identifier.toLowerCase().trim();
+          const matched = allRegisteredUsers.find(
+            u => u.id.toLowerCase() === norm || u.email.toLowerCase() === norm
+          );
+          setPortalView('directory');
+          if (matched) {
+            handleOpenEditModal(matched);
+          } else {
+            setSearchQuery(identifier);
+          }
+        }}
       />
     );
   }
@@ -957,30 +1148,71 @@ export const SuperAdminPortal: React.FC = () => {
         </div>
 
         {/* Role Filter Tabs */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
-          {[
-            { id: 'all', label: 'All Users', count: allRegisteredUsers.length },
-            { id: 'student', label: 'Students', count: studentCount },
-            { id: 'parent', label: 'Parents', count: parentCount },
-            { id: 'tutor', label: 'Tutors', count: tutorCount },
-            { id: 'admin', label: 'Admins', count: adminCount }
-          ].map(f => (
-            <button
-              key={f.id}
-              onClick={() => setRoleFilter(f.id as any)}
-              className={`px-3 py-1 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
-                roleFilter === f.id
-                  ? 'bg-emerald-500 text-slate-950 font-bold shadow-sm'
-                  : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'
-              }`}
-            >
-              <span>{f.label}</span>
-              <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${roleFilter === f.id ? 'bg-slate-950/30 text-slate-950' : 'bg-slate-800 text-slate-400'}`}>
-                {f.count}
-              </span>
-            </button>
-          ))}
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+            {[
+              { id: 'all', label: 'All Users', count: allRegisteredUsers.length },
+              { id: 'student', label: 'Students', count: studentCount },
+              { id: 'parent', label: 'Parents', count: parentCount },
+              { id: 'tutor', label: 'Tutors', count: tutorCount },
+              { id: 'admin', label: 'Admins', count: adminCount }
+            ].map(f => (
+              <button
+                key={f.id}
+                onClick={() => setRoleFilter(f.id as any)}
+                className={`px-3 py-1 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap shrink-0 ${
+                  roleFilter === f.id
+                    ? 'bg-emerald-500 text-slate-950 font-bold shadow-sm'
+                    : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'
+                }`}
+              >
+                <span>{f.label}</span>
+                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono tabular-nums ${roleFilter === f.id ? 'bg-slate-950/30 text-slate-950' : 'bg-slate-800 text-slate-400'}`}>
+                  {f.count}
+                </span>
+              </button>
+            ))}
+          </div>
+
+          <select
+            value={statusFilter}
+            onChange={e => setStatusFilter(e.target.value as any)}
+            className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
+          >
+            <option value="all">All Account Statuses</option>
+            <option value="active">Active Accounts</option>
+            <option value="locked">Timed Locked</option>
+            <option value="suspended">Suspended Accounts</option>
+            <option value="deleted">Soft-Deleted</option>
+            <option value="wallet_frozen">Wallet Frozen</option>
+          </select>
         </div>
+
+        {directoryNotice && (
+          <div
+            className={`px-3.5 py-2.5 rounded-xl border text-xs flex items-center justify-between gap-2 ${
+              directoryNotice.type === 'success'
+                ? 'bg-emerald-950/70 border-emerald-700 text-emerald-200'
+                : 'bg-rose-950/70 border-rose-700 text-rose-200'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              {directoryNotice.type === 'success' ? (
+                <CheckCircle2 className="w-4 h-4 text-[#84E000] shrink-0" />
+              ) : (
+                <XCircle className="w-4 h-4 text-rose-400 shrink-0" />
+              )}
+              <span>{directoryNotice.text}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setDirectoryNotice(null)}
+              className="text-slate-400 hover:text-white text-[11px] cursor-pointer"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
 
         {/* User Cards Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
@@ -989,11 +1221,20 @@ export const SuperAdminPortal: React.FC = () => {
             const isParent = u.role === 'parent';
             const isTutor = u.role === 'tutor';
             const isAdmin = u.role === 'admin';
+            const effStatus = getEffectiveStatus(u);
 
             return (
               <div
                 key={u.id}
-                className="bg-slate-950 border border-slate-800/90 hover:border-slate-700/80 rounded-2xl p-3.5 space-y-3 transition-all shadow-sm flex flex-col justify-between"
+                className={`bg-slate-950 border rounded-2xl p-3.5 space-y-3 transition-all shadow-sm flex flex-col justify-between ${
+                  effStatus === 'deleted'
+                    ? 'border-slate-800/70 opacity-75'
+                    : effStatus === 'suspended'
+                    ? 'border-rose-800/80'
+                    : effStatus === 'locked'
+                    ? 'border-amber-700/80'
+                    : 'border-slate-800/90 hover:border-slate-700/80'
+                }`}
               >
                 <div className="space-y-2">
                   {/* Top user row */}
@@ -1016,11 +1257,44 @@ export const SuperAdminPortal: React.FC = () => {
                             </span>
                           )}
                         </div>
-                        <p className="text-[11px] text-slate-400">{u.email}</p>
+                        <p className="text-[11px] text-slate-400 font-mono">{u.email}</p>
+                        {/* Dual-Coded Status Row */}
+                        <div className="flex flex-wrap items-center gap-2 mt-1 text-[11px]">
+                          {effStatus === 'deleted' ? (
+                            <span className="inline-flex items-center gap-1 text-slate-400 font-bold">
+                              <Trash2 className="w-3 h-3 shrink-0" />
+                              <span>Deleted &amp; Scrubbed</span>
+                            </span>
+                          ) : effStatus === 'suspended' ? (
+                            <span className="inline-flex items-center gap-1 text-rose-400 font-bold">
+                              <UserX className="w-3 h-3 shrink-0" />
+                              <span>Suspended</span>
+                            </span>
+                          ) : effStatus === 'locked' ? (
+                            <span className="inline-flex items-center gap-1 text-amber-400 font-bold font-mono tabular-nums">
+                              <Clock className="w-3 h-3 shrink-0" />
+                              <span>Locked{u.lockedUntil ? ` until ${new Date(u.lockedUntil).toLocaleTimeString()}` : ''}</span>
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-emerald-400 font-semibold">
+                              <CheckCircle2 className="w-3 h-3 shrink-0" />
+                              <span>Active</span>
+                            </span>
+                          )}
+                          {u.walletFrozen && (
+                            <>
+                              <span aria-hidden="true" className="text-slate-600">·</span>
+                              <span className="inline-flex items-center gap-1 text-sky-400 font-bold">
+                                <Snowflake className="w-3 h-3 shrink-0" />
+                                <span>Wallet Frozen</span>
+                              </span>
+                            </>
+                          )}
+                        </div>
                       </div>
                     </div>
 
-                    <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${
+                    <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-lg border shrink-0 ${
                       isStudent ? 'text-[#84E000] bg-emerald-950/60 border-emerald-800' :
                       isParent ? 'text-[#FF5B00] bg-orange-950/60 border-orange-800' :
                       isTutor ? 'text-sky-400 bg-sky-950/60 border-sky-800' :
@@ -1205,47 +1479,114 @@ export const SuperAdminPortal: React.FC = () => {
                 </div>
 
                 {/* Card Action Buttons */}
-                <div className="flex items-center gap-2 pt-2 border-t border-slate-800/60">
-                  {isAdmin && u.adminData && (
-                    u.adminData.verificationStatus === 'verified' ? (
+                <div className="space-y-2 pt-2 border-t border-slate-800/60">
+                  <div className="flex items-center gap-2">
+                    {isAdmin && u.adminData && (
+                      u.adminData.verificationStatus === 'verified' ? (
+                        <button
+                          type="button"
+                          onClick={() => handleToggleAdminAccreditation(u, 'pending_verification')}
+                          className="px-2.5 py-1.5 rounded-xl bg-slate-900 hover:bg-rose-950/70 text-slate-400 hover:text-rose-300 border border-slate-800 hover:border-rose-800/80 text-[11px] font-semibold transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                          title="Revoke accreditation"
+                        >
+                          Revoke
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => handleToggleAdminAccreditation(u, 'verified')}
+                          className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold transition-colors cursor-pointer flex items-center gap-1 shadow whitespace-nowrap shrink-0"
+                          title="Approve institutional accreditation"
+                        >
+                          <ShieldCheck className="w-3.5 h-3.5" />
+                          <span>Approve</span>
+                        </button>
+                      )
+                    )}
+
+                    <button
+                      onClick={() => startImpersonation(u)}
+                      disabled={effStatus === 'deleted'}
+                      className="flex-1 bg-indigo-950/80 hover:bg-indigo-900 disabled:opacity-40 text-indigo-300 hover:text-white border border-indigo-700/60 py-1.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap"
+                      title={`Impersonate and view app as ${u.fullName}`}
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                      <span>Act As User</span>
+                    </button>
+
+                    <button
+                      onClick={() => handleOpenEditModal(u)}
+                      disabled={effStatus === 'deleted'}
+                      className="bg-slate-900 hover:bg-slate-800 disabled:opacity-40 text-slate-300 hover:text-white border border-slate-800 px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                      title="Edit user parameters & enforcement"
+                    >
+                      <Edit3 className="w-3.5 h-3.5" />
+                      <span>Modify</span>
+                    </button>
+                  </div>
+
+                  {!u.isSuperAdmin && effStatus !== 'deleted' && (
+                    <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                      {effStatus === 'locked' ? (
+                        <button
+                          type="button"
+                          disabled={actingUserId === u.id}
+                          onClick={() => void handleQuickEnforcement(u, 'unlock_account')}
+                          className="px-2.5 py-1 rounded-lg bg-emerald-950/60 hover:bg-emerald-900 border border-emerald-700/60 text-emerald-300 font-semibold inline-flex items-center gap-1 cursor-pointer whitespace-nowrap shrink-0"
+                        >
+                          <Unlock className="w-3 h-3" />
+                          <span>Unlock</span>
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={actingUserId === u.id}
+                          onClick={() => void handleQuickEnforcement(u, 'lock_account', 1440)}
+                          className="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-amber-950/60 border border-slate-800 hover:border-amber-700/60 text-amber-300 font-semibold inline-flex items-center gap-1 cursor-pointer whitespace-nowrap shrink-0"
+                        >
+                          <Lock className="w-3 h-3" />
+                          <span>Lock 24h</span>
+                        </button>
+                      )}
+
+                      {effStatus === 'suspended' ? (
+                        <button
+                          type="button"
+                          disabled={actingUserId === u.id}
+                          onClick={() => void handleQuickEnforcement(u, 'unsuspend_account')}
+                          className="px-2.5 py-1 rounded-lg bg-emerald-950/60 hover:bg-emerald-900 border border-emerald-700/60 text-emerald-300 font-semibold inline-flex items-center gap-1 cursor-pointer whitespace-nowrap shrink-0"
+                        >
+                          <CheckCircle2 className="w-3 h-3" />
+                          <span>Reactivate</span>
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={actingUserId === u.id}
+                          onClick={() => void handleQuickEnforcement(u, 'suspend_account')}
+                          className="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-rose-950/60 border border-slate-800 hover:border-rose-700/60 text-rose-300 font-semibold inline-flex items-center gap-1 cursor-pointer whitespace-nowrap shrink-0"
+                        >
+                          <UserX className="w-3 h-3" />
+                          <span>Suspend</span>
+                        </button>
+                      )}
+
                       <button
                         type="button"
-                        onClick={() => handleToggleAdminAccreditation(u, 'pending_verification')}
-                        className="px-2.5 py-1.5 rounded-xl bg-slate-900 hover:bg-rose-950/70 text-slate-400 hover:text-rose-300 border border-slate-800 hover:border-rose-800/80 text-[11px] font-semibold transition-colors cursor-pointer"
-                        title="Revoke accreditation"
+                        disabled={actingUserId === u.id}
+                        onClick={() =>
+                          setDeleteModalTarget({
+                            user: u,
+                            reason: 'Account closed and PII scrubbed by Super Admin'
+                          })
+                        }
+                        className="px-2.5 py-1 rounded-lg bg-rose-950/40 hover:bg-rose-900 border border-rose-800/70 text-rose-300 font-bold inline-flex items-center gap-1 cursor-pointer whitespace-nowrap shrink-0 ml-auto"
                       >
-                        Revoke
+                        <Trash2 className="w-3 h-3" />
+                        <span>Delete</span>
                       </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => handleToggleAdminAccreditation(u, 'verified')}
-                        className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold transition-colors cursor-pointer flex items-center gap-1 shadow"
-                        title="Approve institutional accreditation"
-                      >
-                        <ShieldCheck className="w-3.5 h-3.5" />
-                        <span>Approve</span>
-                      </button>
-                    )
+                    </div>
                   )}
-
-                  <button
-                    onClick={() => startImpersonation(u)}
-                    className="flex-1 bg-indigo-950/80 hover:bg-indigo-900 text-indigo-300 hover:text-white border border-indigo-700/60 py-1.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-                    title={`Impersonate and view app as ${u.fullName}`}
-                  >
-                    <Eye className="w-3.5 h-3.5" />
-                    <span>Act As User</span>
-                  </button>
-
-                  <button
-                    onClick={() => handleOpenEditModal(u)}
-                    className="bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800 px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
-                    title="Edit user parameters"
-                  >
-                    <Edit3 className="w-3.5 h-3.5" />
-                    <span>Edit</span>
-                  </button>
                 </div>
               </div>
             );
@@ -1256,12 +1597,12 @@ export const SuperAdminPortal: React.FC = () => {
       {/* Edit User Modal */}
       {selectedUserForEdit && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs">
-          <div className="bg-[#0B1526] border border-slate-700 w-full max-w-md rounded-2xl p-5 space-y-4 shadow-2xl animate-in zoom-in-95 duration-150">
+          <div className="bg-[#0B1526] border border-slate-700 w-full max-w-md max-h-[90vh] overflow-y-auto rounded-2xl p-5 space-y-4 shadow-2xl animate-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <div className="flex items-center gap-2">
                 <Edit3 className="w-4 h-4 text-emerald-400" />
                 <h3 className="text-sm font-bold text-white">
-                  Edit User Record ({selectedUserForEdit.role.toUpperCase()})
+                  Modify Account ({selectedUserForEdit.role.toUpperCase()})
                 </h3>
               </div>
               <button
@@ -1460,22 +1801,198 @@ export const SuperAdminPortal: React.FC = () => {
                 </div>
               )}
 
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
-                <button
-                  type="button"
-                  onClick={() => setSelectedUserForEdit(null)}
-                  className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 font-semibold cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold transition-colors cursor-pointer shadow-sm"
-                >
-                  Save Changes
-                </button>
+              {/* Trust & Enforcement Controls inside Edit Modal */}
+              {!selectedUserForEdit.isSuperAdmin && (
+                <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-slate-200 flex items-center gap-1.5">
+                      <ShieldAlert className="w-3.5 h-3.5 text-rose-400" />
+                      <span>Account Trust &amp; Enforcement</span>
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[11px] text-slate-400 block mb-1">Account Status</label>
+                      <select
+                        value={editAccountStatus}
+                        onChange={e => setEditAccountStatus(e.target.value as any)}
+                        className="w-full bg-slate-900 border border-slate-800 rounded-xl px-2.5 py-2 text-white focus:outline-none focus:border-emerald-500"
+                      >
+                        <option value="active">Active</option>
+                        <option value="locked">Timed Lock</option>
+                        <option value="suspended">Suspended (Indefinite)</option>
+                      </select>
+                    </div>
+
+                    {editAccountStatus === 'locked' ? (
+                      <div>
+                        <label className="text-[11px] text-slate-400 block mb-1">Lock Duration</label>
+                        <select
+                          value={editLockDurationMinutes}
+                          onChange={e => setEditLockDurationMinutes(Number(e.target.value))}
+                          className="w-full bg-slate-900 border border-slate-800 rounded-xl px-2.5 py-2 text-white font-mono focus:outline-none focus:border-amber-500"
+                        >
+                          <option value={15}>15 mins</option>
+                          <option value={60}>1 hour</option>
+                          <option value={1440}>24 hours</option>
+                          <option value={10080}>7 days</option>
+                        </select>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col justify-end">
+                        <button
+                          type="button"
+                          onClick={() => setEditWalletFrozen(!editWalletFrozen)}
+                          className={`w-full py-2 rounded-xl font-bold text-xs cursor-pointer flex items-center justify-center gap-1.5 transition-colors ${
+                            editWalletFrozen
+                              ? 'bg-sky-600 text-white'
+                              : 'bg-slate-900 border border-slate-800 text-slate-300 hover:text-white'
+                          }`}
+                        >
+                          <Snowflake className="w-3.5 h-3.5" />
+                          <span>{editWalletFrozen ? 'Wallet Frozen' : 'Freeze Wallet'}</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {(editAccountStatus !== 'active' || editWalletFrozen) && (
+                    <div>
+                      <label className="text-[11px] text-slate-400 block mb-1">Enforcement Reason</label>
+                      <input
+                        type="text"
+                        value={editEnforcementReason}
+                        onChange={e => setEditEnforcementReason(e.target.value)}
+                        placeholder="Reason for lock, suspension, or wallet freeze"
+                        className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-rose-500"
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="flex items-center justify-between gap-2 pt-3 border-t border-slate-800">
+                {!selectedUserForEdit.isSuperAdmin ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const target = selectedUserForEdit;
+                      setSelectedUserForEdit(null);
+                      setDeleteModalTarget({
+                        user: target,
+                        reason:
+                          editEnforcementReason.trim() ||
+                          'Account soft-deleted and PII scrubbed by Super Admin'
+                      });
+                    }}
+                    className="px-3 py-1.5 rounded-xl bg-rose-950/70 hover:bg-rose-900 border border-rose-800 text-rose-300 font-bold inline-flex items-center gap-1 cursor-pointer"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Soft-Delete</span>
+                  </button>
+                ) : (
+                  <div />
+                )}
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedUserForEdit(null)}
+                    className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 font-semibold cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold transition-colors cursor-pointer shadow-sm"
+                  >
+                    Save Changes
+                  </button>
+                </div>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* In-App Soft-Delete & PII Scrub Confirmation Modal */}
+      {deleteModalTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs">
+          <div className="bg-[#0B1526] border border-rose-800/80 w-full max-w-md rounded-2xl p-5 space-y-4 shadow-2xl">
+            <div className="flex items-start justify-between gap-2 border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-rose-950/80 border border-rose-700/70 flex items-center justify-center text-rose-400 shrink-0">
+                  <Trash2 className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">Confirm Soft-Delete &amp; PII Scrub</h3>
+                  <p className="text-[11px] text-slate-400 font-mono">
+                    {deleteModalTarget.user.fullName} · {deleteModalTarget.user.email}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDeleteModalTarget(null)}
+                className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-300 leading-relaxed">
+              This will scrub profile PII to <span className="font-mono text-rose-300">Deleted Account</span>, clear student/parent/tutor data, and permanently block login while keeping fraud &amp; security audit logs intact.
+            </p>
+
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-400 mb-1">
+                Audit Reason
+              </label>
+              <textarea
+                rows={3}
+                value={deleteModalTarget.reason}
+                onChange={e =>
+                  setDeleteModalTarget(prev => (prev ? { ...prev, reason: e.target.value } : null))
+                }
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-rose-500"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setDeleteModalTarget(null)}
+                className="px-4 min-h-[38px] rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 text-xs font-semibold cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={actingUserId === deleteModalTarget.user.id || !deleteModalTarget.reason.trim()}
+                onClick={async () => {
+                  const target = deleteModalTarget;
+                  setDeleteModalTarget(null);
+                  setActingUserId(target.user.id);
+                  const res = await softDeleteUserRecord(target.user.id, target.reason, authorizedAdminEmail);
+                  setActingUserId(null);
+                  if (res.success) {
+                    setDirectoryNotice({
+                      type: 'success',
+                      text: `Soft-deleted ${target.user.email} and scrubbed profile while preserving audit logs.`
+                    });
+                  } else {
+                    setDirectoryNotice({
+                      type: 'error',
+                      text: res.error || 'Could not soft-delete account.'
+                    });
+                  }
+                }}
+                className="px-4 min-h-[38px] rounded-xl bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Confirm Soft-Delete</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

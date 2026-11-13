@@ -2043,7 +2043,7 @@ app.post('/api/partners/withdraw', async (req, res) => {
 
     const freezeBlock = findActiveBlock({
       userId: String(partnerId),
-      blockTypes: ['wallet_freeze', 'account_suspend']
+      blockTypes: ['wallet_freeze', 'account_suspend', 'account_lock', 'account_delete']
     });
     if (freezeBlock) {
       return res.status(403).json({
@@ -2174,19 +2174,28 @@ app.post('/api/paystack/verify-payment', async (req, res) => {
     const { reference, amountNaira, email, parentId, studentId, wardName, purpose = 'parent_wallet_topup' } = req.body;
 
     if (!reference || typeof amountNaira !== 'number' || !Number.isFinite(amountNaira) || amountNaira <= 0 || amountNaira > 5000000) {
+      const ip = extractClientIp(req);
+      const fp = extractDeviceFingerprint(req);
+      const containment = await securityService.enforceAutomatedFraudContainment({
+        userId: parentId || studentId,
+        email,
+        ip,
+        fp,
+        reason: `Tampered Paystack verification payload (ref=${reference}, amount=${amountNaira})`
+      });
       await securityService.recordIncident({
         category: 'tampered_payload',
-        severity: 'high',
-        status: 'open',
+        severity: 'critical',
+        status: containment.suspended || containment.walletFrozen ? 'auto_blocked' : 'open',
         source: 'server_guard',
         title: 'Tampered Paystack Verification Payload',
-        description: `Rejected invalid payment verification (ref=${reference}, amountNaira=${amountNaira}) from ${email || extractClientIp(req)}.`,
+        description: `Rejected invalid payment verification (ref=${reference}, amountNaira=${amountNaira}) from ${email || ip}.`,
         actorUserId: parentId || studentId,
         actorEmail: email,
-        ipAddress: extractClientIp(req),
-        deviceFingerprint: extractDeviceFingerprint(req),
+        ipAddress: ip,
+        deviceFingerprint: fp,
         endpoint: '/api/paystack/verify-payment',
-        actionTaken: '400 Rejected'
+        actionTaken: `400 Rejected · ${containment.actionTaken}`
       });
       return res.status(400).json({ success: false, error: 'Valid payment reference and positive amountNaira are required' });
     }
@@ -2194,7 +2203,7 @@ app.post('/api/paystack/verify-payment', async (req, res) => {
     const walletBlock = findActiveBlock({
       userId: parentId || studentId,
       email,
-      blockTypes: ['wallet_freeze', 'account_suspend']
+      blockTypes: ['wallet_freeze', 'account_suspend', 'account_lock', 'account_delete']
     });
     if (walletBlock) {
       return res.status(403).json({
@@ -2208,6 +2217,14 @@ app.post('/api/paystack/verify-payment', async (req, res) => {
     if (alreadyProcessed) {
       const ip = extractClientIp(req);
       const fp = extractDeviceFingerprint(req);
+      const containment = await securityService.enforceAutomatedFraudContainment({
+        userId: parentId || studentId,
+        email,
+        ip,
+        fp,
+        reason: `Paystack transaction replay attempt (${reference})`,
+        blockNetworkMinutes: 60
+      });
       await securityService.recordIncident({
         category: 'payment_replay',
         severity: 'critical',
@@ -2220,24 +2237,8 @@ app.post('/api/paystack/verify-payment', async (req, res) => {
         ipAddress: ip,
         deviceFingerprint: fp,
         endpoint: '/api/paystack/verify-payment',
-        actionTaken: '409 Replay Blocked + IP/Device Auto-Blocked (60m)'
+        actionTaken: `409 Replay Blocked · ${containment.actionTaken}`
       });
-      await securityService.createOrActivateBlock({
-        blockType: 'ip',
-        targetValue: ip,
-        reason: `Automatic 60m block for Paystack transaction replay attempt (${reference})`,
-        createdBy: 'auto_shield',
-        durationMinutes: 60
-      });
-      if (fp !== 'unknown-fp') {
-        await securityService.createOrActivateBlock({
-          blockType: 'device_fingerprint',
-          targetValue: fp,
-          reason: `Automatic 60m block for Paystack transaction replay attempt (${reference})`,
-          createdBy: 'auto_shield',
-          durationMinutes: 60
-        });
-      }
       return res.status(409).json({
         success: false,
         replayBlocked: true,

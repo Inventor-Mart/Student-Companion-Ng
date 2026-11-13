@@ -790,18 +790,20 @@
         "description": { "type": "string", "maxLength": 2000 },
         "evidenceContext": { "type": "string", "maxLength": 500 },
         "status": { "type": "string", "enum": ["pending", "investigating", "resolved", "dismissed"] },
+        "actionTaken": { "type": "string", "maxLength": 500 },
         "resolvedBy": { "type": "string", "maxLength": 150 },
+        "resolvedAt": { "type": "string", "maxLength": 100 },
         "createdAt": { "type": "string", "maxLength": 100 }
       },
       "required": ["id", "reporterUserId", "category", "description", "status", "createdAt"]
     },
     "SecurityBlock": {
       "title": "SecurityBlock",
-      "description": "Active or historical enforcement block on an IP address, device fingerprint, user account, or wallet",
+      "description": "Active or historical enforcement block on an IP address, device fingerprint, timed account lock, account suspension, wallet freeze, or soft-deletion tombstone",
       "type": "object",
       "properties": {
         "id": { "type": "string", "maxLength": 128 },
-        "blockType": { "type": "string", "enum": ["ip", "device_fingerprint", "account_suspend", "wallet_freeze"] },
+        "blockType": { "type": "string", "enum": ["ip", "device_fingerprint", "account_lock", "account_suspend", "wallet_freeze", "account_delete"] },
         "targetValue": { "type": "string", "maxLength": 200 },
         "reason": { "type": "string", "maxLength": 500 },
         "active": { "type": "boolean" },
@@ -811,6 +813,26 @@
         "updatedAt": { "type": "string", "maxLength": 100 }
       },
       "required": ["id", "blockType", "targetValue", "reason", "active", "createdBy", "createdAt"]
+    },
+    "SecurityAutomationPolicy": {
+      "title": "SecurityAutomationPolicy",
+      "description": "Configurable automated enforcement policy rules for spam locks, brute-force locks, fraud auto-suspension, wallet freeze, and multi-report escalation",
+      "type": "object",
+      "properties": {
+        "autoLockOnSpam": { "type": "boolean" },
+        "spamBurstThreshold": { "type": "number" },
+        "spamLockDurationMinutes": { "type": "number" },
+        "autoLockOnBruteForce": { "type": "boolean" },
+        "bruteForceLockDurationMinutes": { "type": "number" },
+        "autoSuspendOnFraud": { "type": "boolean" },
+        "autoFreezeWalletOnFraud": { "type": "boolean" },
+        "autoEnforceOnReports": { "type": "boolean" },
+        "reportAutoLockThreshold": { "type": "number" },
+        "reportAutoSuspendThreshold": { "type": "number" },
+        "updatedAt": { "type": "string", "maxLength": 100 },
+        "updatedBy": { "type": "string", "maxLength": 150 }
+      },
+      "required": ["autoLockOnSpam", "spamBurstThreshold", "spamLockDurationMinutes", "autoLockOnBruteForce", "bruteForceLockDurationMinutes", "autoSuspendOnFraud", "autoFreezeWalletOnFraud", "autoEnforceOnReports", "reportAutoLockThreshold", "reportAutoSuspendThreshold", "updatedAt", "updatedBy"]
     },
     "ProcessedPaystackRef": {
       "title": "ProcessedPaystackRef",
@@ -1062,7 +1084,13 @@
       "schema": {
         "$ref": "#/entities/SecurityBlock"
       },
-      "description": "Active and historical IP, device fingerprint, account suspension, and wallet freeze blocks"
+      "description": "Active and historical IP, device fingerprint, timed account lock, account suspension, wallet freeze, and soft-deletion tombstone blocks"
+    },
+    "/security_policies/{policyId}": {
+      "schema": {
+        "$ref": "#/entities/SecurityAutomationPolicy"
+      },
+      "description": "Automated fraud, spam, brute-force, and report escalation policy configuration"
     },
     "/processed_paystack_refs/{refId}": {
       "schema": {

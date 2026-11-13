@@ -443,9 +443,14 @@ export interface RegisteredUserProfile {
   growthPartnerData?: GrowthPartner;
   isSuperAdmin?: boolean;
   isDeveloper?: boolean;
-  accountStatus?: 'active' | 'suspended';
+  accountStatus?: 'active' | 'locked' | 'suspended' | 'deleted';
+  lockedUntil?: string;
+  lockReason?: string;
   suspensionReason?: string;
   suspendedAt?: string;
+  deletedAt?: string;
+  deletedBy?: string;
+  deletionReason?: string;
   walletFrozen?: boolean;
   walletFrozenReason?: string;
 }
@@ -1076,8 +1081,10 @@ export type SecurityIncidentStatus =
 export type SecurityBlockType =
   | 'ip'
   | 'device_fingerprint'
+  | 'account_lock'
   | 'account_suspend'
-  | 'wallet_freeze';
+  | 'wallet_freeze'
+  | 'account_delete';
 
 export interface SecurityIncident {
   id: string;
@@ -1110,7 +1117,9 @@ export interface SecurityReport {
   description: string;
   evidenceContext?: string;
   status: 'pending' | 'investigating' | 'resolved' | 'dismissed';
+  actionTaken?: string;
   resolvedBy?: string;
+  resolvedAt?: string;
   createdAt: string;
 }
 
@@ -1126,9 +1135,28 @@ export interface SecurityBlock {
   updatedAt?: string;
 }
 
+export interface SecurityAutomationPolicy {
+  autoLockOnSpam: boolean;
+  spamBurstThreshold: number;
+  spamLockDurationMinutes: number;
+  autoLockOnBruteForce: boolean;
+  bruteForceLockDurationMinutes: number;
+  autoSuspendOnFraud: boolean;
+  autoFreezeWalletOnFraud: boolean;
+  autoEnforceOnReports: boolean;
+  reportAutoLockThreshold: number;
+  reportAutoSuspendThreshold: number;
+  updatedAt: string;
+  updatedBy: string;
+}
+
 export interface SecurityStatusSnapshot {
-  accountStatus: 'active' | 'suspended';
+  accountStatus: 'active' | 'locked' | 'suspended' | 'deleted';
+  lockedUntil?: string;
+  lockReason?: string;
   suspensionReason?: string;
+  deletedAt?: string;
+  deletionReason?: string;
   walletFrozen: boolean;
   walletFrozenReason?: string;
   isBlocked: boolean;

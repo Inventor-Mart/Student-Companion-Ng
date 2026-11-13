@@ -492,12 +492,28 @@ service cloud.firestore {
     function isValidSecurityBlock(data) {
       return data.keys().hasAll(['id', 'blockType', 'targetValue', 'reason', 'active', 'createdBy', 'createdAt']) &&
              data.id is string && isValidId(data.id) &&
-             data.blockType in ['ip', 'device_fingerprint', 'account_suspend', 'wallet_freeze'] &&
+             data.blockType in ['ip', 'device_fingerprint', 'account_lock', 'account_suspend', 'wallet_freeze', 'account_delete'] &&
              data.targetValue is string && data.targetValue.size() >= 1 && data.targetValue.size() <= 200 &&
              data.reason is string && data.reason.size() >= 2 && data.reason.size() <= 500 &&
              data.active is bool &&
              data.createdBy is string && data.createdBy.size() <= 150 &&
              data.createdAt is string && data.createdAt.size() <= 100;
+    }
+
+    function isValidSecurityAutomationPolicy(data) {
+      return data.keys().hasAll(['autoLockOnSpam', 'spamBurstThreshold', 'spamLockDurationMinutes', 'autoLockOnBruteForce', 'bruteForceLockDurationMinutes', 'autoSuspendOnFraud', 'autoFreezeWalletOnFraud', 'autoEnforceOnReports', 'reportAutoLockThreshold', 'reportAutoSuspendThreshold', 'updatedAt', 'updatedBy']) &&
+             data.autoLockOnSpam is bool &&
+             data.spamBurstThreshold is number && data.spamBurstThreshold >= 1 && data.spamBurstThreshold <= 100 &&
+             data.spamLockDurationMinutes is number && data.spamLockDurationMinutes >= 1 && data.spamLockDurationMinutes <= 43200 &&
+             data.autoLockOnBruteForce is bool &&
+             data.bruteForceLockDurationMinutes is number && data.bruteForceLockDurationMinutes >= 1 && data.bruteForceLockDurationMinutes <= 43200 &&
+             data.autoSuspendOnFraud is bool &&
+             data.autoFreezeWalletOnFraud is bool &&
+             data.autoEnforceOnReports is bool &&
+             data.reportAutoLockThreshold is number && data.reportAutoLockThreshold >= 1 && data.reportAutoLockThreshold <= 50 &&
+             data.reportAutoSuspendThreshold is number && data.reportAutoSuspendThreshold >= 1 && data.reportAutoSuspendThreshold <= 50 &&
+             data.updatedAt is string && data.updatedAt.size() <= 100 &&
+             data.updatedBy is string && data.updatedBy.size() <= 150;
     }
 
     function isValidProcessedPaystackRef(data) {
@@ -532,11 +548,18 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
-    // 25. Security Blocks Collection (IP, Device Fingerprint, Account Suspension, Wallet Freeze)
+    // 25. Security Blocks Collection (IP, Device Fingerprint, Account Lock/Suspend/Delete, Wallet Freeze)
     match /security_blocks/{blockId} {
       allow get, list: if true;
       allow create: if isValidId(blockId) && incoming().id == blockId && isValidSecurityBlock(incoming());
       allow update: if isValidId(blockId) && incoming().id == existing().id && isValidSecurityBlock(incoming());
+      allow delete: if isAdmin();
+    }
+
+    // 25b. Automated Security Policy Configuration
+    match /security_policies/{policyId} {
+      allow get, list: if true;
+      allow create, update: if isAdmin() && isValidId(policyId) && isValidSecurityAutomationPolicy(incoming());
       allow delete: if isAdmin();
     }
 

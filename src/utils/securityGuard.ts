@@ -1,5 +1,5 @@
 import { filterMessageText, FilterResult } from './profanityFilter';
-import { SecurityIncidentCategory, SecuritySeverity } from '../types';
+import { SecurityIncidentCategory, SecuritySeverity, SecurityStatusSnapshot } from '../types';
 
 const FP_STORAGE_KEY = 'sc_device_fp';
 const LOGIN_FAIL_STORAGE_KEY = 'sc_login_failures';
@@ -104,6 +104,37 @@ export async function submitSecurityReportToServer(payload: {
   }
 }
 
+export async function fetchAccountSecurityStatus(params: {
+  userId?: string;
+  email?: string;
+}): Promise<SecurityStatusSnapshot | null> {
+  try {
+    const qs = new URLSearchParams();
+    if (params.userId) qs.set('userId', params.userId);
+    if (params.email) qs.set('email', params.email);
+    const res = await fetch(`/api/security/status?${qs.toString()}`, {
+      headers: getSecurityHeaders({ userId: params.userId, userEmail: params.email })
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return {
+      accountStatus: data.accountStatus || 'active',
+      lockedUntil: data.lockedUntil,
+      lockReason: data.lockReason,
+      suspensionReason: data.suspensionReason,
+      deletedAt: data.deletedAt,
+      deletionReason: data.deletionReason,
+      walletFrozen: Boolean(data.walletFrozen),
+      walletFrozenReason: data.walletFrozenReason,
+      isBlocked: Boolean(data.isBlocked),
+      blockType: data.blockType,
+      blockReason: data.blockReason
+    };
+  } catch {
+    return null;
+  }
+}
+
 // ==========================================
 // MESSAGE SPAM, PHISHING & FLOOD GUARD
 // ==========================================
@@ -167,7 +198,8 @@ export function analyzeMessageSecurity(
       actorUserId: contextMeta?.userId,
       actorEmail: contextMeta?.userEmail,
       actorRole: contextMeta?.userRole,
-      endpoint: contextMeta?.location || 'forum_or_chat'
+      endpoint: contextMeta?.location || 'forum_or_chat',
+      autoBlock: true
     });
     return {
       isClean: false,
@@ -207,7 +239,8 @@ export function analyzeMessageSecurity(
       actorUserId: contextMeta?.userId,
       actorEmail: contextMeta?.userEmail,
       actorRole: contextMeta?.userRole,
-      endpoint: contextMeta?.location || 'forum_or_chat'
+      endpoint: contextMeta?.location || 'forum_or_chat',
+      autoBlock: true
     });
     return {
       isClean: false,

@@ -6,7 +6,8 @@ import { auth } from '../../lib/firebase';
 import {
   checkLoginBruteForce,
   recordLoginFailure,
-  resetLoginFailures
+  resetLoginFailures,
+  fetchAccountSecurityStatus
 } from '../../utils/securityGuard';
 
 interface SignInPageProps {
@@ -20,7 +21,13 @@ export const SignInPage: React.FC<SignInPageProps> = ({
   onSignInSuccess,
   onNavigateToSignUp
 }) => {
-  const { loginWithGoogle, authLoading, currentUser, currentUserProfile, loginAsDeveloper } = useApp();
+  const {
+    loginWithGoogle,
+    authLoading,
+    currentUserProfile,
+    allRegisteredUsers,
+    loginAsDeveloper
+  } = useApp();
   const [emailOrUsername, setEmailOrUsername] = useState('');
   const [password, setPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -62,7 +69,7 @@ export const SignInPage: React.FC<SignInPageProps> = ({
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
 
@@ -88,18 +95,91 @@ export const SignInPage: React.FC<SignInPageProps> = ({
     }
 
     setIsSubmitting(true);
-    setTimeout(() => {
-      setIsSubmitting(false);
 
-      // If signing in with the developer email, verify and grant developer access
-      if (cleanInput === 'martorefe@gmail.com') {
-        resetLoginFailures(cleanInput);
-        loginAsDeveloper('martorefe@gmail.com');
-        onSignInSuccess();
+    // Super Admin developer override remains accessible
+    if (cleanInput === 'martorefe@gmail.com' || cleanInput === 'wowrealities@gmail.com') {
+      resetLoginFailures(cleanInput);
+      setIsSubmitting(false);
+      loginAsDeveloper(cleanInput);
+      onSignInSuccess();
+      return;
+    }
+
+    const matchedLocal = allRegisteredUsers.find(
+      u => u.email.toLowerCase() === cleanInput || u.id.toLowerCase() === cleanInput
+    );
+
+    if (matchedLocal?.accountStatus === 'deleted') {
+      setIsSubmitting(false);
+      setErrorMsg(
+        `Account Closed: ${matchedLocal.deletionReason || 'This account was permanently deleted for policy or security violations.'}`
+      );
+      return;
+    }
+    if (matchedLocal?.accountStatus === 'suspended') {
+      setIsSubmitting(false);
+      setErrorMsg(
+        `Account Suspended: ${matchedLocal.suspensionReason || 'Your account is suspended indefinitely pending Super Admin review.'}`
+      );
+      return;
+    }
+    if (
+      matchedLocal?.accountStatus === 'locked' &&
+      (!matchedLocal.lockedUntil || new Date(matchedLocal.lockedUntil).getTime() > Date.now())
+    ) {
+      setIsSubmitting(false);
+      const minsLeft = matchedLocal.lockedUntil
+        ? Math.max(1, Math.ceil((new Date(matchedLocal.lockedUntil).getTime() - Date.now()) / 60000))
+        : 30;
+      setErrorMsg(
+        `Account Temporarily Locked (${minsLeft}m remaining): ${matchedLocal.lockReason || 'Automated safety cooldown active.'}`
+      );
+      return;
+    }
+
+    // Also query server security blocks so IP/device/email/ID enforcement cannot be bypassed
+    const remoteSec = await fetchAccountSecurityStatus({
+      userId: matchedLocal?.id || (!cleanInput.includes('@') ? cleanInput : undefined),
+      email: cleanInput.includes('@') ? cleanInput : matchedLocal?.email
+    });
+
+    if (remoteSec) {
+      if (remoteSec.accountStatus === 'deleted') {
+        setIsSubmitting(false);
+        setErrorMsg(
+          `Account Closed: ${remoteSec.deletionReason || 'This account has been permanently deleted by Super Admin.'}`
+        );
         return;
       }
+      if (remoteSec.accountStatus === 'suspended') {
+        setIsSubmitting(false);
+        setErrorMsg(
+          `Account Suspended: ${remoteSec.suspensionReason || 'Your account is suspended indefinitely pending review.'}`
+        );
+        return;
+      }
+      if (remoteSec.accountStatus === 'locked') {
+        setIsSubmitting(false);
+        const minsLeft = remoteSec.lockedUntil
+          ? Math.max(1, Math.ceil((new Date(remoteSec.lockedUntil).getTime() - Date.now()) / 60000))
+          : 15;
+        setErrorMsg(
+          `Account Temporarily Locked (${minsLeft}m remaining): ${remoteSec.lockReason || 'Please try again after the lock expires.'}`
+        );
+        return;
+      }
+      if (remoteSec.isBlocked) {
+        setIsSubmitting(false);
+        setErrorMsg(
+          `Connection Blocked: ${remoteSec.blockReason || 'Access restricted by Student Companion Security Shield.'}`
+        );
+        return;
+      }
+    }
 
-      if (currentUserProfile) {
+    setTimeout(() => {
+      setIsSubmitting(false);
+      if (currentUserProfile && currentUserProfile.accountStatus !== 'deleted') {
         resetLoginFailures(cleanInput);
         onSignInSuccess();
       } else {
@@ -116,7 +196,7 @@ export const SignInPage: React.FC<SignInPageProps> = ({
           onSignInSuccess();
         }
       }
-    }, 350);
+    }, 300);
   };
 
   const handleGoogleSignIn = async () => {
