@@ -11,7 +11,9 @@ import {
   LogOut,
   Sparkles,
   ArrowRight,
-  Database
+  Database,
+  Lock,
+  Unlock
 } from 'lucide-react';
 
 interface DeveloperQuickBarProps {
@@ -21,6 +23,8 @@ interface DeveloperQuickBarProps {
 export const DeveloperQuickBar: React.FC<DeveloperQuickBarProps> = ({ onOpenDirectory }) => {
   const {
     isSuperAdmin,
+    adminTermLockOverride,
+    setAdminTermLockOverride,
     currentRole,
     switchRole,
     impersonatedUser,
@@ -103,12 +107,36 @@ export const DeveloperQuickBar: React.FC<DeveloperQuickBarProps> = ({ onOpenDire
           })}
         </div>
 
-        {/* Right: User Directory Trigger */}
+        {/* Right: Term Lock Preview Toggle (Student View) + User Directory Trigger */}
         <div className="flex items-center gap-2">
+          {(currentRole === 'student' || impersonatedUser?.role === 'student') && (
+            <button
+              type="button"
+              onClick={() => setAdminTermLockOverride(!adminTermLockOverride)}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border font-semibold text-[11px] transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                adminTermLockOverride
+                  ? 'bg-emerald-950/90 hover:bg-emerald-900 text-emerald-300 border-emerald-600/60'
+                  : 'bg-amber-950/80 hover:bg-amber-900/90 text-amber-300 border-amber-600/50'
+              }`}
+              title={
+                adminTermLockOverride
+                  ? 'Currently previewing unlocked terms. Click to enforce Student term locks & countdown.'
+                  : 'Enforcing Student NERDC term locks & countdown. Click to unlock all terms for preview.'
+              }
+            >
+              {adminTermLockOverride ? (
+                <Unlock className="w-3.5 h-3.5 shrink-0" />
+              ) : (
+                <Lock className="w-3.5 h-3.5 shrink-0" />
+              )}
+              <span>{adminTermLockOverride ? 'Term Lock: Preview Open' : 'Term Lock: Student View'}</span>
+            </button>
+          )}
+
           {onOpenDirectory && (
             <button
               onClick={onOpenDirectory}
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-950/80 hover:bg-indigo-900 text-indigo-300 hover:text-white border border-indigo-700/60 font-semibold text-[11px] transition-colors cursor-pointer"
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-950/80 hover:bg-indigo-900 text-indigo-300 hover:text-white border border-indigo-700/60 font-semibold text-[11px] transition-colors cursor-pointer whitespace-nowrap shrink-0"
             >
               <Users className="w-3.5 h-3.5" />
               <span>User Directory</span>

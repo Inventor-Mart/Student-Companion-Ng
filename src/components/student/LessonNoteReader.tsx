@@ -26,7 +26,8 @@ import {
   Sparkles,
   HelpCircle,
   PauseCircle,
-  Calendar
+  Calendar,
+  Unlock
 } from 'lucide-react';
 import {
   sanitizeCodeMath,
@@ -336,7 +337,9 @@ export const LessonNoteReader: React.FC = () => {
     recordVerifiedLessonRead,
     startExam,
     openStudentSubscriptionModal,
-    checkStudentFeatureAccess
+    checkStudentFeatureAccess,
+    isSuperAdmin,
+    setAdminTermLockOverride
   } = useApp();
 
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
@@ -618,13 +621,26 @@ export const LessonNoteReader: React.FC = () => {
               )}
             </div>
 
-            <button
-              type="button"
-              onClick={closeNoteReader}
-              className="w-full py-3 px-4 bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs rounded-xl transition-colors cursor-pointer"
-            >
-              Return to Scheme of Work
-            </button>
+            <div className="w-full space-y-2.5">
+              <button
+                type="button"
+                onClick={closeNoteReader}
+                className="w-full py-3 px-4 bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs rounded-xl transition-colors cursor-pointer"
+              >
+                Return to Scheme of Work
+              </button>
+
+              {isSuperAdmin && (
+                <button
+                  type="button"
+                  onClick={() => setAdminTermLockOverride(true)}
+                  className="w-full py-2.5 px-4 bg-emerald-950/70 hover:bg-emerald-900/80 text-emerald-300 border border-emerald-700/60 font-semibold text-xs rounded-xl transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <Unlock className="w-3.5 h-3.5 shrink-0" />
+                  <span>Unlock Preview (Super Admin)</span>
+                </button>
+              )}
+            </div>
           </div>
         </div>
       );

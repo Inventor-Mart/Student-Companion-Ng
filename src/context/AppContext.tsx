@@ -255,6 +255,9 @@ interface AppContextType {
 
   // Developer & Super Admin Capabilities
   isSuperAdmin: boolean;
+  adminTermLockOverride: boolean;
+  effectiveTermBypass: boolean;
+  setAdminTermLockOverride: (override: boolean) => void;
   impersonatedUser: RegisteredUserProfile | null;
   allRegisteredUsers: RegisteredUserProfile[];
   startImpersonation: (user: RegisteredUserProfile) => void;
@@ -587,6 +590,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     currentUserProfile?.isSuperAdmin ||
     currentUserProfile?.isDeveloper
   );
+
+  // Explicit opt-in preview override so Super Admins acting as students see real locks & countdowns by default
+  const [adminTermLockOverride, setAdminTermLockOverride] = useState<boolean>(false);
+  const effectiveTermBypass = Boolean(isSuperAdmin && adminTermLockOverride);
 
   // Real-time Security Shield & Enforcement Status
   const [securityStatus, setSecurityStatus] = useState<SecurityStatusSnapshot>({
@@ -3761,7 +3768,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const addOns = student.addOns || {};
 
     if (feature === 'scheme_weeks') {
-      const termStatus = getNerdcTermAccessStatus(options?.term, isSuperAdmin);
+      const termStatus = getNerdcTermAccessStatus(options?.term, effectiveTermBypass);
       if (!termStatus.isUnlocked) {
         return {
           hasAccess: false,
@@ -4001,6 +4008,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setChatMessages({});
     setExamResults([]);
     setIsParentPinUnlocked(false);
+    setAdminTermLockOverride(false);
     setTargetSignUpRole(null);
     setIsOffline(false);
     setCurrentScreen('landing');
@@ -4011,6 +4019,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const startImpersonation = (user: RegisteredUserProfile) => {
+    setAdminTermLockOverride(false);
     setImpersonatedUser(user);
     setCurrentRole(user.role);
     if (user.role === 'student' && user.studentData) {
@@ -4027,11 +4036,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const stopImpersonation = () => {
+    setAdminTermLockOverride(false);
     setImpersonatedUser(null);
     setCurrentRole('admin');
   };
 
   const switchRole = (role: UserRole) => {
+    setAdminTermLockOverride(false);
     setCurrentRole(role);
   };
 
@@ -4185,6 +4196,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         submitChampionshipExamResult,
         submitChampionshipStageResult,
         isSuperAdmin,
+        adminTermLockOverride,
+        effectiveTermBypass,
+        setAdminTermLockOverride,
         impersonatedUser,
         allRegisteredUsers,
         startImpersonation,

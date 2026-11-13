@@ -23,6 +23,7 @@ import {
   FolderOpen,
   Atom,
   Lock,
+  Unlock,
   Calendar,
   ShieldCheck
 } from 'lucide-react';
@@ -186,7 +187,9 @@ export const SchemeOfWorkHub: React.FC = () => {
     openStudentSubscriptionModal,
     checkStudentFeatureAccess,
     adminLessonNotes,
-    isSuperAdmin
+    isSuperAdmin,
+    effectiveTermBypass,
+    setAdminTermLockOverride
   } = useApp();
 
   const [viewMode, setViewMode] = useState<'class' | 'matrix'>('class');
@@ -455,8 +458,10 @@ This digital module is aligned with the Nigerian Educational Research and Develo
       .map(n => n.weekNumber)
   );
 
-  const secondTermStatus = getNerdcTermAccessStatus('2nd Term', isSuperAdmin);
-  const explorerTermStatus = getNerdcTermAccessStatus(explorerTerm, isSuperAdmin);
+  const firstTermStatus = getNerdcTermAccessStatus('1st Term', effectiveTermBypass);
+  const secondTermStatus = getNerdcTermAccessStatus('2nd Term', effectiveTermBypass);
+  const thirdTermStatus = getNerdcTermAccessStatus('3rd Term', effectiveTermBypass);
+  const explorerTermStatus = getNerdcTermAccessStatus(explorerTerm, effectiveTermBypass);
 
   const availableWeeksForSubject = Array.from({ length: maxWeeksForSubject }, (_, i) => i + 1).map(wk => {
     const note = getTopicForSubject(explorerSubject, undefined, explorerTerm, wk);
@@ -508,16 +513,26 @@ This digital module is aligned with the Nigerian Educational Research and Develo
         </div>
 
         {/* Global NERDC Term Schedule Banner */}
-        {isSuperAdmin ? (
-          <div className="mt-2.5 bg-emerald-950/40 border border-emerald-700/50 rounded-xl p-2.5 flex items-center gap-2 text-xs text-emerald-200">
-            <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
-            <span>
-              <strong className="text-white">Super Admin Schedule Override Active:</strong> Full preview enabled across 1st, 2nd &amp; 3rd Term NERDC notes. Students unlock 2nd Term on Dec 21, 2026.
-            </span>
+        {effectiveTermBypass ? (
+          <div className="mt-2.5 bg-emerald-950/40 border border-emerald-700/50 rounded-xl p-2.5 flex flex-wrap items-center justify-between gap-2 text-xs text-emerald-200">
+            <div className="flex items-center gap-2 min-w-0">
+              <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span className="leading-snug">
+                <strong className="text-white">Super Admin Preview Override Active:</strong> Unlocked across 1st, 2nd &amp; 3rd Term NERDC notes. Students unlock 2nd Term on Dec 21, 2026.
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setAdminTermLockOverride(false)}
+              className="px-2.5 py-1 bg-slate-900 hover:bg-slate-800 text-amber-300 border border-amber-700/50 rounded-lg text-[11px] font-semibold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+            >
+              <Lock className="w-3 h-3 shrink-0" />
+              <span>Student Lock View</span>
+            </button>
           </div>
         ) : (
-          <div className="mt-2.5 bg-slate-900/90 border border-amber-700/50 rounded-xl p-2.5 flex items-center justify-between gap-2 text-xs text-amber-200">
-            <div className="flex items-center gap-2">
+          <div className="mt-2.5 bg-slate-900/90 border border-amber-700/50 rounded-xl p-2.5 flex flex-wrap items-center justify-between gap-2 text-xs text-amber-200">
+            <div className="flex items-center gap-2 min-w-0 flex-1">
               <Calendar className="w-4 h-4 text-amber-400 shrink-0" />
               <span className="leading-snug">
                 {secondTermStatus.isUnlocked ? (
@@ -532,11 +547,24 @@ This digital module is aligned with the Nigerian Educational Research and Develo
                 )}
               </span>
             </div>
-            {!secondTermStatus.isUnlocked && secondTermStatus.daysRemaining !== undefined && (
-              <span className="font-mono font-bold text-[11px] text-amber-300 tabular-nums shrink-0">
-                {secondTermStatus.daysRemaining}d left
-              </span>
-            )}
+            <div className="flex items-center gap-2 shrink-0">
+              {!secondTermStatus.isUnlocked && secondTermStatus.daysRemaining !== undefined && (
+                <span className="font-mono font-bold text-[11px] text-amber-300 tabular-nums whitespace-nowrap">
+                  {secondTermStatus.daysRemaining}d left
+                </span>
+              )}
+              {isSuperAdmin && (
+                <button
+                  type="button"
+                  onClick={() => setAdminTermLockOverride(true)}
+                  className="px-2.5 py-1 bg-slate-950 hover:bg-slate-800 text-emerald-300 border border-emerald-700/50 rounded-lg text-[11px] font-semibold flex items-center gap-1 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                  title="Temporarily unlock all NERDC terms to preview content as Super Admin"
+                >
+                  <Unlock className="w-3 h-3 shrink-0" />
+                  <span>Unlock Preview</span>
+                </button>
+              )}
+            </div>
           </div>
         )}
 
@@ -593,9 +621,15 @@ This digital module is aligned with the Nigerian Educational Research and Develo
             onChange={e => setExplorerTerm(e.target.value as '1st Term' | '2nd Term' | '3rd Term')}
             className="text-[11px] font-bold text-emerald-400 bg-emerald-950/80 px-2.5 py-1.5 rounded-lg border border-emerald-800/80 focus:outline-none cursor-pointer"
           >
-            <option value="1st Term">{selectedClass} · 1st Term</option>
-            <option value="2nd Term">{selectedClass} · 2nd Term</option>
-            <option value="3rd Term">{selectedClass} · 3rd Term</option>
+            <option value="1st Term">
+              {selectedClass} · 1st Term{!firstTermStatus.isUnlocked ? ' 🔒' : ''}
+            </option>
+            <option value="2nd Term">
+              {selectedClass} · 2nd Term{!secondTermStatus.isUnlocked ? ' 🔒 (Dec 21)' : ''}
+            </option>
+            <option value="3rd Term">
+              {selectedClass} · 3rd Term{!thirdTermStatus.isUnlocked ? ' 🔒' : ''}
+            </option>
           </select>
         </div>
 
@@ -1068,20 +1102,25 @@ This digital module is aligned with the Nigerian Educational Research and Develo
           </div>
 
           {/* Term Selector */}
-          <div className="flex items-center gap-1.5">
-            {(['All', '1st Term', '2nd Term', '3rd Term'] as const).map(term => (
-              <button
-                key={term}
-                onClick={() => setSelectedTerm(term)}
-                className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors cursor-pointer ${
-                  selectedTerm === term
-                    ? 'bg-slate-800 text-white border border-slate-700'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                {term}
-              </button>
-            ))}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {(['All', '1st Term', '2nd Term', '3rd Term'] as const).map(term => {
+              const isTermLocked =
+                term !== 'All' && !getNerdcTermAccessStatus(term, effectiveTermBypass).isUnlocked;
+              return (
+                <button
+                  key={term}
+                  onClick={() => setSelectedTerm(term)}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors cursor-pointer flex items-center gap-1 whitespace-nowrap shrink-0 ${
+                    selectedTerm === term
+                      ? 'bg-slate-800 text-white border border-slate-700'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  {isTermLocked && <Lock className="w-3 h-3 text-amber-400 shrink-0" />}
+                  <span>{term}</span>
+                </button>
+              );
+            })}
           </div>
 
           {/* Official Subjects Grid */}
