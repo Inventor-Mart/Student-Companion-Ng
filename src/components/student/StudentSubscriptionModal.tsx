@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { StudentSubscriptionPlan } from '../../types';
+import { getStudentTierPricing, isReferralPromoActive } from '../../utils/referralPromoPolicy';
 import {
   X,
   Check,
@@ -18,7 +19,8 @@ import {
   CheckCircle2,
   Clock,
   Layers,
-  Gift
+  Gift,
+  Tag
 } from 'lucide-react';
 
 interface StudentSubscriptionModalProps {
@@ -37,7 +39,10 @@ export const StudentSubscriptionModal: React.FC<StudentSubscriptionModalProps> =
     parentWallet,
     currentUserProfile,
     subscribeStudentTier,
-    unlockStudentAddOn
+    unlockStudentAddOn,
+    appliedReferralCode,
+    appliedReferralPartner,
+    applyReferralCode
   } = useApp();
 
   const currentPlan = student.subscriptionPlan || (student.isSubscribed ? 'basic' : 'free');
@@ -56,13 +61,64 @@ export const StudentSubscriptionModal: React.FC<StudentSubscriptionModalProps> =
   const [activeTab, setActiveTab] = useState<'tiers' | 'addons'>('tiers');
   const [selectedSingleSubject, setSelectedSingleSubject] = useState<string>('Mathematics');
 
+  // Referral code input state
+  const existingRefCode = (student.referredByCode || appliedReferralCode || '').trim().toUpperCase();
+  const [referralInput, setReferralInput] = useState<string>(existingRefCode);
+  const [isCheckingRef, setIsCheckingRef] = useState<boolean>(false);
+  const [refFeedback, setRefFeedback] = useState<{ valid: boolean; text: string } | null>(() =>
+    existingRefCode
+      ? {
+          valid: true,
+          text: appliedReferralPartner
+            ? `Referral ${existingRefCode} (${appliedReferralPartner.partnerName}) applied — 20% off active through Jan 3, 2027.`
+            : `Referral ${existingRefCode} applied — 20% off active through Jan 3, 2027.`
+        }
+      : null
+  );
+
+  useEffect(() => {
+    if (existingRefCode && !referralInput) {
+      setReferralInput(existingRefCode);
+    }
+  }, [existingRefCode]);
+
   if (!isOpen) return null;
+
+  const activeReferral = (student.referredByCode || appliedReferralCode || '').trim().toUpperCase();
+  const hasReferralDiscount = Boolean(activeReferral);
+  const promoWindowOpen = isReferralPromoActive();
+  const isSecondaryGeneral = student.classLevel !== 'University Aspirant';
+
+  const getQuote = (plan: StudentSubscriptionPlan) =>
+    getStudentTierPricing(plan, hasReferralDiscount, student.classLevel);
 
   const planPrices: Record<StudentSubscriptionPlan, number> = {
     free: 0,
-    basic: 8000,
-    standard: 15000,
-    elite: 60000
+    basic: getQuote('basic').finalPriceNaira,
+    standard: getQuote('standard').finalPriceNaira,
+    elite: getQuote('elite').finalPriceNaira
+  };
+
+  const handleApplyReferral = async () => {
+    const clean = referralInput.trim().toUpperCase();
+    if (!clean) {
+      setRefFeedback({ valid: false, text: 'Enter a referral code to apply the 20% promo.' });
+      return;
+    }
+    setIsCheckingRef(true);
+    const res = await applyReferralCode(clean);
+    setIsCheckingRef(false);
+    if (res.valid) {
+      setReferralInput(res.referralCode || clean);
+      setRefFeedback({
+        valid: true,
+        text: isSecondaryGeneral && promoWindowOpen
+          ? `Verified (${res.partnerName}). 20% discount applied to JSS 1–SS 3 plans through Jan 3, 2027.`
+          : `Verified (${res.partnerName}). Referral attributed to your account.`
+      });
+    } else {
+      setRefFeedback({ valid: false, text: res.error || 'Invalid or inactive referral code.' });
+    }
   };
 
   const handleSubscribe = async () => {
@@ -85,12 +141,12 @@ export const StudentSubscriptionModal: React.FC<StudentSubscriptionModalProps> =
         return;
       }
 
-      const res = await subscribeStudentTier(selectedPlan, 'wallet');
+      const res = await subscribeStudentTier(selectedPlan, 'wallet', undefined, activeReferral || undefined);
       setIsProcessing(false);
       if (res.success) {
         setSuccessReceipt({
           plan: selectedPlan.toUpperCase(),
-          amount: price,
+          amount: res.finalAmountNaira ?? price,
           reference: `WALLET_${Date.now()}`,
           tutorBonus: selectedPlan === 'elite' ? 16000 : undefined
         });
@@ -160,13 +216,15 @@ export const StudentSubscriptionModal: React.FC<StudentSubscriptionModalProps> =
                   studentName: student.name,
                   parentId: currentUserProfile?.id,
                   plan: selectedPlan,
+                  classLevel: student.classLevel,
+                  referralCode: activeReferral || undefined,
                   purpose: 'student_tier_subscription'
                 })
               });
 
               const verifyData = await verifyRes.json();
               if (verifyData.success) {
-                await subscribeStudentTier(selectedPlan, 'paystack', response.reference);
+                await subscribeStudentTier(selectedPlan, 'paystack', response.reference, activeReferral || undefined, true);
                 setSuccessReceipt({
                   plan: selectedPlan.toUpperCase(),
                   amount: price,
@@ -440,6 +498,48 @@ export const StudentSubscriptionModal: React.FC<StudentSubscriptionModalProps> =
         {/* TAB 1: 4-TIER SUBSCRIPTION COMPARISON */}
         {activeTab === 'tiers' && !successReceipt && (
           <>
+            {/* Referral Promo Code Bar */}
+            {isSecondaryGeneral && promoWindowOpen && (
+              <div className="bg-slate-950/90 border border-emerald-700/50 rounded-2xl p-3.5 space-y-2">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 text-xs">
+                    <Tag className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <div>
+                      <span className="font-bold text-white">Have a Referral Code?</span>
+                      <span className="text-slate-400"> · </span>
+                      <span className="text-emerald-300 font-semibold">20% off JSS 1–SS 3 plans until Jan 3, 2027</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="text"
+                      maxLength={16}
+                      value={referralInput}
+                      onChange={(e) => {
+                        setReferralInput(e.target.value.toUpperCase());
+                        setRefFeedback(null);
+                      }}
+                      placeholder="Enter code (e.g. GROW84)"
+                      className="bg-slate-900 border border-slate-700 focus:border-emerald-500 rounded-xl px-3 py-1.5 text-xs font-mono font-bold text-white placeholder-slate-500 uppercase focus:outline-none w-44"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleApplyReferral}
+                      disabled={isCheckingRef}
+                      className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-bold cursor-pointer transition-colors shrink-0"
+                    >
+                      {isCheckingRef ? 'Applying...' : 'Apply'}
+                    </button>
+                  </div>
+                </div>
+                {refFeedback && (
+                  <p className={`text-[11px] ${refFeedback.valid ? 'text-emerald-300' : 'text-rose-400'}`}>
+                    {refFeedback.text}
+                  </p>
+                )}
+              </div>
+            )}
+
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
               {/* 1. Free Tier */}
               <div
@@ -515,8 +615,19 @@ export const StudentSubscriptionModal: React.FC<StudentSubscriptionModalProps> =
                     </span>
                   </div>
                   <div>
-                    <span className="text-2xl font-black text-white font-mono">₦8,000</span>
-                    <span className="text-[10px] text-slate-400 block">per academic term</span>
+                    {getQuote('basic').promoApplied ? (
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-2xl font-black text-emerald-300 font-mono tabular-nums">
+                          ₦{planPrices.basic.toLocaleString()}
+                        </span>
+                        <span className="text-xs text-slate-500 line-through font-mono tabular-nums">₦8,000</span>
+                      </div>
+                    ) : (
+                      <span className="text-2xl font-black text-white font-mono tabular-nums">₦8,000</span>
+                    )}
+                    <span className="text-[10px] text-slate-400 block">
+                      {getQuote('basic').promoApplied ? 'per term (20% referral discount)' : 'per academic term'}
+                    </span>
                   </div>
 
                   <ul className="text-[11px] text-slate-300 space-y-1.5 pt-2 border-t border-slate-800/80">
@@ -575,8 +686,19 @@ export const StudentSubscriptionModal: React.FC<StudentSubscriptionModalProps> =
                     </span>
                   </div>
                   <div>
-                    <span className="text-2xl font-black text-white font-mono">₦15,000</span>
-                    <span className="text-[10px] text-purple-300 block">per academic term</span>
+                    {getQuote('standard').promoApplied ? (
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-2xl font-black text-emerald-300 font-mono tabular-nums">
+                          ₦{planPrices.standard.toLocaleString()}
+                        </span>
+                        <span className="text-xs text-purple-300/60 line-through font-mono tabular-nums">₦15,000</span>
+                      </div>
+                    ) : (
+                      <span className="text-2xl font-black text-white font-mono tabular-nums">₦15,000</span>
+                    )}
+                    <span className="text-[10px] text-purple-300 block">
+                      {getQuote('standard').promoApplied ? 'per term (20% referral discount)' : 'per academic term'}
+                    </span>
                   </div>
 
                   <ul className="text-[11px] text-purple-100 space-y-1.5 pt-2 border-t border-purple-800/80">
@@ -636,8 +758,19 @@ export const StudentSubscriptionModal: React.FC<StudentSubscriptionModalProps> =
                     </span>
                   </div>
                   <div>
-                    <span className="text-2xl font-black text-white font-mono">₦60,000</span>
-                    <span className="text-[10px] text-amber-400 block">per academic term</span>
+                    {getQuote('elite').promoApplied ? (
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-2xl font-black text-emerald-300 font-mono tabular-nums">
+                          ₦{planPrices.elite.toLocaleString()}
+                        </span>
+                        <span className="text-xs text-amber-300/60 line-through font-mono tabular-nums">₦60,000</span>
+                      </div>
+                    ) : (
+                      <span className="text-2xl font-black text-white font-mono tabular-nums">₦60,000</span>
+                    )}
+                    <span className="text-[10px] text-amber-400 block">
+                      {getQuote('elite').promoApplied ? 'per term (20% referral discount)' : 'per academic term'}
+                    </span>
                   </div>
 
                   <ul className="text-[11px] text-amber-100 space-y-1.5 pt-2 border-t border-amber-800/80">

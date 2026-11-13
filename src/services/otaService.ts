@@ -5,11 +5,10 @@ import {
   setDoc,
   deleteDoc,
   getDocs,
-  getDoc,
-  query,
-  orderBy
+  getDoc
 } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { onAuthStateChanged } from 'firebase/auth';
+import { auth, db } from '../lib/firebase';
 import {
   OTABroadcastItem,
   OTAPopupAnnouncement,
@@ -166,8 +165,57 @@ function writeLocalJson<T>(key: string, data: T): void {
 }
 
 // ==========================================
-// REAL-TIME FIRESTORE SUBSCRIPTIONS
+// REAL-TIME FIRESTORE SUBSCRIPTIONS (AUTH-GATED)
 // ==========================================
+
+function createAuthGatedSubscription(
+  fetchOnce: () => Promise<void>,
+  attachSnapshot: () => () => void
+): () => void {
+  let active = true;
+  let unsubFirestore: (() => void) | null = null;
+
+  // Immediate one-shot read for fast hydration without opening idle Listen streams pre-auth
+  if (typeof navigator === 'undefined' || navigator.onLine) {
+    fetchOnce().catch(() => {});
+  }
+
+  const detach = () => {
+    if (unsubFirestore) {
+      try {
+        unsubFirestore();
+      } catch {}
+      unsubFirestore = null;
+    }
+  };
+
+  const unsubAuth = onAuthStateChanged(auth, (user) => {
+    if (!active) return;
+    if (user) {
+      if (!unsubFirestore) {
+        try {
+          unsubFirestore = attachSnapshot();
+        } catch {}
+      }
+    } else {
+      detach();
+    }
+  });
+
+  if (auth.currentUser && !unsubFirestore) {
+    try {
+      unsubFirestore = attachSnapshot();
+    } catch {}
+  }
+
+  return () => {
+    active = false;
+    try {
+      unsubAuth();
+    } catch {}
+    detach();
+  };
+}
 
 /**
  * Subscribe to live OTA Broadcast ticker items
@@ -175,57 +223,55 @@ function writeLocalJson<T>(key: string, data: T): void {
 export function subscribeToOTABroadcasts(
   callback: (items: OTABroadcastItem[]) => void
 ): () => void {
-  // 1. Immediately emit cached or default data to prevent UI flash
   const cached = readLocalJson<OTABroadcastItem[]>(CACHE_KEY_BROADCASTS, DEFAULT_OTA_BROADCASTS);
   callback(cached);
 
-  // 2. Set up Firestore snapshot listener
-  try {
-    const colRef = collection(db, 'otaBroadcasts');
-    const unsub = onSnapshot(
-      colRef,
-      (snapshot) => {
-        if (!snapshot.empty) {
-          const remoteItems: OTABroadcastItem[] = [];
-          snapshot.forEach((d) => {
-            const data = d.data() as Partial<OTABroadcastItem>;
-            if (data.text) {
-              remoteItems.push({
-                id: d.id,
-                text: data.text || '',
-                category: data.category || 'general',
-                isActive: data.isActive !== undefined ? data.isActive : true,
-                priority: data.priority || 0,
-                actionTab: data.actionTab,
-                createdAt: data.createdAt || new Date().toISOString(),
-                updatedAt: data.updatedAt || new Date().toISOString()
-              });
-            }
+  const handleBroadcastSnap = (snapshot: { empty: boolean; forEach: (fn: (d: { id: string; data: () => unknown }) => void) => void }) => {
+    if (!snapshot.empty) {
+      const remoteItems: OTABroadcastItem[] = [];
+      snapshot.forEach((d) => {
+        const data = d.data() as Partial<OTABroadcastItem>;
+        if (data.text) {
+          remoteItems.push({
+            id: d.id,
+            text: data.text || '',
+            category: data.category || 'general',
+            isActive: data.isActive !== undefined ? data.isActive : true,
+            priority: data.priority || 0,
+            actionTab: data.actionTab,
+            createdAt: data.createdAt || new Date().toISOString(),
+            updatedAt: data.updatedAt || new Date().toISOString()
           });
-
-          // Sort by priority descending
-          remoteItems.sort((a, b) => (b.priority || 0) - (a.priority || 0));
-
-          if (remoteItems.length > 0) {
-            writeLocalJson(CACHE_KEY_BROADCASTS, remoteItems);
-            callback(remoteItems);
-            return;
-          }
         }
-        // If collection exists but is empty, retain cached / defaults
-        callback(cached);
-      },
-      (error) => {
-        console.warn('OTA broadcasts listener offline, using cached/defaults:', error);
-        callback(cached);
-      }
-    );
+      });
 
-    return unsub;
-  } catch (err) {
-    console.warn('Failed to subscribe to OTA broadcasts:', err);
-    return () => {};
-  }
+      remoteItems.sort((a, b) => (b.priority || 0) - (a.priority || 0));
+
+      if (remoteItems.length > 0) {
+        writeLocalJson(CACHE_KEY_BROADCASTS, remoteItems);
+        callback(remoteItems);
+        return;
+      }
+    }
+    callback(cached);
+  };
+
+  const colRef = collection(db, 'otaBroadcasts');
+  return createAuthGatedSubscription(
+    async () => {
+      const snap = await getDocs(colRef);
+      handleBroadcastSnap(snap);
+    },
+    () =>
+      onSnapshot(
+        colRef,
+        (snapshot) => handleBroadcastSnap(snapshot),
+        (error) => {
+          console.warn('OTA broadcasts listener offline, using cached/defaults:', error);
+          callback(cached);
+        }
+      )
+  );
 }
 
 /**
@@ -237,44 +283,45 @@ export function subscribeToOTAPopup(
   const cached = readLocalJson<OTAPopupAnnouncement | null>(CACHE_KEY_POPUP, DEFAULT_OTA_POPUP);
   callback(cached);
 
-  try {
-    const colRef = collection(db, 'otaAnnouncements');
-    const unsub = onSnapshot(
-      colRef,
-      (snapshot) => {
-        if (!snapshot.empty) {
-          // Find the newest active announcement
-          const activeList: OTAPopupAnnouncement[] = [];
-          snapshot.forEach((d) => {
-            const data = d.data() as OTAPopupAnnouncement;
-            if (data && data.isActive !== false) {
-              activeList.push({
-                ...data,
-                id: d.id
-              });
-            }
+  const handlePopupSnap = (snapshot: { empty: boolean; forEach: (fn: (d: { id: string; data: () => unknown }) => void) => void }) => {
+    if (!snapshot.empty) {
+      const activeList: OTAPopupAnnouncement[] = [];
+      snapshot.forEach((d) => {
+        const data = d.data() as OTAPopupAnnouncement;
+        if (data && data.isActive !== false) {
+          activeList.push({
+            ...data,
+            id: d.id
           });
-
-          if (activeList.length > 0) {
-            const newest = activeList[0];
-            writeLocalJson(CACHE_KEY_POPUP, newest);
-            callback(newest);
-            return;
-          }
         }
-        callback(cached);
-      },
-      (error) => {
-        console.warn('OTA popup listener offline, using cached:', error);
-        callback(cached);
-      }
-    );
+      });
 
-    return unsub;
-  } catch (err) {
-    console.warn('Failed to subscribe to OTA popup:', err);
-    return () => {};
-  }
+      if (activeList.length > 0) {
+        const newest = activeList[0];
+        writeLocalJson(CACHE_KEY_POPUP, newest);
+        callback(newest);
+        return;
+      }
+    }
+    callback(cached);
+  };
+
+  const colRef = collection(db, 'otaAnnouncements');
+  return createAuthGatedSubscription(
+    async () => {
+      const snap = await getDocs(colRef);
+      handlePopupSnap(snap);
+    },
+    () =>
+      onSnapshot(
+        colRef,
+        (snapshot) => handlePopupSnap(snapshot),
+        (error) => {
+          console.warn('OTA popup listener offline, using cached:', error);
+          callback(cached);
+        }
+      )
+  );
 }
 
 /**
@@ -286,30 +333,32 @@ export function subscribeToOTACompetition(
   const cached = readLocalJson<OTACompetitionConfig>(CACHE_KEY_COMPETITION, DEFAULT_OTA_COMPETITION_CONFIG);
   callback(cached);
 
-  try {
-    const docRef = doc(db, 'otaCompetitions', 'termly_championship');
-    const unsub = onSnapshot(
-      docRef,
-      (snap) => {
-        if (snap.exists()) {
-          const remoteConfig = snap.data() as OTACompetitionConfig;
-          writeLocalJson(CACHE_KEY_COMPETITION, remoteConfig);
-          callback(remoteConfig);
-        } else {
+  const docRef = doc(db, 'otaCompetitions', 'termly_championship');
+  const handleSnap = (snap: { exists: () => boolean; data: () => unknown }) => {
+    if (snap.exists()) {
+      const remoteConfig = snap.data() as OTACompetitionConfig;
+      writeLocalJson(CACHE_KEY_COMPETITION, remoteConfig);
+      callback(remoteConfig);
+    } else {
+      callback(cached);
+    }
+  };
+
+  return createAuthGatedSubscription(
+    async () => {
+      const snap = await getDoc(docRef);
+      handleSnap(snap);
+    },
+    () =>
+      onSnapshot(
+        docRef,
+        (snap) => handleSnap(snap),
+        (error) => {
+          console.warn('OTA competition listener offline, using cached:', error);
           callback(cached);
         }
-      },
-      (error) => {
-        console.warn('OTA competition listener offline, using cached:', error);
-        callback(cached);
-      }
-    );
-
-    return unsub;
-  } catch (err) {
-    console.warn('Failed to subscribe to OTA competition:', err);
-    return () => {};
-  }
+      )
+  );
 }
 
 // ==========================================
@@ -369,30 +418,32 @@ export function subscribeToOTAWeeklyCompetition(
   const cached = readLocalJson<OTAWeeklyCompetitionConfig>(CACHE_KEY_WEEKLY, DEFAULT_OTA_WEEKLY_CONFIG);
   callback(cached);
 
-  try {
-    const docRef = doc(db, 'otaCompetitions', 'weekly_challenge');
-    const unsub = onSnapshot(
-      docRef,
-      (snap) => {
-        if (snap.exists()) {
-          const remoteConfig = snap.data() as OTAWeeklyCompetitionConfig;
-          writeLocalJson(CACHE_KEY_WEEKLY, remoteConfig);
-          callback(remoteConfig);
-        } else {
+  const docRef = doc(db, 'otaCompetitions', 'weekly_challenge');
+  const handleSnap = (snap: { exists: () => boolean; data: () => unknown }) => {
+    if (snap.exists()) {
+      const remoteConfig = snap.data() as OTAWeeklyCompetitionConfig;
+      writeLocalJson(CACHE_KEY_WEEKLY, remoteConfig);
+      callback(remoteConfig);
+    } else {
+      callback(cached);
+    }
+  };
+
+  return createAuthGatedSubscription(
+    async () => {
+      const snap = await getDoc(docRef);
+      handleSnap(snap);
+    },
+    () =>
+      onSnapshot(
+        docRef,
+        (snap) => handleSnap(snap),
+        (error) => {
+          console.warn('OTA weekly challenge listener offline, using cached:', error);
           callback(cached);
         }
-      },
-      (error) => {
-        console.warn('OTA weekly challenge listener offline, using cached:', error);
-        callback(cached);
-      }
-    );
-
-    return unsub;
-  } catch (err) {
-    console.warn('Failed to subscribe to OTA weekly challenge:', err);
-    return () => {};
-  }
+      )
+  );
 }
 
 export async function saveOTAWeeklyCompetition(config: OTAWeeklyCompetitionConfig): Promise<void> {
@@ -414,30 +465,32 @@ export function subscribeToOTASchoolLeague(
   const cached = readLocalJson<OTASchoolLeagueConfig>(CACHE_KEY_SCHOOL_LEAGUE, DEFAULT_OTA_SCHOOL_LEAGUE_CONFIG);
   callback(cached);
 
-  try {
-    const docRef = doc(db, 'otaCompetitions', 'school_league');
-    const unsub = onSnapshot(
-      docRef,
-      (snap) => {
-        if (snap.exists()) {
-          const remoteConfig = snap.data() as OTASchoolLeagueConfig;
-          writeLocalJson(CACHE_KEY_SCHOOL_LEAGUE, remoteConfig);
-          callback(remoteConfig);
-        } else {
+  const docRef = doc(db, 'otaCompetitions', 'school_league');
+  const handleSnap = (snap: { exists: () => boolean; data: () => unknown }) => {
+    if (snap.exists()) {
+      const remoteConfig = snap.data() as OTASchoolLeagueConfig;
+      writeLocalJson(CACHE_KEY_SCHOOL_LEAGUE, remoteConfig);
+      callback(remoteConfig);
+    } else {
+      callback(cached);
+    }
+  };
+
+  return createAuthGatedSubscription(
+    async () => {
+      const snap = await getDoc(docRef);
+      handleSnap(snap);
+    },
+    () =>
+      onSnapshot(
+        docRef,
+        (snap) => handleSnap(snap),
+        (error) => {
+          console.warn('OTA school league listener offline, using cached:', error);
           callback(cached);
         }
-      },
-      (error) => {
-        console.warn('OTA school league listener offline, using cached:', error);
-        callback(cached);
-      }
-    );
-
-    return unsub;
-  } catch (err) {
-    console.warn('Failed to subscribe to OTA school league:', err);
-    return () => {};
-  }
+      )
+  );
 }
 
 export async function saveOTASchoolLeague(config: OTASchoolLeagueConfig): Promise<void> {

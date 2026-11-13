@@ -25,7 +25,8 @@ import {
   Lock,
   Sparkles,
   HelpCircle,
-  PauseCircle
+  PauseCircle,
+  Calendar
 } from 'lucide-react';
 import {
   sanitizeCodeMath,
@@ -463,7 +464,10 @@ export const LessonNoteReader: React.FC = () => {
   // Increment active on-screen reading seconds up to estimatedStudyMinutes * 60 and persist periodically
   useEffect(() => {
     if (!activeReadingNote || isAlreadyVerified) return;
-    const accessCheck = checkStudentFeatureAccess('scheme_weeks', { weekNumber: activeReadingNote.weekNumber });
+    const accessCheck = checkStudentFeatureAccess('scheme_weeks', {
+      weekNumber: activeReadingNote.weekNumber,
+      term: activeReadingNote.term
+    });
     if (!accessCheck.hasAccess) return;
     if (!isTabVisible || elapsedSeconds >= targetSeconds) return;
 
@@ -523,12 +527,109 @@ export const LessonNoteReader: React.FC = () => {
 
   if (!activeReadingNote) return null;
 
-  const access = checkStudentFeatureAccess('scheme_weeks', { weekNumber: activeReadingNote.weekNumber });
+  const access = checkStudentFeatureAccess('scheme_weeks', {
+    weekNumber: activeReadingNote.weekNumber,
+    term: activeReadingNote.term
+  });
 
   const isDownloaded = student.downloadedSubjectIds.includes(activeReadingNote.id);
 
-  // If topic week is locked on Free Tier (Weeks 3 to 12)
+  // If topic is locked either by NERDC term schedule OR Free Tier Weeks 3-12
   if (!access.hasAccess) {
+    const isScheduleLock = access.lockType === 'upcoming_release' || access.lockType === 'term_closed';
+
+    if (isScheduleLock) {
+      return (
+        <div className="flex-1 w-full flex flex-col bg-slate-950 text-slate-100 overflow-hidden">
+          <div className="bg-slate-900/90 backdrop-blur-md px-4 py-3 border-b border-slate-800 flex items-center justify-between shrink-0 z-20">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <button
+                onClick={closeNoteReader}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors shrink-0 cursor-pointer"
+                title="Back to syllabus"
+              >
+                <ArrowLeft className="w-4 h-4" />
+              </button>
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5 text-[11px] text-amber-400 font-semibold truncate">
+                  <span>{activeReadingNote.subject}</span>
+                  <span className="text-slate-500">·</span>
+                  <span className="text-slate-400">{activeReadingNote.term} · Week {activeReadingNote.weekNumber}</span>
+                </div>
+                <h2 className="text-xs font-bold text-white truncate">
+                  {cleanMathText(activeReadingNote.topicTitle)}
+                </h2>
+              </div>
+            </div>
+            <span className="text-[11px] font-bold text-amber-300 flex items-center gap-1 shrink-0">
+              <Lock className="w-3.5 h-3.5" />
+              <span>{activeReadingNote.term} Locked</span>
+            </span>
+          </div>
+
+          <div className="flex-1 overflow-y-auto px-4 py-8 max-w-lg mx-auto w-full flex flex-col items-center justify-center text-center space-y-5">
+            <div className="w-16 h-16 rounded-2xl bg-slate-900 border border-amber-600/60 flex items-center justify-center text-amber-400">
+              {access.lockType === 'upcoming_release' ? (
+                <Calendar className="w-8 h-8" />
+              ) : (
+                <Lock className="w-8 h-8" />
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-[11px] font-bold tracking-wider uppercase text-amber-400">
+                NERDC Release Schedule
+              </p>
+              <h3 className="text-lg font-black text-white leading-tight">
+                {access.lockType === 'upcoming_release'
+                  ? '2nd Term NERDC Notes Open December 21, 2026'
+                  : `${activeReadingNote.term} NERDC Lesson Notes Are Locked`}
+              </h3>
+              <p className="text-xs text-slate-300 max-w-md mx-auto leading-relaxed">
+                {access.reason ||
+                  'Access to 2nd Term NERDC lesson notes will be effective from December 21st, 2026. All other terms (1st Term & 3rd Term) remain locked.'}
+              </p>
+            </div>
+
+            <div className="w-full bg-slate-900/90 border border-slate-800 rounded-2xl p-4 text-left space-y-2.5 text-xs">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                <span className="text-slate-400">Selected Term</span>
+                <span className="font-bold text-white">{activeReadingNote.term}</span>
+              </div>
+              <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                <span className="text-slate-400">2nd Term Effective Date</span>
+                <span className="font-mono font-bold text-emerald-400 tabular-nums">
+                  {access.unlockDateLabel || 'December 21, 2026'}
+                </span>
+              </div>
+              {access.daysRemaining !== undefined && (
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-400">Countdown to Release</span>
+                  <span className="font-mono font-bold text-amber-300 tabular-nums">
+                    {access.daysRemaining} {access.daysRemaining === 1 ? 'day' : 'days'} remaining
+                  </span>
+                </div>
+              )}
+              {access.lockType === 'term_closed' && (
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-400">Term Status</span>
+                  <span className="font-semibold text-rose-400">Locked for all students</span>
+                </div>
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={closeNoteReader}
+              className="w-full py-3 px-4 bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs rounded-xl transition-colors cursor-pointer"
+            >
+              Return to Scheme of Work
+            </button>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="flex-1 w-full flex flex-col bg-slate-950 text-slate-100 overflow-hidden">
         {/* Top Reader App Bar */}

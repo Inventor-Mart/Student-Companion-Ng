@@ -47,7 +47,8 @@ import {
   DailyExplorationState,
   AdminLessonNote,
   VerifiedLessonReadLog,
-  SecurityStatusSnapshot
+  SecurityStatusSnapshot,
+  AspirantReferralReward
 } from '../types';
 import {
   getSecurityHeaders,
@@ -58,6 +59,11 @@ import {
   analyzeMessageSecurity,
   submitSecurityReportToServer
 } from '../utils/securityGuard';
+import {
+  getStudentTierPricing,
+  getAspirantTierPricing,
+  getNerdcTermAccessStatus
+} from '../utils/referralPromoPolicy';
 import { subscribeToAdminLessonNotes } from '../services/lessonNoteService';
 import {
   calculateDynamicXP,
@@ -168,9 +174,30 @@ interface AppContextType {
   // University Aspirant State & Methods
   aspirantGoal: AspirantGoal;
   updateAspirantGoal: (goal: Partial<AspirantGoal>) => void;
-  subscribeAspirantTier: (tier: AspirantTier, method?: 'wallet' | 'paystack' | 'bank_transfer') => boolean;
+  subscribeAspirantTier: (
+    tier: AspirantTier,
+    method?: 'wallet' | 'paystack' | 'bank_transfer',
+    referralCodeOverride?: string,
+    skipPartnerSync?: boolean
+  ) => boolean;
   completedAspirantDrillIds: string[];
   toggleAspirantDrillCompleted: (drillId: string) => void;
+
+  // Referral Promo & Aspirant First-Registration Rewards
+  appliedReferralCode: string | null;
+  appliedReferralPartner: { partnerId: string; partnerName: string; referralCode: string } | null;
+  applyReferralCode: (
+    code: string
+  ) => Promise<{ valid: boolean; referralCode?: string; partnerName?: string; partnerId?: string; error?: string }>;
+  clearReferralCode: () => void;
+  aspirantRewardStatus: 'not_eligible' | 'eligible' | 'claimed_cash_500' | 'claimed_data_2gb';
+  aspirantRewardRecord: AspirantReferralReward | null;
+  refreshAspirantRewardStatus: () => Promise<void>;
+  claimAspirantReferralReward: (payload: {
+    rewardType: 'cash_500' | 'data_2gb';
+    network?: 'MTN' | 'Airtel' | 'Glo' | '9mobile';
+    phoneNumber?: string;
+  }) => Promise<{ success: boolean; reward?: AspirantReferralReward; error?: string }>;
 
   // Student State & Actions
   student: StudentProfile;
@@ -259,8 +286,10 @@ interface AppContextType {
   subscribeStudentTier: (
     plan: StudentSubscriptionPlan,
     paymentMethod: 'paystack' | 'wallet',
-    paystackRef?: string
-  ) => Promise<{ success: boolean; error?: string }>;
+    paystackRef?: string,
+    referralCodeOverride?: string,
+    skipPartnerSync?: boolean
+  ) => Promise<{ success: boolean; error?: string; finalAmountNaira?: number }>;
   unlockStudentAddOn: (
     addon: 'ai_coach' | 'termly_competition' | 'termly_drill_all' | 'termly_drill_single',
     subject?: string,
@@ -282,12 +311,15 @@ interface AppContextType {
       | 'ai_coach'
       | 'termly_competition'
       | 'prepare_exam',
-    options?: { weekNumber?: number; questionIndex?: number; gameId?: string; subject?: string }
+    options?: { weekNumber?: number; term?: string; questionIndex?: number; gameId?: string; subject?: string }
   ) => {
     hasAccess: boolean;
     requiredPlan?: StudentSubscriptionPlan;
     reason?: string;
     unlockPriceNaira?: number;
+    lockType?: 'tier' | 'upcoming_release' | 'term_closed';
+    unlockDateLabel?: string;
+    daysRemaining?: number;
   };
   isStudentSubscriptionModalOpen: boolean;
   targetSubscriptionPlan: StudentSubscriptionPlan | null;
@@ -641,6 +673,258 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     return INITIAL_EMPTY_STUDENT;
   });
+
+  // Referral Promo & Aspirant Reward Lifecycle State
+  const [appliedReferralCode, setAppliedReferralCode] = useState<string | null>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const refParam = new URLSearchParams(window.location.search).get('ref');
+        if (refParam && refParam.trim()) {
+          const clean = refParam.trim().toUpperCase();
+          safeSetItem('sc_pending_referral_code', clean);
+          return clean;
+        }
+      } catch {}
+    }
+    return safeGetItem('sc_pending_referral_code') || null;
+  });
+  const [appliedReferralPartner, setAppliedReferralPartner] = useState<{
+    partnerId: string;
+    partnerName: string;
+    referralCode: string;
+  } | null>(null);
+  const [aspirantRewardRecord, setAspirantRewardRecord] = useState<AspirantReferralReward | null>(null);
+  const [aspirantRewardStatus, setAspirantRewardStatus] = useState<
+    'not_eligible' | 'eligible' | 'claimed_cash_500' | 'claimed_data_2gb'
+  >(() => student.aspirantRewardStatus || 'not_eligible');
+
+  // Sync appliedReferralCode from authenticated student profile when present
+  useEffect(() => {
+    if (student.referredByCode && !appliedReferralCode) {
+      setAppliedReferralCode(student.referredByCode.toUpperCase());
+      if (student.referredPartnerName) {
+        setAppliedReferralPartner({
+          partnerId: student.referredPartnerId || '',
+          partnerName: student.referredPartnerName,
+          referralCode: student.referredByCode.toUpperCase()
+        });
+      }
+    }
+    if (student.aspirantRewardStatus) {
+      setAspirantRewardStatus(student.aspirantRewardStatus);
+    }
+  }, [student.referredByCode, student.referredPartnerId, student.referredPartnerName, student.aspirantRewardStatus]);
+
+  // Auto-validate pending referral code on boot/change
+  useEffect(() => {
+    const code = (student.referredByCode || appliedReferralCode || '').trim().toUpperCase();
+    if (!code) {
+      setAppliedReferralPartner(null);
+      return;
+    }
+    let cancelled = false;
+    fetch(`/api/partners/validate-referral?code=${encodeURIComponent(code)}`)
+      .then(res => res.json())
+      .then(data => {
+        if (cancelled) return;
+        if (data?.valid) {
+          setAppliedReferralPartner({
+            partnerId: data.partnerId,
+            partnerName: data.partnerName,
+            referralCode: data.referralCode || code
+          });
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [appliedReferralCode, student.referredByCode]);
+
+  const applyReferralCode = useCallback(
+    async (
+      rawCode: string
+    ): Promise<{ valid: boolean; referralCode?: string; partnerName?: string; partnerId?: string; error?: string }> => {
+      const clean = String(rawCode || '').trim().toUpperCase();
+      if (!clean) {
+        return { valid: false, error: 'Please enter a valid referral code.' };
+      }
+      try {
+        const res = await fetch(`/api/partners/validate-referral?code=${encodeURIComponent(clean)}`);
+        const data = await res.json();
+        if (!res.ok || !data.valid) {
+          return { valid: false, error: data.error || 'Referral code not found or inactive.' };
+        }
+        const normalizedCode = String(data.referralCode || clean).toUpperCase();
+        setAppliedReferralCode(normalizedCode);
+        setAppliedReferralPartner({
+          partnerId: data.partnerId,
+          partnerName: data.partnerName,
+          referralCode: normalizedCode
+        });
+        safeSetItem('sc_pending_referral_code', normalizedCode);
+
+        // Bind to server & student profile if already registered
+        const sid = student.id || currentUserProfile?.id || '';
+        if (sid) {
+          fetch('/api/partners/register-referral', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              referralCode: normalizedCode,
+              studentId: sid,
+              studentName: student.name || currentUserProfile?.fullName || 'Student',
+              studentEmail: currentUserProfile?.email || '',
+              classLevel: student.classLevel
+            })
+          }).catch(() => {});
+
+          setStudent(prev => {
+            const updated: StudentProfile = {
+              ...prev,
+              referredByCode: normalizedCode,
+              referredPartnerId: data.partnerId,
+              referredPartnerName: data.partnerName,
+              referralAttributedAt: prev.referralAttributedAt || new Date().toISOString()
+            };
+            safeSetItem('sc_student', JSON.stringify(updated));
+            return updated;
+          });
+        }
+
+        return {
+          valid: true,
+          referralCode: normalizedCode,
+          partnerName: data.partnerName,
+          partnerId: data.partnerId
+        };
+      } catch (err: any) {
+        return { valid: false, error: err?.message || 'Unable to verify referral code right now.' };
+      }
+    },
+    [student.id, student.name, student.classLevel, currentUserProfile]
+  );
+
+  const clearReferralCode = useCallback(() => {
+    setAppliedReferralCode(null);
+    setAppliedReferralPartner(null);
+    safeRemoveItem('sc_pending_referral_code');
+  }, []);
+
+  const refreshAspirantRewardStatus = useCallback(async () => {
+    const sid = student.id || currentUserProfile?.id || currentUser?.uid || '';
+    if (!sid) return;
+    try {
+      const res = await fetch(`/api/referrals/aspirant-reward-status?studentId=${encodeURIComponent(sid)}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data?.status) {
+        setAspirantRewardStatus(data.status);
+        setAspirantRewardRecord(data.reward || null);
+        setStudent(prev => {
+          if (prev.aspirantRewardStatus === data.status && prev.referredByCode === (data.referralCode || prev.referredByCode)) {
+            return prev;
+          }
+          const updated: StudentProfile = {
+            ...prev,
+            aspirantRewardStatus: data.status,
+            referredByCode: data.referralCode || prev.referredByCode
+          };
+          safeSetItem('sc_student', JSON.stringify(updated));
+          return updated;
+        });
+      }
+    } catch {
+      // Ignore offline errors
+    }
+  }, [student.id, currentUserProfile?.id, currentUser?.uid]);
+
+  useEffect(() => {
+    if (student.classLevel === 'University Aspirant' && (student.id || currentUserProfile?.id)) {
+      void refreshAspirantRewardStatus();
+    }
+  }, [student.classLevel, student.id, currentUserProfile?.id, refreshAspirantRewardStatus]);
+
+  const claimAspirantReferralReward = useCallback(
+    async (payload: {
+      rewardType: 'cash_500' | 'data_2gb';
+      network?: 'MTN' | 'Airtel' | 'Glo' | '9mobile';
+      phoneNumber?: string;
+    }): Promise<{ success: boolean; reward?: AspirantReferralReward; error?: string }> => {
+      const sid = student.id || currentUserProfile?.id || currentUser?.uid || '';
+      if (!sid) {
+        return { success: false, error: 'Please sign in as a student to claim your referral reward.' };
+      }
+      const refCode = (student.referredByCode || appliedReferralCode || '').trim().toUpperCase();
+      try {
+        const res = await fetch('/api/referrals/claim-aspirant-reward', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...getSecurityHeaders({ userId: sid, userEmail: currentUserProfile?.email })
+          },
+          body: JSON.stringify({
+            studentId: sid,
+            studentName: student.name || currentUserProfile?.fullName || 'University Aspirant',
+            studentEmail: currentUserProfile?.email || '',
+            referralCode: refCode,
+            rewardType: payload.rewardType,
+            network: payload.network,
+            phoneNumber: payload.phoneNumber
+          })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+          return { success: false, error: data.error || 'Could not claim referral reward.' };
+        }
+
+        const nextStatus =
+          payload.rewardType === 'cash_500' ? ('claimed_cash_500' as const) : ('claimed_data_2gb' as const);
+        setAspirantRewardStatus(nextStatus);
+        setAspirantRewardRecord(data.reward || null);
+
+        setStudent(prev => {
+          const updated: StudentProfile = {
+            ...prev,
+            aspirantRewardStatus: nextStatus
+          };
+          safeSetItem('sc_student', JSON.stringify(updated));
+          return updated;
+        });
+
+        // If instant ₦500 wallet cash selected, credit Escrow Wallet immediately
+        if (payload.rewardType === 'cash_500') {
+          const bonusTx: WalletTransaction = {
+            id: `tx-ref500-${Date.now().toString().slice(-6)}`,
+            type: 'credit',
+            amountNaira: 500,
+            description: 'University Aspirant Referral Welcome Bonus (₦500 Cash)',
+            timestamp: new Date().toISOString(),
+            status: 'successful',
+            reference: data.reward?.id || `ASP_REF500_${Date.now()}`
+          };
+          setParentWallet(prev => {
+            const updatedWallet: ParentWallet = {
+              ...prev,
+              balanceNaira: prev.balanceNaira + 500,
+              transactions: [bonusTx, ...prev.transactions]
+            };
+            safeSetItem('sc_wallet', JSON.stringify(updatedWallet));
+            return updatedWallet;
+          });
+        }
+
+        try {
+          confetti({ particleCount: 70, spread: 65, origin: { y: 0.65 } });
+        } catch {}
+
+        return { success: true, reward: data.reward };
+      } catch (err: any) {
+        return { success: false, error: err?.message || 'Network error claiming referral reward.' };
+      }
+    },
+    [student.id, student.name, student.referredByCode, appliedReferralCode, currentUserProfile, currentUser?.uid]
+  );
 
   const submitSecurityReport = useCallback(
     async (payload: {
@@ -2180,9 +2464,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const subscribeAspirantTier = (
     tier: AspirantTier,
-    method: 'wallet' | 'paystack' | 'bank_transfer' = 'wallet'
+    method: 'wallet' | 'paystack' | 'bank_transfer' = 'wallet',
+    referralCodeOverride?: string,
+    skipPartnerSync = false
   ): boolean => {
-    const feeNaira = tier === 'elite' ? 10000 : tier === 'basic' ? 5000 : 0;
+    const activeRefCode = (referralCodeOverride || student.referredByCode || appliedReferralCode || '').trim().toUpperCase();
+    const quote = getAspirantTierPricing(tier, Boolean(activeRefCode));
+    const feeNaira = quote.finalPriceNaira;
+    const isFirstPaidSub = feeNaira > 0 && !student.aspirantFirstPaidAt;
+    const txReference = `ASP_${tier.toUpperCase()}_${Date.now().toString().slice(-6)}_${Math.floor(Math.random() * 900 + 100)}`;
+
     if (feeNaira > 0) {
       const currentBalance = parentWallet.balanceNaira;
       if (method === 'paystack' || method === 'bank_transfer' || currentBalance < feeNaira) {
@@ -2197,7 +2488,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         description: `Subscribed to Aspirant ${tier.toUpperCase()} Monthly Pass (${method === 'bank_transfer' ? 'Bank Transfer' : method === 'paystack' ? 'Paystack' : 'Escrow Wallet'})`,
         timestamp: 'Just now',
         status: 'successful',
-        reference: `ASP_${tier.toUpperCase()}_${Math.floor(Math.random() * 900000 + 100000)}`
+        reference: txReference
       };
 
       setParentWallet(prev => ({
@@ -2215,6 +2506,57 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       tier,
       subscribedUntil: nextMonth.toISOString()
     }));
+
+    if (feeNaira > 0) {
+      const sid = student.id || currentUserProfile?.id || currentUser?.uid || 'aspirant_active';
+      const shouldBeEligible = Boolean(activeRefCode && isFirstPaidSub && (!student.aspirantRewardStatus || student.aspirantRewardStatus === 'not_eligible'));
+
+      setStudent(prev => {
+        const nextRewardStatus = shouldBeEligible ? 'eligible' : prev.aspirantRewardStatus;
+        const updated: StudentProfile = {
+          ...prev,
+          isSubscribed: true,
+          referredByCode: activeRefCode || prev.referredByCode,
+          aspirantFirstPaidAt: prev.aspirantFirstPaidAt || new Date().toISOString(),
+          aspirantRewardStatus: nextRewardStatus
+        };
+        safeSetItem('sc_student', JSON.stringify(updated));
+        return updated;
+      });
+
+      if (shouldBeEligible) {
+        setAspirantRewardStatus('eligible');
+      }
+
+      if (!skipPartnerSync && activeRefCode) {
+        fetch('/api/partners/process-subscription-payment', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            studentId: sid,
+            studentName: student.name || currentUserProfile?.fullName || 'University Aspirant',
+            studentEmail: currentUserProfile?.email || '',
+            plan: `Aspirant ${tier}`,
+            planName: `Aspirant ${tier}`,
+            amountNaira: feeNaira,
+            clientPaymentId: txReference,
+            paystackRef: txReference,
+            referralCode: activeRefCode,
+            classLevel: 'University Aspirant',
+            isAspirant: true
+          })
+        })
+          .then(res => res.json())
+          .then(data => {
+            if (data?.aspirantRewardEligible) {
+              setAspirantRewardStatus('eligible');
+            }
+          })
+          .catch(() => {});
+      } else {
+        void refreshAspirantRewardStatus();
+      }
+    }
 
     try {
       confetti({
@@ -2588,6 +2930,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setCurrentRole(role);
 
     if (role === 'student') {
+      const candidateRefCode = String(
+        profileData.referralCode || appliedReferralCode || safeGetItem('sc_pending_referral_code') || ''
+      )
+        .trim()
+        .toUpperCase();
+
       const freshStudent: StudentProfile = {
         id: newId,
         name: fullName,
@@ -2604,11 +2952,47 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         downloadedSubjectIds: [],
         completedQuizIds: [],
         completedReadNoteIds: [],
-        verifiedReadingLogs: []
+        verifiedReadingLogs: [],
+        referredByCode: candidateRefCode || undefined,
+        referralAttributedAt: candidateRefCode ? new Date().toISOString() : undefined,
+        aspirantRewardStatus: 'not_eligible'
       };
       newProfile.studentData = freshStudent;
       setStudent(freshStudent);
       safeSetItem('sc_student', JSON.stringify(freshStudent));
+
+      if (candidateRefCode) {
+        setAppliedReferralCode(candidateRefCode);
+        safeSetItem('sc_pending_referral_code', candidateRefCode);
+        fetch('/api/partners/register-referral', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            referralCode: candidateRefCode,
+            studentId: newId,
+            studentName: fullName,
+            studentEmail: email,
+            classLevel: freshStudent.classLevel
+          })
+        })
+          .then(res => res.json())
+          .then(data => {
+            if (data?.success && data?.partnerName) {
+              setStudent(prev => {
+                if (prev.id !== newId) return prev;
+                const attributed: StudentProfile = {
+                  ...prev,
+                  referredByCode: data.referralCode || candidateRefCode,
+                  referredPartnerId: data.partnerId,
+                  referredPartnerName: data.partnerName
+                };
+                safeSetItem('sc_student', JSON.stringify(attributed));
+                return attributed;
+              });
+            }
+          })
+          .catch(() => {});
+      }
     } else if (role === 'parent') {
       newProfile.parentData = {
         phone: profileData.phone || '',
@@ -2716,6 +3100,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          partnerId: newId,
           name: fullName,
           email,
           phone: profileData.phone || '',
@@ -3061,16 +3446,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const subscribeStudentTier = async (
     plan: StudentSubscriptionPlan,
     paymentMethod: 'paystack' | 'wallet',
-    paystackRef?: string
-  ): Promise<{ success: boolean; error?: string }> => {
-    const prices: Record<StudentSubscriptionPlan, number> = {
-      free: 0,
-      basic: 8000,
-      standard: 15000,
-      elite: 60000
-    };
-
-    const feeNaira = prices[plan];
+    paystackRef?: string,
+    referralCodeOverride?: string,
+    skipPartnerSync = false
+  ): Promise<{ success: boolean; error?: string; finalAmountNaira?: number }> => {
+    const activeRefCode = (referralCodeOverride || student.referredByCode || appliedReferralCode || '').trim().toUpperCase();
+    const quote = getStudentTierPricing(plan, Boolean(activeRefCode), student.classLevel);
+    const feeNaira = quote.finalPriceNaira;
 
     if (paymentMethod === 'wallet' && feeNaira > 0) {
       const currentBalance = parentWallet.balanceNaira;
@@ -3084,11 +3466,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // Deduct from wallet
       const txId = `TX_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
       const updatedBalance = currentBalance - feeNaira;
+      const discountLabel = quote.promoApplied ? ` (${quote.discountPercent}% Referral Promo)` : '';
       const newTransaction: WalletTransaction = {
         id: txId,
         type: 'debit',
         amountNaira: feeNaira,
-        description: `Subscribed to ${plan.toUpperCase()} Tier Pass (Full Academic Term Access)`,
+        description: `Subscribed to ${plan.toUpperCase()} Tier Pass${discountLabel}`,
         timestamp: new Date().toISOString(),
         status: 'successful',
         reference: txId
@@ -3105,7 +3488,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const termExpiresAt = getAcademicTermEndDate();
     const effectiveStudentId = student.id || currentUser?.uid || (currentUserProfile?.id ? currentUserProfile.id : 'student_active');
 
-    // If Elite Tier (₦60,000), automatically credit ₦16,000 Pre-paid Tutor Credits to Parent Escrow Wallet
+    // Sync 10% Growth Partner commission on discounted net fee when paying via Wallet (Paystack syncs in verify-payment)
+    if (!skipPartnerSync && feeNaira > 0 && activeRefCode) {
+      fetch('/api/partners/process-subscription-payment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          studentId: effectiveStudentId,
+          studentName: student.name || currentUserProfile?.fullName || 'Student',
+          studentEmail: currentUserProfile?.email || '',
+          plan: `${plan.toUpperCase()} Tier`,
+          planName: `${plan.toUpperCase()} Tier`,
+          amountNaira: feeNaira,
+          originalAmountNaira: quote.basePriceNaira,
+          discountPercent: quote.discountPercent,
+          clientPaymentId: paystackRef || `WALLET_${Date.now()}`,
+          paystackRef: paystackRef || `WALLET_${Date.now()}`,
+          referralCode: activeRefCode,
+          classLevel: student.classLevel,
+          isAspirant: student.classLevel === 'University Aspirant'
+        })
+      }).catch(() => {});
+    }
+
+    // If Elite Tier (₦60,000 / ₦48,000 promo), automatically credit ₦16,000 Pre-paid Tutor Credits to Parent Escrow Wallet
     if (plan === 'elite') {
       const bonusTxId = `TX_TUTOR_BONUS_${Date.now()}`;
       setParentWallet(prev => {
@@ -3149,7 +3555,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       subscriptionPlan: plan,
       subscriptionTier: plan,
       subscribedUntil: termExpiresAt,
-      termExpiresAt
+      termExpiresAt,
+      referredByCode: activeRefCode || student.referredByCode
     };
 
     setStudent(updatedStudent);
@@ -3178,6 +3585,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         subscriptionTier: plan,
         termExpiresAt,
         subscribedUntil: termExpiresAt,
+        referredByCode: activeRefCode || student.referredByCode || null,
         lastSubscribedAt: new Date().toISOString(),
         lastPaymentReference: paystackRef || `WALLET_${Date.now()}`
       }, { merge: true }).catch(err => {
@@ -3192,17 +3600,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
 
     if (plan !== 'free') {
-      const planAmount = prices[plan];
       addStudentXP({
         feature: 'general',
         baseXP: 500,
-        paidAmountNgn: planAmount,
+        paidAmountNgn: feeNaira,
         difficulty: 'hard',
         reason: `Enrolled in ${plan.toUpperCase()} Academic Membership`
       });
     }
 
-    return { success: true };
+    return { success: true, finalAmountNaira: feeNaira };
   };
 
   const unlockStudentAddOn = async (
@@ -3340,22 +3747,37 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       | 'ai_coach'
       | 'termly_competition'
       | 'prepare_exam',
-    options?: { weekNumber?: number; questionIndex?: number; gameId?: string; subject?: string }
+    options?: { weekNumber?: number; term?: string; questionIndex?: number; gameId?: string; subject?: string }
   ): {
     hasAccess: boolean;
     requiredPlan?: StudentSubscriptionPlan;
     reason?: string;
     unlockPriceNaira?: number;
+    lockType?: 'tier' | 'upcoming_release' | 'term_closed';
+    unlockDateLabel?: string;
+    daysRemaining?: number;
   } => {
     const plan: StudentSubscriptionPlan = student.subscriptionPlan || (student.isSubscribed ? 'basic' : 'free');
     const addOns = student.addOns || {};
 
     if (feature === 'scheme_weeks') {
+      const termStatus = getNerdcTermAccessStatus(options?.term, isSuperAdmin);
+      if (!termStatus.isUnlocked) {
+        return {
+          hasAccess: false,
+          lockType: termStatus.lockType,
+          reason: termStatus.reason,
+          unlockDateLabel: termStatus.unlockDateLabel,
+          daysRemaining: termStatus.daysRemaining
+        };
+      }
+
       const week = options?.weekNumber || 1;
       if (plan === 'free') {
         if (week <= 2) return { hasAccess: true };
         return {
           hasAccess: false,
+          lockType: 'tier',
           requiredPlan: 'basic',
           reason: 'Weeks 3 to 12 lesson notes are locked on the Free Tier. Upgrade to the Basic Plan (₦8,000 / term) for full term coverage.',
           unlockPriceNaira: 8000
@@ -3729,6 +4151,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         subscribeAspirantTier,
         completedAspirantDrillIds,
         toggleAspirantDrillCompleted,
+        appliedReferralCode,
+        appliedReferralPartner,
+        applyReferralCode,
+        clearReferralCode,
+        aspirantRewardStatus,
+        aspirantRewardRecord,
+        refreshAspirantRewardStatus,
+        claimAspirantReferralReward,
         parentWallet,
         isParentPinUnlocked,
         unlockParentPin,

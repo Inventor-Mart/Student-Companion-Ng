@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../../../context/AppContext';
 import { AspirantTier } from '../../../types';
 import { NairaText } from '../../../utils/currency';
+import { AspirantReferralRewardCard } from './AspirantReferralRewardCard';
 import {
   X,
   Sparkles,
@@ -15,7 +16,9 @@ import {
   ArrowRight,
   ShieldCheck,
   Zap,
-  HelpCircle
+  HelpCircle,
+  Tag,
+  AlertTriangle
 } from 'lucide-react';
 
 interface AspirantSubscriptionModalProps {
@@ -29,24 +32,93 @@ export const AspirantSubscriptionModal: React.FC<AspirantSubscriptionModalProps>
   onClose,
   defaultTier = 'elite'
 }) => {
-  const { aspirantGoal, subscribeAspirantTier, parentWallet, currentUserProfile, student } = useApp();
+  const {
+    aspirantGoal,
+    subscribeAspirantTier,
+    parentWallet,
+    currentUserProfile,
+    student,
+    appliedReferralCode,
+    appliedReferralPartner,
+    applyReferralCode,
+    aspirantRewardStatus
+  } = useApp();
   const [selectedTier, setSelectedTier] = useState<AspirantTier>(defaultTier);
   const [selectedMethod, setSelectedMethod] = useState<'wallet' | 'paystack' | 'bank_transfer'>('wallet');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [showRewardStep, setShowRewardStep] = useState<boolean>(false);
+
+  const existingRefCode = (student.referredByCode || appliedReferralCode || '').trim().toUpperCase();
+  const [referralInput, setReferralInput] = useState<string>(existingRefCode);
+  const [isCheckingRef, setIsCheckingRef] = useState<boolean>(false);
+  const [refFeedback, setRefFeedback] = useState<{ valid: boolean; text: string } | null>(() =>
+    existingRefCode
+      ? {
+          valid: true,
+          text: appliedReferralPartner
+            ? `Referral ${existingRefCode} (${appliedReferralPartner.partnerName}) active — unlocks 2GB data or ₦500 cashback on first paid pass.`
+            : `Referral ${existingRefCode} active — unlocks 2GB data or ₦500 cashback on first paid pass.`
+        }
+      : null
+  );
+
+  useEffect(() => {
+    if (existingRefCode && !referralInput) {
+      setReferralInput(existingRefCode);
+    }
+  }, [existingRefCode]);
 
   if (!isOpen) return null;
 
   const currentTier = aspirantGoal.tier || 'free';
   const tierCost = selectedTier === 'elite' ? 10000 : selectedTier === 'basic' ? 5000 : 0;
   const currentBalance = parentWallet.balanceNaira;
-  const hasSufficientWalletBalance = currentBalance >= tierCost;
+  const activeReferral = (student.referredByCode || appliedReferralCode || '').trim().toUpperCase();
+
+  const handleApplyReferral = async () => {
+    const clean = referralInput.trim().toUpperCase();
+    if (!clean) {
+      setRefFeedback({ valid: false, text: 'Enter a referral code to unlock your 2GB data or ₦500 bonus.' });
+      return;
+    }
+    setIsCheckingRef(true);
+    const res = await applyReferralCode(clean);
+    setIsCheckingRef(false);
+    if (res.valid) {
+      setReferralInput(res.referralCode || clean);
+      setRefFeedback({
+        valid: true,
+        text: `Verified (${res.partnerName}). Complete your first paid pass to claim 2GB data or ₦500 wallet cash.`
+      });
+    } else {
+      setRefFeedback({ valid: false, text: res.error || 'Referral code not found or inactive.' });
+    }
+  };
+
+  const finishActivation = (usedReferral: string, wasFirstPaidEligible: boolean) => {
+    setIsProcessing(false);
+    if (usedReferral && wasFirstPaidEligible) {
+      setShowRewardStep(true);
+    } else {
+      onClose();
+    }
+  };
 
   const handleSubscribe = async () => {
+    setErrorMessage(null);
     if (selectedTier === 'free') {
       subscribeAspirantTier('free', 'wallet');
       onClose();
       return;
     }
+
+    const willBeFirstPaidReward = Boolean(
+      activeReferral &&
+        !student.aspirantFirstPaidAt &&
+        aspirantRewardStatus !== 'claimed_cash_500' &&
+        aspirantRewardStatus !== 'claimed_data_2gb'
+    );
 
     setIsProcessing(true);
     try {
@@ -63,7 +135,7 @@ export const AspirantSubscriptionModal: React.FC<AspirantSubscriptionModalProps>
         }
         if (!activeKey) {
           setIsProcessing(false);
-          alert('Paystack live payment gateway is not yet configured. Please contact support or pay via Parent Escrow Wallet.');
+          setErrorMessage('Paystack live payment gateway is not yet configured. Please choose Parent Escrow Wallet.');
           return;
         }
 
@@ -84,27 +156,41 @@ export const AspirantSubscriptionModal: React.FC<AspirantSubscriptionModalProps>
           },
           callback: function(response: { reference: string }) {
             (async () => {
+              let serverEligible = willBeFirstPaidReward;
               try {
-                await fetch('/api/paystack/verify-payment', {
+                const verifyRes = await fetch('/api/paystack/verify-payment', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({
                     reference: response.reference,
                     amountNaira: tierCost,
                     email: payerEmail,
+                    studentId: student.id || currentUserProfile?.id,
                     studentName: student.name,
                     purpose: 'aspirant_tier_subscription',
-                    plan: `Aspirant ${selectedTier}`
+                    plan: `Aspirant ${selectedTier}`,
+                    classLevel: 'University Aspirant',
+                    referralCode: activeReferral || undefined
                   })
                 });
+                const verifyData = await verifyRes.json();
+                if (!verifyRes.ok || !verifyData.success) {
+                  setErrorMessage(verifyData.error || 'Paystack verification failed.');
+                  setIsProcessing(false);
+                  return;
+                }
+                if (typeof verifyData.aspirantRewardEligible === 'boolean') {
+                  serverEligible = verifyData.aspirantRewardEligible;
+                }
               } catch (e) {
                 console.warn('Backend payment verification logged:', e);
               }
 
-              const ok = subscribeAspirantTier(selectedTier, 'paystack');
+              const ok = subscribeAspirantTier(selectedTier, 'paystack', activeReferral || undefined, true);
               if (ok) {
+                finishActivation(activeReferral, serverEligible);
+              } else {
                 setIsProcessing(false);
-                onClose();
               }
             })();
           },
@@ -118,10 +204,9 @@ export const AspirantSubscriptionModal: React.FC<AspirantSubscriptionModalProps>
       }
 
       // Wallet / Transfer flow
-      const ok = subscribeAspirantTier(selectedTier, selectedMethod);
+      const ok = subscribeAspirantTier(selectedTier, selectedMethod, activeReferral || undefined, false);
       if (ok) {
-        setIsProcessing(false);
-        onClose();
+        finishActivation(activeReferral, willBeFirstPaidReward);
       } else {
         setIsProcessing(false);
       }
@@ -165,8 +250,67 @@ export const AspirantSubscriptionModal: React.FC<AspirantSubscriptionModalProps>
 
         {/* Scrollable Body */}
         <div className="overflow-y-auto py-3.5 space-y-4 pr-1">
-          {/* 3 Tier Cards Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {showRewardStep ? (
+            <div className="space-y-3">
+              <div className="p-3 rounded-xl bg-emerald-950/60 border border-emerald-700/60 text-xs text-emerald-200 flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span>
+                  Your <strong className="text-white">Aspirant {selectedTier.toUpperCase()}</strong> pass is now active! Claim your welcome referral reward below.
+                </span>
+              </div>
+              <AspirantReferralRewardCard onSuccess={onClose} />
+            </div>
+          ) : (
+            <>
+              {/* Referral Code Welcome Bonus Strip */}
+              <div className="bg-slate-950/90 border border-emerald-700/50 rounded-2xl p-3 space-y-2">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 text-xs">
+                    <Tag className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <div>
+                      <span className="font-bold text-white">Referral Welcome Bonus</span>
+                      <span className="text-slate-400"> · </span>
+                      <span className="text-emerald-300 font-semibold">Get 2GB Data or ₦500 on first paid pass</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="text"
+                      maxLength={16}
+                      value={referralInput}
+                      onChange={(e) => {
+                        setReferralInput(e.target.value.toUpperCase());
+                        setRefFeedback(null);
+                      }}
+                      placeholder="Referral code (e.g. GROW84)"
+                      className="bg-slate-900 border border-slate-700 focus:border-emerald-500 rounded-xl px-2.5 py-1.5 text-xs font-mono font-bold text-white placeholder-slate-500 uppercase focus:outline-none w-40"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleApplyReferral}
+                      disabled={isCheckingRef}
+                      className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-bold cursor-pointer transition-colors shrink-0"
+                    >
+                      {isCheckingRef ? 'Checking...' : 'Apply'}
+                    </button>
+                  </div>
+                </div>
+                {refFeedback && (
+                  <p className={`text-[11px] ${refFeedback.valid ? 'text-emerald-300' : 'text-rose-400'}`}>
+                    {refFeedback.text}
+                  </p>
+                )}
+              </div>
+
+              {errorMessage && (
+                <div className="p-2.5 rounded-xl bg-rose-950/80 border border-rose-800 text-xs text-rose-200 flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+                  <span>{errorMessage}</span>
+                </div>
+              )}
+
+              {/* 3 Tier Cards Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {/* 1. Free Tier */}
             <div
               onClick={() => setSelectedTier('free')}
@@ -382,35 +526,42 @@ export const AspirantSubscriptionModal: React.FC<AspirantSubscriptionModalProps>
               </div>
             </div>
           )}
+            </>
+          )}
         </div>
 
         {/* Footer */}
         <div className="pt-3 border-t border-slate-800 shrink-0 flex items-center gap-2">
           <button
             type="button"
-            onClick={onClose}
+            onClick={() => {
+              setShowRewardStep(false);
+              onClose();
+            }}
             disabled={isProcessing}
             className="flex-1 py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-300 transition-colors cursor-pointer"
           >
-            Close
+            {showRewardStep ? 'Claim Later' : 'Close'}
           </button>
-          <button
-            type="button"
-            onClick={handleSubscribe}
-            disabled={isProcessing}
-            className="flex-[2] py-2.5 px-4 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 text-xs font-black transition-all flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20 cursor-pointer disabled:opacity-60"
-          >
-            {isProcessing ? (
-              <span>Activating Membership...</span>
-            ) : selectedTier === 'free' ? (
-              <span>Stay on Free Tier</span>
-            ) : (
-              <>
-                <span>Activate {selectedTier.toUpperCase()} (<NairaText amount={tierCost} />/mo)</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </>
-            )}
-          </button>
+          {!showRewardStep && (
+            <button
+              type="button"
+              onClick={handleSubscribe}
+              disabled={isProcessing}
+              className="flex-[2] py-2.5 px-4 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 text-xs font-black transition-all flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20 cursor-pointer disabled:opacity-60"
+            >
+              {isProcessing ? (
+                <span>Activating Membership...</span>
+              ) : selectedTier === 'free' ? (
+                <span>Stay on Free Tier</span>
+              ) : (
+                <>
+                  <span>Activate {selectedTier.toUpperCase()} (<NairaText amount={tierCost} />/mo)</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </>
+              )}
+            </button>
+          )}
         </div>
       </div>
     </div>

@@ -108,6 +108,12 @@ export interface StudentProfile {
   addOns?: StudentAddOnEntitlements;
   studentLinkCode?: string;
   dailyExploration?: DailyExplorationState;
+  referredByCode?: string;
+  referredPartnerId?: string;
+  referredPartnerName?: string;
+  referralAttributedAt?: string;
+  aspirantRewardStatus?: 'not_eligible' | 'eligible' | 'claimed_cash_500' | 'claimed_data_2gb';
+  aspirantFirstPaidAt?: string;
 }
 
 export interface CurriculumTopic {
@@ -522,12 +528,35 @@ export interface SubscriptionPayment {
   studentName: string;
   plan: string;
   amountNaira: number;
+  originalAmountNaira?: number;
+  discountPercent?: number;
   paymentGateway: 'Paystack' | 'Flutterwave' | 'Direct Escrow';
   status: 'successful' | 'pending' | 'failed';
   partnerId?: string | null;
+  referralCodeUsed?: string | null;
   partnerCommissionCredited: boolean;
   commissionAmountNaira?: number;
   createdAt: string;
+}
+
+export interface AspirantReferralReward {
+  id: string;
+  studentId: string;
+  studentName: string;
+  studentEmail?: string;
+  referralCodeUsed: string;
+  partnerId: string;
+  paymentId: string;
+  tierPaid: 'basic' | 'elite';
+  amountPaidNaira: number;
+  rewardType: 'data_2gb' | 'cash_500';
+  network?: 'MTN' | 'Airtel' | 'Glo' | '9mobile';
+  phoneNumber?: string;
+  amountNaira?: number;
+  status: 'credited' | 'pending_fulfillment' | 'fulfilled';
+  createdAt: string;
+  fulfilledAt?: string;
+  fulfilledBy?: string;
 }
 
 export type ForumAudience = 'student' | 'parent';

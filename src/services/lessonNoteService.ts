@@ -2,9 +2,11 @@ import {
   collection,
   deleteDoc,
   doc,
+  getDocs,
   onSnapshot,
   setDoc
 } from 'firebase/firestore';
+import { onAuthStateChanged } from 'firebase/auth';
 import { auth, db, handleFirestoreError, OperationType } from '../lib/firebase';
 import {
   AcademicStream,
@@ -146,42 +148,98 @@ export function resolveAdminLessonNote(
   return toCurriculumTopic(chosen, stream);
 }
 
-export function subscribeToAdminLessonNotes(callback: NotesListener): () => void {
-  const initialCached = readCachedNotes();
-  callback(initialCached);
-  localListeners.add(callback);
+let sharedUnsubFirestore: (() => void) | null = null;
+let sharedUnsubAuth: (() => void) | null = null;
+let initialFetchDone = false;
 
-  let unsubFirestore = () => {};
+function processLessonNotesSnapshot(
+  forEach: (cb: (docSnap: { id: string; data: () => unknown }) => void) => void
+) {
+  const remoteNotes: AdminLessonNote[] = [];
+  forEach((docSnap) => {
+    const data = docSnap.data() as AdminLessonNote;
+    if (data && data.topicTitle && data.classLevel && data.subject) {
+      remoteNotes.push({
+        ...data,
+        id: docSnap.id
+      });
+    }
+  });
+  remoteNotes.sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
+  writeCachedNotes(remoteNotes);
+}
+
+function attachAuthenticatedNotesListener() {
+  if (sharedUnsubFirestore || localListeners.size === 0 || !auth.currentUser) {
+    return;
+  }
   try {
     const colRef = collection(db, ADMIN_LESSON_NOTES_COLLECTION);
-    unsubFirestore = onSnapshot(
+    sharedUnsubFirestore = onSnapshot(
       colRef,
       snapshot => {
-        const remoteNotes: AdminLessonNote[] = [];
-        snapshot.forEach(docSnap => {
-          const data = docSnap.data() as AdminLessonNote;
-          if (data && data.topicTitle && data.classLevel && data.subject) {
-            remoteNotes.push({
-              ...data,
-              id: docSnap.id
-            });
-          }
-        });
-        remoteNotes.sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
-        writeCachedNotes(remoteNotes);
+        processLessonNotesSnapshot(cb => snapshot.forEach(cb));
       },
       error => {
         console.warn('Admin lesson notes listener fallback to cache:', error);
-        callback(readCachedNotes());
+        const cached = readCachedNotes();
+        localListeners.forEach(l => l(cached));
       }
     );
   } catch (err) {
     console.warn('Could not attach Firestore lesson notes listener:', err);
   }
+}
+
+function detachSharedNotesListener() {
+  if (sharedUnsubFirestore) {
+    try {
+      sharedUnsubFirestore();
+    } catch {}
+    sharedUnsubFirestore = null;
+  }
+}
+
+export function subscribeToAdminLessonNotes(callback: NotesListener): () => void {
+  const initialCached = readCachedNotes();
+  callback(initialCached);
+  localListeners.add(callback);
+
+  // One-shot cloud read on initial mount so unauthenticated views get updates without holding Listen streams
+  if (!initialFetchDone && (typeof navigator === 'undefined' || navigator.onLine)) {
+    initialFetchDone = true;
+    getDocs(collection(db, ADMIN_LESSON_NOTES_COLLECTION))
+      .then(snapshot => {
+        processLessonNotesSnapshot(cb => snapshot.forEach(cb));
+      })
+      .catch(() => {});
+  }
+
+  // Only attach real-time onSnapshot when user is authenticated
+  if (!sharedUnsubAuth) {
+    sharedUnsubAuth = onAuthStateChanged(auth, user => {
+      if (user && localListeners.size > 0) {
+        attachAuthenticatedNotesListener();
+      } else {
+        detachSharedNotesListener();
+      }
+    });
+  }
+  if (auth.currentUser) {
+    attachAuthenticatedNotesListener();
+  }
 
   return () => {
     localListeners.delete(callback);
-    unsubFirestore();
+    if (localListeners.size === 0) {
+      detachSharedNotesListener();
+      if (sharedUnsubAuth) {
+        try {
+          sharedUnsubAuth();
+        } catch {}
+        sharedUnsubAuth = null;
+      }
+    }
   };
 }
 

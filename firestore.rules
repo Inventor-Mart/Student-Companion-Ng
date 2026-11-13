@@ -540,11 +540,31 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    function isValidAspirantReferralReward(data) {
+      return data.keys().hasAll(['id', 'studentId', 'referralCodeUsed', 'partnerId', 'tierPaid', 'rewardType', 'status', 'createdAt']) &&
+             data.id is string && isValidId(data.id) &&
+             data.studentId is string && isValidId(data.studentId) &&
+             data.referralCodeUsed is string && data.referralCodeUsed.size() <= 30 &&
+             data.partnerId is string && isValidId(data.partnerId) &&
+             data.tierPaid in ['basic', 'elite'] &&
+             data.rewardType in ['data_2gb', 'cash_500'] &&
+             data.status in ['credited', 'pending_fulfillment', 'fulfilled'] &&
+             data.createdAt is string && data.createdAt.size() <= 100;
+    }
+
     // 26. Processed Paystack References (Immutable payment replay prevention ledger)
     match /processed_paystack_refs/{refId} {
       allow get, list: if true;
       allow create: if isValidId(refId) && isValidProcessedPaystackRef(incoming());
       allow update, delete: if false;
+    }
+
+    // 27. University Aspirant First-Registration Referral Rewards (2GB Data or ₦500 Cashback)
+    match /aspirantReferralRewards/{rewardId} {
+      allow get, list: if true;
+      allow create: if isValidId(rewardId) && incoming().id == rewardId && isValidAspirantReferralReward(incoming());
+      allow update: if isValidId(rewardId) && incoming().id == existing().id && isValidAspirantReferralReward(incoming());
+      allow delete: if isAdmin();
     }
   }
 }

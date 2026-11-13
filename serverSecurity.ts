@@ -9,7 +9,7 @@ import {
   collection,
   query,
   limit as firestoreLimit
-} from 'firebase/firestore';
+} from 'firebase/firestore/lite';
 
 export const AUTHORIZED_SUPER_ADMINS = ['martorefe@gmail.com', 'wowrealities@gmail.com'];
 const STORE_PATH = '/tmp/sc-security-store.json';
@@ -208,18 +208,27 @@ export function findActiveBlock(params: {
 export class SecurityService {
   private db: Firestore;
   private hydratedFromFirestore = false;
+  private firestoreSecurityRulesAvailable = true;
 
   constructor(db: Firestore) {
     this.db = db;
     void this.hydrateFromFirestore();
   }
 
+  private markIfPermissionError(err: unknown) {
+    const msg = String((err as any)?.code || (err as any)?.message || err || '').toLowerCase();
+    if (msg.includes('permission') || msg.includes('insufficient')) {
+      this.firestoreSecurityRulesAvailable = false;
+    }
+  }
+
   async hydrateFromFirestore(): Promise<void> {
-    if (this.hydratedFromFirestore) return;
+    if (this.hydratedFromFirestore || !this.firestoreSecurityRulesAvailable) return;
     this.hydratedFromFirestore = true;
     try {
-      const [incSnap, repSnap, blkSnap] = await Promise.all([
-        getDocs(query(collection(this.db, 'security_incidents'), firestoreLimit(150))),
+      // Probe security_incidents first to avoid 3 parallel failed RunQuery calls when rules aren't deployed yet
+      const incSnap = await getDocs(query(collection(this.db, 'security_incidents'), firestoreLimit(150)));
+      const [repSnap, blkSnap] = await Promise.all([
         getDocs(query(collection(this.db, 'security_reports'), firestoreLimit(100))),
         getDocs(query(collection(this.db, 'security_blocks'), firestoreLimit(100)))
       ]);
@@ -245,8 +254,9 @@ export class SecurityService {
         (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
       );
       saveDiskStore();
-    } catch {
+    } catch (err) {
       // Non-fatal if Firestore security rules aren't deployed yet; disk/memory store continues working
+      this.markIfPermissionError(err);
     }
   }
 
@@ -264,10 +274,12 @@ export class SecurityService {
     if (memoryStore.incidents.length > 300) memoryStore.incidents.length = 300;
     saveDiskStore();
 
-    try {
-      await setDoc(doc(this.db, 'security_incidents', id), incident);
-    } catch {
-      // Persist resiliently even if Firestore rejects unauthenticated server SDK write
+    if (this.firestoreSecurityRulesAvailable) {
+      try {
+        await setDoc(doc(this.db, 'security_incidents', id), incident);
+      } catch (err) {
+        this.markIfPermissionError(err);
+      }
     }
 
     return incident;
@@ -307,19 +319,25 @@ export class SecurityService {
     }
     saveDiskStore();
 
-    try {
-      await setDoc(doc(this.db, 'security_blocks', id), block);
-    } catch {}
+    if (this.firestoreSecurityRulesAvailable) {
+      try {
+        await setDoc(doc(this.db, 'security_blocks', id), block);
+      } catch (err) {
+        this.markIfPermissionError(err);
+      }
+    }
 
     // Mirror account suspension / wallet freeze onto users doc when possible
-    if (params.blockType === 'account_suspend' || params.blockType === 'wallet_freeze') {
+    if (this.firestoreSecurityRulesAvailable && (params.blockType === 'account_suspend' || params.blockType === 'wallet_freeze')) {
       try {
         const userUpdates =
           params.blockType === 'account_suspend'
             ? { accountStatus: 'suspended', suspensionReason: block.reason, suspendedAt: nowIso }
             : { walletFrozen: true, walletFrozenReason: block.reason };
         await setDoc(doc(this.db, 'users', sanitizeFirestoreId(normTarget)), userUpdates, { merge: true });
-      } catch {}
+      } catch (err) {
+        this.markIfPermissionError(err);
+      }
     }
 
     return block;
@@ -372,18 +390,24 @@ export class SecurityService {
     if (!matched) return null;
 
     saveDiskStore();
-    try {
-      await setDoc(doc(this.db, 'security_blocks', matched.id), matched, { merge: true });
-    } catch {}
+    if (this.firestoreSecurityRulesAvailable) {
+      try {
+        await setDoc(doc(this.db, 'security_blocks', matched.id), matched, { merge: true });
+      } catch (err) {
+        this.markIfPermissionError(err);
+      }
+    }
 
-    if (matched.blockType === 'account_suspend' || matched.blockType === 'wallet_freeze') {
+    if (this.firestoreSecurityRulesAvailable && (matched.blockType === 'account_suspend' || matched.blockType === 'wallet_freeze')) {
       try {
         const userUpdates =
           matched.blockType === 'account_suspend'
             ? { accountStatus: 'active', suspensionReason: '' }
             : { walletFrozen: false, walletFrozenReason: '' };
         await setDoc(doc(this.db, 'users', sanitizeFirestoreId(matched.targetValue)), userUpdates, { merge: true });
-      } catch {}
+      } catch (err) {
+        this.markIfPermissionError(err);
+      }
     }
 
     return matched;
@@ -436,14 +460,18 @@ export class SecurityService {
     if (memoryStore.processedPaystackRefs[safeId]) {
       return true;
     }
-    try {
-      const snap = await getDoc(doc(this.db, 'processed_paystack_refs', safeId));
-      if (snap.exists()) {
-        memoryStore.processedPaystackRefs[safeId] = snap.data() as ProcessedRefRecord;
-        saveDiskStore();
-        return true;
+    if (this.firestoreSecurityRulesAvailable) {
+      try {
+        const snap = await getDoc(doc(this.db, 'processed_paystack_refs', safeId));
+        if (snap.exists()) {
+          memoryStore.processedPaystackRefs[safeId] = snap.data() as ProcessedRefRecord;
+          saveDiskStore();
+          return true;
+        }
+      } catch (err) {
+        this.markIfPermissionError(err);
       }
-    } catch {}
+    }
     return false;
   }
 
@@ -451,9 +479,13 @@ export class SecurityService {
     const safeId = sanitizeFirestoreId(record.reference);
     memoryStore.processedPaystackRefs[safeId] = record;
     saveDiskStore();
-    try {
-      await setDoc(doc(this.db, 'processed_paystack_refs', safeId), record);
-    } catch {}
+    if (this.firestoreSecurityRulesAvailable) {
+      try {
+        await setDoc(doc(this.db, 'processed_paystack_refs', safeId), record);
+      } catch (err) {
+        this.markIfPermissionError(err);
+      }
+    }
   }
 
   async checkPaymentVelocity(req: Request, userId: string, email: string | undefined, amountNaira: number): Promise<void> {
@@ -654,9 +686,13 @@ export class SecurityService {
         if (memoryStore.reports.length > 200) memoryStore.reports.length = 200;
         saveDiskStore();
 
-        try {
-          await setDoc(doc(this.db, 'security_reports', id), report);
-        } catch {}
+        if (this.firestoreSecurityRulesAvailable) {
+          try {
+            await setDoc(doc(this.db, 'security_reports', id), report);
+          } catch (err) {
+            this.markIfPermissionError(err);
+          }
+        }
 
         // Mirror into Security Incident Queue so Super Admin sees user reports in real time
         const mappedCategory: SecurityIncidentCategory =
@@ -936,9 +972,13 @@ export class SecurityService {
             rep.status = newStatus;
             rep.resolvedBy = actor;
             saveDiskStore();
-            try {
-              await setDoc(doc(this.db, 'security_reports', rep.id), rep, { merge: true });
-            } catch {}
+            if (this.firestoreSecurityRulesAvailable) {
+              try {
+                await setDoc(doc(this.db, 'security_reports', rep.id), rep, { merge: true });
+              } catch (err) {
+                this.markIfPermissionError(err);
+              }
+            }
           }
           return res.json({ success: true, report: rep, updatedAt: nowIso });
         }
@@ -963,9 +1003,13 @@ export class SecurityService {
     inc.resolvedAt = new Date().toISOString();
     if (actionTaken) inc.actionTaken = actionTaken;
     saveDiskStore();
-    try {
-      await setDoc(doc(this.db, 'security_incidents', inc.id), inc, { merge: true });
-    } catch {}
+    if (this.firestoreSecurityRulesAvailable) {
+      try {
+        await setDoc(doc(this.db, 'security_incidents', inc.id), inc, { merge: true });
+      } catch (err) {
+        this.markIfPermissionError(err);
+      }
+    }
     return inc;
   }
 }

@@ -1,9 +1,18 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
-import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
+import { initializeFirestore, getFirestore, doc, getDocFromServer } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
+try {
+  initializeFirestore(
+    app,
+    { experimentalAutoDetectLongPolling: true, ignoreUndefinedProperties: true },
+    (firebaseConfig as any).firestoreDatabaseId
+  );
+} catch {
+  // Ignore if Firestore was already initialized during hot reload
+}
 export const db = getFirestore(app, (firebaseConfig as any).firestoreDatabaseId); /* CRITICAL: The app will break without this line */
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
@@ -84,8 +93,6 @@ if (typeof window !== 'undefined') {
   setTimeout(() => {
     testConnection().catch(() => {});
   }, 1000);
-} else {
-  testConnection().catch(() => {});
 }
 
 export async function signInWithGoogle() {

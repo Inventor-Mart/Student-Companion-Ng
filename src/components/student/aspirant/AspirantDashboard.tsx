@@ -3,6 +3,7 @@ import { useApp } from '../../../context/AppContext';
 import { NIGERIAN_UNIVERSITIES } from '../../../data/universityAdmissionData';
 import { generateAspirantDailyDrill, ASPIRANT_PAST_QUESTION_YEARS } from '../../../data/aspirantMockData';
 import { AspirantSubscriptionModal } from './AspirantSubscriptionModal';
+import { AspirantReferralRewardCard } from './AspirantReferralRewardCard';
 import { DailyExplorerHUD } from '../DailyExplorerHUD';
 import {
   Calendar,
@@ -23,7 +24,8 @@ import {
   Settings,
   X,
   FileQuestion,
-  ExternalLink
+  ExternalLink,
+  Gift
 } from 'lucide-react';
 import { NairaSign } from '../../../utils/currency';
 
@@ -34,11 +36,15 @@ export const AspirantDashboard: React.FC = () => {
     completedAspirantDrillIds,
     toggleAspirantDrillCompleted,
     setActiveStudentTab,
-    startExam
+    startExam,
+    aspirantRewardStatus,
+    appliedReferralCode,
+    student
   } = useApp();
 
   const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
   const [isGoalModalOpen, setIsGoalModalOpen] = useState(false);
+  const hasReferralCode = Boolean((student.referredByCode || appliedReferralCode || '').trim());
 
   const activeExamDate = aspirantGoal.targetExamDate || aspirantGoal.examDates?.jamb || '2026-04-18';
   const activeSubjects = aspirantGoal.jambSubjects || aspirantGoal.subjectCombination || ['Use of English', 'Mathematics', 'Physics', 'Chemistry'];
@@ -205,6 +211,37 @@ export const AspirantDashboard: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Referral First-Registration Reward Card or Callout */}
+      {(aspirantRewardStatus === 'eligible' ||
+        aspirantRewardStatus === 'claimed_cash_500' ||
+        aspirantRewardStatus === 'claimed_data_2gb') ? (
+        <AspirantReferralRewardCard compact />
+      ) : hasReferralCode && aspirantGoal.tier === 'free' ? (
+        <div className="bg-slate-900/95 border border-emerald-700/50 rounded-2xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5 text-xs">
+            <div className="w-8 h-8 rounded-xl bg-emerald-950 border border-emerald-700/70 flex items-center justify-center text-emerald-400 shrink-0">
+              <Gift className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="font-bold text-white">
+                Referral Bonus Ready ({student.referredByCode || appliedReferralCode})
+              </div>
+              <p className="text-[11px] text-slate-400">
+                Activate Aspirant Basic (₦5,000) or Elite (₦10,000) to claim 2GB mobile data or ₦500 wallet cash.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsUpgradeModalOpen(true)}
+            className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer shrink-0 transition-colors"
+          >
+            <span>Activate &amp; Claim</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      ) : null}
 
       {/* Daily Study Diversity & XP Multiplier HUD */}
       <DailyExplorerHUD />

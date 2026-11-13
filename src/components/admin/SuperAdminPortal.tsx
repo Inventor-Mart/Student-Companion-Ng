@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
-import { RegisteredUserProfile, UserRole, NigerianClassLevel } from '../../types';
+import { RegisteredUserProfile, UserRole, NigerianClassLevel, AspirantReferralReward } from '../../types';
 import {
   Users,
   ShieldCheck,
@@ -32,7 +32,9 @@ import {
   FileText,
   GitBranch,
   RefreshCw,
-  UploadCloud
+  UploadCloud,
+  Gift,
+  Wifi
 } from 'lucide-react';
 import { SchoolAdminPortal } from './SchoolAdminPortal';
 import { OTACompetitionManager } from './OTACompetitionManager';
@@ -61,11 +63,17 @@ export const SuperAdminPortal: React.FC = () => {
     adminLessonNotes
   } = useApp();
 
-  const [portalView, setPortalView] = useState<'directory' | 'school_admin' | 'forum_moderation' | 'ota_competitions' | 'lesson_notes' | 'past_questions' | 'security_trust'>('directory');
+  const [portalView, setPortalView] = useState<'directory' | 'school_admin' | 'forum_moderation' | 'ota_competitions' | 'lesson_notes' | 'past_questions' | 'security_trust' | 'aspirant_rewards'>('directory');
   const [roleFilter, setRoleFilter] = useState<'all' | UserRole>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedUserForEdit, setSelectedUserForEdit] = useState<RegisteredUserProfile | null>(null);
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
+
+  // Aspirant Referral Rewards Queue State
+  const [aspirantRewardsList, setAspirantRewardsList] = useState<AspirantReferralReward[]>([]);
+  const [isLoadingAspirantRewards, setIsLoadingAspirantRewards] = useState<boolean>(false);
+  const [fulfillingRewardId, setFulfillingRewardId] = useState<string | null>(null);
+  const [rewardActionNotice, setRewardActionNotice] = useState<string | null>(null);
 
   // GitHub Repository Sync state
   const [gitStatus, setGitStatus] = useState<{
@@ -81,6 +89,50 @@ export const SuperAdminPortal: React.FC = () => {
   const [gitSyncFeedback, setGitSyncFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   const authorizedAdminEmail = currentUserProfile?.email || (isSuperAdmin ? 'martorefe@gmail.com' : '');
+
+  const fetchAspirantRewards = React.useCallback(async () => {
+    if (!authorizedAdminEmail) return;
+    setIsLoadingAspirantRewards(true);
+    try {
+      const res = await fetch(`/api/admin/aspirant-rewards?adminEmail=${encodeURIComponent(authorizedAdminEmail)}`);
+      const data = await res.json();
+      if (res.ok && Array.isArray(data.rewards)) {
+        setAspirantRewardsList(data.rewards);
+      }
+    } catch {
+      // ignore transient network errors
+    } finally {
+      setIsLoadingAspirantRewards(false);
+    }
+  }, [authorizedAdminEmail]);
+
+  React.useEffect(() => {
+    void fetchAspirantRewards();
+  }, [fetchAspirantRewards]);
+
+  const handleFulfillAspirantReward = async (rewardId: string) => {
+    if (!authorizedAdminEmail) return;
+    setFulfillingRewardId(rewardId);
+    setRewardActionNotice(null);
+    try {
+      const res = await fetch('/api/admin/aspirant-rewards/fulfill', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ adminEmail: authorizedAdminEmail, rewardId })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setRewardActionNotice(`Marked ${rewardId} as 2GB Data Fulfilled.`);
+        await fetchAspirantRewards();
+      } else {
+        setRewardActionNotice(data.error || 'Could not mark reward fulfilled.');
+      }
+    } catch (err: any) {
+      setRewardActionNotice(err?.message || 'Network error fulfilling reward.');
+    } finally {
+      setFulfillingRewardId(null);
+    }
+  };
 
   const fetchGitStatus = React.useCallback(async () => {
     if (!authorizedAdminEmail) return;
@@ -487,6 +539,134 @@ export const SuperAdminPortal: React.FC = () => {
     );
   }
 
+  if (portalView === 'aspirant_rewards') {
+    const pendingDataCount = aspirantRewardsList.filter(
+      r => r.rewardType === 'data_2gb' && r.status === 'pending_fulfillment'
+    ).length;
+    const fulfilledDataCount = aspirantRewardsList.filter(
+      r => r.rewardType === 'data_2gb' && r.status === 'fulfilled'
+    ).length;
+    const cash500Count = aspirantRewardsList.filter(r => r.rewardType === 'cash_500').length;
+
+    return (
+      <div className="flex-1 w-full flex flex-col overflow-y-auto px-3 sm:px-6 py-4 space-y-4 touch-pan-y text-slate-100 pb-16">
+        <div className="bg-[#0B1526] px-4 py-3 rounded-2xl border border-slate-800 flex flex-wrap items-center justify-between gap-2 text-xs">
+          <div className="flex items-center gap-2">
+            <Gift className="w-4 h-4 text-emerald-400" />
+            <span className="font-bold text-white text-sm">Aspirant Referral Rewards Queue</span>
+            <span className="text-[11px] text-slate-400">· 2GB Data &amp; ₦500 First-Registration Bonus</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void fetchAspirantRewards()}
+              disabled={isLoadingAspirantRewards}
+              className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 font-semibold flex items-center gap-1.5 cursor-pointer"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isLoadingAspirantRewards ? 'animate-spin' : ''}`} />
+              <span>Refresh</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setPortalView('directory')}
+              className="text-amber-400 hover:text-amber-300 font-bold flex items-center gap-1 cursor-pointer bg-slate-900 px-3 py-1.5 rounded-xl border border-slate-700"
+            >
+              &larr; Return to Directory
+            </button>
+          </div>
+        </div>
+
+        {rewardActionNotice && (
+          <div className="bg-emerald-950/70 border border-emerald-700 text-emerald-200 text-xs px-4 py-2.5 rounded-xl flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span>{rewardActionNotice}</span>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
+            <span className="text-xs text-slate-400 block">Pending 2GB Data Dispatch</span>
+            <div className="text-2xl font-black text-amber-400 font-mono tabular-nums mt-1">{pendingDataCount}</div>
+            <p className="text-[11px] text-slate-500 mt-1">Mobile lines waiting for 2GB bundle recharge</p>
+          </div>
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
+            <span className="text-xs text-slate-400 block">Fulfilled 2GB Bundles</span>
+            <div className="text-2xl font-black text-emerald-400 font-mono tabular-nums mt-1">{fulfilledDataCount}</div>
+            <p className="text-[11px] text-slate-500 mt-1">Completed mobile data deliveries</p>
+          </div>
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
+            <span className="text-xs text-slate-400 block">Instant ₦500 Wallet Credits</span>
+            <div className="text-2xl font-black text-sky-400 font-mono tabular-nums mt-1">{cash500Count}</div>
+            <p className="text-[11px] text-slate-500 mt-1">Auto-settled to Aspirant wallets</p>
+          </div>
+        </div>
+
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-slate-300 border-b border-slate-800 pb-2">
+            All Claimed Aspirant Referral Rewards ({aspirantRewardsList.length})
+          </h3>
+          {aspirantRewardsList.length === 0 ? (
+            <div className="py-8 text-center text-xs text-slate-400">
+              No Aspirant referral rewards have been claimed yet.
+            </div>
+          ) : (
+            <div className="space-y-2.5">
+              {aspirantRewardsList.map(reward => (
+                <div
+                  key={reward.id}
+                  className="bg-slate-950 border border-slate-800 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs"
+                >
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-bold text-white">{reward.studentName}</span>
+                      <span className="text-slate-500">·</span>
+                      <span className="font-mono text-emerald-400 font-bold">{reward.referralCodeUsed}</span>
+                      <span className="text-slate-500">·</span>
+                      {reward.rewardType === 'data_2gb' ? (
+                        <span className="text-sky-300 font-semibold flex items-center gap-1">
+                          <Wifi className="w-3.5 h-3.5" />
+                          2GB {reward.network} ({reward.phoneNumber})
+                        </span>
+                      ) : (
+                        <span className="text-amber-300 font-semibold flex items-center gap-1">
+                          <Wallet className="w-3.5 h-3.5" />
+                          ₦500 Wallet Credit
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-[11px] text-slate-400 font-mono">
+                      Claimed {new Date(reward.createdAt).toLocaleString()} · Status:{' '}
+                      <strong
+                        className={
+                          reward.status === 'fulfilled' || reward.status === 'credited'
+                            ? 'text-emerald-400'
+                            : 'text-amber-300'
+                        }
+                      >
+                        {reward.status.toUpperCase()}
+                      </strong>
+                    </div>
+                  </div>
+
+                  {reward.rewardType === 'data_2gb' && reward.status === 'pending_fulfillment' && (
+                    <button
+                      type="button"
+                      onClick={() => handleFulfillAspirantReward(reward.id)}
+                      disabled={fulfillingRewardId === reward.id}
+                      className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold text-xs cursor-pointer shrink-0 transition-colors"
+                    >
+                      {fulfillingRewardId === reward.id ? 'Updating...' : 'Mark 2GB Fulfilled'}
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   if (portalView === 'lesson_notes') {
     return (
       <LessonNotesManager onBack={() => setPortalView('directory')} />
@@ -609,6 +789,23 @@ export const SuperAdminPortal: React.FC = () => {
             >
               <ShieldAlert className="w-3.5 h-3.5 text-rose-400" />
               <span>Security &amp; Trust</span>
+            </button>
+
+            <button
+              onClick={() => {
+                setPortalView('aspirant_rewards');
+                void fetchAspirantRewards();
+              }}
+              className="flex items-center gap-1.5 px-3 min-h-[40px] rounded-xl bg-emerald-950/75 hover:bg-emerald-900 border border-emerald-700/60 text-emerald-200 text-xs font-bold transition-all cursor-pointer shadow-sm whitespace-nowrap"
+              title="Fulfill 2GB mobile data and review ₦500 Aspirant first-registration referral rewards"
+            >
+              <Gift className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Aspirant Rewards</span>
+              {aspirantRewardsList.filter(r => r.status === 'pending_fulfillment').length > 0 && (
+                <span className="px-1.5 py-0.5 rounded-full bg-amber-500 text-slate-950 text-[10px] font-black tabular-nums">
+                  {aspirantRewardsList.filter(r => r.status === 'pending_fulfillment').length}
+                </span>
+              )}
             </button>
 
             <button

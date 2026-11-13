@@ -5,6 +5,7 @@ import { NigerianClassLevel, CurriculumTopic, AcademicStream } from '../../types
 import { cleanMathText } from '../../utils/mathFormatter';
 import { normalizeSubjectKey, resolveAdminLessonNote } from '../../services/lessonNoteService';
 import { calculateRealisticStudyMinutes } from '../../utils/studyDuration';
+import { getNerdcTermAccessStatus } from '../../utils/referralPromoPolicy';
 import {
   Search,
   BookOpen,
@@ -21,7 +22,9 @@ import {
   CheckCircle2,
   FolderOpen,
   Atom,
-  Lock
+  Lock,
+  Calendar,
+  ShieldCheck
 } from 'lucide-react';
 
 // Subject syllabus metadata with authentic Nigerian NERDC curriculum topics
@@ -182,7 +185,8 @@ export const SchemeOfWorkHub: React.FC = () => {
     updateStudentClass,
     openStudentSubscriptionModal,
     checkStudentFeatureAccess,
-    adminLessonNotes
+    adminLessonNotes,
+    isSuperAdmin
   } = useApp();
 
   const [viewMode, setViewMode] = useState<'class' | 'matrix'>('class');
@@ -451,14 +455,18 @@ This digital module is aligned with the Nigerian Educational Research and Develo
       .map(n => n.weekNumber)
   );
 
+  const secondTermStatus = getNerdcTermAccessStatus('2nd Term', isSuperAdmin);
+  const explorerTermStatus = getNerdcTermAccessStatus(explorerTerm, isSuperAdmin);
+
   const availableWeeksForSubject = Array.from({ length: maxWeeksForSubject }, (_, i) => i + 1).map(wk => {
     const note = getTopicForSubject(explorerSubject, undefined, explorerTerm, wk);
-    const isLocked = !checkStudentFeatureAccess('scheme_weeks', { weekNumber: wk }).hasAccess;
+    const accessRes = checkStudentFeatureAccess('scheme_weeks', { weekNumber: wk, term: explorerTerm });
     return {
       weekNumber: wk,
       shortTitle: note.topicTitle.length > 38 ? note.topicTitle.slice(0, 38) + '...' : note.topicTitle,
       note,
-      isLocked
+      isLocked: !accessRes.hasAccess,
+      lockType: accessRes.lockType
     };
   });
 
@@ -466,7 +474,14 @@ This digital module is aligned with the Nigerian Educational Research and Develo
     availableWeeksForSubject.find(w => w.weekNumber === explorerWeek)?.note ||
     availableWeeksForSubject[0].note;
 
-  const isExplorerNoteLocked = !checkStudentFeatureAccess('scheme_weeks', { weekNumber: activeExplorerNote.weekNumber }).hasAccess;
+  const explorerAccess = checkStudentFeatureAccess('scheme_weeks', {
+    weekNumber: activeExplorerNote.weekNumber,
+    term: activeExplorerNote.term
+  });
+  const isExplorerNoteLocked = !explorerAccess.hasAccess;
+  const isExplorerScheduleLocked =
+    isExplorerNoteLocked &&
+    (explorerAccess.lockType === 'upcoming_release' || explorerAccess.lockType === 'term_closed');
 
   return (
     <div className="flex-1 min-h-0 h-full w-full overflow-y-auto px-4 pt-4 pb-24 space-y-4 touch-pan-y text-slate-100">
@@ -491,6 +506,39 @@ This digital module is aligned with the Nigerian Educational Research and Develo
             105 Subject Tracks
           </span>
         </div>
+
+        {/* Global NERDC Term Schedule Banner */}
+        {isSuperAdmin ? (
+          <div className="mt-2.5 bg-emerald-950/40 border border-emerald-700/50 rounded-xl p-2.5 flex items-center gap-2 text-xs text-emerald-200">
+            <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span>
+              <strong className="text-white">Super Admin Schedule Override Active:</strong> Full preview enabled across 1st, 2nd &amp; 3rd Term NERDC notes. Students unlock 2nd Term on Dec 21, 2026.
+            </span>
+          </div>
+        ) : (
+          <div className="mt-2.5 bg-slate-900/90 border border-amber-700/50 rounded-xl p-2.5 flex items-center justify-between gap-2 text-xs text-amber-200">
+            <div className="flex items-center gap-2">
+              <Calendar className="w-4 h-4 text-amber-400 shrink-0" />
+              <span className="leading-snug">
+                {secondTermStatus.isUnlocked ? (
+                  <>
+                    <strong className="text-emerald-300">2nd Term NERDC Lesson Notes Active.</strong> 1st Term &amp; 3rd Term notes remain locked.
+                  </>
+                ) : (
+                  <>
+                    <strong className="text-white">NERDC Schedule:</strong> 2nd Term lesson notes open{' '}
+                    <strong className="text-amber-300">December 21, 2026</strong>. 1st Term &amp; 3rd Term are locked.
+                  </>
+                )}
+              </span>
+            </div>
+            {!secondTermStatus.isUnlocked && secondTermStatus.daysRemaining !== undefined && (
+              <span className="font-mono font-bold text-[11px] text-amber-300 tabular-nums shrink-0">
+                {secondTermStatus.daysRemaining}d left
+              </span>
+            )}
+          </div>
+        )}
 
         {isOffline && (
           <div className="mt-2.5 bg-amber-950/60 border border-amber-800/60 rounded-xl p-2.5 flex items-center gap-2 text-xs text-amber-300">
@@ -590,7 +638,7 @@ This digital module is aligned with the Nigerian Educational Research and Develo
               >
                 {availableWeeksForSubject.map(w => (
                   <option key={w.weekNumber} value={w.weekNumber}>
-                    Week {w.weekNumber}: {w.shortTitle} {w.isLocked ? '🔒 (Locked · Basic)' : ''}
+                    Week {w.weekNumber}: {w.shortTitle} {w.isLocked ? (w.lockType === 'tier' ? '🔒 (Basic)' : '🔒 (Locked)') : ''}
                   </option>
                 ))}
               </select>
@@ -636,8 +684,15 @@ This digital module is aligned with the Nigerian Educational Research and Develo
                   {calculateRealisticStudyMinutes(activeExplorerNote)} min study
                 </span>
                 {isExplorerNoteLocked && (
-                  <span className="text-[9px] font-bold text-amber-400 bg-amber-950/80 border border-amber-700/60 rounded px-1.5 py-0.2 flex items-center gap-1">
-                    <Lock className="w-2.5 h-2.5" /> Basic Plan Only
+                  <span className="text-[10px] font-bold text-amber-400 flex items-center gap-1">
+                    <Lock className="w-2.5 h-2.5" />
+                    <span>
+                      {isExplorerScheduleLocked
+                        ? explorerAccess.lockType === 'upcoming_release'
+                          ? 'Opens Dec 21, 2026'
+                          : `${activeExplorerNote.term} Locked`
+                        : 'Basic Plan Only'}
+                    </span>
                   </span>
                 )}
               </div>
@@ -651,7 +706,9 @@ This digital module is aligned with the Nigerian Educational Research and Develo
 
             <button
               onClick={() => {
-                if (isExplorerNoteLocked) {
+                if (isExplorerScheduleLocked) {
+                  openNoteReader(activeExplorerNote);
+                } else if (isExplorerNoteLocked) {
                   openStudentSubscriptionModal('basic');
                 } else {
                   toggleDownloadNote(activeExplorerNote.id);
@@ -662,7 +719,13 @@ This digital module is aligned with the Nigerian Educational Research and Develo
                   ? 'bg-emerald-950 text-emerald-400 border-emerald-800'
                   : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-white'
               }`}
-              title={isExplorerNoteLocked ? 'Locked on Free Tier' : 'Save note for offline reading'}
+              title={
+                isExplorerScheduleLocked
+                  ? explorerAccess.reason || 'Locked by NERDC term schedule'
+                  : isExplorerNoteLocked
+                  ? 'Locked on Free Tier'
+                  : 'Save note for offline reading'
+              }
             >
               {isExplorerNoteLocked ? (
                 <Lock className="w-4 h-4 text-amber-400" />
@@ -690,16 +753,26 @@ This digital module is aligned with the Nigerian Educational Research and Develo
           {isExplorerNoteLocked && (
             <div className="bg-amber-950/40 border border-amber-600/40 rounded-xl p-2.5 flex items-center justify-between gap-2 text-xs text-amber-200">
               <div className="flex items-center gap-2">
-                <Lock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                <span className="text-[11px] leading-snug">Weeks 3 to 12 are locked on the Free Tier. Unlock complete term notes with Basic (₦8,000 / term).</span>
+                {isExplorerScheduleLocked ? (
+                  <Calendar className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                ) : (
+                  <Lock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                )}
+                <span className="text-[11px] leading-snug">
+                  {isExplorerScheduleLocked
+                    ? explorerAccess.reason
+                    : 'Weeks 3 to 12 are locked on the Free Tier. Unlock complete term notes with Basic (₦8,000 / term).'}
+                </span>
               </div>
-              <button
-                type="button"
-                onClick={() => openStudentSubscriptionModal('basic')}
-                className="px-2.5 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-lg text-[10px] whitespace-nowrap cursor-pointer shrink-0"
-              >
-                Upgrade ₦8k
-              </button>
+              {!isExplorerScheduleLocked && (
+                <button
+                  type="button"
+                  onClick={() => openStudentSubscriptionModal('basic')}
+                  className="px-2.5 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-lg text-[10px] whitespace-nowrap cursor-pointer shrink-0"
+                >
+                  Upgrade ₦8k
+                </button>
+              )}
             </div>
           )}
 
@@ -710,10 +783,25 @@ This digital module is aligned with the Nigerian Educational Research and Develo
               <span>
                 {(student.completedReadNoteIds || []).includes(activeExplorerNote.id)
                   ? 'Verified Read · Checkpoint Passed'
+                  : isExplorerScheduleLocked
+                  ? explorerTermStatus.unlockDateLabel
+                    ? `Opens ${explorerTermStatus.unlockDateLabel}`
+                    : 'Term Locked'
                   : 'Full lesson note ready for study'}
               </span>
             </div>
-            {isExplorerNoteLocked ? (
+            {isExplorerScheduleLocked ? (
+              <button
+                type="button"
+                onClick={() => openNoteReader(activeExplorerNote)}
+                className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-700/50 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0"
+              >
+                <Lock className="w-3.5 h-3.5" />
+                <span>
+                  {explorerAccess.lockType === 'upcoming_release' ? 'Opens Dec 21, 2026' : `${activeExplorerNote.term} Locked`}
+                </span>
+              </button>
+            ) : isExplorerNoteLocked ? (
               <button
                 type="button"
                 onClick={() => openStudentSubscriptionModal('basic')}
@@ -1015,7 +1103,14 @@ This digital module is aligned with the Nigerian Educational Research and Develo
                 );
                 const isDownloaded = student.downloadedSubjectIds.includes(topic.id);
                 const isVerifiedRead = (student.completedReadNoteIds || []).includes(topic.id);
-                const isTopicLocked = !checkStudentFeatureAccess('scheme_weeks', { weekNumber: topic.weekNumber }).hasAccess;
+                const topicAccess = checkStudentFeatureAccess('scheme_weeks', {
+                  weekNumber: topic.weekNumber,
+                  term: topic.term
+                });
+                const isTopicLocked = !topicAccess.hasAccess;
+                const isTopicScheduleLocked =
+                  isTopicLocked &&
+                  (topicAccess.lockType === 'upcoming_release' || topicAccess.lockType === 'term_closed');
 
                 return (
                   <div
@@ -1045,15 +1140,40 @@ This digital module is aligned with the Nigerian Educational Research and Develo
 
                       {/* Offline Download Toggle */}
                       <button
-                        onClick={() => toggleDownloadNote(topic.id)}
+                        type="button"
+                        onClick={() => {
+                          if (isTopicScheduleLocked) {
+                            openNoteReader(topic);
+                          } else if (isTopicLocked) {
+                            openStudentSubscriptionModal('basic');
+                          } else {
+                            toggleDownloadNote(topic.id);
+                          }
+                        }}
                         className={`p-1.5 rounded-lg text-xs transition-colors shrink-0 cursor-pointer ${
-                          isDownloaded
+                          isTopicLocked
+                            ? 'bg-slate-800 text-amber-400 border border-amber-700/40'
+                            : isDownloaded
                             ? 'bg-emerald-950/80 text-emerald-400 border border-emerald-800/60'
                             : 'bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-700'
                         }`}
-                        title={isDownloaded ? 'Downloaded for offline viewing' : 'Download for offline use'}
+                        title={
+                          isTopicScheduleLocked
+                            ? topicAccess.reason || 'Locked by NERDC term schedule'
+                            : isTopicLocked
+                            ? 'Locked on Free Tier'
+                            : isDownloaded
+                            ? 'Downloaded for offline viewing'
+                            : 'Download for offline use'
+                        }
                       >
-                        {isDownloaded ? <Check className="w-3.5 h-3.5" /> : <Download className="w-3.5 h-3.5" />}
+                        {isTopicLocked ? (
+                          <Lock className="w-3.5 h-3.5" />
+                        ) : isDownloaded ? (
+                          <Check className="w-3.5 h-3.5" />
+                        ) : (
+                          <Download className="w-3.5 h-3.5" />
+                        )}
                       </button>
                     </div>
 
@@ -1097,7 +1217,18 @@ This digital module is aligned with the Nigerian Educational Research and Develo
                           <span>SC AI Coach</span>
                         </button>
 
-                        {isTopicLocked ? (
+                        {isTopicScheduleLocked ? (
+                          <button
+                            type="button"
+                            onClick={() => openNoteReader(topic)}
+                            className="flex items-center gap-1 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-700/50 text-xs font-semibold rounded-xl transition-colors cursor-pointer whitespace-nowrap"
+                          >
+                            <Lock className="w-3.5 h-3.5" />
+                            <span>
+                              {topicAccess.lockType === 'upcoming_release' ? 'Opens Dec 21' : `${topic.term} Locked`}
+                            </span>
+                          </button>
+                        ) : isTopicLocked ? (
                           <button
                             type="button"
                             onClick={() => openStudentSubscriptionModal('basic')}

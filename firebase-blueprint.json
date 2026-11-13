@@ -825,6 +825,31 @@
         "processedAt": { "type": "string", "maxLength": 100 }
       },
       "required": ["reference", "amountNaira", "purpose", "processedAt"]
+    },
+    "AspirantReferralReward": {
+      "title": "AspirantReferralReward",
+      "description": "One-time first-registration referral reward claims (2GB mobile data or ₦500 instant cashback) for University Aspirant accounts",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "studentId": { "type": "string", "maxLength": 128 },
+        "studentName": { "type": "string", "maxLength": 100 },
+        "studentEmail": { "type": "string", "maxLength": 150 },
+        "referralCodeUsed": { "type": "string", "maxLength": 30 },
+        "partnerId": { "type": "string", "maxLength": 128 },
+        "paymentId": { "type": "string", "maxLength": 128 },
+        "tierPaid": { "type": "string", "enum": ["basic", "elite"] },
+        "amountPaidNaira": { "type": "number" },
+        "rewardType": { "type": "string", "enum": ["data_2gb", "cash_500"] },
+        "network": { "type": "string", "enum": ["MTN", "Airtel", "Glo", "9mobile"] },
+        "phoneNumber": { "type": "string", "maxLength": 20 },
+        "amountNaira": { "type": "number" },
+        "status": { "type": "string", "enum": ["credited", "pending_fulfillment", "fulfilled"] },
+        "createdAt": { "type": "string", "maxLength": 100 },
+        "fulfilledAt": { "type": "string", "maxLength": 100 },
+        "fulfilledBy": { "type": "string", "maxLength": 150 }
+      },
+      "required": ["id", "studentId", "referralCodeUsed", "partnerId", "tierPaid", "rewardType", "status", "createdAt"]
     }
   },
   "firestore": {
@@ -971,6 +996,12 @@
         "$ref": "#/entities/ProcessedPaystackRef"
       },
       "description": "Idempotency registry preventing duplicate Paystack transaction replay"
+    },
+    "/aspirantReferralRewards/{rewardId}": {
+      "schema": {
+        "$ref": "#/entities/AspirantReferralReward"
+      },
+      "description": "First-registration 2GB mobile data and ₦500 cashback claims by referred University Aspirants"
     }
   }
 }

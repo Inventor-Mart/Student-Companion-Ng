@@ -51,7 +51,7 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
   onSignUpSuccess,
   initialRole
 }) => {
-  const { registerNewUser, targetSignUpRole, allRegisteredUsers } = useApp();
+  const { registerNewUser, targetSignUpRole, allRegisteredUsers, appliedReferralCode, applyReferralCode } = useApp();
 
   const effectiveRole = initialRole || targetSignUpRole;
   const [step, setStep] = useState<1 | 2 | 3>(effectiveRole ? 2 : 1);
@@ -79,7 +79,41 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
   const [targetExam, setTargetExam] = useState<'WAEC' | 'JAMB_UTME' | 'NECO' | 'BECE' | 'INTERNAL'>('WAEC');
   const [schoolName, setSchoolName] = useState('');
   const [studentSchoolCode, setStudentSchoolCode] = useState('');
+  const [studentReferralCode, setStudentReferralCode] = useState<string>(appliedReferralCode || '');
+  const [referralCheckFeedback, setReferralCheckFeedback] = useState<{
+    valid: boolean;
+    partnerName?: string;
+    message: string;
+  } | null>(null);
+  const [isCheckingReferral, setIsCheckingReferral] = useState<boolean>(false);
   const [state, setState] = useState('Lagos');
+
+  const handleVerifyStudentReferral = async () => {
+    const clean = studentReferralCode.trim().toUpperCase();
+    if (!clean) {
+      setReferralCheckFeedback(null);
+      return;
+    }
+    setIsCheckingReferral(true);
+    const res = await applyReferralCode(clean);
+    setIsCheckingReferral(false);
+    if (res.valid) {
+      setStudentReferralCode(res.referralCode || clean);
+      setReferralCheckFeedback({
+        valid: true,
+        partnerName: res.partnerName,
+        message:
+          classLevel === 'University Aspirant'
+            ? `Code verified (${res.partnerName}). Unlocks 2GB data or ₦500 cashback on your first paid Aspirant pass.`
+            : `Code verified (${res.partnerName}). Unlocks 20% off JSS 1–SS 3 Student Tiers through Jan 3, 2027.`
+      });
+    } else {
+      setReferralCheckFeedback({
+        valid: false,
+        message: res.error || 'Referral code not found or inactive.'
+      });
+    }
+  };
 
   const isCertificateClass = (level: NigerianClassLevel): boolean => {
     return level === 'JSS 3' || level === 'SS 3' || level === 'University Aspirant';
@@ -411,6 +445,7 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
         stream,
         school: schoolName.trim() || (classLevel === 'University Aspirant' ? 'School Leaver / Aspirant' : 'Secondary School'),
         schoolCode: studentSchoolCode.trim().toUpperCase() || undefined,
+        referralCode: studentReferralCode.trim().toUpperCase() || undefined,
         targetExam
       });
     } else if (selectedRole === 'parent') {
@@ -906,6 +941,46 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
                           : 'Got a 6-character school code from your teacher or administrator? Enter it to sync lesson notes & assignments.'}
                       </p>
                     </div>
+                  </div>
+
+                  {/* Referral Code Field */}
+                  <div className="bg-[#081220] border border-[#1E304F] rounded-xl p-3 space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <label className="text-xs font-semibold text-slate-200">
+                        Referral Code (Optional)
+                      </label>
+                      <span className="text-[10px] font-semibold text-[#84E000]">
+                        {classLevel === 'University Aspirant'
+                          ? '2GB Data or ₦500 First-Reg Bonus'
+                          : '20% Off Student Tiers (Until Jan 3, 2027)'}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        maxLength={16}
+                        value={studentReferralCode}
+                        onChange={(e) => {
+                          setStudentReferralCode(e.target.value.toUpperCase());
+                          setReferralCheckFeedback(null);
+                        }}
+                        placeholder="e.g. GROW84"
+                        className="flex-1 bg-[#060D17] border border-[#1E304F] focus:border-[#84E000] rounded-xl py-2 px-3 text-xs font-mono font-bold tracking-wider text-white placeholder-slate-500 focus:outline-none uppercase transition-colors"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleVerifyStudentReferral}
+                        disabled={isCheckingReferral || !studentReferralCode.trim()}
+                        className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-xs font-bold text-white transition-colors cursor-pointer shrink-0"
+                      >
+                        {isCheckingReferral ? 'Checking...' : 'Verify'}
+                      </button>
+                    </div>
+                    {referralCheckFeedback && (
+                      <p className={`text-[11px] leading-snug ${referralCheckFeedback.valid ? 'text-[#84E000]' : 'text-rose-400'}`}>
+                        {referralCheckFeedback.message}
+                      </p>
+                    )}
                   </div>
                 </div>
               )}

@@ -1,3 +1,4 @@
+import fs from 'fs';
 import express from 'express';
 import dotenv from 'dotenv';
 import path from 'path';
@@ -11,6 +12,7 @@ import nodemailer from 'nodemailer';
 import { initializeApp as initServerFirebase, getApps as getServerApps } from 'firebase/app';
 import {
   getFirestore as getServerFirestore,
+  setLogLevel as setServerFirestoreLogLevel,
   doc,
   getDoc,
   setDoc,
@@ -23,14 +25,22 @@ import {
   orderBy,
   limit,
   increment
-} from 'firebase/firestore';
+} from 'firebase/firestore/lite';
 import firebaseConfig from './firebase-applet-config.json';
 import {
   SecurityService,
   findActiveBlock,
   extractClientIp,
-  extractDeviceFingerprint
+  extractDeviceFingerprint,
+  AUTHORIZED_SUPER_ADMINS
 } from './serverSecurity';
+import {
+  getStudentTierPricing,
+  getAspirantTierPricing,
+  isReferralPromoActive,
+  normalizeNigerianPhone,
+  ASPIRANT_FIRST_REG_CASH_NAIRA
+} from './src/utils/referralPromoPolicy';
 
 dotenv.config();
 
@@ -46,7 +56,8 @@ app.use(express.json());
 app.use(express.static(path.resolve(__dirname, 'public')));
 app.use('/assets', express.static(path.resolve(__dirname, 'public/assets')));
 
-// Initialize server-side Firestore
+// Initialize server-side Firestore (handled errors are caught by routes and SecurityService)
+setServerFirestoreLogLevel('silent');
 const serverApps = getServerApps();
 const serverApp = serverApps.length > 0 ? serverApps[0] : initServerFirebase(firebaseConfig, 'companion-server');
 const serverDb = getServerFirestore(serverApp, (firebaseConfig as any).firestoreDatabaseId);
@@ -1003,23 +1014,244 @@ app.post('/api/send-verification-code', async (req, res) => {
 // GROWTH PARTNER & LIFETIME REVENUE SHARE API
 // ==========================================
 
-// 1. Backend Payment Trigger Function: Check referral, calculate 10%, atomic wallet credit
-app.post('/api/partners/process-subscription-payment', async (req, res) => {
-  try {
-    const { studentId, studentName, plan, amountNaira, paymentGateway, clientPaymentId } = req.body;
+const REFERRAL_STORE_PATH = '/tmp/sc-referral-store.json';
 
-    if (!studentId || !plan || typeof amountNaira !== 'number' || amountNaira <= 0) {
-      return res.status(400).json({
-        success: false,
-        error: 'Missing required fields: studentId, plan, and valid positive amountNaira are mandatory',
+interface LocalReferralBinding {
+  studentId: string;
+  partnerId: string;
+  partnerName: string;
+  referralCodeUsed: string;
+  attributedAt: string;
+}
+
+interface LocalAspirantRewardRecord {
+  id: string;
+  studentId: string;
+  studentName: string;
+  studentEmail?: string;
+  referralCodeUsed: string;
+  partnerId: string;
+  paymentId: string;
+  tierPaid: 'basic' | 'elite';
+  amountPaidNaira: number;
+  rewardType: 'data_2gb' | 'cash_500';
+  network?: 'MTN' | 'Airtel' | 'Glo' | '9mobile';
+  phoneNumber?: string;
+  amountNaira?: number;
+  status: 'credited' | 'pending_fulfillment' | 'fulfilled';
+  createdAt: string;
+  fulfilledAt?: string;
+  fulfilledBy?: string;
+}
+
+interface ReferralStoreState {
+  partners: Record<string, any>;
+  bindings: Record<string, LocalReferralBinding>;
+  aspirantPaidHistory: Record<string, { paymentId: string; tierPaid: 'basic' | 'elite'; amountPaidNaira: number; paidAt: string }[]>;
+  rewards: LocalAspirantRewardRecord[];
+  transactions: any[];
+}
+
+function loadReferralStore(): ReferralStoreState {
+  try {
+    if (fs.existsSync(REFERRAL_STORE_PATH)) {
+      const raw = JSON.parse(fs.readFileSync(REFERRAL_STORE_PATH, 'utf8'));
+      return {
+        partners: raw.partners || {},
+        bindings: raw.bindings || {},
+        aspirantPaidHistory: raw.aspirantPaidHistory || {},
+        rewards: Array.isArray(raw.rewards) ? raw.rewards : [],
+        transactions: Array.isArray(raw.transactions) ? raw.transactions : []
+      };
+    }
+  } catch {}
+  return { partners: {}, bindings: {}, aspirantPaidHistory: {}, rewards: [], transactions: [] };
+}
+
+const referralMemoryStore: ReferralStoreState = loadReferralStore();
+
+function saveReferralStore() {
+  try {
+    fs.writeFileSync(REFERRAL_STORE_PATH, JSON.stringify(referralMemoryStore), 'utf8');
+  } catch {}
+}
+
+async function resolveActivePartnerByCode(codeRaw: string): Promise<{
+  partnerId: string;
+  partnerName: string;
+  referralCode: string;
+  commissionRatePercent: number;
+} | null> {
+  const cleanCode = String(codeRaw || '').trim().toUpperCase();
+  if (!cleanCode) return null;
+
+  try {
+    const partnersRef = collection(serverDb, 'growthPartners');
+    const partnerQuery = query(partnersRef, where('referralCode', '==', cleanCode));
+    const partnerSnap = await getDocs(partnerQuery);
+    if (!partnerSnap.empty) {
+      const partnerDoc = partnerSnap.docs[0];
+      const partner = partnerDoc.data();
+      if (partner.status !== 'active') return null;
+      return {
+        partnerId: partner.id || partnerDoc.id,
+        partnerName: partner.name || 'Growth Partner',
+        referralCode: cleanCode,
+        commissionRatePercent: typeof partner.commissionRatePercent === 'number' ? partner.commissionRatePercent : 10
+      };
+    }
+  } catch {}
+
+  for (const p of Object.values(referralMemoryStore.partners)) {
+    if (String(p.referralCode || '').toUpperCase() === cleanCode && p.status === 'active') {
+      return {
+        partnerId: p.id,
+        partnerName: p.name || 'Growth Partner',
+        referralCode: cleanCode,
+        commissionRatePercent: typeof p.commissionRatePercent === 'number' ? p.commissionRatePercent : 10
+      };
+    }
+  }
+
+  for (const b of Object.values(referralMemoryStore.bindings)) {
+    if (b.referralCodeUsed === cleanCode) {
+      return {
+        partnerId: b.partnerId,
+        partnerName: b.partnerName,
+        referralCode: cleanCode,
+        commissionRatePercent: 10
+      };
+    }
+  }
+
+  return null;
+}
+
+async function bindStudentToPartner(params: {
+  referralCode: string;
+  studentId: string;
+  studentName?: string;
+}): Promise<{
+  success: boolean;
+  alreadyLinked?: boolean;
+  partnerId?: string;
+  partnerName?: string;
+  referralCode?: string;
+  error?: string;
+}> {
+  const resolved = await resolveActivePartnerByCode(params.referralCode);
+  if (!resolved) {
+    return {
+      success: false,
+      error: `Referral code "${String(params.referralCode).trim().toUpperCase()}" was not found or is inactive.`
+    };
+  }
+
+  const { partnerId, partnerName, referralCode } = resolved;
+  const studentId = params.studentId;
+  const studentName = params.studentName || 'Student Scholar';
+
+  const existingLocal = referralMemoryStore.bindings[studentId];
+  if (existingLocal && existingLocal.partnerId === partnerId) {
+    return {
+      success: true,
+      alreadyLinked: true,
+      partnerId,
+      partnerName,
+      referralCode
+    };
+  }
+
+  referralMemoryStore.bindings[studentId] = {
+    studentId,
+    partnerId,
+    partnerName,
+    referralCodeUsed: referralCode,
+    attributedAt: new Date().toISOString()
+  };
+  if (referralMemoryStore.partners[partnerId]) {
+    const countForPartner = Object.values(referralMemoryStore.bindings).filter(
+      b => b.partnerId === partnerId
+    ).length;
+    referralMemoryStore.partners[partnerId].activeReferralsCount = countForPartner;
+  }
+  saveReferralStore();
+
+  try {
+    const referralId = `${partnerId}_${studentId}`.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 120);
+    const referralRef = doc(serverDb, 'referrals', referralId);
+    const existingRef = await getDoc(referralRef);
+    if (!existingRef.exists()) {
+      await setDoc(referralRef, {
+        id: referralId,
+        partnerId,
+        referredUserId: studentId,
+        referredUserName: studentName,
+        referralCodeUsed: referralCode,
+        status: 'active',
+        totalVolumePaidNaira: 0,
+        totalCommissionEarnedNaira: 0,
+        createdAt: new Date().toISOString()
+      });
+
+      const partnerDocSnap = await getDoc(doc(serverDb, 'growthPartners', partnerId));
+      const prevCount = partnerDocSnap.exists() ? partnerDocSnap.data().activeReferralsCount || 0 : 0;
+      await updateDoc(doc(serverDb, 'growthPartners', partnerId), {
+        activeReferralsCount: prevCount + 1,
+        updatedAt: new Date().toISOString()
       });
     }
+  } catch {}
 
-    const paymentId = clientPaymentId || `PAY_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-    const sanitizedStudentName = studentName || 'Student Scholar';
-    const gateway = paymentGateway || 'Paystack';
+  return {
+    success: true,
+    alreadyLinked: false,
+    partnerId,
+    partnerName,
+    referralCode
+  };
+}
 
-    // Step A: Check if student has an active Growth Partner referral
+async function processSubscriptionCommissionAndEligibility(params: {
+  studentId: string;
+  studentName?: string;
+  plan: string;
+  amountNaira: number;
+  paymentGateway?: string;
+  clientPaymentId?: string;
+  referralCode?: string;
+  isAspirant?: boolean;
+}) {
+  const {
+    studentId,
+    studentName,
+    plan,
+    amountNaira,
+    paymentGateway,
+    clientPaymentId,
+    referralCode,
+    isAspirant
+  } = params;
+
+  const paymentId = clientPaymentId || `PAY_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+  const sanitizedStudentName = studentName || 'Student Scholar';
+  const gateway = paymentGateway || 'Paystack';
+
+  // Auto-bind referral code if supplied at checkout and student isn't already bound
+  if (referralCode && String(referralCode).trim()) {
+    await bindStudentToPartner({
+      referralCode: String(referralCode).trim().toUpperCase(),
+      studentId,
+      studentName: sanitizedStudentName
+    });
+  }
+
+  let partnerId: string | null = null;
+  let referralDocId: string | null = null;
+  let partnerCommissionRate = 10;
+  let referralCodeUsed: string | null = referralMemoryStore.bindings[studentId]?.referralCodeUsed || null;
+
+  try {
     const referralsRef = collection(serverDb, 'referrals');
     const referralQuery = query(
       referralsRef,
@@ -1028,19 +1260,15 @@ app.post('/api/partners/process-subscription-payment', async (req, res) => {
     );
     const referralSnapshot = await getDocs(referralQuery);
 
-    let partnerId: string | null = null;
-    let referralDocId: string | null = null;
-    let partnerCommissionRate = 10; // Default 10% Lifetime Revenue Share
-
     if (!referralSnapshot.empty) {
       const activeReferral = referralSnapshot.docs[0];
       referralDocId = activeReferral.id;
-      const refPartnerId = activeReferral.data().partnerId;
+      const refData = activeReferral.data();
+      const refPartnerId = refData.partnerId;
+      referralCodeUsed = refData.referralCodeUsed || referralCodeUsed;
 
       if (typeof refPartnerId === 'string' && refPartnerId.trim().length > 0) {
         partnerId = refPartnerId;
-
-        // Fetch partner document to verify status and custom commission rate if any
         const partnerDocRef = doc(serverDb, 'growthPartners', refPartnerId);
         const partnerSnap = await getDoc(partnerDocRef);
         if (partnerSnap.exists()) {
@@ -1048,22 +1276,48 @@ app.post('/api/partners/process-subscription-payment', async (req, res) => {
           if (pData.status === 'active') {
             partnerCommissionRate = typeof pData.commissionRatePercent === 'number' ? pData.commissionRatePercent : 10;
           } else {
-            // Partner suspended or inactive; do not credit
             partnerId = null;
           }
         }
       }
     }
+  } catch {}
 
-    // Step B: Calculate 10% Revenue Share Commission
-    const commissionAmount = partnerId
-      ? Math.round((amountNaira * partnerCommissionRate) / 100)
-      : 0;
+  if (!partnerId && referralMemoryStore.bindings[studentId]) {
+    partnerId = referralMemoryStore.bindings[studentId].partnerId;
+    referralCodeUsed = referralMemoryStore.bindings[studentId].referralCodeUsed;
+  }
 
-    const resolvedPartnerId = partnerId;
-    const resolvedReferralDocId = referralDocId;
+  // 10% commission calculated strictly on the net discounted amount actually paid
+  const commissionAmount = partnerId ? Math.round((amountNaira * partnerCommissionRate) / 100) : 0;
 
-    // Step C: Execute Atomic Firestore Transaction
+  if (partnerId && commissionAmount > 0) {
+    if (referralMemoryStore.partners[partnerId]) {
+      referralMemoryStore.partners[partnerId].totalEarningsNaira =
+        (referralMemoryStore.partners[partnerId].totalEarningsNaira || 0) + commissionAmount;
+      referralMemoryStore.partners[partnerId].balanceNaira =
+        (referralMemoryStore.partners[partnerId].balanceNaira || 0) + commissionAmount;
+    }
+    referralMemoryStore.transactions.unshift({
+      id: `REV_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      partnerId,
+      studentId,
+      studentName: sanitizedStudentName,
+      paymentId,
+      subscriptionPlan: plan,
+      paymentAmountNaira: amountNaira,
+      commissionRatePercent: partnerCommissionRate,
+      commissionAmountNaira: commissionAmount,
+      status: 'credited',
+      createdAt: new Date().toISOString()
+    });
+    saveReferralStore();
+  }
+
+  const resolvedPartnerId = partnerId;
+  const resolvedReferralDocId = referralDocId;
+
+  try {
     await runTransaction(serverDb, async (transaction) => {
       let walletSnap: any = null;
       let partnerSnap: any = null;
@@ -1073,19 +1327,18 @@ app.post('/api/partners/process-subscription-payment', async (req, res) => {
       let partnerRef: any = null;
       let refDocRef: any = null;
 
-      if (resolvedPartnerId && resolvedReferralDocId && commissionAmount > 0) {
-        // --- ALL READS FIRST ---
+      if (resolvedPartnerId && commissionAmount > 0) {
         walletRef = doc(serverDb, 'partnerWallets', resolvedPartnerId);
         partnerRef = doc(serverDb, 'growthPartners', resolvedPartnerId);
-        refDocRef = doc(serverDb, 'referrals', resolvedReferralDocId);
-
         walletSnap = await transaction.get(walletRef);
         partnerSnap = await transaction.get(partnerRef);
-        refSnap = await transaction.get(refDocRef);
+        if (resolvedReferralDocId) {
+          refDocRef = doc(serverDb, 'referrals', resolvedReferralDocId);
+          refSnap = await transaction.get(refDocRef);
+        }
       }
 
-      // --- ALL WRITES AFTER ALL READS ---
-      if (resolvedPartnerId && resolvedReferralDocId && commissionAmount > 0 && walletRef && partnerRef && refDocRef) {
+      if (resolvedPartnerId && commissionAmount > 0 && walletRef && partnerRef) {
         let currentBalance = 0;
         let currentLifetime = 0;
         let currentWithdrawn = 0;
@@ -1097,53 +1350,42 @@ app.post('/api/partners/process-subscription-payment', async (req, res) => {
           currentWithdrawn = typeof wData.totalWithdrawnNaira === 'number' ? wData.totalWithdrawnNaira : 0;
         }
 
-        const newBalance = currentBalance + commissionAmount;
-        const newLifetime = currentLifetime + commissionAmount;
-
         transaction.set(
           walletRef,
           {
             partnerId: resolvedPartnerId,
-            balanceNaira: newBalance,
-            lifetimeEarnedNaira: newLifetime,
+            balanceNaira: currentBalance + commissionAmount,
+            lifetimeEarnedNaira: currentLifetime + commissionAmount,
             totalWithdrawnNaira: currentWithdrawn,
-            updatedAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
           },
           { merge: true }
         );
 
-        let currentTotalEarnings = 0;
-        if (partnerSnap && partnerSnap.exists()) {
-          currentTotalEarnings = partnerSnap.data().totalEarningsNaira || 0;
-        }
-
+        const currentTotalEarnings = partnerSnap && partnerSnap.exists() ? partnerSnap.data().totalEarningsNaira || 0 : 0;
         transaction.set(
           partnerRef,
           {
             totalEarningsNaira: currentTotalEarnings + commissionAmount,
-            updatedAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
           },
           { merge: true }
         );
 
-        let prevVolume = 0;
-        let prevCommission = 0;
-        if (refSnap && refSnap.exists()) {
-          prevVolume = refSnap.data().totalVolumePaidNaira || 0;
-          prevCommission = refSnap.data().totalCommissionEarnedNaira || 0;
+        if (refDocRef) {
+          const prevVolume = refSnap && refSnap.exists() ? refSnap.data().totalVolumePaidNaira || 0 : 0;
+          const prevCommission = refSnap && refSnap.exists() ? refSnap.data().totalCommissionEarnedNaira || 0 : 0;
+          transaction.set(
+            refDocRef,
+            {
+              totalVolumePaidNaira: prevVolume + amountNaira,
+              totalCommissionEarnedNaira: prevCommission + commissionAmount,
+              lastPaymentDate: new Date().toISOString()
+            },
+            { merge: true }
+          );
         }
 
-        transaction.set(
-          refDocRef,
-          {
-            totalVolumePaidNaira: prevVolume + amountNaira,
-            totalCommissionEarnedNaira: prevCommission + commissionAmount,
-            lastPaymentDate: new Date().toISOString(),
-          },
-          { merge: true }
-        );
-
-        // Create Immutable Revenue Share Receipt
         const revTxId = `REV_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
         const revTxRef = doc(serverDb, 'revenueShareTransactions', revTxId);
         transaction.set(revTxRef, {
@@ -1157,11 +1399,10 @@ app.post('/api/partners/process-subscription-payment', async (req, res) => {
           commissionRatePercent: partnerCommissionRate,
           commissionAmountNaira: commissionAmount,
           status: 'credited',
-          createdAt: new Date().toISOString(),
+          createdAt: new Date().toISOString()
         });
       }
 
-      // Record Subscription Payment Receipt
       const paymentRef = doc(serverDb, 'subscriptionPayments', paymentId);
       transaction.set(paymentRef, {
         id: paymentId,
@@ -1169,29 +1410,129 @@ app.post('/api/partners/process-subscription-payment', async (req, res) => {
         studentName: sanitizedStudentName,
         plan,
         amountNaira,
-        paymentGateway: gateway,
+        paymentGateway: gateway === 'Direct Escrow' || gateway === 'wallet' ? 'Direct Escrow' : 'Paystack',
         status: 'successful',
         partnerId: resolvedPartnerId || null,
-        partnerCommissionCredited: resolvedPartnerId ? true : false,
+        partnerCommissionCredited: Boolean(resolvedPartnerId && commissionAmount > 0),
         commissionAmountNaira: commissionAmount,
-        createdAt: new Date().toISOString(),
+        createdAt: new Date().toISOString()
       });
     });
+  } catch (txErr) {
+    console.warn('[Revenue Share Notice] Firestore transaction skipped or partial:', (txErr as any)?.message);
+  }
 
-    console.log(
-      `[Revenue Share Trigger] Payment ${paymentId}: ₦${amountNaira} for ${plan}. Partner: ${partnerId || 'None'}. Commission: ₦${commissionAmount}`
-    );
+  // Track University Aspirant first-registration referral reward eligibility
+  let aspirantRewardEligible = false;
+  const planLower = plan.toLowerCase();
+  const isAspirantPlan = Boolean(isAspirant || planLower.includes('aspirant'));
+  if (isAspirantPlan && amountNaira > 0 && resolvedPartnerId) {
+    const existingRewards = referralMemoryStore.rewards.some(r => r.studentId === studentId);
+    const prevPayments = referralMemoryStore.aspirantPaidHistory[studentId] || [];
+    const tierPaid: 'basic' | 'elite' = planLower.includes('elite') || amountNaira >= 10000 ? 'elite' : 'basic';
+
+    prevPayments.push({
+      paymentId,
+      tierPaid,
+      amountPaidNaira: amountNaira,
+      paidAt: new Date().toISOString()
+    });
+    referralMemoryStore.aspirantPaidHistory[studentId] = prevPayments;
+    saveReferralStore();
+
+    if (!existingRewards && prevPayments.length === 1) {
+      aspirantRewardEligible = true;
+    }
+  }
+
+  console.log(
+    `[Revenue Share Trigger] Payment ${paymentId}: ₦${amountNaira} for ${plan}. Partner: ${partnerId || 'None'}. Commission: ₦${commissionAmount}`
+  );
+
+  return {
+    paymentId,
+    hasPartner: Boolean(partnerId),
+    partnerId,
+    referralCodeUsed,
+    paymentAmountNaira: amountNaira,
+    commissionRatePercent: partnerCommissionRate,
+    commissionAmountNaira: commissionAmount,
+    aspirantRewardEligible
+  };
+}
+
+// 0. Validate a Referral Code prior to Signup or Subscription Checkout
+app.get('/api/partners/validate-referral', async (req, res) => {
+  try {
+    const rawCode = String(req.query.code || '').trim().toUpperCase();
+    if (!rawCode) {
+      return res.status(400).json({ valid: false, error: 'Referral code is required.' });
+    }
+
+    const partner = await resolveActivePartnerByCode(rawCode);
+    if (!partner) {
+      return res.status(404).json({
+        valid: false,
+        error: `Referral code "${rawCode}" was not found or is currently inactive.`
+      });
+    }
+
+    const promoActive = isReferralPromoActive();
+    return res.json({
+      valid: true,
+      referralCode: partner.referralCode,
+      partnerId: partner.partnerId,
+      partnerName: partner.partnerName,
+      promoActive,
+      studentDiscountPercent: promoActive ? 20 : 0,
+      commissionRatePercent: partner.commissionRatePercent
+    });
+  } catch (err: any) {
+    return res.status(500).json({ valid: false, error: err?.message || 'Failed to validate referral code' });
+  }
+});
+
+// 1. Backend Payment Trigger Function: Check referral, calculate 10% on net paid amount, atomic wallet credit
+app.post('/api/partners/process-subscription-payment', async (req, res) => {
+  try {
+    const {
+      studentId,
+      studentName,
+      plan,
+      planName,
+      amountNaira,
+      paymentGateway,
+      clientPaymentId,
+      paystackRef,
+      referralCode,
+      isAspirant
+    } = req.body;
+    const resolvedPlan = String(plan || planName || '').trim();
+    const resolvedPaymentId = clientPaymentId || paystackRef;
+
+    if (!studentId || !resolvedPlan || typeof amountNaira !== 'number' || amountNaira <= 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields: studentId, plan, and valid positive amountNaira are mandatory',
+      });
+    }
+
+    const result = await processSubscriptionCommissionAndEligibility({
+      studentId,
+      studentName,
+      plan: resolvedPlan,
+      amountNaira,
+      paymentGateway,
+      clientPaymentId: resolvedPaymentId,
+      referralCode,
+      isAspirant
+    });
 
     return res.json({
       success: true,
-      paymentId,
-      hasPartner: Boolean(partnerId),
-      partnerId,
-      paymentAmountNaira: amountNaira,
-      commissionRatePercent: partnerCommissionRate,
-      commissionAmountNaira: commissionAmount,
-      message: partnerId
-        ? `Payment verified. ${partnerCommissionRate}% revenue share (₦${commissionAmount.toLocaleString()}) credited to Growth Partner digital wallet.`
+      ...result,
+      message: result.hasPartner
+        ? `Payment verified. ${result.commissionRatePercent}% net revenue share (₦${result.commissionAmountNaira.toLocaleString()}) credited to Growth Partner digital wallet.`
         : 'Payment verified and recorded. No associated Growth Partner found for student.',
     });
   } catch (error: any) {
@@ -1215,72 +1556,23 @@ app.post('/api/partners/register-referral', async (req, res) => {
       });
     }
 
-    const cleanCode = String(referralCode).trim().toUpperCase();
-
-    // Query partner with this code
-    const partnersRef = collection(serverDb, 'growthPartners');
-    const partnerQuery = query(partnersRef, where('referralCode', '==', cleanCode));
-    const partnerSnap = await getDocs(partnerQuery);
-
-    if (partnerSnap.empty) {
+    const bindRes = await bindStudentToPartner({ referralCode, studentId, studentName });
+    if (!bindRes.success) {
       return res.status(404).json({
         success: false,
-        error: `Referral code "${cleanCode}" was not found or is inactive.`,
+        error: bindRes.error || 'Referral code not found or inactive.'
       });
     }
-
-    const partnerDoc = partnerSnap.docs[0];
-    const partner = partnerDoc.data();
-
-    if (partner.status !== 'active') {
-      return res.status(400).json({
-        success: false,
-        error: `Growth Partner account associated with code "${cleanCode}" is not active.`,
-      });
-    }
-
-    const partnerId = partner.id || partnerDoc.id;
-
-    // Check if referral already exists
-    const referralId = `${partnerId}_${studentId}`;
-    const referralRef = doc(serverDb, 'referrals', referralId);
-    const existingRef = await getDoc(referralRef);
-
-    if (existingRef.exists()) {
-      return res.json({
-        success: true,
-        alreadyLinked: true,
-        partnerId,
-        partnerName: partner.name,
-        message: 'Student is already linked to this Growth Partner.',
-      });
-    }
-
-    // Create new referral record
-    await setDoc(referralRef, {
-      id: referralId,
-      partnerId,
-      referredUserId: studentId,
-      referredUserName: studentName || 'Student Scholar',
-      referralCodeUsed: cleanCode,
-      status: 'active',
-      totalVolumePaidNaira: 0,
-      totalCommissionEarnedNaira: 0,
-      createdAt: new Date().toISOString(),
-    });
-
-    // Increment partner activeReferralsCount
-    await updateDoc(doc(serverDb, 'growthPartners', partnerId), {
-      activeReferralsCount: (partner.activeReferralsCount || 0) + 1,
-      updatedAt: new Date().toISOString(),
-    });
 
     return res.json({
       success: true,
-      partnerId,
-      partnerName: partner.name,
-      referralCode: cleanCode,
-      message: `Successfully attributed to Growth Partner: ${partner.name}`,
+      alreadyLinked: bindRes.alreadyLinked,
+      partnerId: bindRes.partnerId,
+      partnerName: bindRes.partnerName,
+      referralCode: bindRes.referralCode,
+      message: bindRes.alreadyLinked
+        ? 'Student is already linked to this Growth Partner.'
+        : `Successfully attributed to Growth Partner: ${bindRes.partnerName}`,
     });
   } catch (error: any) {
     console.error('Error in /api/partners/register-referral:', error);
@@ -1291,33 +1583,323 @@ app.post('/api/partners/register-referral', async (req, res) => {
   }
 });
 
-// 3. Get or Onboard Growth Partner Profile
-app.post('/api/partners/onboard', async (req, res) => {
-  try {
-    const { partnerId, name, email, phone, bankName, accountNumber, accountName } = req.body;
+// ==========================================
+// UNIVERSITY ASPIRANT REFERRAL REWARDS (2GB DATA OR ₦500 CASHBACK)
+// ==========================================
 
-    if (!partnerId || !name || !email) {
+app.get('/api/referrals/aspirant-reward-status', async (req, res) => {
+  try {
+    const studentId = String(req.query.studentId || '').trim();
+    if (!studentId) {
+      return res.status(400).json({ success: false, error: 'studentId is required' });
+    }
+
+    let existingReward: LocalAspirantRewardRecord | undefined = referralMemoryStore.rewards.find(
+      r => r.studentId === studentId
+    );
+
+    if (!existingReward) {
+      try {
+        const rewardQ = query(
+          collection(serverDb, 'aspirantReferralRewards'),
+          where('studentId', '==', studentId),
+          limit(1)
+        );
+        const snap = await getDocs(rewardQ);
+        if (!snap.empty) {
+          existingReward = snap.docs[0].data() as LocalAspirantRewardRecord;
+        }
+      } catch {}
+    }
+
+    const binding = referralMemoryStore.bindings[studentId];
+    const paidHistory = referralMemoryStore.aspirantPaidHistory[studentId] || [];
+    const eligible = Boolean(!existingReward && binding && paidHistory.length >= 1);
+
+    return res.json({
+      success: true,
+      eligible,
+      claimed: Boolean(existingReward),
+      rewardRecord: existingReward || null,
+      referralCodeUsed: binding?.referralCodeUsed || existingReward?.referralCodeUsed || null,
+      partnerName: binding?.partnerName || null
+    });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error?.message || 'Failed to fetch reward status' });
+  }
+});
+
+app.post('/api/referrals/claim-aspirant-reward', async (req, res) => {
+  try {
+    const {
+      studentId,
+      studentName,
+      studentEmail,
+      rewardType,
+      network,
+      phoneNumber,
+      referralCode,
+      paymentId,
+      tierPaid,
+      amountPaidNaira
+    } = req.body || {};
+
+    if (!studentId || (rewardType !== 'cash_500' && rewardType !== 'data_2gb')) {
       return res.status(400).json({
         success: false,
-        error: 'partnerId, name, and email are required',
+        error: 'studentId and valid rewardType (cash_500 or data_2gb) are required.'
       });
     }
 
-    const partnerRef = doc(serverDb, 'growthPartners', partnerId);
-    const partnerSnap = await getDoc(partnerRef);
+    // Check duplicate claim
+    if (referralMemoryStore.rewards.some(r => r.studentId === studentId)) {
+      return res.status(409).json({
+        success: false,
+        error: 'First-registration referral reward has already been claimed for this account.'
+      });
+    }
 
-    if (partnerSnap.exists()) {
+    try {
+      const existingSnap = await getDocs(
+        query(collection(serverDb, 'aspirantReferralRewards'), where('studentId', '==', studentId), limit(1))
+      );
+      if (!existingSnap.empty) {
+        return res.status(409).json({
+          success: false,
+          error: 'First-registration referral reward has already been claimed for this account.'
+        });
+      }
+    } catch {}
+
+    // Ensure partner attribution exists (either prior binding or code passed cleanly)
+    if (referralCode && !referralMemoryStore.bindings[studentId]) {
+      await bindStudentToPartner({
+        referralCode: String(referralCode),
+        studentId: String(studentId),
+        studentName
+      });
+    }
+
+    const binding = referralMemoryStore.bindings[studentId];
+    if (!binding) {
+      return res.status(400).json({
+        success: false,
+        error: 'A valid referral code attribution is required to claim the first-registration reward.'
+      });
+    }
+
+    const paidHistory = referralMemoryStore.aspirantPaidHistory[studentId] || [];
+    const latestPayment = paidHistory[0] || (amountPaidNaira && Number(amountPaidNaira) >= 5000
+      ? {
+          paymentId: paymentId || `ASP_${Date.now()}`,
+          tierPaid: (tierPaid === 'elite' || Number(amountPaidNaira) >= 10000 ? 'elite' : 'basic') as 'basic' | 'elite',
+          amountPaidNaira: Number(amountPaidNaira),
+          paidAt: new Date().toISOString()
+        }
+      : null);
+
+    if (!latestPayment) {
+      return res.status(400).json({
+        success: false,
+        error: 'Complete your first paid Aspirant subscription (Basic or Elite) to unlock this reward.'
+      });
+    }
+
+    let formattedPhone: string | undefined;
+    let selectedNetwork: 'MTN' | 'Airtel' | 'Glo' | '9mobile' | undefined;
+
+    if (rewardType === 'data_2gb') {
+      const allowedNetworks = ['MTN', 'Airtel', 'Glo', '9mobile'];
+      if (!allowedNetworks.includes(String(network))) {
+        return res.status(400).json({
+          success: false,
+          error: 'Please select a valid mobile network (MTN, Airtel, Glo, or 9mobile).'
+        });
+      }
+      const normPhone = normalizeNigerianPhone(String(phoneNumber || ''));
+      if (!normPhone) {
+        return res.status(400).json({
+          success: false,
+          error: 'Enter a valid 11-digit Nigerian mobile number (e.g. 08031234567).'
+        });
+      }
+      formattedPhone = normPhone;
+      selectedNetwork = network;
+    }
+
+    const rewardId = `ASPRWD_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    const rewardRecord: LocalAspirantRewardRecord = {
+      id: rewardId,
+      studentId: String(studentId),
+      studentName: String(studentName || 'University Aspirant').slice(0, 95),
+      ...(studentEmail ? { studentEmail: String(studentEmail).slice(0, 140) } : {}),
+      referralCodeUsed: binding.referralCodeUsed,
+      partnerId: binding.partnerId,
+      paymentId: latestPayment.paymentId,
+      tierPaid: latestPayment.tierPaid,
+      amountPaidNaira: latestPayment.amountPaidNaira,
+      rewardType,
+      ...(rewardType === 'data_2gb'
+        ? {
+            network: selectedNetwork,
+            phoneNumber: formattedPhone,
+            status: 'pending_fulfillment' as const
+          }
+        : {
+            amountNaira: ASPIRANT_FIRST_REG_CASH_NAIRA,
+            status: 'credited' as const
+          }),
+      createdAt: new Date().toISOString()
+    };
+
+    referralMemoryStore.rewards.unshift(rewardRecord);
+    saveReferralStore();
+
+    try {
+      await setDoc(doc(serverDb, 'aspirantReferralRewards', rewardId), rewardRecord);
+      await setDoc(
+        doc(serverDb, 'students', String(studentId)),
+        {
+          aspirantRewardStatus: rewardType === 'cash_500' ? 'claimed_cash_500' : 'claimed_data_2gb',
+          aspirantFirstPaidAt: latestPayment.paidAt
+        },
+        { merge: true }
+      );
+    } catch {}
+
+    return res.json({
+      success: true,
+      reward: rewardRecord,
+      rewardRecord,
+      message:
+        rewardType === 'cash_500'
+          ? '₦500 referral cashback credited instantly to your digital wallet!'
+          : `2GB ${selectedNetwork} mobile data claim queued for ${formattedPhone}.`
+    });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error?.message || 'Failed to claim referral reward' });
+  }
+});
+
+app.get('/api/admin/aspirant-rewards', async (req, res) => {
+  const adminEmail = String(req.query.adminEmail || '').toLowerCase().trim();
+  if (!AUTHORIZED_SUPER_ADMINS.includes(adminEmail)) {
+    await securityService.logUnauthorizedProbe(req, '/api/admin/aspirant-rewards', adminEmail);
+    return res.status(403).json({ success: false, error: 'Unauthorized: Super Admin required.' });
+  }
+
+  const map = new Map<string, LocalAspirantRewardRecord>();
+  for (const r of referralMemoryStore.rewards) map.set(r.id, r);
+  try {
+    const snap = await getDocs(query(collection(serverDb, 'aspirantReferralRewards'), limit(100)));
+    snap.forEach(d => {
+      const data = d.data() as LocalAspirantRewardRecord;
+      if (data?.id && !map.has(data.id)) map.set(data.id, data);
+    });
+  } catch {}
+
+  const list = Array.from(map.values()).sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  );
+
+  return res.json({ success: true, rewards: list });
+});
+
+app.post('/api/admin/aspirant-rewards/fulfill', async (req, res) => {
+  const { adminEmail, rewardId } = req.body || {};
+  const cleanAdmin = String(adminEmail || '').toLowerCase().trim();
+  if (!AUTHORIZED_SUPER_ADMINS.includes(cleanAdmin)) {
+    await securityService.logUnauthorizedProbe(req, '/api/admin/aspirant-rewards/fulfill', cleanAdmin);
+    return res.status(403).json({ success: false, error: 'Unauthorized: Super Admin required.' });
+  }
+
+  if (!rewardId) {
+    return res.status(400).json({ success: false, error: 'rewardId is required' });
+  }
+
+  const target = referralMemoryStore.rewards.find(r => r.id === rewardId);
+  const nowIso = new Date().toISOString();
+  if (target) {
+    target.status = 'fulfilled';
+    target.fulfilledAt = nowIso;
+    target.fulfilledBy = cleanAdmin;
+    saveReferralStore();
+  }
+
+  try {
+    await setDoc(
+      doc(serverDb, 'aspirantReferralRewards', String(rewardId)),
+      { status: 'fulfilled', fulfilledAt: nowIso, fulfilledBy: cleanAdmin },
+      { merge: true }
+    );
+  } catch {}
+
+  return res.json({
+    success: true,
+    rewardId,
+    status: 'fulfilled',
+    fulfilledAt: nowIso,
+    reward: target || { id: rewardId, status: 'fulfilled', fulfilledAt: nowIso, fulfilledBy: cleanAdmin }
+  });
+});
+
+// 3. Get or Onboard Growth Partner Profile
+app.post('/api/partners/onboard', async (req, res) => {
+  try {
+    const {
+      partnerId: providedPartnerId,
+      name,
+      email,
+      phone,
+      bankName,
+      accountNumber,
+      accountName,
+      referralCode: requestedReferralCode
+    } = req.body;
+
+    if (!name || !email) {
+      return res.status(400).json({
+        success: false,
+        error: 'name and email are required',
+      });
+    }
+
+    const partnerId =
+      providedPartnerId ||
+      `gp_${String(email).toLowerCase().replace(/[^a-z0-9]/g, '_').slice(0, 32)}`;
+
+    try {
+      const partnerRef = doc(serverDb, 'growthPartners', partnerId);
+      const partnerSnap = await getDoc(partnerRef);
+      if (partnerSnap.exists()) {
+        const existing = partnerSnap.data();
+        referralMemoryStore.partners[partnerId] = {
+          ...(referralMemoryStore.partners[partnerId] || {}),
+          ...existing
+        };
+        saveReferralStore();
+        return res.json({
+          success: true,
+          partner: existing,
+          message: 'Existing Growth Partner profile retrieved',
+        });
+      }
+    } catch {}
+
+    if (referralMemoryStore.partners[partnerId]) {
       return res.json({
         success: true,
-        partner: partnerSnap.data(),
+        partner: referralMemoryStore.partners[partnerId],
         message: 'Existing Growth Partner profile retrieved',
       });
     }
 
-    // Generate unique referral code
-    const initials = name.replace(/[^a-zA-Z]/g, '').substring(0, 4).toUpperCase() || 'GP';
+    const initials = String(name).replace(/[^a-zA-Z]/g, '').substring(0, 4).toUpperCase() || 'GP';
     const randNum = Math.floor(1000 + Math.random() * 9000);
-    const referralCode = `GP-${initials}${randNum}`;
+    const referralCode =
+      requestedReferralCode && String(requestedReferralCode).trim()
+        ? String(requestedReferralCode).trim().toUpperCase()
+        : `GP-${initials}${randNum}`;
 
     const newPartner = {
       id: partnerId,
@@ -1327,6 +1909,7 @@ app.post('/api/partners/onboard', async (req, res) => {
       referralCode,
       commissionRatePercent: 10,
       totalEarningsNaira: 0,
+      balanceNaira: 0,
       totalPaidOutNaira: 0,
       activeReferralsCount: 0,
       bankName: bankName || 'Access Bank',
@@ -1336,17 +1919,19 @@ app.post('/api/partners/onboard', async (req, res) => {
       createdAt: new Date().toISOString(),
     };
 
-    await setDoc(partnerRef, newPartner);
+    referralMemoryStore.partners[partnerId] = newPartner;
+    saveReferralStore();
 
-    // Initialize partner digital wallet
-    const walletRef = doc(serverDb, 'partnerWallets', partnerId);
-    await setDoc(walletRef, {
-      partnerId,
-      balanceNaira: 0,
-      lifetimeEarnedNaira: 0,
-      totalWithdrawnNaira: 0,
-      updatedAt: new Date().toISOString(),
-    });
+    try {
+      await setDoc(doc(serverDb, 'growthPartners', partnerId), newPartner);
+      await setDoc(doc(serverDb, 'partnerWallets', partnerId), {
+        partnerId,
+        balanceNaira: 0,
+        lifetimeEarnedNaira: 0,
+        totalWithdrawnNaira: 0,
+        updatedAt: new Date().toISOString(),
+      });
+    } catch {}
 
     return res.json({
       success: true,
@@ -1371,39 +1956,56 @@ app.get('/api/partners/:partnerId/summary', async (req, res) => {
       return res.status(400).json({ error: 'partnerId is required' });
     }
 
-    const partnerDoc = await getDoc(doc(serverDb, 'growthPartners', partnerId));
-    if (!partnerDoc.exists()) {
+    try {
+      const partnerDoc = await getDoc(doc(serverDb, 'growthPartners', partnerId));
+      if (partnerDoc.exists()) {
+        const walletDoc = await getDoc(doc(serverDb, 'partnerWallets', partnerId));
+        const walletData = walletDoc.exists()
+          ? walletDoc.data()
+          : { balanceNaira: 0, lifetimeEarnedNaira: 0, totalWithdrawnNaira: 0 };
+
+        const refQuery = query(collection(serverDb, 'referrals'), where('partnerId', '==', partnerId));
+        const refSnap = await getDocs(refQuery);
+        const referrals = refSnap.docs.map((d) => d.data());
+
+        const txQuery = query(
+          collection(serverDb, 'revenueShareTransactions'),
+          where('partnerId', '==', partnerId)
+        );
+        const txSnap = await getDocs(txQuery);
+        const transactions = txSnap.docs.map((d) => d.data());
+        transactions.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+        return res.json({
+          success: true,
+          partner: partnerDoc.data(),
+          wallet: walletData,
+          referralsCount: referrals.length,
+          referrals,
+          transactions: transactions.slice(0, 25),
+        });
+      }
+    } catch {}
+
+    const localPartner = referralMemoryStore.partners[partnerId];
+    if (!localPartner) {
       return res.status(404).json({ error: 'Growth Partner profile not found' });
     }
 
-    const walletDoc = await getDoc(doc(serverDb, 'partnerWallets', partnerId));
-    const walletData = walletDoc.exists()
-      ? walletDoc.data()
-      : { balanceNaira: 0, lifetimeEarnedNaira: 0, totalWithdrawnNaira: 0 };
-
-    // Get referrals
-    const refQuery = query(collection(serverDb, 'referrals'), where('partnerId', '==', partnerId));
-    const refSnap = await getDocs(refQuery);
-    const referrals = refSnap.docs.map((d) => d.data());
-
-    // Get recent revenue share transactions
-    const txQuery = query(
-      collection(serverDb, 'revenueShareTransactions'),
-      where('partnerId', '==', partnerId)
-    );
-    const txSnap = await getDocs(txQuery);
-    const transactions = txSnap.docs.map((d) => d.data());
-
-    // Sort transactions client-side by date desc
-    transactions.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    const localReferrals = Object.values(referralMemoryStore.bindings).filter(b => b.partnerId === partnerId);
+    const localTransactions = referralMemoryStore.transactions.filter(t => t.partnerId === partnerId);
 
     return res.json({
       success: true,
-      partner: partnerDoc.data(),
-      wallet: walletData,
-      referralsCount: referrals.length,
-      referrals,
-      transactions: transactions.slice(0, 25),
+      partner: localPartner,
+      wallet: {
+        balanceNaira: localPartner.balanceNaira || localPartner.totalEarningsNaira || 0,
+        lifetimeEarnedNaira: localPartner.totalEarningsNaira || 0,
+        totalWithdrawnNaira: localPartner.totalPaidOutNaira || 0
+      },
+      referralsCount: localReferrals.length,
+      referrals: localReferrals,
+      transactions: localTransactions.slice(0, 25),
     });
   } catch (error: any) {
     console.error('Error in /api/partners/:partnerId/summary:', error);
@@ -1788,11 +2390,32 @@ app.post('/api/paystack/verify-payment', async (req, res) => {
     };
 
     if (purpose === 'student_tier_subscription') {
-      const { studentId, studentName, plan, parentId } = req.body;
+      const { studentId, studentName, plan, parentId, referralCode, classLevel } = req.body;
       const cleanStudentId = studentId || (email ? email.replace(/[^a-zA-Z0-9_-]/g, '_') : 'student_default');
       const cleanParentId = parentId || (email ? email.replace(/[^a-zA-Z0-9_-]/g, '_') : 'parent_default');
       const termExpiresAt = getAcademicTermEndDate();
-      const planName = (plan || 'basic').toLowerCase();
+      const planName = (plan || 'basic').toLowerCase() as 'free' | 'basic' | 'standard' | 'elite';
+
+      // Verify minimum payable amount against promo policy (allows 20% referral discount through Jan 3, 2027)
+      const hasSuppliedOrBoundRef = Boolean(referralCode || referralMemoryStore.bindings[cleanStudentId]);
+      const expectedQuote = getStudentTierPricing(planName, hasSuppliedOrBoundRef, classLevel);
+      if (Number(amountNaira) < expectedQuote.finalPriceNaira) {
+        return res.status(400).json({
+          success: false,
+          error: `Underpaid subscription amount: expected at least ₦${expectedQuote.finalPriceNaira.toLocaleString()} for ${planName.toUpperCase()} tier.`
+        });
+      }
+
+      const commissionResult = await processSubscriptionCommissionAndEligibility({
+        studentId: cleanStudentId,
+        studentName,
+        plan: planName,
+        amountNaira: Number(amountNaira),
+        paymentGateway: 'Paystack',
+        clientPaymentId: reference,
+        referralCode,
+        isAspirant: false
+      });
 
       try {
         const studentRef = doc(serverDb, 'students', cleanStudentId);
@@ -1817,10 +2440,8 @@ app.post('/api/paystack/verify-payment', async (req, res) => {
           }
         }, { merge: true });
 
-        // If Elite Tier (₦60,000), automatically credit ₦16,000 Pre-paid Tutor Credits to Parent Escrow Wallet
-        let creditedWalletAmount = 0;
+        // If Elite Tier, automatically credit ₦16,000 Pre-paid Tutor Credits to Parent Escrow Wallet
         if (planName === 'elite') {
-          creditedWalletAmount = 16000;
           const walletRef = doc(serverDb, 'parentWallets', cleanParentId);
           const tutorTxId = `TX_TUTOR_CREDIT_${Date.now()}`;
           await runTransaction(serverDb, async (tx) => {
@@ -1860,22 +2481,6 @@ app.post('/api/paystack/verify-payment', async (req, res) => {
             });
           });
         }
-
-        // Record subscription ledger
-        const subRecordRef = doc(serverDb, 'subscriptionPayments', reference);
-        await setDoc(subRecordRef, {
-          id: reference,
-          studentId: cleanStudentId,
-          studentName: studentName || 'Student',
-          plan: planName,
-          amountNaira,
-          paymentGateway: 'Paystack',
-          channel: paymentChannel,
-          status: 'successful',
-          termExpiresAt,
-          tutorCreditsAwardedNaira: creditedWalletAmount,
-          createdAt: new Date().toISOString()
-        });
       } catch (dbErr) {
         console.warn('Could not persist student tier subscription to Firestore:', dbErr);
       }
@@ -1888,7 +2493,68 @@ app.post('/api/paystack/verify-payment', async (req, res) => {
         termExpiresAt,
         channel: paymentChannel,
         tutorCreditsAwarded: planName === 'elite' ? 16000 : 0,
+        partnerCommissionCredited: commissionResult.hasPartner,
+        partnerCommissionNaira: commissionResult.commissionAmountNaira,
         message: `₦${amountNaira.toLocaleString()} ${planName.toUpperCase()} Termly Subscription successfully verified!`
+      });
+    }
+
+    if (purpose === 'aspirant_tier_subscription') {
+      const { studentId, studentName, plan, referralCode } = req.body;
+      const cleanStudentId = studentId || (email ? email.replace(/[^a-zA-Z0-9_-]/g, '_') : 'aspirant_default');
+      const rawTier = String(plan || 'basic').toLowerCase().includes('elite') ? 'elite' : 'basic';
+      const aspirantQuote = getAspirantTierPricing(rawTier, Boolean(referralCode || referralMemoryStore.bindings[cleanStudentId]));
+
+      if (Number(amountNaira) < aspirantQuote.finalPriceNaira) {
+        return res.status(400).json({
+          success: false,
+          error: `Underpaid Aspirant subscription: expected ₦${aspirantQuote.finalPriceNaira.toLocaleString()} for Aspirant ${rawTier.toUpperCase()}.`
+        });
+      }
+
+      const nextMonth = new Date();
+      nextMonth.setDate(nextMonth.getDate() + 30);
+      const subscribedUntil = nextMonth.toISOString();
+
+      const commissionResult = await processSubscriptionCommissionAndEligibility({
+        studentId: cleanStudentId,
+        studentName,
+        plan: `Aspirant ${rawTier}`,
+        amountNaira: Number(amountNaira),
+        paymentGateway: 'Paystack',
+        clientPaymentId: reference,
+        referralCode,
+        isAspirant: true
+      });
+
+      try {
+        await setDoc(
+          doc(serverDb, 'students', cleanStudentId),
+          {
+            isSubscribed: true,
+            subscriptionTier: rawTier,
+            subscribedUntil,
+            lastPaymentReference: reference,
+            ...(commissionResult.aspirantRewardEligible
+              ? { aspirantRewardStatus: 'eligible', aspirantFirstPaidAt: new Date().toISOString() }
+              : {})
+          },
+          { merge: true }
+        );
+      } catch {}
+
+      return res.json({
+        success: true,
+        reference,
+        amountNaira,
+        tier: rawTier,
+        subscribedUntil,
+        channel: paymentChannel,
+        partnerCommissionCredited: commissionResult.hasPartner,
+        partnerCommissionNaira: commissionResult.commissionAmountNaira,
+        aspirantRewardEligible: commissionResult.aspirantRewardEligible,
+        referralCodeUsed: commissionResult.referralCodeUsed,
+        message: `₦${amountNaira.toLocaleString()} Aspirant ${rawTier.toUpperCase()} Pass verified!`
       });
     }
 
