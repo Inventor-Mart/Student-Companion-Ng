@@ -11,7 +11,9 @@ import {
   ChevronRight,
   ChevronLeft,
   X,
-  AlertCircle
+  AlertCircle,
+  Lock,
+  GraduationCap
 } from 'lucide-react';
 
 interface DiagnosticQuizModalProps {
@@ -27,9 +29,12 @@ export const DiagnosticQuizModal: React.FC<DiagnosticQuizModalProps> = ({
 }) => {
   const { student, generateExamPrepCalendar } = useApp();
 
+  const enrolledClass: NigerianClassLevel =
+    student.classLevel === 'University Aspirant' ? 'SS 3' : (student.classLevel || 'SS 3');
+
   const [step, setStep] = useState<1 | 2 | 3>(1);
-  const [classLevel, setClassLevel] = useState<NigerianClassLevel>(student.classLevel || 'SS 3');
-  const [stream, setStream] = useState<AcademicStream>(student.stream || (student.classLevel.startsWith('JSS') ? 'Junior' : 'Science'));
+  const [classLevel, setClassLevel] = useState<NigerianClassLevel>(enrolledClass);
+  const [stream, setStream] = useState<AcademicStream>(student.stream || (enrolledClass.startsWith('JSS') ? 'Junior' : 'Science'));
 
   const isJunior = classLevel.startsWith('JSS');
   const isJss3 = classLevel === 'JSS 3';
@@ -37,6 +42,18 @@ export const DiagnosticQuizModal: React.FC<DiagnosticQuizModalProps> = ({
 
   const defaultTargetExam = isSs3 ? 'WAEC' : (isJss3 ? 'BECE' : 'TERM_MOCK');
   const [targetExam, setTargetExam] = useState<'BECE' | 'WAEC' | 'JAMB_UTME' | 'TERM_MOCK'>(defaultTargetExam);
+
+  React.useEffect(() => {
+    setClassLevel(enrolledClass);
+    if (enrolledClass.startsWith('JSS')) {
+      setStream('Junior');
+    } else if (stream === 'Junior') {
+      setStream('Science');
+    }
+    if (enrolledClass === 'JSS 3') setTargetExam('BECE');
+    else if (enrolledClass === 'SS 3') setTargetExam('WAEC');
+    else setTargetExam('TERM_MOCK');
+  }, [enrolledClass]);
 
   const availableSubjects = stream === 'Junior'
     ? SECONDARY_SUBJECT_CATALOG['Junior']
@@ -120,29 +137,17 @@ export const DiagnosticQuizModal: React.FC<DiagnosticQuizModalProps> = ({
             <div className="space-y-4 animate-in fade-in duration-150">
               <div>
                 <label className="text-xs font-semibold text-slate-300 block mb-1.5">
-                  1. Current Class Level
+                  1. Enrolled Class Level
                 </label>
-                <div className="grid grid-cols-3 gap-2">
-                  {(['JSS 1', 'JSS 2', 'JSS 3', 'SS 1', 'SS 2', 'SS 3'] as NigerianClassLevel[]).map(lvl => (
-                    <button
-                      key={lvl}
-                      type="button"
-                      onClick={() => {
-                        setClassLevel(lvl);
-                        if (lvl.startsWith('JSS')) setStream('Junior');
-                        if (lvl === 'JSS 3') setTargetExam('BECE');
-                        else if (lvl === 'SS 3') setTargetExam('WAEC');
-                        else setTargetExam('TERM_MOCK');
-                      }}
-                      className={`py-2 px-3 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
-                        classLevel === lvl
-                          ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300 ring-1 ring-emerald-500/40'
-                          : 'bg-slate-800/60 border-slate-700/60 text-slate-300 hover:bg-slate-800'
-                      }`}
-                    >
-                      {lvl}
-                    </button>
-                  ))}
+                <div className="flex items-center justify-between p-3 rounded-xl bg-slate-800/70 border border-emerald-500/40 text-xs">
+                  <div className="flex items-center gap-2">
+                    <GraduationCap className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span className="font-bold text-white">{classLevel}</span>
+                  </div>
+                  <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-400 bg-emerald-950/80 border border-emerald-700/50 px-2 py-0.5 rounded-lg">
+                    <Lock className="w-3 h-3" />
+                    <span>Enrolled Class</span>
+                  </span>
                 </div>
               </div>
 

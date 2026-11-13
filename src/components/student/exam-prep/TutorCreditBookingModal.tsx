@@ -3,6 +3,7 @@ import { useApp } from '../../../context/AppContext';
 import { VETTED_NIGERIAN_TUTORS } from '../../../data/tutorsData';
 import { Tutor, BookingType } from '../../../types';
 import { NairaText } from '../../../utils/currency';
+import { PersonaAvatar } from '../../common/PersonaAvatar';
 import {
   X,
   Sparkles,
@@ -220,10 +221,12 @@ export const TutorCreditBookingModal: React.FC<TutorCreditBookingModalProps> = (
                       }`}
                     >
                       <div className="flex items-center gap-2.5">
-                        <img
+                        <PersonaAvatar
+                          name={t.name}
                           src={t.avatarUrl}
                           alt={t.name}
-                          className="w-9 h-9 rounded-xl object-cover bg-slate-700 shrink-0"
+                          className="w-9 h-9 rounded-xl"
+                          textClassName="text-xs"
                         />
                         <div>
                           <div className="text-xs font-bold text-slate-100 flex items-center gap-1.5">

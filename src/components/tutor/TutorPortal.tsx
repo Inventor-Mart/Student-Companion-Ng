@@ -31,6 +31,7 @@ import { TutorSecurityVerificationModal } from '../auth/VerificationModals';
 import { NairaText, NairaSign, formatNaira } from '../../utils/currency';
 import { TimetableSlot } from '../../types';
 import { playSound, toggleSoundMuted, getSoundMuted } from '../../utils/audioSynthesis';
+import { PersonaAvatar } from '../common/PersonaAvatar';
 
 type TutorTab = 'overview' | 'sessions' | 'profile' | 'chat';
 type TutorSheet = 'earnings' | 'profile-core' | 'profile-credentials' | 'profile-exams' | 'timetable' | null;
@@ -278,25 +279,14 @@ export const TutorPortal: React.FC = () => {
 
           <div className="flex items-start justify-between gap-3 relative z-10">
             <div className="flex items-center gap-3 min-w-0">
-              {currentUserProfile?.avatarUrl ? (
-                <img
-                  src={currentUserProfile.avatarUrl}
-                  alt={tutorName}
-                  referrerPolicy="no-referrer"
-                  className="w-12 h-12 rounded-2xl object-cover bg-[#0D1527] ring-2 ring-[#84CC16] shrink-0"
-                />
-              ) : (
-                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#FF5B00] to-[#E04F00] flex items-center justify-center text-white font-black text-sm ring-2 ring-[#84CC16] shadow-lg shrink-0">
-                  {tutorName
-                    .trim()
-                    .split(/\s+/)
-                    .map(n => n[0])
-                    .filter(Boolean)
-                    .slice(0, 2)
-                    .join('')
-                    .toUpperCase() || 'ED'}
-                </div>
-              )}
+              <PersonaAvatar
+                name={tutorName}
+                src={currentUserProfile?.avatarUrl}
+                alt={tutorName}
+                fallbackInitials="ED"
+                className="w-12 h-12 rounded-2xl ring-2 ring-[#84CC16] shadow-lg"
+                textClassName="text-sm"
+              />
 
               <div className="min-w-0">
                 <div className="flex items-center gap-1.5 flex-wrap">

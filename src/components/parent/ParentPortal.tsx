@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
+import { PersonaAvatar } from '../common/PersonaAvatar';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   ShieldCheck,
@@ -1081,11 +1082,12 @@ export const ParentPortal: React.FC = () => {
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex items-center gap-3">
-                          <img
+                          <PersonaAvatar
+                            name={req.tutorName}
                             src={req.tutorPhoto}
                             alt={req.tutorName}
-                            referrerPolicy="no-referrer"
-                            className="w-11 h-11 rounded-2xl object-cover bg-slate-800 ring-2 ring-[#FF5B00]/70"
+                            className="w-11 h-11 rounded-2xl ring-2 ring-[#FF5B00]/70"
+                            textClassName="text-xs"
                           />
                           <div>
                             <div className="flex items-center gap-1.5 flex-wrap">

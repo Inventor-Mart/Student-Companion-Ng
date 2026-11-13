@@ -176,14 +176,17 @@ const SUBJECT_CURRICULUM_METADATA: Record<string, { topic: string; subtopics: st
   }
 };
 
-export const SchemeOfWorkHub: React.FC = () => {
+interface SchemeOfWorkHubProps {
+  adminDirectoryMode?: boolean;
+}
+
+export const SchemeOfWorkHub: React.FC<SchemeOfWorkHubProps> = ({ adminDirectoryMode = false }) => {
   const {
     openNoteReader,
     student,
     toggleDownloadNote,
     isOffline,
     setActiveStudentTab,
-    updateStudentClass,
     openStudentSubscriptionModal,
     checkStudentFeatureAccess,
     adminLessonNotes,
@@ -192,8 +195,12 @@ export const SchemeOfWorkHub: React.FC = () => {
     setAdminTermLockOverride
   } = useApp();
 
+  const canBrowseAllClasses = Boolean(adminDirectoryMode && isSuperAdmin);
+  const enrolledClass: NigerianClassLevel =
+    student.classLevel === 'University Aspirant' ? 'SS 3' : (student.classLevel || 'JSS 1');
+
   const [viewMode, setViewMode] = useState<'class' | 'matrix'>('class');
-  const [selectedClass, setSelectedClass] = useState<NigerianClassLevel>(student.classLevel || 'JSS 1');
+  const [selectedClass, setSelectedClass] = useState<NigerianClassLevel>(enrolledClass);
   const [selectedStream, setSelectedStream] = useState<'Science' | 'Non-Science' | 'All'>('Science');
   const [selectedTerm, setSelectedTerm] = useState<'All' | '1st Term' | '2nd Term' | '3rd Term'>('All');
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -206,8 +213,8 @@ export const SchemeOfWorkHub: React.FC = () => {
 
   const classLevels: NigerianClassLevel[] = ['JSS 1', 'JSS 2', 'JSS 3', 'SS 1', 'SS 2', 'SS 3'];
 
-  // Handle class level change and adjust stream
-  const handleSelectClass = (lvl: NigerianClassLevel, syncGlobal = true) => {
+  // Handle class level change (only allowed in Super Admin Directory mode, never mutates student profile)
+  const handleSelectClass = (lvl: NigerianClassLevel) => {
     setSelectedClass(lvl);
     if (lvl.startsWith('JSS')) {
       setSelectedStream('All');
@@ -221,17 +228,26 @@ export const SchemeOfWorkHub: React.FC = () => {
       setExplorerSubject(newOfficial[0]);
       setExplorerWeek(1);
     }
-    if (syncGlobal && updateStudentClass) {
-      updateStudentClass(lvl, lvl.startsWith('JSS') ? 'Junior' : (selectedStream === 'Science' ? 'Science' : 'Non-Science'));
-    }
   };
 
-  // Keep selectedClass synchronized with global student.classLevel only when changed externally
+  // Enforce student view stays locked to enrolled class and never opens matrix/explorer across classes
   React.useEffect(() => {
-    if (student.classLevel && student.classLevel !== selectedClass) {
-      handleSelectClass(student.classLevel, false);
+    if (!canBrowseAllClasses && viewMode !== 'class') {
+      setViewMode('class');
     }
-  }, [student.classLevel]);
+  }, [canBrowseAllClasses, viewMode]);
+
+  React.useEffect(() => {
+    if (!canBrowseAllClasses) {
+      if (selectedClass !== enrolledClass) {
+        handleSelectClass(enrolledClass);
+      } else if (enrolledClass.startsWith('JSS') && selectedStream !== 'All') {
+        setSelectedStream('All');
+      } else if (enrolledClass.startsWith('SS') && selectedStream === 'All') {
+        setSelectedStream('Science');
+      }
+    }
+  }, [canBrowseAllClasses, enrolledClass]);
 
   // Determine official subjects list + any custom Super Admin subjects for current class/stream
   const getOfficialSubjects = (): { subject: string; stream: AcademicStream }[] => {
@@ -499,16 +515,18 @@ This digital module is aligned with the Nigerian Educational Research and Develo
             </div>
             <div>
               <h2 className="text-base font-bold text-white tracking-tight">
-                Scheme of Work & Syllabus
+                {canBrowseAllClasses ? 'Master Curriculum & Syllabus' : 'Lesson Notes & Scheme of Work'}
               </h2>
               <p className="text-[11px] text-slate-400">
-                Official NERDC & WAEC curriculum for JSS1 to SS3
+                {canBrowseAllClasses
+                  ? 'Official NERDC & WAEC curriculum for JSS1 to SS3'
+                  : `Enrolled NERDC curriculum & subjects for ${selectedClass}`}
               </p>
             </div>
           </div>
 
           <span className="text-[10px] font-bold text-emerald-400 bg-emerald-950 px-2 py-0.5 rounded border border-emerald-800">
-            105 Subject Tracks
+            {canBrowseAllClasses ? '105 Subject Tracks' : `${selectedClass} · ${officialSubjectsWithStream.length} Subjects`}
           </span>
         </div>
 
@@ -575,29 +593,31 @@ This digital module is aligned with the Nigerian Educational Research and Develo
           </div>
         )}
 
-        {/* Quick Link to Formula Bank & Periodic Table */}
-        <button
-          onClick={() => setActiveStudentTab('formulas')}
-          className="mt-2.5 w-full bg-gradient-to-r from-indigo-950/80 via-slate-900 to-indigo-950/50 border border-indigo-700/60 hover:border-indigo-500/80 rounded-2xl p-2.5 flex items-center justify-between text-left transition-all cursor-pointer group shadow-sm"
-        >
-          <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-lg bg-indigo-900/60 border border-indigo-600/40 flex items-center justify-center text-indigo-300 shrink-0">
-              <Atom className="w-4 h-4" />
-            </div>
-            <div>
-              <div className="text-xs font-bold text-white group-hover:text-indigo-300 transition-colors flex items-center gap-1.5">
-                <span>Science Formulas & Periodic Table</span>
-                <span className="text-[9px] font-semibold text-indigo-400 bg-indigo-950 px-1.5 py-0.2 rounded border border-indigo-800">
-                  WAEC & JAMB
-                </span>
+        {/* Quick Link to Formula Bank & Periodic Table (Student Workspace Only) */}
+        {!adminDirectoryMode && (
+          <button
+            onClick={() => setActiveStudentTab('formulas')}
+            className="mt-2.5 w-full bg-gradient-to-r from-indigo-950/80 via-slate-900 to-indigo-950/50 border border-indigo-700/60 hover:border-indigo-500/80 rounded-2xl p-2.5 flex items-center justify-between text-left transition-all cursor-pointer group shadow-sm"
+          >
+            <div className="flex items-center gap-2.5">
+              <div className="w-7 h-7 rounded-lg bg-indigo-900/60 border border-indigo-600/40 flex items-center justify-center text-indigo-300 shrink-0">
+                <Atom className="w-4 h-4" />
               </div>
-              <p className="text-[10px] text-slate-400">
-                All Maths, Physics, Chemistry formulas & Interactive Periodic Table
-              </p>
+              <div>
+                <div className="text-xs font-bold text-white group-hover:text-indigo-300 transition-colors flex items-center gap-1.5">
+                  <span>Science Formulas & Periodic Table</span>
+                  <span className="text-[9px] font-semibold text-indigo-400 bg-indigo-950 px-1.5 py-0.2 rounded border border-indigo-800">
+                    WAEC & JAMB
+                  </span>
+                </div>
+                <p className="text-[10px] text-slate-400">
+                  All Maths, Physics, Chemistry formulas & Interactive Periodic Table
+                </p>
+              </div>
             </div>
-          </div>
-          <ArrowRight className="w-4 h-4 text-indigo-400 group-hover:translate-x-0.5 transition-transform shrink-0" />
-        </button>
+            <ArrowRight className="w-4 h-4 text-indigo-400 group-hover:translate-x-0.5 transition-transform shrink-0" />
+          </button>
+        )}
       </div>
 
       {/* 3-Tier Lesson Notes Dropdown Navigator */}
@@ -858,37 +878,39 @@ This digital module is aligned with the Nigerian Educational Research and Develo
         </div>
       </div>
 
-      {/* Main View Mode Selector: By Class vs Full Curriculum Matrix */}
-      <div className="flex items-center bg-slate-900 p-1 rounded-xl border border-slate-800">
-        <button
-          onClick={() => setViewMode('class')}
-          className={`flex-1 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors ${
-            viewMode === 'class'
-              ? 'bg-emerald-600 text-white shadow-sm'
-              : 'text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          <Layers className="w-3.5 h-3.5" />
-          <span>Class Explorer ({selectedClass})</span>
-        </button>
+      {/* Super Admin Only: Class Explorer vs All Classes Directory Toggle */}
+      {canBrowseAllClasses && (
+        <div className="flex items-center bg-slate-900 p-1 rounded-xl border border-slate-800">
+          <button
+            onClick={() => setViewMode('class')}
+            className={`flex-1 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
+              viewMode === 'class'
+                ? 'bg-emerald-600 text-white shadow-sm'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Layers className="w-3.5 h-3.5" />
+            <span>Class Explorer ({selectedClass})</span>
+          </button>
 
-        <button
-          onClick={() => setViewMode('matrix')}
-          className={`flex-1 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors ${
-            viewMode === 'matrix'
-              ? 'bg-emerald-600 text-white shadow-sm'
-              : 'text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          <FolderOpen className="w-3.5 h-3.5" />
-          <span>All Classes Directory (JSS1 - SS3)</span>
-        </button>
-      </div>
+          <button
+            onClick={() => setViewMode('matrix')}
+            className={`flex-1 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
+              viewMode === 'matrix'
+                ? 'bg-emerald-600 text-white shadow-sm'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <FolderOpen className="w-3.5 h-3.5" />
+            <span>All Classes Directory (JSS1 - SS3)</span>
+          </button>
+        </div>
+      )}
 
       {/* ============================================================== */}
-      {/* MODE 1: ALL CLASSES FULL CURRICULUM DIRECTORY (MATRIX)        */}
+      {/* MODE 1: ALL CLASSES FULL CURRICULUM DIRECTORY (SUPER ADMIN)   */}
       {/* ============================================================== */}
-      {viewMode === 'matrix' && (
+      {canBrowseAllClasses && viewMode === 'matrix' && (
         <div className="space-y-4">
           <div className="bg-slate-900/90 rounded-2xl p-3.5 border border-slate-800">
             <div className="flex items-center justify-between text-xs">
@@ -1020,26 +1042,39 @@ This digital module is aligned with the Nigerian Educational Research and Develo
       )}
 
       {/* ============================================================== */}
-      {/* MODE 2: CLASS EXPLORER VIEW (WITH COMPREHENSIVE CARDS)        */}
+      {/* MODE 2: CLASS SUBJECTS VIEW (ENROLLED FOR STUDENTS / ADMIN)   */}
       {/* ============================================================== */}
-      {viewMode === 'class' && (
+      {(!canBrowseAllClasses || viewMode === 'class') && (
         <div className="space-y-4">
-          {/* Class Level Selector Tabs */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
-            {classLevels.map(lvl => (
-              <button
-                key={lvl}
-                onClick={() => handleSelectClass(lvl)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors cursor-pointer ${
-                  selectedClass === lvl
-                    ? 'bg-emerald-600 text-white shadow-sm'
-                    : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
-                }`}
-              >
-                {lvl}
-              </button>
-            ))}
-          </div>
+          {canBrowseAllClasses ? (
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+              {classLevels.map(lvl => (
+                <button
+                  key={lvl}
+                  onClick={() => handleSelectClass(lvl)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors cursor-pointer ${
+                    selectedClass === lvl
+                      ? 'bg-emerald-600 text-white shadow-sm'
+                      : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                  }`}
+                >
+                  {lvl}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="flex items-center justify-between bg-slate-900/90 border border-slate-800 rounded-xl px-3 py-2">
+              <div className="flex items-center gap-2 text-xs">
+                <GraduationCap className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span className="font-bold text-white">{selectedClass} Subjects</span>
+                <span className="text-[11px] text-slate-400">· Enrolled Class Curriculum</span>
+              </div>
+              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-400 bg-emerald-950/80 border border-emerald-800/60 px-2 py-0.5 rounded-lg">
+                <Lock className="w-3 h-3" />
+                <span>Class Locked</span>
+              </span>
+            </div>
+          )}
 
           {/* Stream Selector for Senior Secondary */}
           {selectedClass.startsWith('SS') && (
@@ -1247,14 +1282,16 @@ This digital module is aligned with the Nigerian Educational Research and Develo
                       </div>
 
                       <div className="flex items-center gap-2 shrink-0">
-                        <button
-                          onClick={() => setActiveStudentTab('ai-coach')}
-                          className="flex items-center gap-1 px-2.5 py-1.5 bg-emerald-950/80 hover:bg-emerald-900 text-emerald-300 border border-emerald-800/60 text-xs font-semibold rounded-xl transition-colors cursor-pointer whitespace-nowrap"
-                          title="Ask SC AI Study Coach to explain this topic"
-                        >
-                          <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
-                          <span>SC AI Coach</span>
-                        </button>
+                        {!adminDirectoryMode && (
+                          <button
+                            onClick={() => setActiveStudentTab('ai-coach')}
+                            className="flex items-center gap-1 px-2.5 py-1.5 bg-emerald-950/80 hover:bg-emerald-900 text-emerald-300 border border-emerald-800/60 text-xs font-semibold rounded-xl transition-colors cursor-pointer whitespace-nowrap"
+                            title="Ask SC AI Study Coach to explain this topic"
+                          >
+                            <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+                            <span>SC AI Coach</span>
+                          </button>
+                        )}
 
                         {isTopicScheduleLocked ? (
                           <button

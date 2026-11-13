@@ -53,6 +53,7 @@ import {
 import confetti from 'canvas-confetti';
 import { NairaText } from '../../utils/currency';
 import { playSound } from '../../utils/audioSynthesis';
+import { PersonaAvatar } from '../common/PersonaAvatar';
 
 export const CompetitionsHub: React.FC = () => {
   const {
@@ -115,14 +116,6 @@ export const CompetitionsHub: React.FC = () => {
   const studentName = student.name || currentUserProfile?.fullName || 'Registered Student';
   const studentSchool = student.school || 'Secondary School';
   const studentClass = student.classLevel;
-
-  const getInitials = (name?: string | null): string => {
-    if (!name || !name.trim()) return 'S';
-    const parts = name.trim().split(/\s+/).filter(Boolean);
-    if (parts.length === 0) return 'S';
-    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-  };
 
   const handleEnterWeeklyChallenge = () => {
     const weeklyAccess = checkStudentFeatureAccess('weekly_competition');
@@ -1060,17 +1053,13 @@ export const CompetitionsHub: React.FC = () => {
             </div>
 
             <div className="flex items-center gap-3.5">
-              {student.uniformPhotoUrl ? (
-                <img
-                  src={student.uniformPhotoUrl}
-                  alt={studentName}
-                  className="w-14 h-14 rounded-2xl object-cover ring-2 ring-amber-500 shrink-0"
-                />
-              ) : (
-                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-amber-600 via-amber-700 to-emerald-900 flex items-center justify-center text-white font-black text-base ring-2 ring-amber-500 shadow-inner shrink-0">
-                  {getInitials(studentName)}
-                </div>
-              )}
+              <PersonaAvatar
+                name={studentName}
+                src={student.uniformPhotoUrl}
+                alt={studentName}
+                className="w-14 h-14 rounded-2xl ring-2 ring-amber-500"
+                textClassName="text-base"
+              />
               <div>
                 <h4 className="text-sm font-bold text-white flex items-center gap-2">
                   <span>{studentName}</span>

@@ -33,7 +33,7 @@ export const INITIAL_USER_DIRECTORY: RegisteredUserProfile[] = [
       streakDays: 14,
       lastStudyDate: new Date().toISOString().split('T')[0],
       uniformVerified: true,
-      uniformPhotoUrl: 'https://images.unsplash.com/photo-1577896851231-70ef18881754?auto=format&fit=crop&q=80&w=200',
+      uniformPhotoUrl: null,
       downloadedSubjectIds: ['math-jss3', 'eng-jss3'],
       completedQuizIds: ['bece-english-junior-2025']
     }
@@ -56,7 +56,7 @@ export const INITIAL_USER_DIRECTORY: RegisteredUserProfile[] = [
       streakDays: 28,
       lastStudyDate: new Date().toISOString().split('T')[0],
       uniformVerified: true,
-      uniformPhotoUrl: 'https://images.unsplash.com/photo-1544717305-2782549b5136?auto=format&fit=crop&q=80&w=200',
+      uniformPhotoUrl: null,
       downloadedSubjectIds: ['phy-ss2', 'chem-ss2', 'math-ss2'],
       completedQuizIds: ['jamb-utme-physics-2025']
     }

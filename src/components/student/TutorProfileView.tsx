@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Tutor, TimetableSlot } from '../../types';
 import { useApp } from '../../context/AppContext';
 import { NairaText, NairaSign } from '../../utils/currency';
+import { PersonaAvatar } from '../common/PersonaAvatar';
 import {
   ArrowLeft,
   ShieldCheck,
@@ -117,10 +118,12 @@ export const TutorProfileView: React.FC<TutorProfileViewProps> = ({
         <div className="bg-gradient-to-br from-slate-900 via-slate-900/95 to-slate-950 rounded-3xl p-5 border border-slate-800 shadow-xl space-y-4">
           <div className="flex flex-col sm:flex-row items-start gap-4">
             <div className="relative shrink-0">
-              <img
+              <PersonaAvatar
+                name={tutor.name}
                 src={tutor.avatarUrl}
                 alt={tutor.name}
-                className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl bg-slate-800 object-cover ring-2 ring-emerald-500/40 shadow-lg"
+                className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl ring-2 ring-emerald-500/40 shadow-lg"
+                textClassName="text-xl sm:text-2xl"
               />
               {tutor.isNinVerified && (
                 <div

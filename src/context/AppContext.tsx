@@ -2891,7 +2891,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       id: bookingId || 'demo-session-live',
       tutorId: 'tutor-adewale-math',
       tutorName: 'Engr. Adewale Bakare',
-      tutorPhoto: 'https://api.dicebear.com/7.x/micah/svg?seed=Adewale&backgroundColor=b6e3f4',
+      tutorPhoto: '',
       studentId: student.id,
       studentName: student.name || 'Registered Student',
       subject: 'Mathematics',

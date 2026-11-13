@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { RegisteredUserProfile, UserRole, NigerianClassLevel, AspirantReferralReward } from '../../types';
+import { PersonaAvatar } from '../common/PersonaAvatar';
 import {
   Users,
   ShieldCheck,
@@ -39,13 +40,15 @@ import {
   Lock,
   Unlock,
   UserX,
-  Snowflake
+  Snowflake,
+  Layers
 } from 'lucide-react';
 import { SchoolAdminPortal } from './SchoolAdminPortal';
 import { OTACompetitionManager } from './OTACompetitionManager';
 import { LessonNotesManager } from './LessonNotesManager';
 import { EducatorQuestionImporter } from './EducatorQuestionImporter';
 import { SecurityTrustCenter } from './SecurityTrustCenter';
+import { SchemeOfWorkHub } from '../student/SchemeOfWorkHub';
 import { NairaText, NairaSign } from '../../utils/currency';
 import { getSecurityHeaders } from '../../utils/securityGuard';
 import { ForumReport } from '../../types';
@@ -68,7 +71,7 @@ export const SuperAdminPortal: React.FC = () => {
     adminLessonNotes
   } = useApp();
 
-  const [portalView, setPortalView] = useState<'directory' | 'school_admin' | 'forum_moderation' | 'ota_competitions' | 'lesson_notes' | 'past_questions' | 'security_trust' | 'aspirant_rewards'>('directory');
+  const [portalView, setPortalView] = useState<'directory' | 'school_admin' | 'forum_moderation' | 'ota_competitions' | 'lesson_notes' | 'class_directory' | 'past_questions' | 'security_trust' | 'aspirant_rewards'>('directory');
   const [roleFilter, setRoleFilter] = useState<'all' | UserRole>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'locked' | 'suspended' | 'deleted' | 'wallet_frozen'>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -864,6 +867,26 @@ export const SuperAdminPortal: React.FC = () => {
     );
   }
 
+  if (portalView === 'class_directory') {
+    return (
+      <div className="flex-1 min-h-0 w-full flex flex-col overflow-hidden">
+        <div className="bg-[#0B1526] px-4 py-2 border-b border-slate-800 flex items-center justify-between text-xs shrink-0">
+          <span className="text-slate-300 font-semibold flex items-center gap-1.5">
+            <Layers className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Class Explorer &amp; All Classes Directory (JSS 1 - SS 3)</span>
+          </span>
+          <button
+            onClick={() => setPortalView('directory')}
+            className="text-amber-400 hover:text-amber-300 font-bold flex items-center gap-1 cursor-pointer"
+          >
+            &larr; Return to Super Admin User Directory
+          </button>
+        </div>
+        <SchemeOfWorkHub adminDirectoryMode />
+      </div>
+    );
+  }
+
   if (portalView === 'past_questions') {
     return (
       <div className="flex-1 min-h-0 w-full flex flex-col overflow-hidden">
@@ -940,6 +963,15 @@ export const SuperAdminPortal: React.FC = () => {
                   {adminLessonNotes.length}
                 </span>
               )}
+            </button>
+
+            <button
+              onClick={() => setPortalView('class_directory')}
+              className="flex items-center gap-1.5 px-3 min-h-[40px] rounded-xl bg-emerald-950/75 hover:bg-emerald-900 border border-emerald-600/60 text-emerald-300 text-xs font-bold transition-all cursor-pointer shadow-sm whitespace-nowrap"
+              title="Browse Class Explorer and All Classes Directory (JSS 1 - SS 3)"
+            >
+              <Layers className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Class Directory</span>
             </button>
 
             <button
@@ -1240,14 +1272,18 @@ export const SuperAdminPortal: React.FC = () => {
                   {/* Top user row */}
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-center gap-2.5">
-                      <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold text-xs shrink-0 ${
-                        isStudent ? 'bg-emerald-950 border border-emerald-700 text-[#84E000]' :
-                        isParent ? 'bg-orange-950 border border-orange-700 text-[#FF5B00]' :
-                        isTutor ? 'bg-sky-950 border border-sky-700 text-sky-400' :
-                        'bg-purple-950 border border-purple-700 text-purple-400'
-                      }`}>
-                        {u.fullName.charAt(0)}
-                      </div>
+                      <PersonaAvatar
+                        name={u.fullName}
+                        src={u.avatarUrl || u.studentData?.uniformPhotoUrl}
+                        alt={u.fullName}
+                        className={`w-9 h-9 rounded-xl ${
+                          isStudent ? 'ring-1 ring-emerald-500/50' :
+                          isParent ? 'ring-1 ring-[#FF5B00]/50' :
+                          isTutor ? 'ring-1 ring-sky-500/50' :
+                          'ring-1 ring-purple-500/50'
+                        }`}
+                        textClassName="text-xs"
+                      />
                       <div>
                         <div className="flex items-center gap-1.5 flex-wrap">
                           <h3 className="text-xs font-bold text-white">{u.fullName}</h3>

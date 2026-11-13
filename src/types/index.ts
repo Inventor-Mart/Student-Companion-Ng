@@ -228,7 +228,7 @@ export interface Tutor {
   state: string;
   isNinVerified: boolean;
   education: string;
-  avatarUrl: string;
+  avatarUrl?: string;
   bio: string;
   availableDays: string[];
   lat: number;
@@ -252,7 +252,7 @@ export interface TutorBooking {
   id: string;
   tutorId: string;
   tutorName: string;
-  tutorPhoto: string;
+  tutorPhoto?: string;
   studentId: string;
   studentName: string;
   subject: string;
@@ -722,7 +722,7 @@ export interface VirtualClassroomSession {
   bookingId: string;
   tutorId: string;
   tutorName: string;
-  tutorPhoto: string;
+  tutorPhoto?: string;
   studentId: string;
   studentName: string;
   subject: string;

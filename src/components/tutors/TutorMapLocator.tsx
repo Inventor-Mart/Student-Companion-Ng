@@ -20,6 +20,7 @@ import {
   Sparkles
 } from 'lucide-react';
 import { NairaText, NairaSign } from '../../utils/currency';
+import { PersonaAvatar } from '../common/PersonaAvatar';
 
 interface TutorMapLocatorProps {
   tutors: Tutor[];
@@ -247,10 +248,12 @@ export const TutorMapLocator: React.FC<TutorMapLocatorProps> = ({
               >
                 <div className="p-1 max-w-[220px] text-slate-900 font-sans">
                   <div className="flex items-center gap-2">
-                    <img
+                    <PersonaAvatar
+                      name={selectedTutor.name}
                       src={selectedTutor.avatarUrl}
                       alt={selectedTutor.name}
-                      className="w-8 h-8 rounded-full object-cover bg-slate-200 shrink-0"
+                      className="w-8 h-8 rounded-full"
+                      textClassName="text-[11px]"
                     />
                     <div className="min-w-0">
                       <h4 className="text-xs font-bold truncate leading-tight">
@@ -287,10 +290,12 @@ export const TutorMapLocator: React.FC<TutorMapLocatorProps> = ({
           <div className="absolute bottom-3 left-3 right-3 bg-slate-900/95 backdrop-blur-md border border-slate-700 rounded-2xl p-3 shadow-xl z-20 flex flex-col gap-2">
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-2.5">
-                <img
+                <PersonaAvatar
+                  name={selectedTutor.name}
                   src={selectedTutor.avatarUrl}
                   alt={selectedTutor.name}
-                  className="w-11 h-11 rounded-xl bg-slate-800 object-cover ring-1 ring-emerald-500/50"
+                  className="w-11 h-11 rounded-xl ring-1 ring-emerald-500/50"
+                  textClassName="text-xs"
                 />
                 <div>
                   <div className="flex items-center gap-1.5">

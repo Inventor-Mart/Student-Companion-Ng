@@ -23,7 +23,8 @@ import {
   FileText,
   GraduationCap,
   ShieldCheck,
-  Zap
+  Zap,
+  Lock
 } from 'lucide-react';
 
 interface TermlyDrillHubProps {
@@ -98,11 +99,17 @@ export const TermlyDrillHub: React.FC<TermlyDrillHubProps> = ({ onStartExam, onO
     isSubjectExamUnlocked
   } = useApp();
 
-  const defaultClass = (student?.classLevel && CLASS_OPTIONS.includes(student.classLevel))
+  const enrolledClass = (student?.classLevel && CLASS_OPTIONS.includes(student.classLevel))
     ? student.classLevel
     : 'SS 3';
 
-  const [selectedClass, setSelectedClass] = useState<string>(defaultClass);
+  const [selectedClass, setSelectedClass] = useState<string>(enrolledClass);
+
+  useEffect(() => {
+    if (selectedClass !== enrolledClass) {
+      setSelectedClass(enrolledClass);
+    }
+  }, [enrolledClass, selectedClass]);
   const [selectedTerm, setSelectedTerm] = useState<'1st Term' | '2nd Term' | '3rd Term'>('2nd Term');
   const [selectedSubject, setSelectedSubject] = useState<string>('Mathematics');
 
@@ -536,23 +543,19 @@ export const TermlyDrillHub: React.FC<TermlyDrillHubProps> = ({ onStartExam, onO
       {/* Interactive Selectors Bar */}
       <div className="p-4 space-y-4">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          {/* 1. Class Dropdown */}
+          {/* 1. Enrolled Class (Locked) */}
           <div className="space-y-1">
             <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
               <Layers className="w-3.5 h-3.5 text-emerald-400" />
               <span>Target Class</span>
             </label>
-            <select
-              value={selectedClass}
-              onChange={e => setSelectedClass(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-medium focus:outline-none focus:border-emerald-500 transition-colors cursor-pointer"
-            >
-              {CLASS_OPTIONS.map(cls => (
-                <option key={cls} value={cls} className="bg-slate-900 text-white">
-                  {cls} {cls === student.classLevel ? '(Your Class)' : ''}
-                </option>
-              ))}
-            </select>
+            <div className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-bold flex items-center justify-between">
+              <span>{selectedClass}</span>
+              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-400">
+                <Lock className="w-3 h-3" />
+                <span>Enrolled</span>
+              </span>
+            </div>
           </div>
 
           {/* 2. Academic Term / Board Cycle */}

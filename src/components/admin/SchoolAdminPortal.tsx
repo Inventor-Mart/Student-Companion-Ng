@@ -3,6 +3,7 @@ import { useApp } from '../../context/AppContext';
 import { SCHOOL_LEADERBOARD_DATA } from '../../data/leaderboardData';
 import { SchoolMaterial, NigerianClassLevel } from '../../types';
 import { DeviceImageUploader } from './DeviceImageUploader';
+import { PersonaAvatar } from '../common/PersonaAvatar';
 import { motion, AnimatePresence } from 'motion/react';
 import { playSound, toggleSoundMuted, getSoundMuted } from '../../utils/audioSynthesis';
 import {
@@ -1294,15 +1295,15 @@ export const SchoolAdminPortal: React.FC = () => {
                     }`}
                   >
                     <div className="flex items-center gap-3 min-w-0">
-                      <div
-                        className={`w-9 h-9 rounded-xl flex items-center justify-center font-black text-xs shrink-0 ${
-                          (std as any).isCurrentAccount
-                            ? 'bg-[#84CC16] text-slate-950'
-                            : 'bg-[#FF5B00]/20 border border-[#FF5B00]/50 text-[#FF5B00]'
+                      <PersonaAvatar
+                        name={std.name}
+                        src={std.uniformPhotoUrl}
+                        alt={std.name}
+                        className={`w-9 h-9 rounded-xl ${
+                          (std as any).isCurrentAccount ? 'ring-2 ring-[#84CC16]' : 'ring-1 ring-slate-700'
                         }`}
-                      >
-                        {std.name ? std.name.charAt(0) : 'S'}
-                      </div>
+                        textClassName="text-xs"
+                      />
                       <div className="min-w-0">
                         <div className="flex items-center gap-1.5 flex-wrap">
                           <span className="font-black text-white text-xs truncate">{std.name}</span>

@@ -1830,25 +1830,11 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
                       {/* Headshot Upload via Device Uploader with Canvas Compression */}
                       <div>
                         <label className="text-xs font-semibold text-slate-300 block mb-1">
-                          Profile Headshot / Photo (Upload from Phone/Device)
+                          Profile Headshot / Photo (Optional — Upload from Phone/Device, or use your Initials)
                         </label>
                         <DeviceImageUploader
                           currentImageUrl={headshotUrl}
                           onImageChange={(url) => setHeadshotUrl(url)}
-                          presets={[
-                            {
-                              label: 'Adewale Bakare (Math)',
-                              url: 'https://api.dicebear.com/7.x/micah/svg?seed=Adewale&backgroundColor=b6e3f4'
-                            },
-                            {
-                              label: 'Dr. Amarachi (Bio)',
-                              url: 'https://api.dicebear.com/7.x/micah/svg?seed=Amarachi&backgroundColor=ffd5dc'
-                            },
-                            {
-                              label: 'Prof. Ibrahim (Eng)',
-                              url: 'https://api.dicebear.com/7.x/micah/svg?seed=Ibrahim&backgroundColor=c0aede'
-                            }
-                          ]}
                         />
                       </div>
 

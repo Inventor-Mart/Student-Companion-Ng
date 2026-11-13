@@ -23,7 +23,8 @@ import {
   BookOpen,
   Atom,
   Lock,
-  Sparkles
+  Sparkles,
+  GraduationCap
 } from 'lucide-react';
 
 export const CBTEngine: React.FC = () => {
@@ -48,10 +49,17 @@ const CBTExamCatalog: React.FC<{ onSelectExam: (exam: CBTExam) => void; onOpenFo
   const { student, examPrepState, isSubjectExamUnlocked } = useApp();
   const [filterType, setFilterType] = useState<string>('ALL');
   const [selectedSubject, setSelectedSubject] = useState<string>('ALL');
-  const [selectedClassFilter, setSelectedClassFilter] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [unlockModalOpen, setUnlockModalOpen] = useState(false);
   const [targetSubjectToUnlock, setTargetSubjectToUnlock] = useState<string | undefined>(undefined);
+
+  const enrolledClass =
+    student?.classLevel === 'University Aspirant' ? 'SS 3' : (student?.classLevel || 'JSS 1');
+
+  useEffect(() => {
+    setFilterType('ALL');
+    setSelectedSubject('ALL');
+  }, [enrolledClass]);
 
   const isSecondaryStudent = student?.classLevel
     ? (student.classLevel.startsWith('JSS') || student.classLevel.startsWith('SS'))
@@ -77,18 +85,15 @@ const CBTExamCatalog: React.FC<{ onSelectExam: (exam: CBTExam) => void; onOpenFo
     onSelectExam(exam);
   };
 
-  const classLevels: string[] = ['ALL', 'JSS 1', 'JSS 2', 'JSS 3', 'SS 1', 'SS 2', 'SS 3'];
-
-  // Unrestricted multi-class drill access: Filter based on user's selected tab, allowing exploration of all classes
+  // Strict enrolled-class CBT access (BECE unlocked for JSS 3, WAEC/NECO/JAMB unlocked for SS 3)
   const classAllowedExams = CBT_EXAMS_DATABASE.filter(e => {
-    if (selectedClassFilter === 'ALL') return true;
-    if (selectedClassFilter === 'SS 3') {
+    if (enrolledClass === 'SS 3') {
       return e.classLevel === 'SS 3' || e.examType === 'JAMB_UTME' || e.examType === 'WAEC' || e.examType === 'NECO';
     }
-    if (selectedClassFilter === 'JSS 3') {
+    if (enrolledClass === 'JSS 3') {
       return e.classLevel === 'JSS 3' || e.examType === 'BECE';
     }
-    return e.classLevel === selectedClassFilter || (e.examType === 'TERM_MOCK' && e.classLevel === selectedClassFilter);
+    return e.classLevel === enrolledClass || (e.examType === 'TERM_MOCK' && e.classLevel === enrolledClass);
   });
 
   const availableSubjects = Array.from(new Set(classAllowedExams.map(e => e.subject)));
@@ -97,15 +102,17 @@ const CBTExamCatalog: React.FC<{ onSelectExam: (exam: CBTExam) => void; onOpenFo
   const boardTabs = [
     { id: 'ALL', label: 'All Exam Types' },
     { id: 'TERM_MOCK', label: 'Termly Drill & Mock' },
-    { id: 'BECE', label: 'BECE Junior WAEC' },
-    { id: 'WAEC', label: 'WAEC WASSCE' },
-    { id: 'JAMB_UTME', label: 'JAMB UTME' },
-    { id: 'NECO', label: 'NECO SSCE' }
+    ...(enrolledClass === 'JSS 3' ? [{ id: 'BECE', label: 'BECE Junior WAEC' }] : []),
+    ...(enrolledClass === 'SS 3'
+      ? [
+          { id: 'WAEC', label: 'WAEC WASSCE' },
+          { id: 'JAMB_UTME', label: 'JAMB UTME' },
+          { id: 'NECO', label: 'NECO SSCE' }
+        ]
+      : [])
   ];
 
-  const catalogSubtitle = selectedClassFilter === 'ALL'
-    ? 'All secondary school assessments unlocked: JSS 1 to SS 3, BECE, WAEC, JAMB UTME & NECO'
-    : `${selectedClassFilter} continuous assessment and examination drills with step-by-step solutions`;
+  const catalogSubtitle = `${enrolledClass} continuous assessment and examination drills with step-by-step solutions`;
 
   const filteredExams = classAllowedExams.filter(e => {
     const matchesBoard = filterType === 'ALL' || e.examType === filterType;
@@ -186,25 +193,17 @@ const CBTExamCatalog: React.FC<{ onSelectExam: (exam: CBTExam) => void; onOpenFo
         </button>
       </div>
 
-      {/* Class Level Filter Row */}
-      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
-        <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider shrink-0 mr-1">
-          Class:
+      {/* Enrolled Class Indicator (Locked) */}
+      <div className="flex items-center justify-between bg-slate-900/90 border border-slate-800 rounded-xl px-3 py-2">
+        <div className="flex items-center gap-2 text-xs">
+          <GraduationCap className="w-4 h-4 text-[#84E000] shrink-0" />
+          <span className="text-slate-400 font-medium">Enrolled Class:</span>
+          <span className="font-bold text-white">{enrolledClass}</span>
+        </div>
+        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-[#84E000] bg-emerald-950/80 border border-emerald-700/50 px-2 py-0.5 rounded-lg">
+          <Lock className="w-3 h-3" />
+          <span>Class Locked</span>
         </span>
-        {classLevels.map(lvl => (
-          <button
-            key={lvl}
-            type="button"
-            onClick={() => setSelectedClassFilter(lvl)}
-            className={`px-2.5 py-1 rounded-lg text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
-              selectedClassFilter === lvl
-                ? 'bg-[#84E000] text-slate-950 shadow-sm ring-1 ring-white'
-                : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
-            }`}
-          >
-            {lvl === 'ALL' ? 'All Classes' : lvl}
-          </button>
-        ))}
       </div>
 
       {/* Board Filter Tabs */}

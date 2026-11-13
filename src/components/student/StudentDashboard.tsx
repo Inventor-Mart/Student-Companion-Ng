@@ -6,6 +6,7 @@ import { compressImage } from '../../lib/storage';
 import { NigerianClassLevel, OTAFeatureKey } from '../../types';
 import { ExamPrepUnlockModal } from './exam-prep/ExamPrepUnlockModal';
 import { FeatureMaintenanceGate } from '../common/FeatureMaintenanceView';
+import { PersonaAvatar } from '../common/PersonaAvatar';
 import { resolveFeatureNotice } from '../../services/otaService';
 import {
   Flame,
@@ -139,14 +140,6 @@ export const StudentDashboard: React.FC = () => {
   const displayName = student.name || currentUserProfile?.fullName || 'Scholar';
   const displaySchool = student.school || 'Secondary School';
 
-  const getInitials = (name?: string | null): string => {
-    if (!name || !name.trim()) return 'S';
-    const parts = name.trim().split(/\s+/).filter(Boolean);
-    if (parts.length === 0) return 'S';
-    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-  };
-
   const handleAvatarFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -257,17 +250,13 @@ export const StudentDashboard: React.FC = () => {
                 className="relative group w-16 h-16 rounded-full overflow-hidden ring-4 ring-[#84CC16] ring-offset-2 ring-offset-[#101C34] shadow-[0_0_24px_rgba(132,204,22,0.65)] transition-all cursor-pointer flex items-center justify-center bg-slate-900"
                 title="Click avatar to update photo"
               >
-                {student.uniformPhotoUrl ? (
-                  <img
-                    src={student.uniformPhotoUrl}
-                    alt={displayName}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <div className="w-full h-full bg-gradient-to-br from-[#1E293B] via-[#0F172A] to-[#101C34] flex items-center justify-center text-white font-black text-lg tracking-wider">
-                    {getInitials(displayName)}
-                  </div>
-                )}
+                <PersonaAvatar
+                  name={displayName}
+                  src={student.uniformPhotoUrl}
+                  alt={displayName}
+                  className="w-full h-full rounded-full"
+                  textClassName="text-lg"
+                />
 
                 <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity">
                   <Camera className="w-5 h-5 text-[#84CC16]" />
@@ -408,34 +397,19 @@ export const StudentDashboard: React.FC = () => {
           </button>
         </div>
 
-        {/* Quick Class Switcher (JSS 1 through SS 3) */}
+        {/* Enrolled Class Indicator (Locked) */}
         <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between gap-2 relative z-10">
           <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-300 uppercase tracking-wider shrink-0">
             <GraduationCap className="w-3.5 h-3.5 text-[#84CC16]" />
-            <span>Class:</span>
+            <span>Enrolled Class:</span>
           </div>
 
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5">
-            {(['JSS 1', 'JSS 2', 'JSS 3', 'SS 1', 'SS 2', 'SS 3'] as NigerianClassLevel[]).map((lvl) => {
-              const isActive = student.classLevel === lvl;
-              return (
-                <button
-                  key={lvl}
-                  type="button"
-                  onClick={() => {
-                    playSound.tileTap();
-                    updateStudentClass(lvl, lvl.startsWith('JSS') ? 'Junior' : (student.stream === 'Junior' ? 'Science' : (student.stream || 'Science')));
-                  }}
-                  className={`py-1 px-3 rounded-xl text-xs font-black transition-all cursor-pointer ${
-                    isActive
-                      ? 'bg-[#84CC16] text-slate-950 shadow-[0_0_12px_rgba(132,204,22,0.5)] border border-[#A3E635]'
-                      : 'bg-[#101C34] text-slate-300 hover:text-white border border-slate-700/80 hover:border-slate-500'
-                  }`}
-                >
-                  {lvl}
-                </button>
-              );
-            })}
+          <div className="flex items-center gap-2 px-3 py-1 rounded-xl bg-[#101C34] border border-[#84CC16]/40 text-xs font-black text-white">
+            <span>{student.classLevel || 'JSS 1'}</span>
+            <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-[#84CC16]">
+              <Lock className="w-3 h-3" />
+              <span>Locked</span>
+            </span>
           </div>
         </div>
 

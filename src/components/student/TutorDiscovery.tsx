@@ -23,6 +23,7 @@ import {
 
 import { ParentAddressVerificationModal } from '../auth/VerificationModals';
 import { TutorMapLocator } from '../tutors/TutorMapLocator';
+import { PersonaAvatar } from '../common/PersonaAvatar';
 import { TutorProfileView } from './TutorProfileView';
 import { NairaText, NairaSign } from '../../utils/currency';
 import { playSound } from '../../utils/audioSynthesis';
@@ -72,7 +73,7 @@ export const TutorDiscovery: React.FC = () => {
         state: td.state || 'Lagos',
         isNinVerified: Boolean(td.nin || td.verification?.isVerified),
         education: td.qualification || `${td.highestEducation || 'B.Sc.'} (${td.institution || 'Unilag'})`,
-        avatarUrl: currentUserProfile.avatarUrl || 'https://api.dicebear.com/7.x/micah/svg?seed=Educator&backgroundColor=b6e3f4',
+        avatarUrl: currentUserProfile.avatarUrl || '',
         bio: td.bio || 'Verified Nigerian educator dedicated to secondary school excellence.',
         availableDays: ['Mondays', 'Wednesdays', 'Saturdays'],
         lat: 6.6018,
@@ -345,10 +346,12 @@ export const TutorDiscovery: React.FC = () => {
                         }}
                         className="cursor-pointer shrink-0 group focus:outline-none relative"
                       >
-                        <img
+                        <PersonaAvatar
+                          name={tutor.name}
                           src={tutor.avatarUrl}
                           alt={tutor.name}
-                          className="w-13 h-13 rounded-2xl bg-[#101C34] object-cover ring-2 ring-[#84CC16]/50 group-hover:ring-[#84CC16] transition-all shadow-md"
+                          className="w-13 h-13 rounded-2xl ring-2 ring-[#84CC16]/50 group-hover:ring-[#84CC16] transition-all shadow-md"
+                          textClassName="text-sm"
                         />
                         {tutor.isNinVerified && (
                           <div
@@ -540,10 +543,12 @@ export const TutorDiscovery: React.FC = () => {
                 <>
                   {/* Tutor Info Pill */}
                   <div className="flex items-center gap-3 bg-[#14203D] p-3.5 rounded-2xl border border-slate-700/80">
-                    <img
+                    <PersonaAvatar
+                      name={selectedTutorForBooking.name}
                       src={selectedTutorForBooking.avatarUrl}
                       alt={selectedTutorForBooking.name}
-                      className="w-11 h-11 rounded-xl object-cover bg-slate-800 ring-2 ring-[#84CC16]"
+                      className="w-11 h-11 rounded-xl ring-2 ring-[#84CC16]"
+                      textClassName="text-xs"
                     />
                     <div>
                       <h4 className="font-black text-white text-xs">{selectedTutorForBooking.name}</h4>
