@@ -90,12 +90,19 @@ export const SuperAdminPortal: React.FC = () => {
   // GitHub Repository Sync state
   const [gitStatus, setGitStatus] = useState<{
     configured: boolean;
+    canPush: boolean;
+    tokenStatus: 'missing' | 'valid' | 'read_only' | 'invalid' | 'not_found' | 'network_error';
+    tokenMessage: string;
+    githubUser?: string;
+    gitInitialized: boolean;
     repo: string;
     branch: string;
     aheadCount: number;
     latestCommit: string;
+    remoteLatestCommit?: string;
     hasUncommitted: boolean;
   } | null>(null);
+  const [gitCommitMessage, setGitCommitMessage] = useState<string>('');
   const [isLoadingGitStatus, setIsLoadingGitStatus] = useState<boolean>(false);
   const [isPushingGit, setIsPushingGit] = useState<boolean>(false);
   const [gitSyncFeedback, setGitSyncFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
@@ -152,18 +159,32 @@ export const SuperAdminPortal: React.FC = () => {
     try {
       const res = await fetch(`/api/git/status?adminEmail=${encodeURIComponent(authorizedAdminEmail)}`);
       const data = await res.json();
-      if (data.success) {
+      if (res.ok && data.success) {
         setGitStatus({
-          configured: data.configured,
+          configured: Boolean(data.configured),
+          canPush: Boolean(data.canPush),
+          tokenStatus: data.tokenStatus || (data.configured ? 'valid' : 'missing'),
+          tokenMessage: data.tokenMessage || '',
+          githubUser: data.githubUser,
+          gitInitialized: Boolean(data.gitInitialized),
           repo: data.repo,
           branch: data.branch,
-          aheadCount: data.aheadCount,
-          latestCommit: data.latestCommit,
-          hasUncommitted: data.hasUncommitted
+          aheadCount: Number(data.aheadCount) || 0,
+          latestCommit: data.latestCommit || 'unborn',
+          remoteLatestCommit: data.remoteLatestCommit,
+          hasUncommitted: Boolean(data.hasUncommitted)
+        });
+      } else {
+        setGitSyncFeedback({
+          type: 'error',
+          message: data.error || 'Unable to inspect GitHub repository sync status.'
         });
       }
-    } catch {
-      // Ignore transient network errors on passive status check
+    } catch (err: any) {
+      setGitSyncFeedback({
+        type: 'error',
+        message: err?.message || 'Network error checking GitHub repository status.'
+      });
     } finally {
       setIsLoadingGitStatus(false);
     }
@@ -181,14 +202,18 @@ export const SuperAdminPortal: React.FC = () => {
       const res = await fetch('/api/git/push', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ adminEmail: authorizedAdminEmail })
+        body: JSON.stringify({
+          adminEmail: authorizedAdminEmail,
+          commitMessage: gitCommitMessage.trim() || undefined
+        })
       });
       const data = await res.json();
-      if (data.success) {
+      if (res.ok && data.success) {
         setGitSyncFeedback({
           type: 'success',
           message: data.message || `Synced commits to ${data.repo} (${data.branch}).`
         });
+        setGitCommitMessage('');
         await fetchGitStatus();
       } else {
         setGitSyncFeedback({
@@ -1084,26 +1109,39 @@ export const SuperAdminPortal: React.FC = () => {
       {/* GitHub Repository Sync Panel */}
       <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 space-y-3">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 min-w-0">
             <div className="w-10 h-10 rounded-xl bg-[#0D1527] border border-slate-700 flex items-center justify-center text-[#84E000] shrink-0">
               <GitBranch className="w-5 h-5" />
             </div>
-            <div>
+            <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <h2 className="text-sm font-bold text-white tracking-tight">GitHub Repository Sync</h2>
                 <span className="text-[11px] font-mono text-slate-300">
                   {gitStatus?.repo || 'Inventor-Mart/Student-Companion-Ng'} · {gitStatus?.branch || 'main'}
                 </span>
               </div>
-              <div className="flex items-center gap-2 text-[11px] text-slate-400 mt-0.5 font-mono tabular-nums">
-                <span>HEAD: {gitStatus?.latestCommit || '...'}</span>
-                <span aria-hidden="true">·</span>
-                <span className={gitStatus && gitStatus.aheadCount > 0 ? 'text-[#FF5B00] font-bold' : 'text-emerald-400'}>
-                  {gitStatus ? `${gitStatus.aheadCount} commit(s) ahead` : 'Checking status...'}
+              <div className="flex items-center flex-wrap gap-x-2 gap-y-0.5 text-[11px] text-slate-400 mt-0.5 font-mono tabular-nums">
+                <span>
+                  Local:{' '}
+                  {gitStatus
+                    ? gitStatus.gitInitialized
+                      ? gitStatus.latestCommit
+                      : 'Auto-init ready'
+                    : 'Checking...'}
                 </span>
+                {gitStatus?.remoteLatestCommit && (
+                  <>
+                    <span aria-hidden="true">·</span>
+                    <span>Remote main: {gitStatus.remoteLatestCommit}</span>
+                  </>
+                )}
                 <span aria-hidden="true">·</span>
-                <span className={gitStatus?.configured ? 'text-[#84E000]' : 'text-amber-400'}>
-                  {gitStatus?.configured ? 'Secrets Token Active' : 'Token Pending'}
+                <span className={gitStatus?.hasUncommitted || (gitStatus?.aheadCount ?? 0) > 0 ? 'text-amber-300 font-semibold' : 'text-emerald-400'}>
+                  {gitStatus
+                    ? gitStatus.hasUncommitted
+                      ? 'Workspace changes ready'
+                      : `${gitStatus.aheadCount} commit(s) ahead`
+                    : 'Inspecting workspace...'}
                 </span>
               </div>
             </div>
@@ -1114,7 +1152,7 @@ export const SuperAdminPortal: React.FC = () => {
               type="button"
               onClick={fetchGitStatus}
               disabled={isLoadingGitStatus}
-              className="px-3 py-2 rounded-xl bg-slate-950 hover:bg-slate-800 border border-slate-700 text-slate-300 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+              className="px-3 py-2 rounded-xl bg-slate-950 hover:bg-slate-800 border border-slate-700 text-slate-300 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50 whitespace-nowrap shrink-0"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isLoadingGitStatus ? 'animate-spin' : ''}`} />
               <span>Refresh</span>
@@ -1122,17 +1160,64 @@ export const SuperAdminPortal: React.FC = () => {
             <button
               type="button"
               onClick={handleSyncToGithub}
-              disabled={isPushingGit}
-              className="px-4 py-2 rounded-xl bg-[#84E000] hover:bg-[#75c900] text-slate-950 text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer shadow-sm disabled:opacity-50"
+              disabled={isPushingGit || (gitStatus !== null && !gitStatus.canPush && gitStatus.tokenStatus !== 'network_error')}
+              className="px-4 py-2 rounded-xl bg-[#84E000] hover:bg-[#75c900] text-slate-950 text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer shadow-sm disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap shrink-0"
             >
               {isPushingGit ? (
                 <RefreshCw className="w-3.5 h-3.5 animate-spin" />
               ) : (
                 <UploadCloud className="w-3.5 h-3.5" />
               )}
-              <span>{isPushingGit ? 'Pushing...' : 'Sync to GitHub (main)'}</span>
+              <span>{isPushingGit ? 'Syncing...' : 'Sync to GitHub (main)'}</span>
             </button>
           </div>
+        </div>
+
+        {/* Live Token & Permission Diagnostic Strip */}
+        {gitStatus && (
+          <div
+            className={`p-2.5 rounded-xl border text-xs flex items-start gap-2 ${
+              gitStatus.tokenStatus === 'valid'
+                ? 'bg-emerald-950/35 border-emerald-800/60 text-emerald-200'
+                : gitStatus.tokenStatus === 'missing'
+                ? 'bg-amber-950/40 border-amber-700/60 text-amber-200'
+                : 'bg-rose-950/40 border-rose-800/60 text-rose-200'
+            }`}
+          >
+            {gitStatus.tokenStatus === 'valid' ? (
+              <CheckCircle2 className="w-4 h-4 text-[#84E000] shrink-0 mt-0.5" />
+            ) : gitStatus.tokenStatus === 'missing' ? (
+              <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+            ) : (
+              <XCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+            )}
+            <div className="space-y-0.5 min-w-0">
+              <div className="font-semibold">
+                {gitStatus.tokenStatus === 'valid'
+                  ? `Secrets Token Active${gitStatus.githubUser ? ` (@${gitStatus.githubUser})` : ''}`
+                  : gitStatus.tokenStatus === 'missing'
+                  ? 'GITHUB_TOKEN Not Found in Server Secrets'
+                  : 'GitHub Token Verification Issue'}
+              </div>
+              <p className="text-[11px] opacity-90 leading-relaxed">{gitStatus.tokenMessage}</p>
+            </div>
+          </div>
+        )}
+
+        {/* Optional Commit Message Field */}
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+          <label htmlFor="sc-git-commit-msg" className="text-[11px] font-semibold text-slate-400 whitespace-nowrap shrink-0">
+            Commit Message
+          </label>
+          <input
+            id="sc-git-commit-msg"
+            type="text"
+            value={gitCommitMessage}
+            onChange={(e) => setGitCommitMessage(e.target.value)}
+            maxLength={200}
+            placeholder="Optional commit message (defaults to timestamped Student Companion sync note)"
+            className="flex-1 bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none transition-colors"
+          />
         </div>
 
         {gitSyncFeedback && (

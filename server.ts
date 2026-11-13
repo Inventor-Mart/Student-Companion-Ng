@@ -2674,11 +2674,182 @@ const AUTHORIZED_GIT_ADMINS = ['martorefe@gmail.com', 'wowrealities@gmail.com'];
 const TARGET_GITHUB_OWNER = 'Inventor-Mart';
 const TARGET_GITHUB_REPO = 'Student-Companion-Ng';
 const TARGET_GITHUB_BRANCH = 'main';
+const CLEAN_REMOTE_URL = `https://github.com/${TARGET_GITHUB_OWNER}/${TARGET_GITHUB_REPO}.git`;
 
 function scrubGitToken(text: string, token: string): string {
   if (!text) return '';
-  if (!token) return text;
-  return text.split(token).join('***');
+  let cleaned = String(text);
+  if (token) {
+    cleaned = cleaned.split(token).join('***');
+    cleaned = cleaned.split(encodeURIComponent(token)).join('***');
+  }
+  cleaned = cleaned.replace(/x-access-token:[^@]+@/gi, 'x-access-token:***@');
+  return cleaned;
+}
+
+type GitHubTokenStatus = 'missing' | 'valid' | 'read_only' | 'invalid' | 'not_found' | 'network_error';
+
+async function verifyGithubTokenAccess(token: string): Promise<{
+  configured: boolean;
+  canPush: boolean;
+  tokenStatus: GitHubTokenStatus;
+  tokenMessage: string;
+  githubUser?: string;
+  remoteLatestCommit?: string;
+}> {
+  if (!token) {
+    return {
+      configured: false,
+      canPush: false,
+      tokenStatus: 'missing',
+      tokenMessage:
+        'GITHUB_TOKEN is missing from server environment. Add GITHUB_TOKEN (with repo / Contents Read & Write scope) in AI Studio Secrets and restart the server.'
+    };
+  }
+
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${token}`,
+    Accept: 'application/vnd.github+json',
+    'User-Agent': 'Student-Companion-Ng-Sync'
+  };
+
+  try {
+    const repoRes = await fetch(
+      `https://api.github.com/repos/${TARGET_GITHUB_OWNER}/${TARGET_GITHUB_REPO}`,
+      { headers, signal: AbortSignal.timeout(8000) }
+    );
+
+    if (repoRes.status === 401) {
+      return {
+        configured: true,
+        canPush: false,
+        tokenStatus: 'invalid',
+        tokenMessage: 'GITHUB_TOKEN was rejected by GitHub (401 Unauthorized). Generate a fresh token and update Secrets.'
+      };
+    }
+
+    if (repoRes.status === 404) {
+      return {
+        configured: true,
+        canPush: false,
+        tokenStatus: 'not_found',
+        tokenMessage: `Token cannot access ${TARGET_GITHUB_OWNER}/${TARGET_GITHUB_REPO} (404). Verify repository name and token repo access.`
+      };
+    }
+
+    if (!repoRes.ok) {
+      return {
+        configured: true,
+        canPush: false,
+        tokenStatus: 'network_error',
+        tokenMessage: `GitHub API returned HTTP ${repoRes.status} while verifying repository permissions.`
+      };
+    }
+
+    const repoData: any = await repoRes.json();
+    const canPush = Boolean(
+      repoData?.permissions?.push ||
+      repoData?.permissions?.admin ||
+      repoData?.permissions?.maintain
+    );
+
+    let githubUser: string | undefined;
+    try {
+      const userRes = await fetch('https://api.github.com/user', {
+        headers,
+        signal: AbortSignal.timeout(5000)
+      });
+      if (userRes.ok) {
+        const userData: any = await userRes.json();
+        githubUser = userData?.login;
+      }
+    } catch {}
+
+    let remoteLatestCommit: string | undefined;
+    try {
+      const branchRes = await fetch(
+        `https://api.github.com/repos/${TARGET_GITHUB_OWNER}/${TARGET_GITHUB_REPO}/branches/${TARGET_GITHUB_BRANCH}`,
+        { headers, signal: AbortSignal.timeout(5000) }
+      );
+      if (branchRes.ok) {
+        const branchData: any = await branchRes.json();
+        if (branchData?.commit?.sha) {
+          remoteLatestCommit = String(branchData.commit.sha).slice(0, 7);
+        }
+      }
+    } catch {}
+
+    if (!canPush) {
+      return {
+        configured: true,
+        canPush: false,
+        tokenStatus: 'read_only',
+        githubUser,
+        remoteLatestCommit,
+        tokenMessage: `Token${githubUser ? ` (@${githubUser})` : ''} only has read access to ${TARGET_GITHUB_OWNER}/${TARGET_GITHUB_REPO}. Grant "repo" or "Contents: Read & Write" permission.`
+      };
+    }
+
+    return {
+      configured: true,
+      canPush: true,
+      tokenStatus: 'valid',
+      githubUser,
+      remoteLatestCommit,
+      tokenMessage: `Verified push permission${githubUser ? ` as @${githubUser}` : ''} for ${TARGET_GITHUB_OWNER}/${TARGET_GITHUB_REPO}.`
+    };
+  } catch (err: any) {
+    return {
+      configured: true,
+      canPush: false,
+      tokenStatus: 'network_error',
+      tokenMessage: scrubGitToken(err?.message || 'Unable to reach api.github.com to verify token.', token)
+    };
+  }
+}
+
+async function ensureGitWorkspace(adminEmail: string): Promise<{ autoInitialized: boolean }> {
+  const gitDir = path.join(__dirname, '.git');
+  let autoInitialized = false;
+
+  if (!fs.existsSync(gitDir)) {
+    try {
+      await execFileAsync('git', ['init', '-b', TARGET_GITHUB_BRANCH], { cwd: __dirname });
+    } catch {
+      await execFileAsync('git', ['init'], { cwd: __dirname });
+      await execFileAsync('git', ['symbolic-ref', 'HEAD', `refs/heads/${TARGET_GITHUB_BRANCH}`], {
+        cwd: __dirname
+      });
+    }
+    autoInitialized = true;
+  }
+
+  try {
+    const nameOut = await execFileAsync('git', ['config', 'user.name'], { cwd: __dirname });
+    if (!nameOut.stdout.trim()) throw new Error('empty');
+  } catch {
+    await execFileAsync('git', ['config', 'user.name', 'Student Companion Admin'], { cwd: __dirname });
+  }
+
+  try {
+    const emailOut = await execFileAsync('git', ['config', 'user.email'], { cwd: __dirname });
+    if (!emailOut.stdout.trim()) throw new Error('empty');
+  } catch {
+    await execFileAsync('git', ['config', 'user.email', adminEmail || 'martorefe@gmail.com'], {
+      cwd: __dirname
+    });
+  }
+
+  try {
+    const remoteOut = await execFileAsync('git', ['remote', 'get-url', 'origin'], { cwd: __dirname });
+    if (remoteOut.stdout.trim() !== CLEAN_REMOTE_URL) {
+      await execFileAsync('git', ['remote', 'set-url', 'origin', CLEAN_REMOTE_URL], { cwd: __dirname });
+    }
+  } catch {
+    await execFileAsync('git', ['remote', 'add', 'origin', CLEAN_REMOTE_URL], { cwd: __dirname });
+  }
+
+  return { autoInitialized };
 }
 
 app.get('/api/git/status', async (req, res) => {
@@ -2692,14 +2863,33 @@ app.get('/api/git/status', async (req, res) => {
   }
 
   const token = (process.env.GITHUB_TOKEN || process.env.GH_TOKEN || '').trim();
-  try {
-    const [branchOut, headOut, statusOut] = await Promise.all([
-      execFileAsync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: __dirname }),
-      execFileAsync('git', ['rev-parse', '--short', 'HEAD'], { cwd: __dirname }),
-      execFileAsync('git', ['status', '--porcelain'], { cwd: __dirname }),
-    ]);
+  const gitInitialized = fs.existsSync(path.join(__dirname, '.git'));
 
-    let aheadCount = 0;
+  let branch = TARGET_GITHUB_BRANCH;
+  let latestCommit = gitInitialized ? 'unborn' : 'not initialized';
+  let hasUncommitted = true;
+  let aheadCount = 0;
+
+  if (gitInitialized) {
+    try {
+      const branchOut = await execFileAsync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: __dirname });
+      if (branchOut.stdout.trim()) branch = branchOut.stdout.trim();
+    } catch {}
+
+    try {
+      const headOut = await execFileAsync('git', ['rev-parse', '--short', 'HEAD'], { cwd: __dirname });
+      if (headOut.stdout.trim()) latestCommit = headOut.stdout.trim();
+    } catch {
+      latestCommit = 'unborn';
+    }
+
+    try {
+      const statusOut = await execFileAsync('git', ['status', '--porcelain'], { cwd: __dirname });
+      hasUncommitted = Boolean(statusOut.stdout.trim());
+    } catch {
+      hasUncommitted = true;
+    }
+
     try {
       const aheadOut = await execFileAsync(
         'git',
@@ -2710,22 +2900,25 @@ app.get('/api/git/status', async (req, res) => {
     } catch {
       aheadCount = 0;
     }
-
-    return res.json({
-      success: true,
-      configured: Boolean(token),
-      repo: `${TARGET_GITHUB_OWNER}/${TARGET_GITHUB_REPO}`,
-      branch: branchOut.stdout.trim() || TARGET_GITHUB_BRANCH,
-      aheadCount,
-      latestCommit: headOut.stdout.trim(),
-      hasUncommitted: Boolean(statusOut.stdout.trim()),
-    });
-  } catch (err: any) {
-    return res.status(500).json({
-      success: false,
-      error: scrubGitToken(err?.message || 'Unable to inspect local git repository.', token),
-    });
   }
+
+  const tokenCheck = await verifyGithubTokenAccess(token);
+
+  return res.json({
+    success: true,
+    configured: tokenCheck.configured,
+    canPush: tokenCheck.canPush,
+    tokenStatus: tokenCheck.tokenStatus,
+    tokenMessage: tokenCheck.tokenMessage,
+    githubUser: tokenCheck.githubUser,
+    gitInitialized,
+    repo: `${TARGET_GITHUB_OWNER}/${TARGET_GITHUB_REPO}`,
+    branch,
+    aheadCount,
+    latestCommit,
+    remoteLatestCommit: tokenCheck.remoteLatestCommit,
+    hasUncommitted,
+  });
 });
 
 app.post('/api/git/push', async (req, res) => {
@@ -2743,68 +2936,160 @@ app.post('/api/git/push', async (req, res) => {
     return res.status(400).json({
       success: false,
       error:
-        'GITHUB_TOKEN is not available in the running server environment. Ensure GITHUB_TOKEN is saved in Secrets and restart the dev server.',
+        'GITHUB_TOKEN is not available in the running server environment. Add GITHUB_TOKEN (with repo / Contents Read & Write scope) in AI Studio Secrets and restart the dev server.',
+    });
+  }
+
+  const tokenCheck = await verifyGithubTokenAccess(token);
+  if (!tokenCheck.canPush && tokenCheck.tokenStatus !== 'network_error') {
+    return res.status(403).json({
+      success: false,
+      error: tokenCheck.tokenMessage,
     });
   }
 
   try {
-    const statusOut = await execFileAsync('git', ['status', '--porcelain'], { cwd: __dirname });
-    if (statusOut.stdout.trim()) {
-      const commitMsg =
-        String(req.body?.commitMessage || '').trim() ||
-        `chore: sync Student Companion updates [${new Date().toISOString()}]`;
-      await execFileAsync('git', ['add', '-A'], { cwd: __dirname });
-      await execFileAsync('git', ['commit', '-m', commitMsg], { cwd: __dirname });
-    }
+    const { autoInitialized } = await ensureGitWorkspace(adminEmail);
 
-    let aheadCount = 0;
-    try {
-      const aheadOut = await execFileAsync(
-        'git',
-        ['rev-list', '--count', `origin/${TARGET_GITHUB_BRANCH}..HEAD`],
-        { cwd: __dirname }
-      );
-      aheadCount = Number(aheadOut.stdout.trim()) || 0;
-    } catch {
-      aheadCount = 0;
-    }
+    const commitMsg =
+      String(req.body?.commitMessage || '').trim().slice(0, 200) ||
+      `chore: sync Student Companion updates [${new Date().toISOString()}]`;
 
     const authenticatedUrl = `https://x-access-token:${encodeURIComponent(token)}@github.com/${TARGET_GITHUB_OWNER}/${TARGET_GITHUB_REPO}.git`;
+    const gitEnv = { ...process.env, GIT_TERMINAL_PROMPT: '0' };
 
-    await execFileAsync('git', ['push', authenticatedUrl, TARGET_GITHUB_BRANCH], {
-      cwd: __dirname,
-      env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
-      timeout: 45000,
-    });
-
-    // Update local origin/main tracking ref so ahead count reflects pushed state
+    // Fetch current remote main (gracefully handle empty repositories)
+    let remoteSha: string | null = null;
     try {
       await execFileAsync('git', ['fetch', authenticatedUrl, TARGET_GITHUB_BRANCH], {
         cwd: __dirname,
-        env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
-        timeout: 20000,
+        env: gitEnv,
+        timeout: 30000,
       });
+      const fetchHeadOut = await execFileAsync('git', ['rev-parse', 'FETCH_HEAD'], { cwd: __dirname });
+      remoteSha = fetchHeadOut.stdout.trim() || null;
+    } catch (fetchErr: any) {
+      const msg = String(fetchErr?.stderr || fetchErr?.message || '');
+      if (msg.includes('couldn\'t find remote ref') || msg.includes('Remote branch')) {
+        remoteSha = null; // Empty remote repository
+      } else {
+        throw fetchErr;
+      }
+    }
+
+    let pushedCommits = 0;
+
+    if (remoteSha) {
+      // Check if local HEAD already descends from remoteSha
+      let isAncestor = false;
+      try {
+        await execFileAsync('git', ['merge-base', '--is-ancestor', remoteSha, 'HEAD'], { cwd: __dirname });
+        isAncestor = true;
+      } catch {
+        isAncestor = false;
+      }
+
+      if (isAncestor) {
+        const statusOut = await execFileAsync('git', ['status', '--porcelain'], { cwd: __dirname });
+        if (statusOut.stdout.trim()) {
+          await execFileAsync('git', ['add', '-A'], { cwd: __dirname });
+          await execFileAsync('git', ['commit', '-m', commitMsg], { cwd: __dirname });
+        }
+        const aheadOut = await execFileAsync(
+          'git',
+          ['rev-list', '--count', `${remoteSha}..HEAD`],
+          { cwd: __dirname }
+        );
+        pushedCommits = Number(aheadOut.stdout.trim()) || 0;
+        if (pushedCommits > 0) {
+          await execFileAsync('git', ['push', authenticatedUrl, `HEAD:refs/heads/${TARGET_GITHUB_BRANCH}`], {
+            cwd: __dirname,
+            env: gitEnv,
+            timeout: 45000,
+          });
+        }
+      } else {
+        // Fresh container (.git missing) or unrelated local history:
+        // Stage workspace files and stack cleanly as a child commit of remoteSha without losing GitHub history.
+        await execFileAsync('git', ['add', '-A'], { cwd: __dirname });
+        const treeOut = await execFileAsync('git', ['write-tree'], { cwd: __dirname });
+        const workspaceTreeSha = treeOut.stdout.trim();
+        const remoteTreeOut = await execFileAsync('git', ['rev-parse', `${remoteSha}^{tree}`], {
+          cwd: __dirname
+        });
+        const remoteTreeSha = remoteTreeOut.stdout.trim();
+
+        if (workspaceTreeSha === remoteTreeSha) {
+          await execFileAsync('git', ['update-ref', `refs/heads/${TARGET_GITHUB_BRANCH}`, remoteSha], {
+            cwd: __dirname
+          });
+          await execFileAsync('git', ['symbolic-ref', 'HEAD', `refs/heads/${TARGET_GITHUB_BRANCH}`], {
+            cwd: __dirname
+          });
+          await execFileAsync('git', ['reset', '--mixed', remoteSha], { cwd: __dirname });
+          pushedCommits = 0;
+        } else {
+          const commitOut = await execFileAsync(
+            'git',
+            ['commit-tree', workspaceTreeSha, '-p', remoteSha, '-m', commitMsg],
+            { cwd: __dirname }
+          );
+          const newCommitSha = commitOut.stdout.trim();
+          await execFileAsync('git', ['update-ref', `refs/heads/${TARGET_GITHUB_BRANCH}`, newCommitSha], {
+            cwd: __dirname
+          });
+          await execFileAsync('git', ['symbolic-ref', 'HEAD', `refs/heads/${TARGET_GITHUB_BRANCH}`], {
+            cwd: __dirname
+          });
+          await execFileAsync('git', ['reset', '--mixed', newCommitSha], { cwd: __dirname });
+
+          await execFileAsync('git', ['push', authenticatedUrl, `HEAD:refs/heads/${TARGET_GITHUB_BRANCH}`], {
+            cwd: __dirname,
+            env: gitEnv,
+            timeout: 45000,
+          });
+          pushedCommits = 1;
+        }
+      }
+    } else {
+      // Brand new empty repository
+      await execFileAsync('git', ['add', '-A'], { cwd: __dirname });
+      const statusOut = await execFileAsync('git', ['status', '--porcelain'], { cwd: __dirname });
+      if (statusOut.stdout.trim()) {
+        await execFileAsync('git', ['commit', '-m', commitMsg], { cwd: __dirname });
+      } else {
+        await execFileAsync('git', ['commit', '--allow-empty', '-m', commitMsg], { cwd: __dirname });
+      }
+      await execFileAsync('git', ['push', authenticatedUrl, `HEAD:refs/heads/${TARGET_GITHUB_BRANCH}`], {
+        cwd: __dirname,
+        env: gitEnv,
+        timeout: 45000,
+      });
+      pushedCommits = 1;
+    }
+
+    // Update local origin/main tracking ref cleanly
+    try {
       await execFileAsync(
         'git',
         ['update-ref', `refs/remotes/origin/${TARGET_GITHUB_BRANCH}`, 'HEAD'],
         { cwd: __dirname }
       );
-    } catch {
-      // Non-fatal if remote tracking ref update fails after successful push
-    }
+    } catch {}
 
     const headOut = await execFileAsync('git', ['rev-parse', '--short', 'HEAD'], { cwd: __dirname });
 
     return res.json({
       success: true,
+      autoInitialized,
       repo: `${TARGET_GITHUB_OWNER}/${TARGET_GITHUB_REPO}`,
       branch: TARGET_GITHUB_BRANCH,
-      pushedCommits: aheadCount,
+      pushedCommits,
       latestCommit: headOut.stdout.trim(),
       message:
-        aheadCount > 0
-          ? `Successfully pushed ${aheadCount} commit(s) to ${TARGET_GITHUB_OWNER}/${TARGET_GITHUB_REPO} (${TARGET_GITHUB_BRANCH}).`
-          : `${TARGET_GITHUB_OWNER}/${TARGET_GITHUB_REPO} (${TARGET_GITHUB_BRANCH}) is up to date.`,
+        pushedCommits > 0
+          ? `Successfully synced ${pushedCommits} commit(s) to ${TARGET_GITHUB_OWNER}/${TARGET_GITHUB_REPO} (${TARGET_GITHUB_BRANCH}) · HEAD ${headOut.stdout.trim()}.`
+          : `${TARGET_GITHUB_OWNER}/${TARGET_GITHUB_REPO} (${TARGET_GITHUB_BRANCH}) is already up to date (${headOut.stdout.trim()}).`,
     });
   } catch (err: any) {
     const rawMsg = err?.stderr || err?.message || 'GitHub push failed.';
