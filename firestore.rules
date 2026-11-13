@@ -610,6 +610,8 @@ service cloud.firestore {
              data.label is string && data.label.size() <= 120 &&
              data.category in ['Student Hub', 'Persona Portal', 'Core Service'] &&
              data.isPaused is bool &&
+             (!('customBadge' in data) || (data.customBadge is string && data.customBadge.size() <= 40)) &&
+             (!('customTitle' in data) || (data.customTitle is string && data.customTitle.size() <= 120)) &&
              (!('pauseReason' in data) || (data.pauseReason is string && data.pauseReason.size() <= 500)) &&
              (!('estimatedResume' in data) || (data.estimatedResume is string && data.estimatedResume.size() <= 100)) &&
              data.updatedAt is string && data.updatedAt.size() <= 100 &&

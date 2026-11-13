@@ -1008,6 +1008,8 @@ export interface OTAFeatureFlag {
   description: string;
   category: 'Student Hub' | 'Persona Portal' | 'Core Service';
   isPaused: boolean;
+  customBadge?: string;
+  customTitle?: string;
   pauseReason?: string;
   estimatedResume?: string;
   updatedAt: string;

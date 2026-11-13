@@ -15,14 +15,15 @@ import {
   ChevronUp,
   Volume2,
   VolumeX,
-  Wrench
+  PauseCircle
 } from 'lucide-react';
 import { playSound, toggleSoundMuted, getSoundMuted } from '../../utils/audioSynthesis';
+import { resolveFeatureNotice } from '../../services/otaService';
 import { motion, AnimatePresence } from 'motion/react';
 import { OTAFeatureKey } from '../../types';
 
 export const StudentBottomNav: React.FC = () => {
-  const { activeStudentTab, setActiveStudentTab, student, isFeaturePaused } = useApp();
+  const { activeStudentTab, setActiveStudentTab, student, isFeaturePaused, otaFeatureFlags } = useApp();
   const [isMoreDrawerOpen, setIsMoreDrawerOpen] = useState(false);
   const [isMuted, setIsMuted] = useState(getSoundMuted());
 
@@ -126,9 +127,9 @@ export const StudentBottomNav: React.FC = () => {
                 {item.featureKey && isFeaturePaused(item.featureKey) && (
                   <span
                     className="absolute -top-0.5 -right-1 w-3.5 h-3.5 rounded-full bg-amber-500 text-slate-950 flex items-center justify-center shadow"
-                    title="Temporarily paused for maintenance"
+                    title={resolveFeatureNotice(otaFeatureFlags[item.featureKey]).badge}
                   >
-                    <Wrench className="w-2 h-2 stroke-[2.5]" />
+                    <PauseCircle className="w-2.5 h-2.5 stroke-[2.5]" />
                   </span>
                 )}
               </div>
@@ -211,8 +212,8 @@ export const StudentBottomNav: React.FC = () => {
                         </span>
                         {paused ? (
                           <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-300 mt-0.5">
-                            <Wrench className="w-2.5 h-2.5" />
-                            <span>Maintenance</span>
+                            <PauseCircle className="w-2.5 h-2.5 shrink-0" />
+                            <span className="truncate">{resolveFeatureNotice(otaFeatureFlags[hub.featureKey]).badge}</span>
                           </span>
                         ) : (
                           <span className="text-[10px] text-slate-400 block mt-0.5">

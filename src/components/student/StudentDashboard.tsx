@@ -6,9 +6,10 @@ import { compressImage } from '../../lib/storage';
 import { NigerianClassLevel, OTAFeatureKey } from '../../types';
 import { ExamPrepUnlockModal } from './exam-prep/ExamPrepUnlockModal';
 import { FeatureMaintenanceGate } from '../common/FeatureMaintenanceView';
+import { resolveFeatureNotice } from '../../services/otaService';
 import {
   Flame,
-  Wrench,
+  PauseCircle,
   Award,
   BookOpen,
   ArrowRight,
@@ -66,15 +67,17 @@ export const StudentDashboard: React.FC = () => {
     linkStudentToSchool,
     openStudentSubscriptionModal,
     checkStudentFeatureAccess,
-    isFeaturePaused
+    isFeaturePaused,
+    otaFeatureFlags
   } = useApp();
 
   const renderMaintenanceBadge = (featureKey: OTAFeatureKey) => {
     if (!isFeaturePaused(featureKey)) return null;
+    const notice = resolveFeatureNotice(otaFeatureFlags[featureKey]);
     return (
       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-950/95 border border-amber-400/70 text-amber-300 text-[10px] font-black uppercase tracking-wider shadow-sm shrink-0">
-        <Wrench className="w-3 h-3" />
-        <span>Maintenance</span>
+        <PauseCircle className="w-3 h-3 shrink-0" />
+        <span className="truncate max-w-[110px]">{notice.badge}</span>
       </span>
     );
   };

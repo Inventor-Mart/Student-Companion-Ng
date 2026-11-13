@@ -679,10 +679,58 @@ export async function executeOTAUpgrade(targetVersion: string): Promise<void> {
 }
 
 // ==========================================
-// PER-FEATURE PAUSE / MAINTENANCE CONTROLS
+// PER-FEATURE PAUSE & CUSTOM NOTICE CONTROLS
 // ==========================================
 
 const nowIso = new Date().toISOString();
+
+const LEGACY_SEEDED_MAINTENANCE_REASONS = new Set<string>([
+  'Curriculum content maintenance is underway.',
+  'Question bank maintenance is in progress.',
+  'AI tutor model maintenance is in progress.',
+  'Competition leaderboard recalculation and maintenance.',
+  'Tutor matching service is under scheduled maintenance.',
+  'Arcade games are undergoing scheduled updates.',
+  'Formula reference library maintenance is underway.',
+  'Community forum moderation and maintenance in progress.',
+  'Exam Prep planner maintenance is underway.',
+  'University Aspirant portal is under maintenance.',
+  'Uniform verification scanner is under maintenance.',
+  'Parent Portal is undergoing scheduled maintenance.',
+  'Tutor Portal is undergoing scheduled maintenance.',
+  'Growth Partner Portal is under scheduled maintenance.',
+  'School Admin Portal is under scheduled maintenance.',
+  'Virtual Classroom servers are undergoing scheduled maintenance.',
+  'Payment gateway maintenance is in progress. No charges will be processed.'
+]);
+
+export function resolveFeatureNotice(flag?: Partial<OTAFeatureFlag> | null): {
+  badge: string;
+  headline: string;
+  message: string;
+  eta: string;
+} {
+  const rawReason = (flag?.pauseReason || '').trim();
+  const safeReason = LEGACY_SEEDED_MAINTENANCE_REASONS.has(rawReason) ? '' : rawReason;
+  return {
+    badge: (flag?.customBadge || '').trim() || 'Paused',
+    headline: (flag?.customTitle || '').trim() || flag?.label || 'Feature Paused',
+    message: safeReason || 'This feature is currently paused. Please check back later.',
+    eta: (flag?.estimatedResume || '').trim()
+  };
+}
+
+export function sanitizeOTAFeatureFlag(flag: OTAFeatureFlag): OTAFeatureFlag {
+  const rawReason = (flag.pauseReason || '').trim();
+  return {
+    ...flag,
+    customBadge: (flag.customBadge || '').trim().slice(0, 40),
+    customTitle: (flag.customTitle || '').trim().slice(0, 120),
+    pauseReason: (LEGACY_SEEDED_MAINTENANCE_REASONS.has(rawReason) ? '' : rawReason).slice(0, 500),
+    estimatedResume: (flag.estimatedResume || '').trim().slice(0, 100),
+    updatedAt: flag.updatedAt || new Date().toISOString()
+  };
+}
 
 export const DEFAULT_OTA_FEATURE_FLAGS: Record<OTAFeatureKey, OTAFeatureFlag> = {
   lesson_notes: {
@@ -691,7 +739,9 @@ export const DEFAULT_OTA_FEATURE_FLAGS: Record<OTAFeatureKey, OTAFeatureFlag> = 
     description: 'Scheme of Work, weekly notes, and verified reading tracker',
     category: 'Student Hub',
     isPaused: false,
-    pauseReason: 'Curriculum content maintenance is underway.',
+    customBadge: '',
+    customTitle: '',
+    pauseReason: '',
     estimatedResume: '',
     updatedAt: nowIso,
     updatedBy: 'system'
@@ -702,7 +752,9 @@ export const DEFAULT_OTA_FEATURE_FLAGS: Record<OTAFeatureKey, OTAFeatureFlag> = 
     description: 'Termly drills, mock assessments, and WAEC/NECO/BECE CBT runs',
     category: 'Student Hub',
     isPaused: false,
-    pauseReason: 'Question bank maintenance is in progress.',
+    customBadge: '',
+    customTitle: '',
+    pauseReason: '',
     estimatedResume: '',
     updatedAt: nowIso,
     updatedBy: 'system'
@@ -713,7 +765,9 @@ export const DEFAULT_OTA_FEATURE_FLAGS: Record<OTAFeatureKey, OTAFeatureFlag> = 
     description: '24/7 AI tutoring explanations and guided problem solving',
     category: 'Student Hub',
     isPaused: false,
-    pauseReason: 'AI tutor model maintenance is in progress.',
+    customBadge: '',
+    customTitle: '',
+    pauseReason: '',
     estimatedResume: '',
     updatedAt: nowIso,
     updatedBy: 'system'
@@ -724,7 +778,9 @@ export const DEFAULT_OTA_FEATURE_FLAGS: Record<OTAFeatureKey, OTAFeatureFlag> = 
     description: 'Termly Championship Arena, Weekly Challenges & School Leaderboard',
     category: 'Student Hub',
     isPaused: false,
-    pauseReason: 'Competition leaderboard recalculation and maintenance.',
+    customBadge: '',
+    customTitle: '',
+    pauseReason: '',
     estimatedResume: '',
     updatedAt: nowIso,
     updatedBy: 'system'
@@ -735,7 +791,9 @@ export const DEFAULT_OTA_FEATURE_FLAGS: Record<OTAFeatureKey, OTAFeatureFlag> = 
     description: 'Browse verified tutors and book 1-on-1 tutoring sessions',
     category: 'Student Hub',
     isPaused: false,
-    pauseReason: 'Tutor matching service is under scheduled maintenance.',
+    customBadge: '',
+    customTitle: '',
+    pauseReason: '',
     estimatedResume: '',
     updatedAt: nowIso,
     updatedBy: 'system'
@@ -746,7 +804,9 @@ export const DEFAULT_OTA_FEATURE_FLAGS: Record<OTAFeatureKey, OTAFeatureFlag> = 
     description: 'Educational STEM, Speed Concord, History & Logic mini-games',
     category: 'Student Hub',
     isPaused: false,
-    pauseReason: 'Arcade games are undergoing scheduled updates.',
+    customBadge: '',
+    customTitle: '',
+    pauseReason: '',
     estimatedResume: '',
     updatedAt: nowIso,
     updatedBy: 'system'
@@ -757,7 +817,9 @@ export const DEFAULT_OTA_FEATURE_FLAGS: Record<OTAFeatureKey, OTAFeatureFlag> = 
     description: 'Interactive Physics, Chemistry, and Maths reference formulas',
     category: 'Student Hub',
     isPaused: false,
-    pauseReason: 'Formula reference library maintenance is underway.',
+    customBadge: '',
+    customTitle: '',
+    pauseReason: '',
     estimatedResume: '',
     updatedAt: nowIso,
     updatedBy: 'system'
@@ -768,7 +830,9 @@ export const DEFAULT_OTA_FEATURE_FLAGS: Record<OTAFeatureKey, OTAFeatureFlag> = 
     description: 'Moderated peer study channels and Q&A discussions',
     category: 'Student Hub',
     isPaused: false,
-    pauseReason: 'Community forum moderation and maintenance in progress.',
+    customBadge: '',
+    customTitle: '',
+    pauseReason: '',
     estimatedResume: '',
     updatedAt: nowIso,
     updatedBy: 'system'
@@ -779,7 +843,9 @@ export const DEFAULT_OTA_FEATURE_FLAGS: Record<OTAFeatureKey, OTAFeatureFlag> = 
     description: 'Personalized 30-day AI study calendar and exam readiness planner',
     category: 'Student Hub',
     isPaused: false,
-    pauseReason: 'Exam Prep planner maintenance is underway.',
+    customBadge: '',
+    customTitle: '',
+    pauseReason: '',
     estimatedResume: '',
     updatedAt: nowIso,
     updatedBy: 'system'
@@ -790,7 +856,9 @@ export const DEFAULT_OTA_FEATURE_FLAGS: Record<OTAFeatureKey, OTAFeatureFlag> = 
     description: 'JAMB UTME simulator, Admission Guide & National Mock Tournaments',
     category: 'Student Hub',
     isPaused: false,
-    pauseReason: 'University Aspirant portal is under maintenance.',
+    customBadge: '',
+    customTitle: '',
+    pauseReason: '',
     estimatedResume: '',
     updatedAt: nowIso,
     updatedBy: 'system'
@@ -801,7 +869,9 @@ export const DEFAULT_OTA_FEATURE_FLAGS: Record<OTAFeatureKey, OTAFeatureFlag> = 
     description: 'Camera-based school uniform verification scanner',
     category: 'Student Hub',
     isPaused: false,
-    pauseReason: 'Uniform verification scanner is under maintenance.',
+    customBadge: '',
+    customTitle: '',
+    pauseReason: '',
     estimatedResume: '',
     updatedAt: nowIso,
     updatedBy: 'system'
@@ -812,7 +882,9 @@ export const DEFAULT_OTA_FEATURE_FLAGS: Record<OTAFeatureKey, OTAFeatureFlag> = 
     description: 'Ward academic tracking, escrow approvals & parent wallet',
     category: 'Persona Portal',
     isPaused: false,
-    pauseReason: 'Parent Portal is undergoing scheduled maintenance.',
+    customBadge: '',
+    customTitle: '',
+    pauseReason: '',
     estimatedResume: '',
     updatedAt: nowIso,
     updatedBy: 'system'
@@ -823,7 +895,9 @@ export const DEFAULT_OTA_FEATURE_FLAGS: Record<OTAFeatureKey, OTAFeatureFlag> = 
     description: 'Tutor schedule, student session queue & earnings management',
     category: 'Persona Portal',
     isPaused: false,
-    pauseReason: 'Tutor Portal is undergoing scheduled maintenance.',
+    customBadge: '',
+    customTitle: '',
+    pauseReason: '',
     estimatedResume: '',
     updatedAt: nowIso,
     updatedBy: 'system'
@@ -834,7 +908,9 @@ export const DEFAULT_OTA_FEATURE_FLAGS: Record<OTAFeatureKey, OTAFeatureFlag> = 
     description: 'Referral tracking, commission ledger & withdrawal center',
     category: 'Persona Portal',
     isPaused: false,
-    pauseReason: 'Growth Partner Portal is under scheduled maintenance.',
+    customBadge: '',
+    customTitle: '',
+    pauseReason: '',
     estimatedResume: '',
     updatedAt: nowIso,
     updatedBy: 'system'
@@ -845,7 +921,9 @@ export const DEFAULT_OTA_FEATURE_FLAGS: Record<OTAFeatureKey, OTAFeatureFlag> = 
     description: 'School accreditation, bulk student roster & material uploads',
     category: 'Persona Portal',
     isPaused: false,
-    pauseReason: 'School Admin Portal is under scheduled maintenance.',
+    customBadge: '',
+    customTitle: '',
+    pauseReason: '',
     estimatedResume: '',
     updatedAt: nowIso,
     updatedBy: 'system'
@@ -856,7 +934,9 @@ export const DEFAULT_OTA_FEATURE_FLAGS: Record<OTAFeatureKey, OTAFeatureFlag> = 
     description: 'Live audio/video tutoring whiteboard sessions',
     category: 'Core Service',
     isPaused: false,
-    pauseReason: 'Virtual Classroom servers are undergoing scheduled maintenance.',
+    customBadge: '',
+    customTitle: '',
+    pauseReason: '',
     estimatedResume: '',
     updatedAt: nowIso,
     updatedBy: 'system'
@@ -867,7 +947,9 @@ export const DEFAULT_OTA_FEATURE_FLAGS: Record<OTAFeatureKey, OTAFeatureFlag> = 
     description: 'Plan upgrades, wallet top-ups, and escrow checkout flows',
     category: 'Core Service',
     isPaused: false,
-    pauseReason: 'Payment gateway maintenance is in progress. No charges will be processed.',
+    customBadge: '',
+    customTitle: '',
+    pauseReason: '',
     estimatedResume: '',
     updatedAt: nowIso,
     updatedBy: 'system'
@@ -880,9 +962,14 @@ function mergeFlagsWithDefaults(
   const merged = { ...DEFAULT_OTA_FEATURE_FLAGS };
   for (const item of partialList) {
     if (item && item.featureKey && merged[item.featureKey]) {
+      const cleanedReason =
+        typeof item.pauseReason === 'string' && LEGACY_SEEDED_MAINTENANCE_REASONS.has(item.pauseReason.trim())
+          ? ''
+          : item.pauseReason;
       merged[item.featureKey] = {
         ...merged[item.featureKey],
-        ...item
+        ...item,
+        pauseReason: cleanedReason ?? ''
       };
     }
   }
@@ -942,10 +1029,10 @@ export function subscribeToOTAFeatureFlags(
 }
 
 export async function saveOTAFeatureFlag(flag: OTAFeatureFlag): Promise<void> {
-  const payload: OTAFeatureFlag = {
+  const payload = sanitizeOTAFeatureFlag({
     ...flag,
     updatedAt: new Date().toISOString()
-  };
+  });
 
   const current = mergeFlagsWithDefaults(
     Object.values(readLocalJson<Record<string, OTAFeatureFlag>>(CACHE_KEY_FEATURE_FLAGS, {}))
@@ -969,15 +1056,20 @@ export async function saveOTAFeatureFlag(flag: OTAFeatureFlag): Promise<void> {
 export async function saveAllOTAFeatureFlags(
   flagsMap: Record<OTAFeatureKey, OTAFeatureFlag>
 ): Promise<void> {
-  writeLocalJson(CACHE_KEY_FEATURE_FLAGS, flagsMap);
+  const sanitizedMap = { ...flagsMap };
+  (Object.keys(sanitizedMap) as OTAFeatureKey[]).forEach((key) => {
+    sanitizedMap[key] = sanitizeOTAFeatureFlag(sanitizedMap[key]);
+  });
+
+  writeLocalJson(CACHE_KEY_FEATURE_FLAGS, sanitizedMap);
 
   await fetch('/api/ota/features', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ flagsMap })
+    body: JSON.stringify({ flagsMap: sanitizedMap })
   }).catch(() => {});
 
-  const entries = Object.values(flagsMap);
+  const entries = Object.values(sanitizedMap);
   for (const f of entries) {
     try {
       await setDoc(doc(db, 'otaFeatureFlags', f.featureKey), f, { merge: true });

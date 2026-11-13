@@ -70,7 +70,7 @@ import {
   Timer,
   Gift,
   ArrowUpCircle,
-  Wrench,
+  PauseCircle,
   BellRing,
   Mail,
   Send,
@@ -237,8 +237,19 @@ export const OTACompetitionManager: React.FC = () => {
     };
     setFeatureDrafts((prev) => ({ ...prev, [key]: nextFlag }));
     await saveOTAFeatureFlag(nextFlag);
+    const hasCustomNotice = Boolean(
+      (nextFlag.customBadge || '').trim() ||
+        (nextFlag.customTitle || '').trim() ||
+        (nextFlag.pauseReason || '').trim()
+    );
     triggerNotice(
-      `${nextFlag.label} is now ${nextFlag.isPaused ? 'PAUSED (maintenance notice shown to users)' : 'ACTIVE'}.`
+      `${nextFlag.label} is now ${
+        nextFlag.isPaused
+          ? hasCustomNotice
+            ? 'PAUSED (custom notice shown to users)'
+            : 'PAUSED'
+          : 'ACTIVE'
+      }.`
     );
   };
 
@@ -249,7 +260,23 @@ export const OTACompetitionManager: React.FC = () => {
       ...flag,
       updatedBy: currentUserProfile?.email || 'super_admin'
     });
-    triggerNotice(`Saved maintenance notice settings for ${flag.label}.`);
+    triggerNotice(`Saved custom pause notice for ${flag.label}.`);
+  };
+
+  const handleClearFeatureDraftDetails = async (key: OTAFeatureKey) => {
+    const flag = featureDrafts[key];
+    if (!flag) return;
+    const cleared: OTAFeatureFlag = {
+      ...flag,
+      customBadge: '',
+      customTitle: '',
+      pauseReason: '',
+      estimatedResume: '',
+      updatedBy: currentUserProfile?.email || 'super_admin'
+    };
+    setFeatureDrafts((prev) => ({ ...prev, [key]: cleared }));
+    await saveOTAFeatureFlag(cleared);
+    triggerNotice(`Cleared custom pause notice fields for ${flag.label}.`);
   };
 
   const handleBulkFeatureState = async (mode: 'resume_all' | 'pause_student_hubs') => {
@@ -271,7 +298,7 @@ export const OTACompetitionManager: React.FC = () => {
       triggerNotice(
         mode === 'resume_all'
           ? 'All platform features resumed and live.'
-          : 'All Student Hub modules paused for maintenance.'
+          : 'All Student Hub modules paused.'
       );
     } finally {
       setIsSavingFeatures(false);
@@ -493,7 +520,7 @@ export const OTACompetitionManager: React.FC = () => {
             </span>
           </div>
           <p className="text-xs sm:text-sm text-slate-400 mt-1">
-            Real-time control for app version upgrades, per-feature maintenance switches, cross-persona reminders, TV news tickers, pop-up flyers &amp; championships.
+            Real-time control for app version upgrades, per-feature pause &amp; custom notice switches, cross-persona reminders, TV news tickers, pop-up flyers &amp; championships.
           </p>
         </div>
 
@@ -535,7 +562,7 @@ export const OTACompetitionManager: React.FC = () => {
               : 'text-slate-400 hover:text-white'
           }`}
         >
-          <Wrench className="w-3.5 h-3.5 shrink-0" />
+          <PauseCircle className="w-3.5 h-3.5 shrink-0" />
           <span>Feature Toggles</span>
         </button>
 
@@ -818,18 +845,18 @@ export const OTACompetitionManager: React.FC = () => {
       )}
 
       {/* ========================================================================= */}
-      {/* TAB 0B: PER-FEATURE PAUSE & MAINTENANCE CONTROL */}
+      {/* TAB 0B: PER-FEATURE PAUSE & CUSTOM NOTICE CONTROL */}
       {/* ========================================================================= */}
       {activeTab === 'feature_toggles' && (
         <div className="flex flex-col gap-4">
           <div className="p-4 bg-slate-900/70 border border-slate-800 rounded-xl flex flex-col md:flex-row md:items-center justify-between gap-3">
             <div>
               <h2 className="text-sm font-bold text-white flex items-center gap-2">
-                <Wrench className="w-4 h-4 text-amber-400" />
-                <span>Feature Maintenance &amp; Kill-Switch Controls</span>
+                <PauseCircle className="w-4 h-4 text-amber-400" />
+                <span>Feature Pause &amp; Custom Notice Controls</span>
               </h2>
               <p className="text-xs text-slate-400 mt-0.5">
-                Pause any individual feature during maintenance. Standard users see your maintenance notice; Super Admins automatically bypass.
+                Pause any individual feature with your own custom badge, headline, and message. Leave fields blank to use a neutral Paused notice; Super Admins retain bypass.
               </p>
             </div>
 
@@ -892,7 +919,7 @@ export const OTACompetitionManager: React.FC = () => {
                   key={flag.featureKey}
                   className={`p-4 rounded-xl border transition-colors flex flex-col gap-3 ${
                     flag.isPaused
-                      ? 'bg-amber-950/20 border-amber-600/60'
+                      ? 'bg-amber-950/20 border-amber-500/60'
                       : 'bg-slate-900/70 border-slate-800'
                   }`}
                 >
@@ -918,7 +945,7 @@ export const OTACompetitionManager: React.FC = () => {
                     >
                       {flag.isPaused ? (
                         <>
-                          <Wrench className="w-3.5 h-3.5" />
+                          <PauseCircle className="w-3.5 h-3.5" />
                           <span>Paused</span>
                         </>
                       ) : (
@@ -930,23 +957,55 @@ export const OTACompetitionManager: React.FC = () => {
                     </button>
                   </div>
 
-                  {/* Maintenance Notice Details */}
-                  <div className="pt-2.5 border-t border-slate-800/80 grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
-                    <input
-                      type="text"
-                      value={flag.pauseReason}
+                  {/* Custom Notice Details */}
+                  <div className="pt-2.5 border-t border-slate-800/80 flex flex-col gap-2 text-xs">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      <input
+                        type="text"
+                        maxLength={40}
+                        value={flag.customBadge || ''}
+                        onChange={(e) =>
+                          setFeatureDrafts((prev) => ({
+                            ...prev,
+                            [flag.featureKey]: { ...flag, customBadge: e.target.value }
+                          }))
+                        }
+                        placeholder="Badge label (e.g. Term Break)"
+                        className="px-2.5 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 text-xs placeholder:text-slate-500"
+                      />
+                      <input
+                        type="text"
+                        maxLength={120}
+                        value={flag.customTitle || ''}
+                        onChange={(e) =>
+                          setFeatureDrafts((prev) => ({
+                            ...prev,
+                            [flag.featureKey]: { ...flag, customTitle: e.target.value }
+                          }))
+                        }
+                        placeholder={`Custom headline (default: ${flag.label})`}
+                        className="sm:col-span-2 px-2.5 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 text-xs placeholder:text-slate-500"
+                      />
+                    </div>
+
+                    <textarea
+                      rows={2}
+                      maxLength={500}
+                      value={flag.pauseReason || ''}
                       onChange={(e) =>
                         setFeatureDrafts((prev) => ({
                           ...prev,
                           [flag.featureKey]: { ...flag, pauseReason: e.target.value }
                         }))
                       }
-                      placeholder="Maintenance reason shown to users..."
-                      className="sm:col-span-2 px-2.5 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 text-xs"
+                      placeholder="Custom message shown to users when paused (leave blank for neutral Paused fallback)..."
+                      className="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 text-xs placeholder:text-slate-500 resize-y min-h-[54px]"
                     />
+
                     <div className="flex items-center gap-1.5">
                       <input
                         type="text"
+                        maxLength={100}
                         value={flag.estimatedResume || ''}
                         onChange={(e) =>
                           setFeatureDrafts((prev) => ({
@@ -954,14 +1013,24 @@ export const OTACompetitionManager: React.FC = () => {
                             [flag.featureKey]: { ...flag, estimatedResume: e.target.value }
                           }))
                         }
-                        placeholder="ETA e.g. 30 mins"
-                        className="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 text-xs"
+                        placeholder="Optional ETA e.g. Friday 9:00 AM"
+                        className="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 text-xs placeholder:text-slate-500"
                       />
+                      {(flag.customBadge || flag.customTitle || flag.pauseReason || flag.estimatedResume) && (
+                        <button
+                          type="button"
+                          onClick={() => void handleClearFeatureDraftDetails(flag.featureKey)}
+                          className="px-2.5 py-1.5 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-800 text-slate-400 hover:text-white text-[11px] font-semibold cursor-pointer shrink-0"
+                          title="Clear custom badge, headline, message, and ETA"
+                        >
+                          Clear
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={() => void handleSaveFeatureDraftDetails(flag.featureKey)}
-                        className="px-2.5 py-1.5 rounded-lg bg-[#14233C] hover:bg-[#1D3254] border border-[#223B63] text-[#84E000] text-[11px] font-bold cursor-pointer shrink-0"
-                        title="Save maintenance notice text"
+                        className="px-3 py-1.5 rounded-lg bg-[#14233C] hover:bg-[#1D3254] border border-[#223B63] text-[#84E000] text-[11px] font-bold cursor-pointer shrink-0"
+                        title="Save custom notice text"
                       >
                         Save
                       </button>

@@ -1,7 +1,8 @@
 import React from 'react';
 import { useApp } from '../../context/AppContext';
 import { OTAFeatureKey } from '../../types';
-import { Wrench, Clock, ArrowLeft, ShieldAlert } from 'lucide-react';
+import { resolveFeatureNotice } from '../../services/otaService';
+import { PauseCircle, Clock, ArrowLeft, ShieldAlert } from 'lucide-react';
 
 interface FeatureMaintenanceViewProps {
   featureKey: OTAFeatureKey;
@@ -14,31 +15,31 @@ export const FeatureMaintenanceView: React.FC<FeatureMaintenanceViewProps> = ({
 }) => {
   const { otaFeatureFlags, setActiveStudentTab, currentRole } = useApp();
   const flag = otaFeatureFlags[featureKey];
+  const notice = resolveFeatureNotice(flag);
 
   return (
     <div className="flex-1 w-full flex items-center justify-center p-4 sm:p-6 bg-[#070D18] text-slate-100">
-      <div className="w-full max-w-md bg-[#0B1526] border border-amber-600/50 rounded-3xl p-6 text-center space-y-4 shadow-2xl">
+      <div className="w-full max-w-md bg-[#0B1526] border border-amber-500/50 rounded-3xl p-6 text-center space-y-4 shadow-2xl">
         <div className="w-14 h-14 rounded-2xl bg-amber-500/15 border border-amber-500/40 flex items-center justify-center text-amber-400 mx-auto">
-          <Wrench className="w-7 h-7" />
+          <PauseCircle className="w-7 h-7" />
         </div>
 
         <div className="space-y-1.5">
-          <div className="text-[11px] font-bold uppercase tracking-wider text-amber-400">
-            Scheduled Maintenance · Feature Paused
+          <div className="inline-block px-2.5 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/40 text-[11px] font-bold uppercase tracking-wider text-amber-300">
+            {notice.badge}
           </div>
           <h2 className="text-lg sm:text-xl font-black text-white">
-            {flag?.label || 'Feature Temporarily Unavailable'}
+            {notice.headline}
           </h2>
-          <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
-            {flag?.pauseReason ||
-              'Our engineering team has temporarily paused this module for upgrades and maintenance. Please check back shortly.'}
+          <p className="text-xs sm:text-sm text-slate-300 leading-relaxed whitespace-pre-line">
+            {notice.message}
           </p>
         </div>
 
-        {flag?.estimatedResume && flag.estimatedResume.trim() && (
-          <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-300 font-mono">
+        {notice.eta && (
+          <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-300 font-mono tabular-nums">
             <Clock className="w-3.5 h-3.5 text-amber-400" />
-            <span>Estimated Resume: {flag.estimatedResume}</span>
+            <span>ETA: {notice.eta}</span>
           </div>
         )}
 
