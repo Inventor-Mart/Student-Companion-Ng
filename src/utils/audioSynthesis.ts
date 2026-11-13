@@ -545,6 +545,54 @@ export const playSound = {
       osc.start(now);
       osc.stop(now + 0.14);
     } catch {}
+  },
+
+  loginSuccess: () => {
+    triggerHaptic('light');
+    if (isSoundMuted) return;
+    try {
+      const ctx = getAudioContext();
+      if (!ctx) return;
+      const now = ctx.currentTime;
+      // Ascending bright major chime: C5 -> E5 -> G5 -> C6
+      const chimeNotes = [
+        { freq: 523.25, delay: 0.0, duration: 0.22, gain: 0.11 },
+        { freq: 659.25, delay: 0.075, duration: 0.24, gain: 0.12 },
+        { freq: 783.99, delay: 0.15, duration: 0.28, gain: 0.12 },
+        { freq: 1046.5, delay: 0.225, duration: 0.38, gain: 0.14 }
+      ];
+
+      chimeNotes.forEach(({ freq, delay, duration, gain: peakGain }) => {
+        const osc = ctx.createOscillator();
+        const overtone = ctx.createOscillator();
+        const env = ctx.createGain();
+        const overtoneEnv = ctx.createGain();
+
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, now + delay);
+
+        overtone.type = 'triangle';
+        overtone.frequency.setValueAtTime(freq * 2, now + delay);
+
+        env.gain.setValueAtTime(0.0001, now + delay);
+        env.gain.linearRampToValueAtTime(peakGain, now + delay + 0.015);
+        env.gain.exponentialRampToValueAtTime(0.0008, now + delay + duration);
+
+        overtoneEnv.gain.setValueAtTime(0.0001, now + delay);
+        overtoneEnv.gain.linearRampToValueAtTime(peakGain * 0.28, now + delay + 0.015);
+        overtoneEnv.gain.exponentialRampToValueAtTime(0.0005, now + delay + duration * 0.75);
+
+        osc.connect(env);
+        overtone.connect(overtoneEnv);
+        env.connect(ctx.destination);
+        overtoneEnv.connect(ctx.destination);
+
+        osc.start(now + delay);
+        osc.stop(now + delay + duration + 0.02);
+        overtone.start(now + delay);
+        overtone.stop(now + delay + duration);
+      });
+    } catch {}
   }
 };
 
