@@ -1497,38 +1497,54 @@ export const OTACompetitionManager: React.FC = () => {
           {/* Student Mockup Preview */}
           <div className="flex flex-col gap-2">
             <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-              Student Screen Preview
+              Student Near-Fullscreen Preview
             </h3>
-            <div className="p-4 bg-slate-950 rounded-2xl border border-slate-800 flex items-center justify-center">
-              <div className="w-full max-w-sm bg-[#0A1220] border border-[#1E2D4A] rounded-2xl shadow-2xl overflow-hidden flex flex-col">
-                <div className="relative w-full h-36 bg-slate-900 shrink-0">
-                  <img
-                    src={popupConfig.imageUrl}
-                    alt={popupConfig.title}
-                    className="w-full h-full object-cover"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-[#0A1220] via-transparent to-black/30" />
-                  {popupConfig.badge && (
-                    <div className="absolute bottom-2 left-3 px-2 py-0.5 rounded bg-[#0F1E36]/90 border border-[#84E000]/50 text-[#84E000] text-[10px] font-bold">
-                      {popupConfig.badge}
+            <div className="p-3 sm:p-4 bg-slate-950 rounded-2xl border border-slate-800 flex items-center justify-center">
+              <div className="relative w-full h-[460px] sm:h-[520px] bg-[#070D18] border border-slate-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col">
+                <div className="relative flex-1 min-h-0 bg-[#050A14] p-2 flex items-center justify-center overflow-hidden">
+                  {popupConfig.imageUrl ? (
+                    <img
+                      src={popupConfig.imageUrl}
+                      alt={popupConfig.title || 'Flyer Preview'}
+                      referrerPolicy="no-referrer"
+                      className="w-full h-full object-contain rounded-lg"
+                    />
+                  ) : (
+                    <div className="p-4 text-center space-y-1.5">
+                      <h4 className="text-sm font-black text-white">{popupConfig.title}</h4>
+                      {popupConfig.subtitle && (
+                        <p className="text-[11px] font-semibold text-[#84E000]">{popupConfig.subtitle}</p>
+                      )}
+                      <p className="text-[11px] text-slate-300 line-clamp-4 whitespace-pre-line">{popupConfig.body}</p>
                     </div>
                   )}
+                  <span
+                    className="absolute top-2.5 right-2.5 w-7 h-7 rounded-full bg-slate-950/85 border border-slate-700 text-slate-300 flex items-center justify-center text-xs font-bold"
+                    aria-hidden="true"
+                  >
+                    ✕
+                  </span>
                 </div>
 
-                <div className="p-3.5 flex flex-col gap-2">
-                  <h4 className="text-sm font-black text-white">{popupConfig.title}</h4>
-                  {popupConfig.subtitle && (
-                    <p className="text-[11px] font-semibold text-[#84E000]">{popupConfig.subtitle}</p>
-                  )}
-                  <p className="text-[11px] text-slate-300 line-clamp-3 leading-relaxed whitespace-pre-line">
-                    {popupConfig.body}
-                  </p>
-
-                  <div className="pt-1">
-                    <div className="w-full py-2 rounded-lg bg-gradient-to-r from-[#84E000] to-[#60A5FA] text-slate-950 font-black text-xs flex items-center justify-center gap-1.5 shadow">
-                      <span>{popupConfig.ctaText}</span>
-                      <ArrowRight className="w-3 h-3" />
+                <div className="shrink-0 border-t border-slate-800 bg-[#0A1220] px-3 py-2.5 flex flex-col gap-2">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-white truncate">
+                      {popupConfig.badge && (
+                        <span className="text-[#84E000] font-semibold shrink-0">{popupConfig.badge}</span>
+                      )}
+                      {popupConfig.badge && popupConfig.title && (
+                        <span className="text-slate-600 shrink-0" aria-hidden="true">·</span>
+                      )}
+                      <span className="truncate">{popupConfig.title}</span>
                     </div>
+                    {popupConfig.subtitle && (
+                      <p className="text-[11px] text-slate-400 truncate mt-0.5">{popupConfig.subtitle}</p>
+                    )}
+                  </div>
+
+                  <div className="w-full py-2 px-3 rounded-lg bg-gradient-to-r from-[#84E000] to-[#60A5FA] text-slate-950 font-black text-xs flex items-center justify-center gap-1.5 shadow">
+                    <span>{popupConfig.ctaText || 'Learn More & Proceed'}</span>
+                    <ArrowRight className="w-3.5 h-3.5 shrink-0" />
                   </div>
                 </div>
               </div>

@@ -226,29 +226,31 @@ export const DeviceImageUploader: React.FC<DeviceImageUploaderProps> = ({
 
       {/* Live Selected Image Preview */}
       {currentImageUrl && (
-        <div className="relative w-full h-28 rounded-xl overflow-hidden bg-slate-950 border border-slate-800 shrink-0">
-          <img
-            src={currentImageUrl}
-            alt="Current Flyer Preview"
-            className="w-full h-full object-cover"
-          />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent flex items-end justify-between p-2.5">
-            <span className="text-[10px] font-bold text-white bg-slate-900/80 px-2 py-0.5 rounded border border-slate-700">
-              Active Flyer Asset
+        <div className="rounded-xl overflow-hidden bg-slate-950 border border-slate-800 shrink-0 flex flex-col">
+          <div className="px-2.5 py-1.5 bg-slate-900/90 border-b border-slate-800 flex items-center justify-between text-[10px]">
+            <span className="font-bold text-slate-200">
+              Active Flyer Asset (Uncropped)
             </span>
-
             <button
               type="button"
               onClick={() => {
                 onImageChange('');
                 setCompressionStats(null);
               }}
-              className="p-1 rounded bg-rose-950/80 hover:bg-rose-900 text-rose-300 border border-rose-800 text-[10px] flex items-center gap-1 cursor-pointer transition-colors"
+              className="px-2 py-0.5 rounded bg-rose-950/80 hover:bg-rose-900 text-rose-300 border border-rose-800 text-[10px] flex items-center gap-1 cursor-pointer transition-colors"
               title="Clear Image"
             >
               <Trash2 className="w-3 h-3" />
               <span>Remove</span>
             </button>
+          </div>
+          <div className="w-full h-56 p-1.5 bg-[#050A14] flex items-center justify-center">
+            <img
+              src={currentImageUrl}
+              alt="Current Flyer Preview"
+              referrerPolicy="no-referrer"
+              className="w-full h-full object-contain rounded"
+            />
           </div>
         </div>
       )}
