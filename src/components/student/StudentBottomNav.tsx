@@ -14,13 +14,15 @@ import {
   X,
   ChevronUp,
   Volume2,
-  VolumeX
+  VolumeX,
+  Wrench
 } from 'lucide-react';
 import { playSound, toggleSoundMuted, getSoundMuted } from '../../utils/audioSynthesis';
 import { motion, AnimatePresence } from 'motion/react';
+import { OTAFeatureKey } from '../../types';
 
 export const StudentBottomNav: React.FC = () => {
-  const { activeStudentTab, setActiveStudentTab, student } = useApp();
+  const { activeStudentTab, setActiveStudentTab, student, isFeaturePaused } = useApp();
   const [isMoreDrawerOpen, setIsMoreDrawerOpen] = useState(false);
   const [isMuted, setIsMuted] = useState(getSoundMuted());
 
@@ -37,7 +39,7 @@ export const StudentBottomNav: React.FC = () => {
   };
 
   // 4 Primary tabs exactly matching the user reference designs (Main_dashboard_5a95f712.jpg)
-  const primaryTabs = [
+  const primaryTabs: { id: string; label: string; icon: any; featureKey?: OTAFeatureKey }[] = [
     {
       id: 'dashboard',
       label: 'Home',
@@ -47,28 +49,30 @@ export const StudentBottomNav: React.FC = () => {
       id: 'games',
       label: 'Games',
       icon: Gamepad2,
+      featureKey: 'games_hub',
     },
     {
       id: 'tutors',
       label: 'Tutors',
       icon: Users,
+      featureKey: 'tutor_marketplace',
     },
     {
       id: 'more',
       label: 'More',
       icon: User,
     },
-  ] as const;
+  ];
 
   // Secondary hubs accessible in the smooth quick-access drawer
-  const secondaryHubs = [
-    { id: 'ai-coach', label: 'AI Study Coach', icon: Sparkles, color: 'text-[#84CC16] bg-[#84CC16]/10 border-[#84CC16]/30' },
-    { id: 'cbt', label: 'CBT Exam Drills', icon: Trophy, color: 'text-[#FF5B00] bg-[#FF5B00]/10 border-[#FF5B00]/30' },
-    { id: 'exam-prep', label: 'Prepare For Exam', icon: Calendar, color: 'text-amber-400 bg-amber-400/10 border-amber-400/30' },
-    { id: 'syllabus', label: 'Lesson Notes & NERDC', icon: BookOpen, color: 'text-cyan-400 bg-cyan-400/10 border-cyan-400/30' },
-    { id: 'formulas', label: 'STEM Formulas Sheet', icon: Atom, color: 'text-purple-400 bg-purple-400/10 border-purple-400/30' },
-    { id: 'community', label: 'Student Forum', icon: MessageSquare, color: 'text-emerald-400 bg-emerald-400/10 border-emerald-400/30' },
-    { id: 'competitions', label: 'Competitions & League', icon: Trophy, color: 'text-yellow-400 bg-yellow-400/10 border-yellow-400/30' },
+  const secondaryHubs: { id: string; label: string; icon: any; color: string; featureKey: OTAFeatureKey }[] = [
+    { id: 'ai-coach', label: 'AI Study Coach', icon: Sparkles, color: 'text-[#84CC16] bg-[#84CC16]/10 border-[#84CC16]/30', featureKey: 'ai_study_coach' },
+    { id: 'cbt', label: 'CBT Exam Drills', icon: Trophy, color: 'text-[#FF5B00] bg-[#FF5B00]/10 border-[#FF5B00]/30', featureKey: 'cbt_quizzes' },
+    { id: 'exam-prep', label: 'Prepare For Exam', icon: Calendar, color: 'text-amber-400 bg-amber-400/10 border-amber-400/30', featureKey: 'exam_prep' },
+    { id: 'syllabus', label: 'Lesson Notes & NERDC', icon: BookOpen, color: 'text-cyan-400 bg-cyan-400/10 border-cyan-400/30', featureKey: 'lesson_notes' },
+    { id: 'formulas', label: 'STEM Formulas Sheet', icon: Atom, color: 'text-purple-400 bg-purple-400/10 border-purple-400/30', featureKey: 'science_formulas' },
+    { id: 'community', label: 'Student Forum', icon: MessageSquare, color: 'text-emerald-400 bg-emerald-400/10 border-emerald-400/30', featureKey: 'community_forum' },
+    { id: 'competitions', label: 'Competitions & League', icon: Trophy, color: 'text-yellow-400 bg-yellow-400/10 border-yellow-400/30', featureKey: 'competitions' },
   ];
 
   return (
@@ -112,13 +116,21 @@ export const StudentBottomNav: React.FC = () => {
               )}
 
               <div
-                className={`p-1.5 rounded-xl transition-all duration-200 ${
+                className={`relative p-1.5 rounded-xl transition-all duration-200 ${
                   isActive
                     ? 'text-[#84CC16] scale-110 drop-shadow-[0_0_8px_rgba(132,204,22,0.6)]'
                     : 'text-slate-400'
                 }`}
               >
                 <Icon className="w-5 h-5 stroke-[2.2]" />
+                {item.featureKey && isFeaturePaused(item.featureKey) && (
+                  <span
+                    className="absolute -top-0.5 -right-1 w-3.5 h-3.5 rounded-full bg-amber-500 text-slate-950 flex items-center justify-center shadow"
+                    title="Temporarily paused for maintenance"
+                  >
+                    <Wrench className="w-2 h-2 stroke-[2.5]" />
+                  </span>
+                )}
               </div>
               <span className="text-[11px] tracking-tight mt-0.5 leading-none">
                 {item.label}
@@ -179,6 +191,7 @@ export const StudentBottomNav: React.FC = () => {
                 {secondaryHubs.map((hub) => {
                   const Icon = hub.icon;
                   const isActive = activeStudentTab === hub.id;
+                  const paused = isFeaturePaused(hub.featureKey);
                   return (
                     <button
                       key={hub.id}
@@ -192,13 +205,20 @@ export const StudentBottomNav: React.FC = () => {
                       <div className={`p-2 rounded-xl border ${hub.color} shrink-0`}>
                         <Icon className="w-4 h-4" />
                       </div>
-                      <div className="min-w-0">
+                      <div className="min-w-0 flex-1">
                         <span className="text-xs font-bold text-white block truncate">
                           {hub.label}
                         </span>
-                        <span className="text-[10px] text-slate-400 block mt-0.5">
-                          Tap to open
-                        </span>
+                        {paused ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-300 mt-0.5">
+                            <Wrench className="w-2.5 h-2.5" />
+                            <span>Maintenance</span>
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-slate-400 block mt-0.5">
+                            Tap to open
+                          </span>
+                        )}
                       </div>
                     </button>
                   );

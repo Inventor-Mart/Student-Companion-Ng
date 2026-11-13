@@ -962,6 +962,90 @@ export interface OTASchoolLeagueConfig {
   updatedBy: string;
 }
 
+export type OTAUpgradeMode = 'mild_notice' | 'force_blocking';
+
+export interface OTAAppRelease {
+  id: 'current_release';
+  latestVersion: string;
+  minimumSupportedVersion: string;
+  releaseTitle: string;
+  changelog: string;
+  featureHighlights: string[];
+  upgradeMode: OTAUpgradeMode;
+  upgradeUrl?: string;
+  isActive: boolean;
+  publishedAt: string;
+  publishedBy: string;
+}
+
+export type OTAFeatureKey =
+  | 'lesson_notes'
+  | 'cbt_quizzes'
+  | 'ai_study_coach'
+  | 'competitions'
+  | 'tutor_marketplace'
+  | 'games_hub'
+  | 'science_formulas'
+  | 'community_forum'
+  | 'exam_prep'
+  | 'aspirant_hub'
+  | 'uniform_verification'
+  | 'parent_portal'
+  | 'tutor_portal'
+  | 'growth_partner_portal'
+  | 'school_admin_portal'
+  | 'virtual_classroom'
+  | 'wallet_payments';
+
+export interface OTAFeatureFlag {
+  featureKey: OTAFeatureKey;
+  label: string;
+  description: string;
+  category: 'Student Hub' | 'Persona Portal' | 'Core Service';
+  isPaused: boolean;
+  pauseReason?: string;
+  estimatedResume?: string;
+  updatedAt: string;
+  updatedBy: string;
+}
+
+export type PersonaNotificationCategory =
+  | 'study_reminder'
+  | 'streak_alert'
+  | 'ota_update'
+  | 'tutor_activity'
+  | 'parent_alert'
+  | 'partner_earnings'
+  | 'school_notice'
+  | 'campaign';
+
+export interface PersonaNotificationItem {
+  id: string;
+  targetRole: UserRole | 'all';
+  targetUserId?: string;
+  title: string;
+  message: string;
+  category: PersonaNotificationCategory;
+  actionLabel?: string;
+  actionTarget?: string; // e.g. 'cbt', 'syllabus', 'competitions', 'ai-coach', 'tutors', 'games', 'dashboard'
+  sendBrowserPush?: boolean;
+  sendEmailDigest?: boolean;
+  createdAt: string;
+  createdBy: string;
+}
+
+export interface ReminderPreferences {
+  userId: string;
+  role: UserRole;
+  email?: string;
+  browserPushEnabled: boolean;
+  emailDigestEnabled: boolean;
+  dailyReminderTime: string; // e.g. "17:00"
+  streakAlerts: boolean;
+  inactivityNudgeHours: number;
+  updatedAt: string;
+}
+
 // ==========================================
 // FRAUD, SPAM & HACKING SECURITY CENTER
 // ==========================================

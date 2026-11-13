@@ -515,7 +515,7 @@ export const SuperAdminPortal: React.FC = () => {
         <div className="bg-[#0B1526] px-4 py-3 rounded-2xl border border-slate-800 flex items-center justify-between text-xs">
           <div className="flex items-center gap-2">
             <Radio className="w-4 h-4 text-[#84E000]" />
-            <span className="font-bold text-white text-sm">Over-The-Air (OTA) & Competition Arena Studio</span>
+            <span className="font-bold text-white text-sm">OTA Releases, Feature Toggles, Reminders &amp; Competitions</span>
           </div>
           <button
             onClick={() => setPortalView('directory')}
@@ -763,10 +763,10 @@ export const SuperAdminPortal: React.FC = () => {
             <button
               onClick={() => setPortalView('ota_competitions')}
               className="flex items-center gap-1.5 px-3 min-h-[40px] rounded-xl bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-600/60 text-[#84E000] text-xs font-bold transition-all cursor-pointer shadow-sm whitespace-nowrap"
-              title="Manage Live Tickers, Pop-Up Announcements & Competition Arena"
+              title="Push App Updates, Pause Features, Send Reminders, Manage Tickers & Competitions"
             >
               <Radio className="w-3.5 h-3.5 text-[#84E000]" />
-              <span>OTA & Competitions</span>
+              <span>OTA Studio &amp; Toggles</span>
             </button>
 
             <button

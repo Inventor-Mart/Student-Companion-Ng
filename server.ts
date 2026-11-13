@@ -2814,6 +2814,207 @@ app.post('/api/git/push', async (req, res) => {
   }
 });
 
+// ==========================================
+// OTA STATE MIRROR & EMAIL DIGEST DISPATCH
+// ==========================================
+
+const OTA_STATE_FILE = path.resolve(__dirname, '.ota-runtime-state.json');
+
+interface ServerOTAState {
+  appRelease: Record<string, any> | null;
+  featureFlags: Record<string, any>;
+  notifications: any[];
+}
+
+function readServerOTAState(): ServerOTAState {
+  try {
+    if (fs.existsSync(OTA_STATE_FILE)) {
+      const raw = fs.readFileSync(OTA_STATE_FILE, 'utf8');
+      const parsed = JSON.parse(raw);
+      return {
+        appRelease: parsed.appRelease || null,
+        featureFlags: parsed.featureFlags || {},
+        notifications: Array.isArray(parsed.notifications) ? parsed.notifications : [],
+      };
+    }
+  } catch {
+    // Ignore corrupt cache and start clean
+  }
+  return { appRelease: null, featureFlags: {}, notifications: [] };
+}
+
+function writeServerOTAState(state: ServerOTAState): void {
+  try {
+    fs.writeFileSync(OTA_STATE_FILE, JSON.stringify(state, null, 2), 'utf8');
+  } catch {
+    // Ignore write failure in read-only environments
+  }
+}
+
+app.get('/api/ota/state', (_req, res) => {
+  const state = readServerOTAState();
+  return res.json({ success: true, ...state });
+});
+
+app.post('/api/ota/release', (req, res) => {
+  const release = req.body;
+  if (!release || !release.latestVersion) {
+    return res.status(400).json({ success: false, error: 'latestVersion is required' });
+  }
+  const state = readServerOTAState();
+  state.appRelease = {
+    ...release,
+    id: 'current_release',
+    publishedAt: release.publishedAt || new Date().toISOString(),
+  };
+  writeServerOTAState(state);
+  return res.json({ success: true, appRelease: state.appRelease });
+});
+
+app.post('/api/ota/features', (req, res) => {
+  const { flag, flagsMap } = req.body || {};
+  const state = readServerOTAState();
+  if (flag && flag.featureKey) {
+    state.featureFlags[flag.featureKey] = flag;
+  } else if (flagsMap && typeof flagsMap === 'object') {
+    state.featureFlags = { ...state.featureFlags, ...flagsMap };
+  } else {
+    return res.status(400).json({ success: false, error: 'flag or flagsMap is required' });
+  }
+  writeServerOTAState(state);
+  return res.json({ success: true, featureFlags: state.featureFlags });
+});
+
+app.post('/api/ota/notifications', (req, res) => {
+  const item = req.body;
+  if (!item || !item.id || !item.title || !item.message) {
+    return res.status(400).json({ success: false, error: 'Notification id, title, and message are required' });
+  }
+  const state = readServerOTAState();
+  state.notifications = [item, ...state.notifications.filter((n: any) => n.id !== item.id)].slice(0, 60);
+  writeServerOTAState(state);
+  return res.json({ success: true, notification: item });
+});
+
+app.delete('/api/ota/notifications/:id', (req, res) => {
+  const id = String(req.params.id || '');
+  const state = readServerOTAState();
+  state.notifications = state.notifications.filter((n: any) => n.id !== id);
+  writeServerOTAState(state);
+  return res.json({ success: true });
+});
+
+app.post('/api/notifications/send-digest', async (req, res) => {
+  try {
+    const { recipients, subject, title, message, actionLabel } = req.body || {};
+    if (!Array.isArray(recipients) || recipients.length === 0) {
+      return res.status(400).json({ success: false, error: 'At least one recipient email is required.' });
+    }
+    if (!title || !message) {
+      return res.status(400).json({ success: false, error: 'Title and message are required.' });
+    }
+
+    const validRecipients = recipients
+      .filter((r: any) => r && typeof r.email === 'string' && r.email.includes('@'))
+      .slice(0, 25);
+
+    if (validRecipients.length === 0) {
+      return res.status(400).json({ success: false, error: 'No valid email addresses provided.' });
+    }
+
+    const gmailUser = (process.env.GMAIL_USER || 'martorefe@gmail.com').trim();
+    const gmailPassword = (process.env.GMAIL_APP_PASSWORD || '').trim();
+    const resendApiKey = (process.env.RESEND_API_KEY || '').trim();
+    const appUrl = process.env.APP_URL || 'https://studentcompanion.ng';
+
+    const buildHtml = (recipientName: string) => `
+      <div style="font-family: 'Plus Jakarta Sans', Arial, sans-serif; background:#070D18; color:#F8FAFC; padding:24px;">
+        <div style="max-width:560px; margin:0 auto; background:#0B1526; border:1px solid #1E293B; border-radius:16px; overflow:hidden;">
+          <div style="background:linear-gradient(135deg,#0B1526,#14233C); padding:20px 24px; border-bottom:2px solid #84E000;">
+            <div style="font-size:12px; font-weight:800; color:#84E000; letter-spacing:0.08em; text-transform:uppercase;">Student Companion Reminder</div>
+            <h1 style="margin:6px 0 0; font-size:20px; color:#FFFFFF;">${String(title).replace(/</g, '&lt;')}</h1>
+          </div>
+          <div style="padding:24px; line-height:1.6; font-size:14px; color:#CBD5E1;">
+            <p style="margin-top:0;">Hello <strong style="color:#FFFFFF;">${String(recipientName || 'Scholar').replace(/</g, '&lt;')}</strong>,</p>
+            <p>${String(message).replace(/</g, '&lt;')}</p>
+            <div style="margin-top:22px;">
+              <a href="${appUrl}" style="display:inline-block; background:#FF5B00; color:#FFFFFF; text-decoration:none; font-weight:700; padding:12px 22px; border-radius:10px; font-size:13px;">
+                ${String(actionLabel || 'Open Student Companion').replace(/</g, '&lt;')}
+              </a>
+            </div>
+          </div>
+          <div style="padding:14px 24px; background:#060B14; border-top:1px solid #1E293B; font-size:11px; color:#64748B;">
+            Student Companion Nigeria · Smart Study & Tutoring Companion
+          </div>
+        </div>
+      </div>
+    `;
+
+    let sentCount = 0;
+    let provider = 'none';
+
+    if (gmailPassword) {
+      provider = 'gmail-smtp';
+      const transporter = nodemailer.createTransport({
+        service: 'gmail',
+        auth: { user: gmailUser, pass: gmailPassword },
+      });
+      for (const r of validRecipients) {
+        try {
+          await transporter.sendMail({
+            from: `"Student Companion" <${gmailUser}>`,
+            to: String(r.email).trim().toLowerCase(),
+            subject: subject || `[Student Companion] ${title}`,
+            text: `Hello ${r.name || 'User'},\n\n${title}\n${message}\n\nOpen the app: ${appUrl}`,
+            html: buildHtml(r.name || 'User'),
+          });
+          sentCount += 1;
+        } catch (err) {
+          console.warn(`Digest email failed for ${r.email}:`, err);
+        }
+      }
+      return res.json({
+        success: sentCount > 0,
+        sentCount,
+        provider,
+        message: `Delivered ${sentCount} reminder email(s) via Gmail SMTP.`,
+      });
+    }
+
+    if (resendApiKey) {
+      provider = 'resend';
+      const resend = new Resend(resendApiKey);
+      const fromEmail = process.env.RESEND_FROM_EMAIL?.trim() || 'Student Companion <onboarding@resend.dev>';
+      for (const r of validRecipients) {
+        const result = await resend.emails.send({
+          from: fromEmail,
+          to: [String(r.email).trim().toLowerCase()],
+          subject: subject || `[Student Companion] ${title}`,
+          html: buildHtml(r.name || 'User'),
+          text: `Hello ${r.name || 'User'},\n\n${title}\n${message}\n\nOpen the app: ${appUrl}`,
+        });
+        if (!result.error) sentCount += 1;
+      }
+      return res.json({
+        success: sentCount > 0,
+        sentCount,
+        provider,
+        message: `Delivered ${sentCount} reminder email(s) via Resend.`,
+      });
+    }
+
+    return res.status(503).json({
+      success: false,
+      error: 'Email delivery credentials (GMAIL_APP_PASSWORD or RESEND_API_KEY) are not configured on the server.',
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      success: false,
+      error: err?.message || 'Error sending reminder email digest.',
+    });
+  }
+});
+
 // Vite Middleware for Dev or Static Files for Prod
 async function startServer() {
   const isProduction = process.env.NODE_ENV === 'production';

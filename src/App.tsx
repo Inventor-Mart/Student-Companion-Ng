@@ -33,6 +33,8 @@ import { PopupAnnouncementModal } from './components/student/PopupAnnouncementMo
 import { StudentSubscriptionModal } from './components/student/StudentSubscriptionModal';
 import { XPAwardNotification } from './components/student/XPAwardNotification';
 import { SplashScreen } from './components/common/SplashScreen';
+import { OTAUpgradeGate } from './components/common/OTAUpgradeGate';
+import { FeatureMaintenanceGate, FeatureMaintenanceView } from './components/common/FeatureMaintenanceView';
 import { ShieldAlert, LogOut, X } from 'lucide-react';
 
 const AppContent: React.FC = () => {
@@ -61,6 +63,11 @@ const AppContent: React.FC = () => {
     isStudentSubscriptionModalOpen,
     targetSubscriptionPlan,
     closeStudentSubscriptionModal,
+    isUniformModalOpen,
+    setIsUniformModalOpen,
+    activeClassroomSession,
+    closeVirtualClassroom,
+    isFeatureBlockedForCurrentUser,
     securityStatus,
     lastSecurityAlert,
     dismissSecurityAlert,
@@ -268,15 +275,22 @@ const AppContent: React.FC = () => {
 
       {/* Main Viewport (Android Device Frame or Responsive Full Screen) */}
       <AndroidDeviceFrame>
+        {/* OTA App Version Upgrade Prompt / Mandatory Blocking Gate */}
+        <OTAUpgradeGate />
+
         {/* Role Router */}
         {currentRole === 'student' && (
           <div className="flex-1 min-h-0 w-full flex flex-col overflow-hidden relative">
             {/* Note Reader View */}
             {activeReadingNote ? (
-              <LessonNoteReader />
+              <FeatureMaintenanceGate featureKey="lesson_notes">
+                <LessonNoteReader />
+              </FeatureMaintenanceGate>
             ) : activeExam ? (
               /* CBT Exam Runner View */
-              <CBTEngine />
+              <FeatureMaintenanceGate featureKey="cbt_quizzes">
+                <CBTEngine />
+              </FeatureMaintenanceGate>
             ) : (
               /* Core Student Tabs */
               <>
@@ -285,18 +299,66 @@ const AppContent: React.FC = () => {
 
                 <div className="flex-1 min-h-0 w-full overflow-hidden flex flex-col">
                   {activeStudentTab === 'dashboard' && <StudentDashboard />}
-                  {activeStudentTab === 'aspirant-cbt' && <AspirantCBTSimulator />}
-                  {activeStudentTab === 'admission-guide' && <UniversityAdmissionGuide />}
-                  {activeStudentTab === 'mock-tournaments' && <NationalMockTournaments />}
-                  {activeStudentTab === 'ai-coach' && <AiStudyCoach />}
-                  {activeStudentTab === 'syllabus' && <SchemeOfWorkHub />}
-                  {activeStudentTab === 'cbt' && <CBTEngine />}
-                  {activeStudentTab === 'competitions' && <CompetitionsHub />}
-                  {activeStudentTab === 'formulas' && <ScienceFormulasHub />}
-                  {activeStudentTab === 'tutors' && <TutorDiscovery />}
-                  {activeStudentTab === 'games' && <GamesHub />}
-                  {activeStudentTab === 'community' && <StudentCommunityForum />}
-                  {activeStudentTab === 'exam-prep' && <PrepareForExamHub />}
+                  {activeStudentTab === 'aspirant-cbt' && (
+                    <FeatureMaintenanceGate featureKey="aspirant_hub">
+                      <AspirantCBTSimulator />
+                    </FeatureMaintenanceGate>
+                  )}
+                  {activeStudentTab === 'admission-guide' && (
+                    <FeatureMaintenanceGate featureKey="aspirant_hub">
+                      <UniversityAdmissionGuide />
+                    </FeatureMaintenanceGate>
+                  )}
+                  {activeStudentTab === 'mock-tournaments' && (
+                    <FeatureMaintenanceGate featureKey="aspirant_hub">
+                      <NationalMockTournaments />
+                    </FeatureMaintenanceGate>
+                  )}
+                  {activeStudentTab === 'ai-coach' && (
+                    <FeatureMaintenanceGate featureKey="ai_study_coach">
+                      <AiStudyCoach />
+                    </FeatureMaintenanceGate>
+                  )}
+                  {activeStudentTab === 'syllabus' && (
+                    <FeatureMaintenanceGate featureKey="lesson_notes">
+                      <SchemeOfWorkHub />
+                    </FeatureMaintenanceGate>
+                  )}
+                  {activeStudentTab === 'cbt' && (
+                    <FeatureMaintenanceGate featureKey="cbt_quizzes">
+                      <CBTEngine />
+                    </FeatureMaintenanceGate>
+                  )}
+                  {activeStudentTab === 'competitions' && (
+                    <FeatureMaintenanceGate featureKey="competitions">
+                      <CompetitionsHub />
+                    </FeatureMaintenanceGate>
+                  )}
+                  {activeStudentTab === 'formulas' && (
+                    <FeatureMaintenanceGate featureKey="science_formulas">
+                      <ScienceFormulasHub />
+                    </FeatureMaintenanceGate>
+                  )}
+                  {activeStudentTab === 'tutors' && (
+                    <FeatureMaintenanceGate featureKey="tutor_marketplace">
+                      <TutorDiscovery />
+                    </FeatureMaintenanceGate>
+                  )}
+                  {activeStudentTab === 'games' && (
+                    <FeatureMaintenanceGate featureKey="games_hub">
+                      <GamesHub />
+                    </FeatureMaintenanceGate>
+                  )}
+                  {activeStudentTab === 'community' && (
+                    <FeatureMaintenanceGate featureKey="community_forum">
+                      <StudentCommunityForum />
+                    </FeatureMaintenanceGate>
+                  )}
+                  {activeStudentTab === 'exam-prep' && (
+                    <FeatureMaintenanceGate featureKey="exam_prep">
+                      <PrepareForExamHub />
+                    </FeatureMaintenanceGate>
+                  )}
                   {activeStudentTab === 'educator-importer' && (
                     isSuperAdmin ? (
                       <EducatorQuestionImporter
@@ -317,35 +379,86 @@ const AppContent: React.FC = () => {
             )}
 
             {/* SC AI Uniform Verification Camera / Scanner Modal */}
-            <AIUniformVerificationModal />
+            {isUniformModalOpen && isFeatureBlockedForCurrentUser('uniform_verification') ? (
+              <div className="fixed inset-0 z-50 bg-[#070D18]/95 flex flex-col">
+                <FeatureMaintenanceView
+                  featureKey="uniform_verification"
+                  onReturnHome={() => setIsUniformModalOpen(false)}
+                />
+              </div>
+            ) : (
+              <AIUniformVerificationModal />
+            )}
 
             {/* Over-The-Air Pop-Up Promotional Image Announcement Modal */}
             <PopupAnnouncementModal />
 
             {/* 4-Tier Student Termly Subscription & Modular Add-On Modal */}
-            <StudentSubscriptionModal
-              isOpen={isStudentSubscriptionModalOpen}
-              onClose={closeStudentSubscriptionModal}
-              targetPlan={targetSubscriptionPlan}
-            />
+            {isStudentSubscriptionModalOpen && isFeatureBlockedForCurrentUser('wallet_payments') ? (
+              <div className="fixed inset-0 z-50 bg-[#070D18]/95 flex flex-col">
+                <FeatureMaintenanceView
+                  featureKey="wallet_payments"
+                  onReturnHome={closeStudentSubscriptionModal}
+                />
+              </div>
+            ) : (
+              <StudentSubscriptionModal
+                isOpen={isStudentSubscriptionModalOpen}
+                onClose={closeStudentSubscriptionModal}
+                targetPlan={targetSubscriptionPlan}
+              />
+            )}
 
             {/* Live Academic XP Award & Explorer Multiplier Toast */}
             <XPAwardNotification />
           </div>
         )}
 
-        {currentRole === 'growth_partner' && <GrowthPartnerPortal />}
+        {currentRole === 'growth_partner' && (
+          <FeatureMaintenanceGate featureKey="growth_partner_portal">
+            <GrowthPartnerPortal />
+          </FeatureMaintenanceGate>
+        )}
 
-        {currentRole === 'parent' && <ParentPortal />}
+        {currentRole === 'parent' && (
+          <FeatureMaintenanceGate featureKey="parent_portal">
+            <ParentPortal />
+          </FeatureMaintenanceGate>
+        )}
 
-        {currentRole === 'tutor' && <TutorPortal />}
+        {currentRole === 'tutor' && (
+          <FeatureMaintenanceGate featureKey="tutor_portal">
+            <TutorPortal />
+          </FeatureMaintenanceGate>
+        )}
 
-        {currentRole === 'school_admin' && <SchoolAdminPortal />}
+        {currentRole === 'school_admin' && (
+          <FeatureMaintenanceGate featureKey="school_admin_portal">
+            <SchoolAdminPortal />
+          </FeatureMaintenanceGate>
+        )}
 
-        {currentRole === 'admin' && (isSuperAdmin ? <SuperAdminPortal /> : <SchoolAdminPortal />)}
+        {currentRole === 'admin' && (
+          isSuperAdmin ? (
+            <SuperAdminPortal />
+          ) : (
+            <FeatureMaintenanceGate featureKey="school_admin_portal">
+              <SchoolAdminPortal />
+            </FeatureMaintenanceGate>
+          )
+        )}
 
         {/* Global Virtual Classroom Modal Overlay */}
-        <VirtualClassroomModal />
+        {activeClassroomSession && isFeatureBlockedForCurrentUser('virtual_classroom') ? (
+          <div className="fixed inset-0 z-50 bg-[#070D18]/95 flex flex-col">
+            <FeatureMaintenanceView
+              featureKey="virtual_classroom"
+              onReturnHome={closeVirtualClassroom}
+            />
+          </div>
+        ) : (
+          <VirtualClassroomModal />
+        )}
       </AndroidDeviceFrame>
     </div>
   );

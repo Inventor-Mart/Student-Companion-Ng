@@ -850,6 +850,79 @@
         "fulfilledBy": { "type": "string", "maxLength": 150 }
       },
       "required": ["id", "studentId", "referralCodeUsed", "partnerId", "tierPaid", "rewardType", "status", "createdAt"]
+    },
+    "OTAAppRelease": {
+      "title": "OTAAppRelease",
+      "description": "Over-The-Air application version release and upgrade enforcement policy",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "latestVersion": { "type": "string", "maxLength": 32 },
+        "minimumSupportedVersion": { "type": "string", "maxLength": 32 },
+        "releaseTitle": { "type": "string", "maxLength": 200 },
+        "changelog": { "type": "string", "maxLength": 2000 },
+        "featureHighlights": { "type": "array" },
+        "upgradeMode": { "type": "string", "enum": ["mild_notice", "force_blocking"] },
+        "upgradeUrl": { "type": "string", "maxLength": 500 },
+        "isActive": { "type": "boolean" },
+        "publishedAt": { "type": "string", "maxLength": 100 },
+        "publishedBy": { "type": "string", "maxLength": 150 }
+      },
+      "required": ["id", "latestVersion", "minimumSupportedVersion", "releaseTitle", "changelog", "upgradeMode", "isActive", "publishedAt", "publishedBy"]
+    },
+    "OTAFeatureFlag": {
+      "title": "OTAFeatureFlag",
+      "description": "Super Admin per-feature pause and maintenance toggle configuration",
+      "type": "object",
+      "properties": {
+        "featureKey": { "type": "string", "maxLength": 64 },
+        "label": { "type": "string", "maxLength": 120 },
+        "description": { "type": "string", "maxLength": 300 },
+        "category": { "type": "string", "enum": ["Student Hub", "Persona Portal", "Core Service"] },
+        "isPaused": { "type": "boolean" },
+        "pauseReason": { "type": "string", "maxLength": 500 },
+        "estimatedResume": { "type": "string", "maxLength": 100 },
+        "updatedAt": { "type": "string", "maxLength": 100 },
+        "updatedBy": { "type": "string", "maxLength": 150 }
+      },
+      "required": ["featureKey", "label", "category", "isPaused", "updatedAt", "updatedBy"]
+    },
+    "PersonaNotification": {
+      "title": "PersonaNotification",
+      "description": "Cross-persona notification and engagement reminder pushed by Super Admin",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "targetRole": { "type": "string", "enum": ["all", "student", "parent", "tutor", "growth_partner", "school_admin", "admin"] },
+        "targetUserId": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 200 },
+        "message": { "type": "string", "maxLength": 1000 },
+        "category": { "type": "string", "enum": ["study_reminder", "streak_alert", "ota_update", "tutor_activity", "parent_alert", "partner_earnings", "school_notice", "campaign"] },
+        "actionLabel": { "type": "string", "maxLength": 80 },
+        "actionTarget": { "type": "string", "maxLength": 80 },
+        "sendBrowserPush": { "type": "boolean" },
+        "sendEmailDigest": { "type": "boolean" },
+        "createdAt": { "type": "string", "maxLength": 100 },
+        "createdBy": { "type": "string", "maxLength": 150 }
+      },
+      "required": ["id", "targetRole", "title", "message", "category", "createdAt", "createdBy"]
+    },
+    "ReminderPreference": {
+      "title": "ReminderPreference",
+      "description": "User opt-in preferences for browser push notifications, email digests, and daily reminder schedules",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "role": { "type": "string", "maxLength": 40 },
+        "email": { "type": "string", "maxLength": 150 },
+        "browserPushEnabled": { "type": "boolean" },
+        "emailDigestEnabled": { "type": "boolean" },
+        "dailyReminderTime": { "type": "string", "maxLength": 20 },
+        "streakAlerts": { "type": "boolean" },
+        "inactivityNudgeHours": { "type": "number" },
+        "updatedAt": { "type": "string", "maxLength": 100 }
+      },
+      "required": ["userId", "role", "browserPushEnabled", "emailDigestEnabled", "dailyReminderTime", "streakAlerts", "updatedAt"]
     }
   },
   "firestore": {
@@ -1002,6 +1075,30 @@
         "$ref": "#/entities/AspirantReferralReward"
       },
       "description": "First-registration 2GB mobile data and ₦500 cashback claims by referred University Aspirants"
+    },
+    "/otaAppReleases/{releaseId}": {
+      "schema": {
+        "$ref": "#/entities/OTAAppRelease"
+      },
+      "description": "Active Over-The-Air application version update and forced-upgrade configuration"
+    },
+    "/otaFeatureFlags/{featureKey}": {
+      "schema": {
+        "$ref": "#/entities/OTAFeatureFlag"
+      },
+      "description": "Super Admin per-feature maintenance and pause switches"
+    },
+    "/personaNotifications/{notificationId}": {
+      "schema": {
+        "$ref": "#/entities/PersonaNotification"
+      },
+      "description": "Cross-persona notifications and engagement reminders"
+    },
+    "/reminderPreferences/{userId}": {
+      "schema": {
+        "$ref": "#/entities/ReminderPreference"
+      },
+      "description": "User notification and reminder opt-in preferences"
     }
   }
 }

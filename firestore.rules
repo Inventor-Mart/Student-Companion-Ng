@@ -566,5 +566,82 @@ service cloud.firestore {
       allow update: if isValidId(rewardId) && incoming().id == existing().id && isValidAspirantReferralReward(incoming());
       allow delete: if isAdmin();
     }
+
+    function isValidOTAAppRelease(data) {
+      return data.keys().hasAll(['id', 'latestVersion', 'minimumSupportedVersion', 'releaseTitle', 'changelog', 'upgradeMode', 'isActive', 'publishedAt', 'publishedBy']) &&
+             data.id is string && isValidId(data.id) &&
+             data.latestVersion is string && data.latestVersion.size() >= 1 && data.latestVersion.size() <= 32 &&
+             data.minimumSupportedVersion is string && data.minimumSupportedVersion.size() >= 1 && data.minimumSupportedVersion.size() <= 32 &&
+             data.releaseTitle is string && data.releaseTitle.size() >= 2 && data.releaseTitle.size() <= 200 &&
+             data.changelog is string && data.changelog.size() <= 2000 &&
+             data.upgradeMode in ['mild_notice', 'force_blocking'] &&
+             data.isActive is bool &&
+             (!('upgradeUrl' in data) || data.upgradeUrl == null || (data.upgradeUrl is string && data.upgradeUrl.size() <= 500)) &&
+             data.publishedAt is string && data.publishedAt.size() <= 100 &&
+             data.publishedBy is string && data.publishedBy.size() <= 150;
+    }
+
+    function isValidOTAFeatureFlag(data) {
+      return data.keys().hasAll(['featureKey', 'label', 'category', 'isPaused', 'updatedAt', 'updatedBy']) &&
+             data.featureKey is string && isValidId(data.featureKey) &&
+             data.label is string && data.label.size() <= 120 &&
+             data.category in ['Student Hub', 'Persona Portal', 'Core Service'] &&
+             data.isPaused is bool &&
+             (!('pauseReason' in data) || (data.pauseReason is string && data.pauseReason.size() <= 500)) &&
+             (!('estimatedResume' in data) || (data.estimatedResume is string && data.estimatedResume.size() <= 100)) &&
+             data.updatedAt is string && data.updatedAt.size() <= 100 &&
+             data.updatedBy is string && data.updatedBy.size() <= 150;
+    }
+
+    function isValidPersonaNotification(data) {
+      return data.keys().hasAll(['id', 'targetRole', 'title', 'message', 'category', 'createdAt', 'createdBy']) &&
+             data.id is string && isValidId(data.id) &&
+             data.targetRole in ['all', 'student', 'parent', 'tutor', 'growth_partner', 'school_admin', 'admin'] &&
+             data.title is string && data.title.size() >= 2 && data.title.size() <= 200 &&
+             data.message is string && data.message.size() >= 2 && data.message.size() <= 1000 &&
+             data.category in ['study_reminder', 'streak_alert', 'ota_update', 'tutor_activity', 'parent_alert', 'partner_earnings', 'school_notice', 'campaign'] &&
+             data.createdAt is string && data.createdAt.size() <= 100 &&
+             data.createdBy is string && data.createdBy.size() <= 150;
+    }
+
+    function isValidReminderPreference(data) {
+      return data.keys().hasAll(['userId', 'role', 'browserPushEnabled', 'emailDigestEnabled', 'dailyReminderTime', 'streakAlerts', 'updatedAt']) &&
+             data.userId is string && isValidId(data.userId) &&
+             data.role is string && data.role.size() <= 40 &&
+             data.browserPushEnabled is bool &&
+             data.emailDigestEnabled is bool &&
+             data.dailyReminderTime is string && data.dailyReminderTime.size() <= 20 &&
+             data.streakAlerts is bool &&
+             data.updatedAt is string && data.updatedAt.size() <= 100;
+    }
+
+    // 28. OTA App Releases (Public read for version enforcement; Super Admin write)
+    match /otaAppReleases/{releaseId} {
+      allow get, list: if true;
+      allow create, update: if isAdmin() && isValidId(releaseId) && incoming().id == releaseId && isValidOTAAppRelease(incoming());
+      allow delete: if isAdmin();
+    }
+
+    // 29. OTA Per-Feature Pause / Maintenance Flags (Public read; Super Admin write)
+    match /otaFeatureFlags/{featureKey} {
+      allow get, list: if true;
+      allow create, update: if isAdmin() && isValidId(featureKey) && incoming().featureKey == featureKey && isValidOTAFeatureFlag(incoming());
+      allow delete: if isAdmin();
+    }
+
+    // 30. Cross-Persona Notifications & Engagement Reminders (Public read; Super Admin manage)
+    match /personaNotifications/{notificationId} {
+      allow get, list: if true;
+      allow create, update: if isAdmin() && isValidId(notificationId) && incoming().id == notificationId && isValidPersonaNotification(incoming());
+      allow delete: if isAdmin();
+    }
+
+    // 31. Per-User Reminder Preferences (Owner or Admin only)
+    match /reminderPreferences/{userId} {
+      allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
+      allow list: if isAdmin();
+      allow create, update: if isValidId(userId) && (isOwner(userId) || isAdmin()) && incoming().userId == userId && isValidReminderPreference(incoming());
+      allow delete: if isAdmin();
+    }
   }
 }
