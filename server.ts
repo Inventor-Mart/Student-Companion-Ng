@@ -3860,7 +3860,29 @@ async function startServer() {
       server: {
         middlewareMode: true,
         hmr: false,
+        ws: false,
       },
+      plugins: [
+        {
+          name: 'disable-hmr-websocket-connect',
+          enforce: 'post',
+          transform(code, id) {
+            const cleanId = id.split('?')[0].replace(/\\/g, '/');
+            if (cleanId.endsWith('/dist/client/client.mjs') || cleanId === '/@vite/client') {
+              return {
+                code: code
+                  .replace(
+                    /transport\.connect\([^;]*\);/,
+                    '/* HMR WebSocket disabled */ Promise.resolve();'
+                  )
+                  .replace(/ws\.send\(/g, 'ws?.send(')
+                  .replace(/new WebSocket\([^)]*\)/g, 'null'),
+                map: null,
+              };
+            }
+          },
+        },
+      ],
       appType: 'spa',
     });
     app.use(vite.middlewares);
