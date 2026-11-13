@@ -1,4 +1,5 @@
 import fs from 'fs';
+import zlib from 'zlib';
 import express from 'express';
 import dotenv from 'dotenv';
 import path from 'path';
@@ -2852,6 +2853,427 @@ async function ensureGitWorkspace(adminEmail: string): Promise<{ autoInitialized
   return { autoInitialized };
 }
 
+const CRC32_TABLE = (() => {
+  const table = new Uint32Array(256);
+  for (let i = 0; i < 256; i++) {
+    let c = i;
+    for (let k = 0; k < 8; k++) {
+      c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1);
+    }
+    table[i] = c >>> 0;
+  }
+  return table;
+})();
+
+function computeCrc32(buf: Buffer): number {
+  let crc = 0xffffffff;
+  for (let i = 0; i < buf.length; i++) {
+    crc = CRC32_TABLE[(crc ^ buf[i]) & 0xff] ^ (crc >>> 8);
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function createZipBuffer(entries: Array<{ name: string; content: Buffer }>): Buffer {
+  const localParts: Buffer[] = [];
+  const centralParts: Buffer[] = [];
+  let offset = 0;
+
+  for (const entry of entries) {
+    const fileNameBuf = Buffer.from(entry.name.replace(/^\/+/, ''), 'utf-8');
+    const uncompressed = entry.content;
+    const compressed = zlib.deflateRawSync(uncompressed);
+    const crc = computeCrc32(uncompressed);
+
+    const localHeader = Buffer.alloc(30);
+    localHeader.writeUInt32LE(0x04034b50, 0);
+    localHeader.writeUInt16LE(20, 4);
+    localHeader.writeUInt16LE(0, 6);
+    localHeader.writeUInt16LE(8, 8); // deflate
+    localHeader.writeUInt16LE(0, 10);
+    localHeader.writeUInt16LE(0, 12);
+    localHeader.writeUInt32LE(crc, 14);
+    localHeader.writeUInt32LE(compressed.length, 18);
+    localHeader.writeUInt32LE(uncompressed.length, 22);
+    localHeader.writeUInt16LE(fileNameBuf.length, 26);
+    localHeader.writeUInt16LE(0, 28);
+
+    localParts.push(localHeader, fileNameBuf, compressed);
+
+    const centralHeader = Buffer.alloc(46);
+    centralHeader.writeUInt32LE(0x02014b50, 0);
+    centralHeader.writeUInt16LE(20, 4);
+    centralHeader.writeUInt16LE(20, 6);
+    centralHeader.writeUInt16LE(0, 8);
+    centralHeader.writeUInt16LE(8, 10);
+    centralHeader.writeUInt16LE(0, 12);
+    centralHeader.writeUInt16LE(0, 14);
+    centralHeader.writeUInt32LE(crc, 16);
+    centralHeader.writeUInt32LE(compressed.length, 20);
+    centralHeader.writeUInt32LE(uncompressed.length, 24);
+    centralHeader.writeUInt16LE(fileNameBuf.length, 28);
+    centralHeader.writeUInt16LE(0, 30);
+    centralHeader.writeUInt16LE(0, 32);
+    centralHeader.writeUInt16LE(0, 34);
+    centralHeader.writeUInt16LE(0, 36);
+    centralHeader.writeUInt32LE(0, 38);
+    centralHeader.writeUInt32LE(offset, 42);
+
+    centralParts.push(centralHeader, fileNameBuf);
+    offset += localHeader.length + fileNameBuf.length + compressed.length;
+  }
+
+  const centralDir = Buffer.concat(centralParts);
+  const endRecord = Buffer.alloc(22);
+  endRecord.writeUInt32LE(0x06054b50, 0);
+  endRecord.writeUInt16LE(0, 4);
+  endRecord.writeUInt16LE(0, 6);
+  endRecord.writeUInt16LE(entries.length, 8);
+  endRecord.writeUInt16LE(entries.length, 10);
+  endRecord.writeUInt32LE(centralDir.length, 12);
+  endRecord.writeUInt32LE(offset, 16);
+  endRecord.writeUInt16LE(0, 20);
+
+  return Buffer.concat([...localParts, centralDir, endRecord]);
+}
+
+function collectDirectoryZipEntries(dirPath: string, zipPrefix: string): Array<{ name: string; content: Buffer }> {
+  const results: Array<{ name: string; content: Buffer }> = [];
+  if (!fs.existsSync(dirPath)) return results;
+  for (const item of fs.readdirSync(dirPath)) {
+    const full = path.join(dirPath, item);
+    const rel = `${zipPrefix}/${item}`;
+    const stat = fs.statSync(full);
+    if (stat.isDirectory()) {
+      results.push(...collectDirectoryZipEntries(full, rel));
+    } else if (stat.isFile()) {
+      results.push({ name: rel, content: fs.readFileSync(full) });
+    }
+  }
+  return results;
+}
+
+async function resolveCompiledAndroidApk(): Promise<{
+  apkReady: boolean;
+  source?: 'local' | 'github';
+  localPath?: string;
+  apkUrl?: string;
+  apkSizeBytes?: number;
+  versionName?: string;
+}> {
+  const localReleaseApk = path.join(__dirname, 'public', 'releases', 'StudentCompanion-v1.0.0-android6plus.apk');
+  if (fs.existsSync(localReleaseApk)) {
+    const stat = fs.statSync(localReleaseApk);
+    if (stat.size > 50_000) {
+      return {
+        apkReady: true,
+        source: 'local',
+        localPath: localReleaseApk,
+        apkUrl: '/api/download/android-apk',
+        apkSizeBytes: stat.size,
+        versionName: '1.0.0',
+      };
+    }
+  }
+
+  try {
+    const token = (process.env.GITHUB_TOKEN || process.env.GH_TOKEN || '').trim();
+    const headers: Record<string, string> = {
+      Accept: 'application/vnd.github+json',
+      'User-Agent': 'Student-Companion-Ng-APK',
+    };
+    if (token) headers.Authorization = `Bearer ${token}`;
+
+    for (const relPath of ['releases/tags/android-latest', 'releases/latest']) {
+      const releaseRes = await fetch(
+        `https://api.github.com/repos/${TARGET_GITHUB_OWNER}/${TARGET_GITHUB_REPO}/${relPath}`,
+        { headers, signal: AbortSignal.timeout(5000) }
+      );
+      if (releaseRes.ok) {
+        const releaseData: any = await releaseRes.json();
+        const assets: any[] = Array.isArray(releaseData?.assets) ? releaseData.assets : [];
+        const apkAsset = assets.find(
+          (a) => typeof a?.name === 'string' && a.name.toLowerCase().endsWith('.apk') && Number(a.size) > 50_000
+        );
+        if (apkAsset?.browser_download_url) {
+          return {
+            apkReady: true,
+            source: 'github',
+            apkUrl: apkAsset.browser_download_url,
+            apkSizeBytes: Number(apkAsset.size),
+            versionName: String(releaseData?.tag_name || '1.0.0'),
+          };
+        }
+      }
+    }
+  } catch {}
+
+  return { apkReady: false };
+}
+
+async function inspectGithubApkWorkflow(): Promise<{
+  workflowOnRemote: boolean;
+  latestRun: {
+    status: string;
+    conclusion: string | null;
+    htmlUrl: string;
+    createdAt: string;
+  } | null;
+}> {
+  const token = (process.env.GITHUB_TOKEN || process.env.GH_TOKEN || '').trim();
+  const headers: Record<string, string> = {
+    Accept: 'application/vnd.github+json',
+    'User-Agent': 'Student-Companion-Ng-APK',
+  };
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  let workflowOnRemote = false;
+  let latestRun: {
+    status: string;
+    conclusion: string | null;
+    htmlUrl: string;
+    createdAt: string;
+  } | null = null;
+
+  try {
+    const wfRes = await fetch(
+      `https://api.github.com/repos/${TARGET_GITHUB_OWNER}/${TARGET_GITHUB_REPO}/contents/.github/workflows/build-android-apk.yml?ref=${TARGET_GITHUB_BRANCH}`,
+      { headers, signal: AbortSignal.timeout(4000) }
+    );
+    workflowOnRemote = wfRes.ok;
+
+    const runsRes = await fetch(
+      `https://api.github.com/repos/${TARGET_GITHUB_OWNER}/${TARGET_GITHUB_REPO}/actions/workflows/build-android-apk.yml/runs?per_page=1`,
+      { headers, signal: AbortSignal.timeout(4000) }
+    );
+    if (runsRes.ok) {
+      const runsData: any = await runsRes.json();
+      const firstRun = Array.isArray(runsData?.workflow_runs) ? runsData.workflow_runs[0] : null;
+      if (firstRun) {
+        workflowOnRemote = true;
+        latestRun = {
+          status: String(firstRun.status || 'unknown'),
+          conclusion: firstRun.conclusion ? String(firstRun.conclusion) : null,
+          htmlUrl: String(firstRun.html_url || ''),
+          createdAt: String(firstRun.created_at || ''),
+        };
+      }
+    }
+  } catch {}
+
+  return { workflowOnRemote, latestRun };
+}
+
+app.get('/api/android/apk-status', async (_req, res) => {
+  const [resolved, workflowInfo] = await Promise.all([
+    resolveCompiledAndroidApk(),
+    inspectGithubApkWorkflow(),
+  ]);
+  return res.json({
+    success: true,
+    apkReady: resolved.apkReady,
+    apkUrl: resolved.apkUrl || null,
+    apkSizeBytes: resolved.apkSizeBytes || 0,
+    versionName: resolved.versionName || '1.0.0',
+    packageName: 'com.studentcompanion.app',
+    minSdkVersion: 23,
+    androidMinLabel: 'Android 6.0 Marshmallow+',
+    standalonePwaUrl: 'https://ais-pre-6kneqjoxpjhkhbumgktpro-896173298722.europe-west2.run.app',
+    studioKitUrl: '/api/download/android-studio-kit',
+    offlinePwaUrl: '/api/download/offline-pwa-bundle',
+    workflowOnRemote: workflowInfo.workflowOnRemote,
+    latestRun: workflowInfo.latestRun,
+    actionsPageUrl: `https://github.com/${TARGET_GITHUB_OWNER}/${TARGET_GITHUB_REPO}/actions`,
+    releasesPageUrl: `https://github.com/${TARGET_GITHUB_OWNER}/${TARGET_GITHUB_REPO}/releases`,
+  });
+});
+
+app.post('/api/android/trigger-github-apk-build', async (req, res) => {
+  const adminEmail = String(req.body?.adminEmail || '').toLowerCase().trim();
+  if (!adminEmail || !AUTHORIZED_GIT_ADMINS.includes(adminEmail)) {
+    await securityService.logUnauthorizedProbe(req, '/api/android/trigger-github-apk-build', adminEmail);
+    return res.status(403).json({
+      success: false,
+      error: 'Unauthorized: Super Admin privileges required to start GitHub APK build.',
+    });
+  }
+
+  const token = (process.env.GITHUB_TOKEN || process.env.GH_TOKEN || '').trim();
+  if (!token) {
+    return res.status(400).json({
+      success: false,
+      error: 'GITHUB_TOKEN is not configured in server Secrets.',
+    });
+  }
+
+  try {
+    const dispatchRes = await fetch(
+      `https://api.github.com/repos/${TARGET_GITHUB_OWNER}/${TARGET_GITHUB_REPO}/actions/workflows/build-android-apk.yml/dispatches`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/vnd.github+json',
+          'Content-Type': 'application/json',
+          'User-Agent': 'Student-Companion-Ng-APK',
+        },
+        body: JSON.stringify({ ref: TARGET_GITHUB_BRANCH }),
+        signal: AbortSignal.timeout(10000),
+      }
+    );
+
+    if (dispatchRes.status === 204) {
+      return res.json({
+        success: true,
+        message:
+          'GitHub cloud APK build started! Compilation takes ~2–3 minutes; once finished, Download Android APK will unlock automatically.',
+        actionsPageUrl: `https://github.com/${TARGET_GITHUB_OWNER}/${TARGET_GITHUB_REPO}/actions`,
+      });
+    }
+
+    const errBody = await dispatchRes.text();
+    if (dispatchRes.status === 404) {
+      return res.status(404).json({
+        success: false,
+        error:
+          'The Android build workflow is not on GitHub main yet. Click "Sync to GitHub (main)" above first, then trigger the APK build.',
+      });
+    }
+    if (dispatchRes.status === 403) {
+      return res.status(403).json({
+        success: false,
+        error:
+          'Your GITHUB_TOKEN needs Actions/Workflow write permission to trigger builds remotely, OR open GitHub -> Actions -> "Build Android 6+ APK" -> Run workflow.',
+        actionsPageUrl: `https://github.com/${TARGET_GITHUB_OWNER}/${TARGET_GITHUB_REPO}/actions`,
+      });
+    }
+
+    return res.status(dispatchRes.status).json({
+      success: false,
+      error: scrubGitToken(errBody || `GitHub Actions returned HTTP ${dispatchRes.status}.`, token),
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      success: false,
+      error: scrubGitToken(err?.message || 'Failed to trigger GitHub Actions APK build.', token),
+    });
+  }
+});
+
+app.get('/api/download/android-apk', async (_req, res) => {
+  const resolved = await resolveCompiledAndroidApk();
+  if (resolved.apkReady && resolved.source === 'local' && resolved.localPath) {
+    return res.download(resolved.localPath, 'StudentCompanion-v1.0.0-android6plus.apk');
+  }
+  if (resolved.apkReady && resolved.source === 'github' && resolved.apkUrl) {
+    return res.redirect(resolved.apkUrl);
+  }
+
+  return res.status(404).json({
+    success: false,
+    apkReady: false,
+    error:
+      'No compiled binary .apk release has been built yet because this cloud server has no Java/Android SDK. Install the online PWA directly or download the ready Android 6+ Studio Project (.zip) to compile a signed .apk.',
+    studioKitUrl: '/api/download/android-studio-kit',
+    standalonePwaUrl: 'https://ais-pre-6kneqjoxpjhkhbumgktpro-896173298722.europe-west2.run.app',
+  });
+});
+
+app.get('/api/download/android-studio-kit', (_req, res) => {
+  const entries: Array<{ name: string; content: Buffer }> = [];
+  entries.push(...collectDirectoryZipEntries(path.join(__dirname, 'android-project'), 'StudentCompanion-Android6Plus'));
+
+  const extraFiles: Array<[string, string]> = [
+    ['twa-manifest.json', 'twa-manifest.json'],
+    ['public/pwa-512x512.png', 'icons/android-play-store-512x512.png'],
+    ['public/pwa-maskable-512x512.png', 'icons/android-maskable-512x512.png'],
+    ['public/ios-icon-1024x1024.png', 'icons/ios-app-store-1024x1024.png'],
+    ['public/pwa-192x192.png', 'icons/pwa-192x192.png'],
+  ];
+
+  for (const [srcRel, zipDest] of extraFiles) {
+    const abs = path.join(__dirname, srcRel);
+    if (fs.existsSync(abs)) {
+      entries.push({ name: `StudentCompanion-Android6Plus/${zipDest}`, content: fs.readFileSync(abs) });
+    }
+  }
+
+  const zipBuf = createZipBuffer(entries);
+  res.setHeader('Content-Type', 'application/zip');
+  res.setHeader('Content-Disposition', 'attachment; filename="StudentCompanion-Android6Plus-Project.zip"');
+  res.setHeader('Content-Length', zipBuf.length);
+  return res.send(zipBuf);
+});
+
+app.get('/api/download/offline-pwa-bundle', (_req, res) => {
+  const entries: Array<{ name: string; content: Buffer }> = [];
+
+  const manifestJson = JSON.stringify(
+    {
+      id: '/',
+      name: 'Student Companion',
+      short_name: 'StudentComp',
+      description: 'Comprehensive academic companion, scheme of work, CBT practice, and student portal.',
+      start_url: '/',
+      scope: '/',
+      display: 'standalone',
+      background_color: '#0B1526',
+      theme_color: '#0B1526',
+      icons: [
+        { src: '/pwa-192x192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+        { src: '/pwa-512x512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+        { src: '/pwa-maskable-512x512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+      ],
+    },
+    null,
+    2
+  );
+  entries.push({ name: 'manifest.webmanifest', content: Buffer.from(manifestJson, 'utf-8') });
+
+  const assetFiles = [
+    'icon.svg',
+    'pwa-192x192.png',
+    'pwa-512x512.png',
+    'pwa-maskable-512x512.png',
+    'ios-icon-1024x1024.png',
+    'apple-touch-icon.png',
+    'sw.js',
+    'sw-notifications.js',
+  ];
+  for (const fname of assetFiles) {
+    const abs = path.join(__dirname, 'public', fname);
+    if (fs.existsSync(abs)) {
+      entries.push({ name: fname, content: fs.readFileSync(abs) });
+    }
+  }
+
+  const distDir = path.join(__dirname, 'dist');
+  if (fs.existsSync(distDir)) {
+    entries.push(...collectDirectoryZipEntries(distDir, 'dist'));
+  }
+
+  const readme = [
+    'Student Companion — Offline PWA & Brand Icons Package',
+    '====================================================',
+    'Included icons (PNG, no pre-rounded corners):',
+    '  - ios-icon-1024x1024.png  (1024x1024 iOS App Store)',
+    '  - pwa-512x512.png         (512x512 Android / Google Play)',
+    '  - pwa-maskable-512x512.png (512x512 Android Adaptive Maskable)',
+    '  - pwa-192x192.png         (192x192 PWA Launcher)',
+    '  - apple-touch-icon.png    (180x180 iOS Safari)',
+    '',
+    'To install the live PWA on Android 6.0+:',
+    '  1. Open https://ais-pre-6kneqjoxpjhkhbumgktpro-896173298722.europe-west2.run.app in Chrome or Edge.',
+    '  2. Tap "Install" in the top bar or browser menu -> "Install app".',
+  ].join('\n');
+  entries.push({ name: 'README.txt', content: Buffer.from(readme, 'utf-8') });
+
+  const zipBuf = createZipBuffer(entries);
+  res.setHeader('Content-Type', 'application/zip');
+  res.setHeader('Content-Disposition', 'attachment; filename="StudentCompanion-Offline-PWA.zip"');
+  res.setHeader('Content-Length', zipBuf.length);
+  return res.send(zipBuf);
+});
+
 app.get('/api/git/status', async (req, res) => {
   const adminEmail = String(req.query.adminEmail || '').toLowerCase().trim();
   if (!adminEmail || !AUTHORIZED_GIT_ADMINS.includes(adminEmail)) {
@@ -3093,9 +3515,17 @@ app.post('/api/git/push', async (req, res) => {
     });
   } catch (err: any) {
     const rawMsg = err?.stderr || err?.message || 'GitHub push failed.';
+    const cleaned = scrubGitToken(String(rawMsg), token);
+    if (cleaned.toLowerCase().includes('workflow') && (cleaned.toLowerCase().includes('scope') || cleaned.toLowerCase().includes('refusing'))) {
+      return res.status(403).json({
+        success: false,
+        error:
+          'GitHub rejected pushing .github/workflows/build-android-apk.yml because your GITHUB_TOKEN lacks the "workflow" scope (or Workflows: Read & Write permission). Add "workflow" to your token on GitHub, update GITHUB_TOKEN in Secrets, restart the server, and click Sync to GitHub again.',
+      });
+    }
     return res.status(500).json({
       success: false,
-      error: scrubGitToken(String(rawMsg), token),
+      error: cleaned,
     });
   }
 });

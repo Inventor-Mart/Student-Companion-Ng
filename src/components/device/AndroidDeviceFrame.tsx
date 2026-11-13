@@ -4,6 +4,7 @@ import { Wifi, WifiOff, BatteryCharging, Signal, SlidersHorizontal, Bell } from 
 import { InAppControlsDrawer } from './InAppControlsDrawer';
 import { HeaderClassSwitcher } from '../student/HeaderClassSwitcher';
 import { NotificationInboxModal } from '../common/NotificationInboxModal';
+import { PWAInstallButton } from '../common/PWAInstallButton';
 
 export const AndroidDeviceFrame: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const {
@@ -31,23 +32,26 @@ export const AndroidDeviceFrame: React.FC<{ children: React.ReactNode }> = ({ ch
     return (
       <main className="w-full h-screen h-dvh bg-[#070D18] text-slate-100 flex flex-col relative overflow-hidden">
         {/* Full-Screen In-App Mobile Top Bar */}
-        <header className="h-12 sm:h-13 w-full bg-[#0B1526]/95 backdrop-blur-md px-4 sm:px-6 flex items-center justify-between border-b border-[#1A2C49] shrink-0 z-30 select-none">
-          <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-[#14233C] flex items-center justify-center text-[#84E000] font-black text-xs sm:text-sm">
+        <header className="h-12 sm:h-13 w-full bg-[#0B1526]/95 backdrop-blur-md px-3 sm:px-6 flex items-center justify-between gap-2 border-b border-[#1A2C49] shrink-0 z-30 select-none">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-[#14233C] flex items-center justify-center text-[#84E000] font-black text-xs sm:text-sm shrink-0">
               SC
             </div>
-            <div className="flex items-center gap-2">
-              <span className="text-sm sm:text-base font-bold text-white tracking-tight">Student Companion</span>
-              <span className="text-[10px] font-bold text-[#84E000] bg-[#84E000]/15 border border-[#84E000]/30 px-2 py-0.5 rounded-full uppercase">
+            <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+              <span className="text-xs sm:text-base font-bold text-white tracking-tight truncate">
+                Student Companion
+              </span>
+              <span className="hidden xs:inline-block text-[10px] font-bold text-[#84E000] bg-[#84E000]/15 border border-[#84E000]/30 px-2 py-0.5 rounded-full uppercase whitespace-nowrap shrink-0">
                 {roleLabel}
               </span>
             </div>
           </div>
 
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
             {currentRole === 'student' && <HeaderClassSwitcher />}
+            <PWAInstallButton />
             {isOffline && (currentRole === 'student' || isSuperAdmin) && (
-              <span className="flex items-center gap-1.5 text-xs text-amber-400 bg-amber-950/60 border border-amber-800/60 px-2.5 py-1 rounded-full font-medium whitespace-nowrap shrink-0">
+              <span className="hidden sm:flex items-center gap-1.5 text-xs text-amber-400 bg-amber-950/60 border border-amber-800/60 px-2.5 py-1 rounded-full font-medium whitespace-nowrap shrink-0">
                 <WifiOff className="w-3.5 h-3.5" />
                 Offline
               </span>
@@ -55,7 +59,7 @@ export const AndroidDeviceFrame: React.FC<{ children: React.ReactNode }> = ({ ch
             <button
               type="button"
               onClick={() => setIsNotificationInboxOpen(true)}
-              className="relative flex items-center justify-center min-w-[40px] min-h-[40px] px-2.5 rounded-lg bg-[#14233C] hover:bg-[#1D3254] active:scale-95 text-slate-200 hover:text-white border border-[#223B63] transition-all cursor-pointer shrink-0"
+              className="relative flex items-center justify-center min-w-[40px] min-h-[40px] px-2 sm:px-2.5 rounded-lg bg-[#14233C] hover:bg-[#1D3254] active:scale-95 text-slate-200 hover:text-white border border-[#223B63] transition-all cursor-pointer shrink-0"
               title="Notifications & Reminders"
               aria-label="Open notifications and reminders"
             >
@@ -68,12 +72,12 @@ export const AndroidDeviceFrame: React.FC<{ children: React.ReactNode }> = ({ ch
             </button>
             <button
               onClick={() => setIsControlsOpen(true)}
-              className="flex items-center gap-1.5 px-3 min-h-[40px] rounded-lg bg-[#14233C] hover:bg-[#1D3254] active:scale-95 text-slate-200 hover:text-white border border-[#223B63] transition-all cursor-pointer text-xs font-semibold whitespace-nowrap shrink-0"
+              className="flex items-center gap-1.5 px-2.5 sm:px-3 min-h-[40px] rounded-lg bg-[#14233C] hover:bg-[#1D3254] active:scale-95 text-slate-200 hover:text-white border border-[#223B63] transition-all cursor-pointer text-xs font-semibold whitespace-nowrap shrink-0"
               title="Open Account Menu"
               aria-label="Open Account Menu"
             >
               <SlidersHorizontal className="w-3.5 h-3.5 text-[#84E000]" />
-              <span>Menu</span>
+              <span className="hidden sm:inline">Menu</span>
             </button>
           </div>
         </header>
@@ -127,25 +131,26 @@ export const AndroidDeviceFrame: React.FC<{ children: React.ReactNode }> = ({ ch
           </div>
 
           {/* In-App Mobile Top App Bar */}
-          <div className="h-11 w-full bg-[#0B1526] px-4 flex items-center justify-between border-b border-[#1A2C49] shrink-0 z-30 select-none">
-            <div className="flex items-center gap-2">
-              <div className="w-6 h-6 rounded-md bg-[#14233C] flex items-center justify-center text-[#84E000] font-black text-[11px]">
+          <div className="h-11 w-full bg-[#0B1526] px-3 flex items-center justify-between gap-1.5 border-b border-[#1A2C49] shrink-0 z-30 select-none">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <div className="w-6 h-6 rounded-md bg-[#14233C] flex items-center justify-center text-[#84E000] font-black text-[11px] shrink-0">
                 SC
               </div>
-              <div className="flex items-center gap-1.5">
-                <span className="text-xs font-bold text-white tracking-tight">Student Companion</span>
-                <span className="text-[9px] font-bold text-[#84E000] bg-[#84E000]/15 border border-[#84E000]/30 px-1.5 py-0.2 rounded uppercase">
+              <div className="flex items-center gap-1 min-w-0">
+                <span className="text-xs font-bold text-white tracking-tight truncate">Student Companion</span>
+                <span className="hidden sm:inline-block text-[9px] font-bold text-[#84E000] bg-[#84E000]/15 border border-[#84E000]/30 px-1.5 py-0.2 rounded uppercase whitespace-nowrap shrink-0">
                   {roleLabel}
                 </span>
               </div>
             </div>
 
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1 shrink-0">
               {currentRole === 'student' && <HeaderClassSwitcher />}
+              <PWAInstallButton compact />
               <button
                 type="button"
                 onClick={() => setIsNotificationInboxOpen(true)}
-                className="relative flex items-center justify-center min-w-[36px] min-h-[36px] px-2 rounded-lg bg-[#14233C] hover:bg-[#1D3254] active:scale-95 text-slate-200 hover:text-white border border-[#223B63] transition-all cursor-pointer shrink-0"
+                className="relative flex items-center justify-center min-w-[36px] min-h-[36px] px-1.5 rounded-lg bg-[#14233C] hover:bg-[#1D3254] active:scale-95 text-slate-200 hover:text-white border border-[#223B63] transition-all cursor-pointer shrink-0"
                 title="Notifications & Reminders"
                 aria-label="Open notifications and reminders"
               >
@@ -159,7 +164,7 @@ export const AndroidDeviceFrame: React.FC<{ children: React.ReactNode }> = ({ ch
               {/* In-App Menu Drawer Trigger */}
               <button
                 onClick={() => setIsControlsOpen(true)}
-                className="flex items-center gap-1 px-2.5 min-h-[36px] rounded-lg bg-[#14233C] hover:bg-[#1D3254] active:scale-95 text-slate-200 hover:text-white border border-[#223B63] transition-all cursor-pointer text-[11px] font-semibold whitespace-nowrap shrink-0"
+                className="flex items-center gap-1 px-2 min-h-[36px] rounded-lg bg-[#14233C] hover:bg-[#1D3254] active:scale-95 text-slate-200 hover:text-white border border-[#223B63] transition-all cursor-pointer text-[11px] font-semibold whitespace-nowrap shrink-0"
                 title="Open Account Menu"
                 aria-label="Open Account Menu"
               >

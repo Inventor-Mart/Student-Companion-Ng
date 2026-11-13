@@ -1,0 +1,40 @@
+{
+  "packageId": "com.studentcompanion.app",
+  "host": "ais-dev-6kneqjoxpjhkhbumgktpro-896173298722.europe-west2.run.app",
+  "name": "Student Companion",
+  "shortName": "StudentComp",
+  "startUrl": "/",
+  "iconUrl": "/pwa-512x512.png",
+  "maskableIconUrl": "/pwa-512x512.png",
+  "splashScreenColor": "#0B1526",
+  "themeColor": "#0B1526",
+  "navigationColor": "#0B1526",
+  "navigationColorDark": "#0B1526",
+  "navigationDividerColor": "#0B1526",
+  "navigationDividerColorDark": "#0B1526",
+  "backgroundColor": "#0B1526",
+  "display": "standalone",
+  "orientation": "default",
+  "minSdkVersion": 23,
+  "signingKey": {
+    "path": "./android.keystore",
+    "alias": "studentcompanion"
+  },
+  "appVersionName": "1.0.0",
+  "appVersionCode": 1,
+  "generatorApp": "Bubblewrap CLI - AI Studio Student Companion Integration",
+  "webManifestUrl": "/manifest.webmanifest",
+  "fallbackType": "customtab",
+  "features": {
+    "locationDelegation": {
+      "enabled": true
+    },
+    "playBilling": {
+      "enabled": false
+    }
+  },
+  "alphaDependencies": {
+    "enabled": false
+  },
+  "enableNotifications": true
+}

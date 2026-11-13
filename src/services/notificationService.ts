@@ -68,7 +68,8 @@ export function registerNotificationServiceWorker(): Promise<ServiceWorkerRegist
   }
   if (!swRegistrationPromise) {
     swRegistrationPromise = navigator.serviceWorker
-      .register('/sw.js', { scope: '/' })
+      .getRegistration('/')
+      .then((existing) => existing || navigator.serviceWorker.register('/sw.js', { scope: '/' }))
       .catch(() => null);
   }
   return swRegistrationPromise;

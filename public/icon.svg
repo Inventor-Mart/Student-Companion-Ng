@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Full-bleed Deep Navy Blue square background (no pre-rounded corners) -->
+  <rect width="512" height="512" fill="#0B1526" />
+
+  <!-- Subtle centered dark slate radial depth behind motif -->
+  <circle cx="256" cy="264" r="196" fill="#10203A" />
+
+  <!-- Minimalist Open Book (Electric Orange #FF5B00) -->
+  <g fill="none" stroke="#FF5B00" stroke-width="22" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Left page outer -->
+    <path d="M96 232 C148 214, 208 218, 256 248 L256 392 C208 364, 148 360, 96 376 Z" fill="#14233C" />
+    <!-- Right page outer -->
+    <path d="M416 232 C364 214, 304 218, 256 248 L256 392 C304 364, 364 360, 416 376 Z" fill="#14233C" />
+    <!-- Book spine accent curve -->
+    <path d="M74 252 L74 394 C136 378, 204 384, 256 410 C308 384, 376 378, 438 394 L438 252" />
+  </g>
+
+  <!-- Crisp inner page lines for subtle book clarity -->
+  <g stroke="#FF5B00" stroke-width="10" stroke-linecap="round" opacity="0.65">
+    <path d="M132 276 Q178 268 220 284" />
+    <path d="M132 316 Q178 308 220 324" />
+    <path d="M380 276 Q334 268 292 284" />
+    <path d="M380 316 Q334 308 292 324" />
+  </g>
+
+  <!-- Minimalist Graduation Cap (Lime Green #84E000) -->
+  <g stroke-linecap="round" stroke-linejoin="round">
+    <!-- Cap skull base -->
+    <path d="M174 178 L174 218 C174 238, 338 238, 338 218 L338 178" fill="#14233C" stroke="#84E000" stroke-width="18" />
+    <!-- Mortarboard diamond top -->
+    <polygon points="256,88 412,154 256,216 100,154" fill="#84E000" stroke="#84E000" stroke-width="10" />
+    <!-- Tassel pin & drop -->
+    <circle cx="256" cy="152" r="10" fill="#0B1526" />
+    <path d="M256 152 L366 178 L366 254" fill="none" stroke="#FF5B00" stroke-width="12" />
+    <circle cx="366" cy="264" r="14" fill="#FF5B00" />
+  </g>
+</svg>

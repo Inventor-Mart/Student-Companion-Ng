@@ -231,6 +231,78 @@ export const SuperAdminPortal: React.FC = () => {
     }
   };
 
+  // GitHub Cloud Android APK Build state (no Android Studio needed)
+  const [apkCloudStatus, setApkCloudStatus] = useState<{
+    apkReady: boolean;
+    apkUrl: string | null;
+    apkSizeBytes: number;
+    versionName: string;
+    workflowOnRemote: boolean;
+    latestRun: {
+      status: string;
+      conclusion: string | null;
+      htmlUrl: string;
+      createdAt: string;
+    } | null;
+    actionsPageUrl?: string;
+    releasesPageUrl?: string;
+  } | null>(null);
+  const [isCheckingApkStatus, setIsCheckingApkStatus] = useState(false);
+  const [isTriggeringApkBuild, setIsTriggeringApkBuild] = useState(false);
+  const [apkBuildFeedback, setApkBuildFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  const fetchApkCloudStatus = React.useCallback(async () => {
+    setIsCheckingApkStatus(true);
+    try {
+      const res = await fetch('/api/android/apk-status');
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setApkCloudStatus(data);
+      }
+    } catch {
+      // ignore transient errors
+    } finally {
+      setIsCheckingApkStatus(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    void fetchApkCloudStatus();
+  }, [fetchApkCloudStatus]);
+
+  const handleTriggerGithubApkBuild = async () => {
+    if (!authorizedAdminEmail) return;
+    setIsTriggeringApkBuild(true);
+    setApkBuildFeedback(null);
+    try {
+      const res = await fetch('/api/android/trigger-github-apk-build', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ adminEmail: authorizedAdminEmail }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setApkBuildFeedback({
+          type: 'success',
+          message: data.message || 'GitHub Cloud APK build triggered!',
+        });
+        await fetchApkCloudStatus();
+      } else {
+        setApkBuildFeedback({
+          type: 'error',
+          message: data.error || 'Could not trigger GitHub Actions APK build.',
+        });
+      }
+    } catch (err: any) {
+      setApkBuildFeedback({
+        type: 'error',
+        message: err?.message || 'Network error triggering GitHub APK build.',
+      });
+    } finally {
+      setIsTriggeringApkBuild(false);
+    }
+  };
+
   // Forum moderation state
   const [forumReports, setForumReports] = useState<ForumReport[]>(() => getStoredForumReports());
   const [moderationNotice, setModerationNotice] = useState<string | null>(null);
@@ -1236,6 +1308,181 @@ export const SuperAdminPortal: React.FC = () => {
             <span>{gitSyncFeedback.message}</span>
           </div>
         )}
+      </div>
+
+      {/* GitHub Cloud Android APK Builder & Store Assets Hub (No Android Studio Needed) */}
+      <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-10 h-10 rounded-xl bg-[#0D1527] border border-slate-700 flex items-center justify-center text-amber-400 shrink-0">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
+              </svg>
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-sm font-bold text-white tracking-tight">GitHub Cloud Android APK Builder</h2>
+                <span className="text-[11px] font-mono text-emerald-400">
+                  com.studentcompanion.app · minSdk 23 (Android 6.0+)
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400 mt-0.5">
+                Compiles a signed multi-MB <code className="text-slate-300">.apk</code> in the cloud via GitHub Actions — zero Android Studio installation required.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0 flex-wrap">
+            <button
+              type="button"
+              onClick={() => void fetchApkCloudStatus()}
+              disabled={isCheckingApkStatus}
+              className="px-3 py-2 rounded-xl bg-slate-950 hover:bg-slate-800 border border-slate-700 text-slate-300 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50 whitespace-nowrap shrink-0"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isCheckingApkStatus ? 'animate-spin' : ''}`} />
+              <span>Check Build</span>
+            </button>
+
+            {apkCloudStatus?.apkReady && apkCloudStatus.apkUrl && (
+              <a
+                href={apkCloudStatus.apkUrl}
+                className="px-4 py-2 rounded-xl bg-[#84E000] hover:bg-[#75c900] text-slate-950 text-xs font-black flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm whitespace-nowrap shrink-0"
+              >
+                <span>
+                  Download Signed APK ({(apkCloudStatus.apkSizeBytes / (1024 * 1024)).toFixed(1)} MB)
+                </span>
+              </a>
+            )}
+
+            <button
+              type="button"
+              onClick={() => void handleTriggerGithubApkBuild()}
+              disabled={isTriggeringApkBuild}
+              className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm disabled:opacity-50 whitespace-nowrap shrink-0"
+            >
+              <UploadCloud className={`w-3.5 h-3.5 ${isTriggeringApkBuild ? 'animate-pulse' : ''}`} />
+              <span>{isTriggeringApkBuild ? 'Starting Build...' : 'Build APK on GitHub'}</span>
+            </button>
+
+            <a
+              href="/api/download/offline-pwa-bundle"
+              className="px-3 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm whitespace-nowrap shrink-0"
+            >
+              <span>Offline PWA (.zip)</span>
+            </a>
+            <a
+              href="/pwa-512x512.png"
+              download="student_companion_android_512x512.png"
+              className="px-3 py-2 rounded-xl bg-slate-950 hover:bg-slate-800 border border-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+            >
+              <span>512px PNG</span>
+            </a>
+            <a
+              href="/ios-icon-1024x1024.png"
+              download="student_companion_ios_1024x1024.png"
+              className="px-3 py-2 rounded-xl bg-slate-950 hover:bg-slate-800 border border-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+            >
+              <span>1024px PNG</span>
+            </a>
+          </div>
+        </div>
+
+        {/* Live GitHub APK Build & Release Status Strip */}
+        {apkCloudStatus && (
+          <div className="bg-slate-950 border border-slate-800 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+            <div className="flex items-center gap-2 min-w-0">
+              {apkCloudStatus.apkReady ? (
+                <CheckCircle2 className="w-4 h-4 text-[#84E000] shrink-0" />
+              ) : apkCloudStatus.latestRun?.status === 'in_progress' || apkCloudStatus.latestRun?.status === 'queued' ? (
+                <Clock className="w-4 h-4 text-amber-400 shrink-0 animate-spin" />
+              ) : (
+                <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+              )}
+              <span className="text-slate-200 truncate">
+                {apkCloudStatus.apkReady
+                  ? `Signed Release APK ready (${(apkCloudStatus.apkSizeBytes / (1024 * 1024)).toFixed(2)} MB · ${apkCloudStatus.versionName})`
+                  : apkCloudStatus.latestRun
+                  ? `Latest GitHub Actions run: ${apkCloudStatus.latestRun.status}${apkCloudStatus.latestRun.conclusion ? ` (${apkCloudStatus.latestRun.conclusion})` : ''}`
+                  : apkCloudStatus.workflowOnRemote
+                  ? 'Workflow active on GitHub — click "Build APK on GitHub" to compile your signed Android 6+ APK.'
+                  : 'Click "Sync to GitHub (main)" above once to push the Android cloud build workflow, then click "Build APK on GitHub".'}
+              </span>
+            </div>
+            <div className="flex items-center gap-3 shrink-0 text-[11px]">
+              {apkCloudStatus.actionsPageUrl && (
+                <a
+                  href={apkCloudStatus.latestRun?.htmlUrl || apkCloudStatus.actionsPageUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-sky-400 hover:text-sky-300 font-semibold flex items-center gap-1"
+                >
+                  <span>GitHub Actions</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              )}
+              {apkCloudStatus.releasesPageUrl && (
+                <a
+                  href={apkCloudStatus.releasesPageUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-emerald-400 hover:text-emerald-300 font-semibold flex items-center gap-1"
+                >
+                  <span>GitHub Releases</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              )}
+            </div>
+          </div>
+        )}
+
+        {apkBuildFeedback && (
+          <div
+            className={`p-3 rounded-xl border text-xs flex items-center gap-2 ${
+              apkBuildFeedback.type === 'success'
+                ? 'bg-emerald-950/70 border-emerald-700 text-emerald-200'
+                : 'bg-rose-950/70 border-rose-700 text-rose-200'
+            }`}
+          >
+            {apkBuildFeedback.type === 'success' ? (
+              <CheckCircle2 className="w-4 h-4 text-[#84E000] shrink-0" />
+            ) : (
+              <XCircle className="w-4 h-4 text-rose-400 shrink-0" />
+            )}
+            <span>{apkBuildFeedback.message}</span>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+          <div className="bg-slate-950 border border-slate-800 rounded-xl p-3.5 space-y-1.5">
+            <div className="font-bold text-white flex items-center gap-1.5">
+              <span className="w-5 h-5 rounded-full bg-slate-800 text-amber-400 flex items-center justify-center text-[10px] font-mono">1</span>
+              <span>Push Workflow to GitHub</span>
+            </div>
+            <p className="text-[11px] text-slate-400 leading-relaxed">
+              Ensure your <code className="text-emerald-400 font-mono">GITHUB_TOKEN</code> has <strong className="text-slate-200">workflow</strong> scope enabled, then click <strong className="text-slate-200">Sync to GitHub (main)</strong> above.
+            </p>
+          </div>
+
+          <div className="bg-slate-950 border border-slate-800 rounded-xl p-3.5 space-y-1.5">
+            <div className="font-bold text-white flex items-center gap-1.5">
+              <span className="w-5 h-5 rounded-full bg-slate-800 text-amber-400 flex items-center justify-center text-[10px] font-mono">2</span>
+              <span>GitHub Cloud Compiles APK</span>
+            </div>
+            <p className="text-[11px] text-slate-400 leading-relaxed">
+              GitHub Actions automatically runs JDK 17 + Android SDK + Gradle to compile and sign a real multi-MB <code className="text-emerald-400 font-mono">.apk</code> for Android 6.0+ (<code className="text-emerald-400 font-mono">minSdk 23</code>).
+            </p>
+          </div>
+
+          <div className="bg-slate-950 border border-slate-800 rounded-xl p-3.5 space-y-1.5">
+            <div className="font-bold text-white flex items-center gap-1.5">
+              <span className="w-5 h-5 rounded-full bg-slate-800 text-amber-400 flex items-center justify-center text-[10px] font-mono">3</span>
+              <span>1-Click Download Everywhere</span>
+            </div>
+            <p className="text-[11px] text-slate-400 leading-relaxed">
+              As soon as the ~2 min build finishes, <strong className="text-slate-200">Download Signed APK</strong> unlocks automatically right here and inside the top-bar <strong className="text-slate-200">Install App</strong> menu.
+            </p>
+          </div>
+        </div>
       </div>
 
       {/* User Directory Section */}
