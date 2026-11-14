@@ -15,7 +15,7 @@ import android.webkit.WebViewClient;
 import androidx.appcompat.app.AppCompatActivity;
 
 public class MainActivity extends AppCompatActivity {
-    private static final String APP_URL = "https://ais-pre-6kneqjoxpjhkhbumgktpro-896173298722.europe-west2.run.app";
+    private static final String APP_URL = "https://ais-pre-2gu2b762mx2v4rebuyqej3-245109150484.europe-west2.run.app";
     private WebView webView;
 
     @SuppressLint("SetJavaScriptEnabled")

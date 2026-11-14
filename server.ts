@@ -3315,7 +3315,7 @@ app.get('/api/android/apk-status', async (_req, res) => {
     packageName: 'com.studentcompanion.app',
     minSdkVersion: 23,
     androidMinLabel: 'Android 6.0 Marshmallow+',
-    standalonePwaUrl: 'https://ais-pre-6kneqjoxpjhkhbumgktpro-896173298722.europe-west2.run.app',
+    standalonePwaUrl: 'https://ais-pre-2gu2b762mx2v4rebuyqej3-245109150484.europe-west2.run.app',
     studioKitUrl: '/api/download/android-studio-kit',
     offlinePwaUrl: '/api/download/offline-pwa-bundle',
     workflowOnRemote: workflowInfo.workflowOnRemote,
@@ -3412,7 +3412,7 @@ app.get('/api/download/android-apk', async (_req, res) => {
     error:
       'No compiled binary .apk release has been built yet because this cloud server has no Java/Android SDK. Install the online PWA directly or download the ready Android 6+ Studio Project (.zip) to compile a signed .apk.',
     studioKitUrl: '/api/download/android-studio-kit',
-    standalonePwaUrl: 'https://ais-pre-6kneqjoxpjhkhbumgktpro-896173298722.europe-west2.run.app',
+    standalonePwaUrl: 'https://ais-pre-2gu2b762mx2v4rebuyqej3-245109150484.europe-west2.run.app',
   });
 });
 
@@ -3500,7 +3500,7 @@ app.get('/api/download/offline-pwa-bundle', (_req, res) => {
     '  - apple-touch-icon.png    (180x180 iOS Safari)',
     '',
     'To install the live PWA on Android 6.0+:',
-    '  1. Open https://ais-pre-6kneqjoxpjhkhbumgktpro-896173298722.europe-west2.run.app in Chrome or Edge.',
+    '  1. Open https://ais-pre-2gu2b762mx2v4rebuyqej3-245109150484.europe-west2.run.app in Chrome or Edge.',
     '  2. Tap "Install" in the top bar or browser menu -> "Install app".',
   ].join('\n');
   entries.push({ name: 'README.txt', content: Buffer.from(readme, 'utf-8') });
