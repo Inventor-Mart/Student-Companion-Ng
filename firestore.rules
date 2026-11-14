@@ -44,7 +44,16 @@ service cloud.firestore {
     // --- ENTITY VALIDATION BLUEPRINTS ---
     function isValidStudentProfile(data) {
       return data.keys().hasAll(['id', 'name', 'school', 'classLevel', 'stream', 'xp', 'rank', 'streakDays']) &&
-             data.keys().hasOnly(['id', 'name', 'school', 'classLevel', 'stream', 'xp', 'rank', 'streakDays', 'lastStudyDate', 'uniformVerified', 'uniformPhotoUrl', 'downloadedSubjectIds', 'completedQuizIds', 'completedReadNoteIds', 'verifiedReadingLogs']) &&
+             data.keys().hasOnly([
+               'id', 'name', 'school', 'classLevel', 'stream', 'xp', 'rank', 'streakDays',
+               'lastStudyDate', 'uniformVerified', 'uniformPhotoUrl', 'downloadedSubjectIds',
+               'completedQuizIds', 'completedReadNoteIds', 'verifiedReadingLogs',
+               'schoolCode', 'isSubscribed', 'subscriptionPlan', 'subscriptionTier',
+               'subscribedUntil', 'termExpiresAt', 'referredByCode', 'referredPartnerId',
+               'referredPartnerName', 'lastSubscribedAt', 'lastPaymentReference',
+               'aspirantRewardStatus', 'aspirantFirstPaidAt', 'referralAttributedAt',
+               'studentLinkCode', 'dailyExploration', 'addOns'
+             ]) &&
              data.id is string && isValidId(data.id) &&
              data.name is string && data.name.size() >= 1 && data.name.size() <= 100 &&
              data.school is string && data.school.size() <= 150 &&
@@ -59,7 +68,24 @@ service cloud.firestore {
              (!('downloadedSubjectIds' in data) || (data.downloadedSubjectIds is list && data.downloadedSubjectIds.size() <= 50)) &&
              (!('completedQuizIds' in data) || (data.completedQuizIds is list && data.completedQuizIds.size() <= 100)) &&
              (!('completedReadNoteIds' in data) || (data.completedReadNoteIds is list && data.completedReadNoteIds.size() <= 200 && (data.completedReadNoteIds.size() == 0 || data.completedReadNoteIds[0] is string))) &&
-             (!('verifiedReadingLogs' in data) || (data.verifiedReadingLogs is list && data.verifiedReadingLogs.size() <= 200 && (data.verifiedReadingLogs.size() == 0 || data.verifiedReadingLogs[0] is map)));
+             (!('verifiedReadingLogs' in data) || (data.verifiedReadingLogs is list && data.verifiedReadingLogs.size() <= 200 && (data.verifiedReadingLogs.size() == 0 || data.verifiedReadingLogs[0] is map))) &&
+             (!('schoolCode' in data) || data.schoolCode == null || (data.schoolCode is string && data.schoolCode.size() <= 40)) &&
+             (!('isSubscribed' in data) || data.isSubscribed is bool) &&
+             (!('subscriptionPlan' in data) || data.subscriptionPlan in ['free', 'basic', 'standard', 'elite']) &&
+             (!('subscriptionTier' in data) || data.subscriptionTier in ['free', 'basic', 'standard', 'elite']) &&
+             (!('subscribedUntil' in data) || data.subscribedUntil == null || (data.subscribedUntil is string && data.subscribedUntil.size() <= 50)) &&
+             (!('termExpiresAt' in data) || data.termExpiresAt == null || (data.termExpiresAt is string && data.termExpiresAt.size() <= 50)) &&
+             (!('referredByCode' in data) || data.referredByCode == null || (data.referredByCode is string && data.referredByCode.size() <= 30)) &&
+             (!('referredPartnerId' in data) || data.referredPartnerId == null || (data.referredPartnerId is string && data.referredPartnerId.size() <= 128)) &&
+             (!('referredPartnerName' in data) || data.referredPartnerName == null || (data.referredPartnerName is string && data.referredPartnerName.size() <= 120)) &&
+             (!('lastSubscribedAt' in data) || (data.lastSubscribedAt is string && data.lastSubscribedAt.size() <= 50)) &&
+             (!('lastPaymentReference' in data) || (data.lastPaymentReference is string && data.lastPaymentReference.size() <= 128)) &&
+             (!('aspirantRewardStatus' in data) || data.aspirantRewardStatus in ['not_eligible', 'eligible', 'claimed_cash_500', 'claimed_data_2gb']) &&
+             (!('aspirantFirstPaidAt' in data) || data.aspirantFirstPaidAt == null || (data.aspirantFirstPaidAt is string && data.aspirantFirstPaidAt.size() <= 50)) &&
+             (!('referralAttributedAt' in data) || data.referralAttributedAt == null || (data.referralAttributedAt is string && data.referralAttributedAt.size() <= 50)) &&
+             (!('studentLinkCode' in data) || data.studentLinkCode == null || (data.studentLinkCode is string && data.studentLinkCode.size() <= 40)) &&
+             (!('dailyExploration' in data) || data.dailyExploration is map) &&
+             (!('addOns' in data) || data.addOns is map);
     }
 
     function isValidExamResult(data) {
@@ -122,7 +148,8 @@ service cloud.firestore {
       return data.keys().hasAll(['email', 'role']) &&
              data.keys().hasOnly(['email', 'role', 'updatedAt']) &&
              data.email is string && data.email.size() <= 150 &&
-             data.role in ['superadmin', 'curriculum_moderator'];
+             data.role in ['superadmin', 'curriculum_moderator'] &&
+             (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 50));
     }
 
     function isValidGrowthPartner(data) {
@@ -449,7 +476,7 @@ service cloud.firestore {
     // 5. Admins Collection
     match /admins/{adminId} {
       allow get: if isValidId(adminId) && isVerified() && (request.auth.uid == adminId || isAdmin());
-      allow create, update: if isValidId(adminId) && (
+      allow create, update: if isValidId(adminId) && isValidAdmin(incoming()) && (
         isAdmin() || (
           isVerified() &&
           request.auth.uid == adminId &&

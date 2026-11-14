@@ -7,7 +7,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
-import { GoogleGenAI, Type } from '@google/genai';
+import { GoogleGenAI, ThinkingLevel, Type } from '@google/genai';
 import { Resend } from 'resend';
 import nodemailer from 'nodemailer';
 
@@ -55,7 +55,7 @@ const app = express();
 // Cloud Run injects PORT=8080 where nginx runs; binding to 8080 causes EADDRINUSE.
 const PORT = 3000;
 
-app.use(express.json());
+app.use(express.json({ limit: '5mb' }));
 app.use(express.static(path.resolve(__dirname, 'public')));
 app.use('/assets', express.static(path.resolve(__dirname, 'public/assets')));
 
@@ -151,8 +151,8 @@ async function generateGeminiWithResilience(params: {
   config: any;
   label?: string;
 }): Promise<any> {
-  const primaryModel = params.primaryModel || 'gemini-3.8-flash';
-  const fallbackModel = params.fallbackModel || 'gemini-flash-latest';
+  const primaryModel = params.primaryModel || 'gemini-4-hydrogen';
+  const fallbackModel = params.fallbackModel || 'gemini-3.1-flash-lite';
   const label = params.label || 'Gemini Request';
 
   // Attempt 1: Primary model
@@ -193,19 +193,22 @@ async function generateGeminiWithResilience(params: {
 }
 
 // 1. Nigerian Secondary AI Study Coach & Exam Master
-app.post('/api/gemini/study-tutor', async (req, res) => {
+const handleStudyCoachRequest = async (req: express.Request, res: express.Response) => {
   try {
-    const { prompt, subject, examType, level, history } = req.body;
+    const { prompt, subject, examType, level, classLevel, studentName, history } = req.body;
 
     if (!prompt) {
       return res.status(400).json({ error: 'Prompt is required' });
     }
 
+    const resolvedLevel = level || classLevel || 'Senior Secondary (SS1 - SS3)';
+    const studentGreeting = studentName ? `Student Name: ${studentName}\n` : '';
+
     const systemInstruction = `You are the Expert Nigerian Study Coach and Chief Exam Tutor on the Student Companion platform.
-You specialize in Nigerian secondary school education: NERDC curriculum, WAEC (WASSCE), JAMB UTME, and NECO SSCE.
-Subject: ${subject || 'General Academic Studies'}
+You specialize in Nigerian secondary school education: NERDC curriculum, WAEC (WASSCE), JAMB UTME, BECE, and NECO SSCE.
+${studentGreeting}Subject: ${subject || 'General Academic Studies'}
 Target Exam: ${examType || 'WAEC / JAMB UTME'}
-Class Level: ${level || 'Senior Secondary (SS1 - SS3)'}
+Class Level: ${resolvedLevel}
 
 Strict Pedagogical Guidelines:
 1. Provide structured, step-by-step, encouraging explanations.
@@ -239,11 +242,12 @@ Strict Pedagogical Guidelines:
     });
 
     const response = await generateGeminiWithResilience({
-      primaryModel: 'gemini-3.8-flash',
-      fallbackModel: 'gemini-flash-latest',
+      primaryModel: 'gemini-4-hydrogen',
+      fallbackModel: 'gemini-3.1-flash-lite',
       contents,
       config: {
         systemInstruction,
+        thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
       },
       label: 'StudyTutor'
     });
@@ -252,13 +256,104 @@ Strict Pedagogical Guidelines:
     return res.json({ text });
   } catch (error: any) {
     console.error('Gemini Study Tutor Error:', error);
-    const status = error?.status || 500;
+    const status = typeof error?.status === 'number' && error.status >= 400 ? error.status : 500;
     const sanitized = sanitizeGeminiErrorMessage(error, 'Failed to generate study explanation with Gemini AI');
     return res.status(status).json({
       error: sanitized,
     });
   }
-});
+};
+
+app.post('/api/gemini/study-tutor', handleStudyCoachRequest);
+app.post('/api/ai/study-coach', handleStudyCoachRequest);
+
+// 1b. AI School Uniform Verification Endpoint
+const handleVerifyUniformRequest = async (req: express.Request, res: express.Response) => {
+  try {
+    const { imageBase64, studentName, schoolName, classLevel } = req.body || {};
+    if (!imageBase64 || typeof imageBase64 !== 'string') {
+      return res.status(400).json({ success: false, error: 'Uniform photo is required for verification.' });
+    }
+
+    const match = imageBase64.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
+    const mimeType = match ? match[1] : 'image/jpeg';
+    const base64Data = match ? match[2] : imageBase64;
+
+    const systemInstruction = `You are a Nigerian school uniform verification officer for Student Companion.
+Examine the uploaded student photo carefully and determine whether the person is wearing an identifiable school uniform (e.g., school shirt/blouse collar, pinafore, tie, school crest/badge, cardigan, or khaki/checkered school attire).
+Return structured JSON only.`;
+
+    const response = await generateGeminiWithResilience({
+      primaryModel: 'gemini-4-hydrogen',
+      fallbackModel: 'gemini-3.1-flash-lite',
+      contents: {
+        parts: [
+          {
+            inlineData: {
+              mimeType,
+              data: base64Data,
+            },
+          },
+          {
+            text: `Verify whether this photo shows ${studentName || 'a student'} (${classLevel || 'Secondary School'}, ${schoolName || 'Secondary School'}) wearing a school uniform.`,
+          },
+        ],
+      },
+      config: {
+        systemInstruction,
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            isUniform: { type: Type.BOOLEAN },
+            confidence: { type: Type.NUMBER },
+            detectedElements: {
+              type: Type.ARRAY,
+              items: { type: Type.STRING },
+            },
+            schoolCrestVisible: { type: Type.BOOLEAN },
+            rejectionReason: { type: Type.STRING },
+            feedback: { type: Type.STRING },
+          },
+          required: ['isUniform', 'confidence', 'detectedElements', 'schoolCrestVisible', 'feedback'],
+        },
+      },
+      label: 'VerifyUniform'
+    });
+
+    const rawText = (response.text || '{}').trim();
+    let verification: any;
+    try {
+      verification = JSON.parse(rawText);
+    } catch {
+      const cleanJson = rawText.replace(/^```json\n?/, '').replace(/\n?```$/, '').trim();
+      verification = JSON.parse(cleanJson);
+    }
+
+    return res.json({
+      success: true,
+      verification: {
+        isUniform: Boolean(verification?.isUniform),
+        confidence: typeof verification?.confidence === 'number' ? verification.confidence : 0,
+        detectedElements: Array.isArray(verification?.detectedElements) ? verification.detectedElements : [],
+        schoolCrestVisible: Boolean(verification?.schoolCrestVisible),
+        rejectionReason: verification?.isUniform ? null : (verification?.rejectionReason || verification?.feedback || 'School uniform collar or crest was not clearly detected.'),
+        feedback: verification?.feedback || 'Uniform verification completed.'
+      }
+    });
+  } catch (error: any) {
+    console.error('Gemini Verify Uniform Error:', error);
+    const status = typeof error?.status === 'number' && error.status >= 400 ? error.status : 500;
+    const sanitized = sanitizeGeminiErrorMessage(error, 'Unable to verify uniform photo at this moment.');
+    return res.status(status).json({
+      success: false,
+      error: sanitized,
+    });
+  }
+};
+
+app.post('/api/ai/verify-uniform', handleVerifyUniformRequest);
+app.post('/api/gemini/verify-uniform', handleVerifyUniformRequest);
 
 // 2. NERDC Syllabus Concept Breakdown Endpoint
 app.post('/api/gemini/syllabus-breakdown', async (req, res) => {
@@ -279,12 +374,14 @@ Please provide:
 4. 📝 **2 High-Yield WAEC/JAMB Past Question Scenarios** (Question + Step-by-Step Solution).
 5. ⚠️ **Common Exam Pitfalls & Examiner Traps to Avoid**.`;
 
-    const response = await getAi().models.generateContent({
-      model: 'gemini-3.8-flash',
+    const response = await generateGeminiWithResilience({
+      primaryModel: 'gemini-4-hydrogen',
+      fallbackModel: 'gemini-3.1-flash-lite',
       contents: promptText,
       config: {
         systemInstruction,
       },
+      label: 'SyllabusBreakdown',
     });
 
     const text = response.text || 'No breakdown available.';
@@ -334,13 +431,15 @@ Instructions:
      - suggestedTutorTopic: specific difficult subtopic where a student may need tutor help (eligible for ₦4,000 credit)
 3. Return valid JSON only.`;
 
-    const response = await getAi().models.generateContent({
-      model: 'gemini-3.8-flash',
+    const response = await generateGeminiWithResilience({
+      primaryModel: 'gemini-4-hydrogen',
+      fallbackModel: 'gemini-3.1-flash-lite',
       contents: promptText,
       config: {
         systemInstruction,
         responseMimeType: 'application/json',
       },
+      label: 'ExamCalendar',
     });
 
     const rawText = (response.text || '{}').trim();
@@ -391,13 +490,15 @@ Return valid JSON only formatted as an array of objects with the following schem
   }
 ]`;
 
-    const response = await getAi().models.generateContent({
-      model: 'gemini-3.8-flash',
+    const response = await generateGeminiWithResilience({
+      primaryModel: 'gemini-4-hydrogen',
+      fallbackModel: 'gemini-3.1-flash-lite',
       contents: promptText,
       config: {
         systemInstruction,
         responseMimeType: 'application/json',
       },
+      label: 'CurrentAffairs',
     });
 
     const rawText = (response.text || '[]').trim();
@@ -502,8 +603,8 @@ STRICT EXAM REQUIREMENTS:
 4. Difficulty Level: Rigorous, realistic NERDC standard appropriate for ${sanitizedClass}.`;
 
     const response = await generateGeminiWithResilience({
-      primaryModel: 'gemini-3.8-flash',
-      fallbackModel: 'gemini-flash-latest',
+      primaryModel: 'gemini-4-hydrogen',
+      fallbackModel: 'gemini-3.1-flash-lite',
       contents: promptText,
       config: {
         systemInstruction,
@@ -721,8 +822,8 @@ STRICT BOARD SPECIFICATIONS:
 6. Difficulty and style: Strictly reflect official ${boardConfig.boardName} past question rigor.`;
 
     const response = await generateGeminiWithResilience({
-      primaryModel: 'gemini-3.8-flash',
-      fallbackModel: 'gemini-flash-latest',
+      primaryModel: 'gemini-4-hydrogen',
+      fallbackModel: 'gemini-3.1-flash-lite',
       contents: promptText,
       config: {
         systemInstruction,
@@ -4749,16 +4850,11 @@ async function startServer() {
             if (cleanId.endsWith('/dist/client/client.mjs') || cleanId === '/@vite/client') {
               return {
                 code: code
-                  .replace(
-                    /transport\.connect\([^;]*\);/,
-                    '/* HMR WebSocket disabled */ Promise.resolve();'
-                  )
-                  .replace(
-                    /else throw new SendBeforeConnectError\("send was called before connect"\);/g,
-                    'else return;'
-                  )
+                  .replace(/new WebSocket\([^)]*\)/g, 'null')
                   .replace(/ws\.send\(/g, 'ws?.send(')
-                  .replace(/new WebSocket\([^)]*\)/g, 'null'),
+                  .replace(/async connect\(handlers\)\s*\{/g, 'async connect(handlers) { return;')
+                  .replace(/send\(data\)\s*\{/g, 'send(data) { return;')
+                  .replace(/throw new SendBeforeConnectError\([^)]*\);/g, 'return;'),
                 map: null,
               };
             }

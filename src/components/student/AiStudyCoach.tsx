@@ -176,13 +176,14 @@ export const AiStudyCoach: React.FC<AiStudyCoachProps> = ({
     setErrorMessage(null);
 
     try {
-      const res = await fetch('/api/ai/study-coach', {
+      const res = await fetch('/api/gemini/study-tutor', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           prompt: promptToSend,
           subject,
           examType,
+          level: classLevel,
           classLevel,
           studentName: student.name || 'Scholar',
           history: conversationHistory

@@ -74,6 +74,88 @@
         "verifiedReadingLogs": {
           "type": "array",
           "description": "Structured verified lesson note reading logs with duration and checkpoint accuracy"
+        },
+        "schoolCode": {
+          "type": "string",
+          "maxLength": 40,
+          "description": "Linked accredited school enrollment code"
+        },
+        "isSubscribed": {
+          "type": "boolean",
+          "description": "Whether student has an active paid subscription"
+        },
+        "subscriptionPlan": {
+          "type": "string",
+          "enum": ["free", "basic", "standard", "elite"],
+          "description": "Active student subscription tier plan"
+        },
+        "subscriptionTier": {
+          "type": "string",
+          "enum": ["free", "basic", "standard", "elite"],
+          "description": "Normalized subscription tier identifier"
+        },
+        "subscribedUntil": {
+          "type": "string",
+          "maxLength": 50,
+          "description": "ISO expiration timestamp of current subscription"
+        },
+        "termExpiresAt": {
+          "type": "string",
+          "maxLength": 50,
+          "description": "ISO end-of-term expiration timestamp"
+        },
+        "referredByCode": {
+          "type": "string",
+          "maxLength": 30,
+          "description": "Growth partner referral attribution code"
+        },
+        "referredPartnerId": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "Attributed growth partner UID"
+        },
+        "referredPartnerName": {
+          "type": "string",
+          "maxLength": 120,
+          "description": "Attributed growth partner display name"
+        },
+        "lastSubscribedAt": {
+          "type": "string",
+          "maxLength": 50,
+          "description": "Timestamp of latest subscription checkout"
+        },
+        "lastPaymentReference": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "Latest verified Paystack or wallet payment reference"
+        },
+        "aspirantRewardStatus": {
+          "type": "string",
+          "enum": ["not_eligible", "eligible", "claimed_cash_500", "claimed_data_2gb"],
+          "description": "University aspirant referral reward claim state"
+        },
+        "aspirantFirstPaidAt": {
+          "type": "string",
+          "maxLength": 50,
+          "description": "Timestamp of first paid aspirant subscription"
+        },
+        "referralAttributedAt": {
+          "type": "string",
+          "maxLength": 50,
+          "description": "Timestamp when referral code was attributed"
+        },
+        "studentLinkCode": {
+          "type": "string",
+          "maxLength": 40,
+          "description": "Parent-student linkage verification code"
+        },
+        "dailyExploration": {
+          "type": "object",
+          "description": "Daily multi-feature XP exploration state"
+        },
+        "addOns": {
+          "type": "object",
+          "description": "Unlocked student add-on feature entitlements"
         }
       },
       "required": ["id", "name", "school", "classLevel", "stream", "xp", "rank", "streakDays"]

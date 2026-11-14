@@ -1394,6 +1394,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           setCurrentRole('admin');
         }
 
+        const isAdminAccount = isSuperAdminEmail(user.email);
+
         // Sync student profile from Firestore
         const studentDocRef = doc(db, 'students', user.uid);
         const path = `students/${user.uid}`;
@@ -1404,7 +1406,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             if (docSnap.exists()) {
               const data = docSnap.data() as StudentProfile;
               setStudent(data);
-            } else {
+            } else if (!isAdminAccount) {
               const savedStudentStr = safeGetItem('sc_student');
               let initialClass: NigerianClassLevel = 'JSS 1';
               if (savedStudentStr) {
@@ -1414,10 +1416,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 } catch {}
               }
 
-              // Seed new user profile in Firestore
+              const safePhotoUrl =
+                user.photoURL && user.photoURL.length <= 500 ? user.photoURL : null;
+              const safeDisplayName =
+                (user.displayName || '').trim().slice(0, 100) || 'Registered Student';
+
+              // Seed new student profile in Firestore for non-admin student users
               const newProfile: StudentProfile = {
                 id: user.uid,
-                name: user.displayName || 'Registered Student',
+                name: safeDisplayName,
                 school: 'Federal Secondary School',
                 classLevel: initialClass,
                 stream: initialClass.startsWith('JSS') ? 'Junior' : 'Science',
@@ -1426,7 +1433,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 streakDays: 1,
                 lastStudyDate: new Date().toISOString().split('T')[0],
                 uniformVerified: false,
-                uniformPhotoUrl: user.photoURL || null,
+                uniformPhotoUrl: safePhotoUrl,
                 downloadedSubjectIds: [],
                 completedQuizIds: [],
                 completedReadNoteIds: [],
@@ -1471,7 +1478,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             if (snap.exists()) {
               const data = snap.data() as ParentWallet;
               setParentWallet(prev => ({ ...prev, ...data }));
-            } else {
+            } else if (!isAdminAccount) {
               setDoc(walletDocRef, {
                 userId: user.uid,
                 balanceNaira: 0,
@@ -1999,7 +2006,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       const studyDate = new Date().toISOString().split('T')[0];
 
-      if (currentUser && !isOffline) {
+      if (currentUser && !isOffline && !isSuperAdminEmail(currentUser.email)) {
         const docRef = doc(db, 'students', currentUser.uid);
         const path = `students/${currentUser.uid}`;
         updateDoc(docRef, {
@@ -2139,7 +2146,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       safeSetItem('sc_student', JSON.stringify(updated));
 
-      if (currentUser && !isOffline) {
+      if (currentUser && !isOffline && !isSuperAdminEmail(currentUser.email)) {
         const docRef = doc(db, 'students', currentUser.uid);
         const path = `students/${currentUser.uid}`;
         updateDoc(docRef, {
@@ -2265,11 +2272,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       safeSetItem('sc_student', JSON.stringify(updated));
 
-      if (currentUser && !isOffline) {
+      if (currentUser && !isOffline && !isSuperAdminEmail(currentUser.email)) {
         const docRef = doc(db, 'students', currentUser.uid);
         const path = `students/${currentUser.uid}`;
-        setDoc(docRef, { classLevel, stream: finalStream }, { merge: true }).catch(err => {
-          handleFirestoreError(err, OperationType.UPDATE, path);
+        updateDoc(docRef, { classLevel, stream: finalStream }).catch(err => {
+          const msg = String(err?.message || '').toLowerCase();
+          if (!msg.includes('no document to update') && !msg.includes('not-found')) {
+            handleFirestoreError(err, OperationType.UPDATE, path);
+          }
         });
       }
 
@@ -2302,12 +2312,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         rank: calculateRank(updatedXP)
       };
 
-      if (currentUser && !isOffline) {
+      if (currentUser && !isOffline && !isSuperAdminEmail(currentUser.email)) {
         const docRef = doc(db, 'students', currentUser.uid);
         const path = `students/${currentUser.uid}`;
+        const safeFirestorePhotoUrl = photoUrl && photoUrl.length <= 500 ? photoUrl : null;
         updateDoc(docRef, {
           uniformVerified: true,
-          uniformPhotoUrl: photoUrl,
+          uniformPhotoUrl: safeFirestorePhotoUrl,
           xp: updatedXP,
           rank: calculateRank(updatedXP)
         }).catch(err => {
@@ -2334,11 +2345,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         uniformPhotoUrl: photoUrl
       };
 
-      if (currentUser && !isOffline) {
+      if (currentUser && !isOffline && !isSuperAdminEmail(currentUser.email)) {
         const docRef = doc(db, 'students', currentUser.uid);
         const path = `students/${currentUser.uid}`;
+        const safeFirestorePhotoUrl = photoUrl && photoUrl.length <= 500 ? photoUrl : null;
         updateDoc(docRef, {
-          uniformPhotoUrl: photoUrl
+          uniformPhotoUrl: safeFirestorePhotoUrl
         }).catch(err => {
           handleFirestoreError(err, OperationType.UPDATE, path);
         });
@@ -2364,7 +2376,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         downloadedSubjectIds: updatedList
       };
 
-      if (currentUser && !isOffline) {
+      if (currentUser && !isOffline && !isSuperAdminEmail(currentUser.email)) {
         const docRef = doc(db, 'students', currentUser.uid);
         const path = `students/${currentUser.uid}`;
         updateDoc(docRef, { downloadedSubjectIds: updatedList }).catch(err => {
@@ -4546,8 +4558,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return updatedList;
       });
 
-      if (!isOffline && isFirebaseConnected && currentUser?.uid) {
-        setDoc(doc(db, 'students', currentUser.uid), { schoolCode: cleanCode }, { merge: true }).catch(err => {
+      if (!isOffline && isFirebaseConnected && currentUser?.uid && !isSuperAdminEmail(currentUser.email)) {
+        updateDoc(doc(db, 'students', currentUser.uid), { schoolCode: cleanCode }).catch(err => {
           console.warn('Could not sync student school code to Firestore:', err);
         });
       }
@@ -4731,12 +4743,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return updated;
     });
 
-    if (!isOffline && isFirebaseConnected && studentId && studentId !== 'current') {
-      setDoc(doc(db, 'students', studentId), {
+    if (!isOffline && isFirebaseConnected && studentId && studentId !== 'current' && studentId !== 'student_active') {
+      updateDoc(doc(db, 'students', studentId), {
         isSubscribed,
         subscriptionTier: isSubscribed ? tier : 'free',
         subscribedUntil: isSubscribed ? expiresAt : null
-      }, { merge: true }).catch(err => {
+      }).catch(err => {
         console.warn('Could not sync student subscription to Firestore:', err);
       });
     }
@@ -4908,9 +4920,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
     }
 
-    // Persist to Firestore
-    if (!isOffline && isFirebaseConnected && effectiveStudentId) {
-      setDoc(doc(db, 'students', effectiveStudentId), {
+    // Persist to Firestore (only when a real signed-in non-admin student document exists)
+    if (
+      !isOffline &&
+      isFirebaseConnected &&
+      currentUser?.uid &&
+      !isSuperAdminEmail(currentUser.email) &&
+      effectiveStudentId === currentUser.uid
+    ) {
+      updateDoc(doc(db, 'students', effectiveStudentId), {
         isSubscribed: plan !== 'free',
         subscriptionPlan: plan,
         subscriptionTier: plan,
@@ -4919,7 +4937,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         referredByCode: activeRefCode || student.referredByCode || null,
         lastSubscribedAt: new Date().toISOString(),
         lastPaymentReference: paystackRef || `WALLET_${Date.now()}`
-      }, { merge: true }).catch(err => {
+      }).catch(err => {
         console.warn('Could not sync student subscription to Firestore:', err);
       });
     }
@@ -6045,30 +6063,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     for (const { scope, item } of allQueued) {
       try {
         if (currentUser) {
-          if (item.type === 'xp_award') {
-            await setDoc(
-              doc(db, 'students', currentUser.uid),
-              {
-                xp: item.payload.xp,
-                rank: item.payload.rank,
-                streakDays: item.payload.streakDays,
-                lastStudyDate: item.payload.lastStudyDate
-              },
-              { merge: true }
-            );
-          } else if (item.type === 'lesson_read') {
-            await setDoc(
-              doc(db, 'students', currentUser.uid),
-              {
-                xp: item.payload.xp,
-                rank: item.payload.rank,
-                streakDays: item.payload.streakDays,
-                lastStudyDate: item.payload.lastStudyDate,
-                completedReadNoteIds: item.payload.completedReadNoteIds,
-                verifiedReadingLogs: item.payload.verifiedReadingLogs
-              },
-              { merge: true }
-            );
+          if (item.type === 'xp_award' && !isSuperAdminEmail(currentUser.email)) {
+            await updateDoc(doc(db, 'students', currentUser.uid), {
+              xp: item.payload.xp,
+              rank: item.payload.rank,
+              streakDays: item.payload.streakDays,
+              lastStudyDate: item.payload.lastStudyDate
+            });
+          } else if (item.type === 'lesson_read' && !isSuperAdminEmail(currentUser.email)) {
+            await updateDoc(doc(db, 'students', currentUser.uid), {
+              xp: item.payload.xp,
+              rank: item.payload.rank,
+              streakDays: item.payload.streakDays,
+              lastStudyDate: item.payload.lastStudyDate,
+              completedReadNoteIds: item.payload.completedReadNoteIds,
+              verifiedReadingLogs: item.payload.verifiedReadingLogs
+            });
           } else if (item.type === 'exam_result' && item.payload?.result) {
             const r = item.payload.result as CBTExamResult;
             await setDoc(doc(db, 'students', currentUser.uid, 'examResults', r.id), {
