@@ -49,10 +49,23 @@ export const SchoolAdminPortal: React.FC = () => {
     deleteSchoolMaterial,
     allRegisteredUsers,
     getSchoolAccreditationMetrics,
-    subscribeSchoolAdmin
+    subscribeSchoolAdmin,
+    pendingPortalTab,
+    clearPendingPortalTab
   } = useApp();
 
   const [activeTab, setActiveTab] = useState<SchoolTab>('overview');
+
+  useEffect(() => {
+    if (!pendingPortalTab) return;
+    if (pendingPortalTab.tab === 'school_overview') setActiveTab('overview');
+    else if (pendingPortalTab.tab === 'school_publishing') setActiveTab('publishing');
+    else if (pendingPortalTab.tab === 'school_materials') setActiveTab('materials');
+    else if (pendingPortalTab.tab === 'school_students') setActiveTab('students');
+    if (pendingPortalTab.tab.startsWith('school_')) {
+      clearPendingPortalTab();
+    }
+  }, [pendingPortalTab, clearPendingPortalTab]);
   const [activeSheet, setActiveSheet] = useState<SchoolSheet>(null);
   const [isMuted, setIsMuted] = useState<boolean>(getSoundMuted());
 

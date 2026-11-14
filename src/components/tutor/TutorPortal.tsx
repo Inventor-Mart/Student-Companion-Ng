@@ -45,7 +45,9 @@ export const TutorPortal: React.FC = () => {
     currentUserProfile,
     tutorVerification,
     launchVirtualClassroom,
-    updateTutorProfile
+    updateTutorProfile,
+    pendingPortalTab,
+    clearPendingPortalTab
   } = useApp();
 
   const tutorName = currentUserProfile?.fullName || 'Registered Educator';
@@ -58,6 +60,17 @@ export const TutorPortal: React.FC = () => {
 
   const [chatInput, setChatInput] = useState<string>('');
   const [activeTab, setActiveTab] = useState<TutorTab>('overview');
+
+  useEffect(() => {
+    if (!pendingPortalTab) return;
+    if (pendingPortalTab.tab === 'tutor_overview') setActiveTab('overview');
+    else if (pendingPortalTab.tab === 'tutor_sessions') setActiveTab('sessions');
+    else if (pendingPortalTab.tab === 'tutor_profile') setActiveTab('profile');
+    else if (pendingPortalTab.tab === 'tutor_chat') setActiveTab('chat');
+    if (pendingPortalTab.tab.startsWith('tutor_')) {
+      clearPendingPortalTab();
+    }
+  }, [pendingPortalTab, clearPendingPortalTab]);
   const [activeSheet, setActiveSheet] = useState<TutorSheet>(null);
   const [isVerificationModalOpen, setIsVerificationModalOpen] = useState(false);
   const [payoutStatusMessage, setPayoutStatusMessage] = useState<string>('');

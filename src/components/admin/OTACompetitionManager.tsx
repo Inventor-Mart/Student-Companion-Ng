@@ -15,7 +15,15 @@ import {
   DEFAULT_OTA_POPUP,
   DEFAULT_OTA_COMPETITION_CONFIG,
   DEFAULT_OTA_WEEKLY_CONFIG,
-  DEFAULT_OTA_SCHOOL_LEAGUE_CONFIG
+  DEFAULT_OTA_SCHOOL_LEAGUE_CONFIG,
+  DEFAULT_OTA_APP_RELEASE,
+  DEFAULT_OTA_FEATURE_FLAGS,
+  DEFAULT_PAUSED_FEATURE_MESSAGE,
+  OTA_FEATURE_CATALOG,
+  subscribeToOTAAppRelease,
+  saveOTAAppRelease,
+  bumpSemver,
+  isValidSemver
 } from '../../services/otaService';
 import {
   OTABroadcastItem,
@@ -24,12 +32,18 @@ import {
   OTAWeeklyCompetitionConfig,
   OTASchoolLeagueConfig,
   OTASchoolLeagueSchool,
-  OTABroadcastCategory
+  OTABroadcastCategory,
+  OTAAppReleaseConfig,
+  OTAUpgradeMode,
+  OTAFeatureFlags,
+  OTAFeatureKey
 } from '../../types';
 import { CBT_EXAMS_DATABASE } from '../../data/cbtExamData';
 import { useApp } from '../../context/AppContext';
 import { NairaText, NairaSign } from '../../utils/currency';
 import { DeviceImageUploader } from './DeviceImageUploader';
+import { OTAPushRemindersTab } from './OTAPushRemindersTab';
+import { AppUpdateGate, AppUpdateGatePreviewOverride } from '../common/AppUpdateGate';
 import {
   Radio,
   Tv,
@@ -51,7 +65,19 @@ import {
   School,
   Zap,
   Timer,
-  Gift
+  Gift,
+  Rocket,
+  Lock,
+  Bell,
+  ArrowUpCircle,
+  Eye,
+  Sliders,
+  Wrench,
+  ShieldCheck,
+  AlertTriangle,
+  Search,
+  PauseCircle,
+  MessageSquare
 } from 'lucide-react';
 
 const PRESET_FLYER_IMAGES = [
@@ -74,9 +100,17 @@ const PRESET_FLYER_IMAGES = [
 ];
 
 export const OTACompetitionManager: React.FC = () => {
-  const { isSuperAdmin, isFirebaseConnected } = useApp();
+  const {
+    isSuperAdmin,
+    isFirebaseConnected,
+    currentUserProfile,
+    installedAppVersion,
+    setLocalInstalledAppVersion
+  } = useApp();
 
-  const [activeTab, setActiveTab] = useState<'ticker' | 'popup' | 'competition'>('ticker');
+  const [activeTab, setActiveTab] = useState<
+    'ticker' | 'popup' | 'competition' | 'app_updates' | 'push_reminders'
+  >('ticker');
   const [compSubTab, setCompSubTab] = useState<'termly' | 'weekly' | 'schools'>('termly');
   const [saveFeedback, setSaveFeedback] = useState<string | null>(null);
 
@@ -95,6 +129,15 @@ export const OTACompetitionManager: React.FC = () => {
   const [weeklyConfig, setWeeklyConfig] = useState<OTAWeeklyCompetitionConfig>(DEFAULT_OTA_WEEKLY_CONFIG);
   const [leagueConfig, setLeagueConfig] = useState<OTASchoolLeagueConfig>(DEFAULT_OTA_SCHOOL_LEAGUE_CONFIG);
 
+  // 4. App Updates & Releases state
+  const [releaseConfig, setReleaseConfig] = useState<OTAAppReleaseConfig>(DEFAULT_OTA_APP_RELEASE);
+  const [newHighlightText, setNewHighlightText] = useState<string>('');
+  const [isSavingRelease, setIsSavingRelease] = useState<boolean>(false);
+  const [previewMode, setPreviewMode] = useState<OTAUpgradeMode | 'maintenance' | null>(null);
+  const [flagSearch, setFlagSearch] = useState<string>('');
+  const [flagCategory, setFlagCategory] = useState<'all' | 'study' | 'enrichment' | 'portals'>('all');
+  const [expandedNoteKey, setExpandedNoteKey] = useState<OTAFeatureKey | null>(null);
+
   // School addition state
   const [newSchoolName, setNewSchoolName] = useState<string>('');
   const [newSchoolState, setNewSchoolState] = useState<string>('Lagos');
@@ -108,6 +151,7 @@ export const OTACompetitionManager: React.FC = () => {
     const unsubComp = subscribeToOTACompetition(setCompConfig);
     const unsubWeekly = subscribeToOTAWeeklyCompetition(setWeeklyConfig);
     const unsubLeague = subscribeToOTASchoolLeague(setLeagueConfig);
+    const unsubRelease = subscribeToOTAAppRelease(setReleaseConfig);
 
     return () => {
       unsubBroadcasts();
@@ -115,6 +159,7 @@ export const OTACompetitionManager: React.FC = () => {
       unsubComp();
       unsubWeekly();
       unsubLeague();
+      unsubRelease();
     };
   }, []);
 
@@ -249,6 +294,103 @@ export const OTACompetitionManager: React.FC = () => {
     triggerNotice('School removed from roster. Click Save to publish.');
   };
 
+  // --- App Updates & Releases Handlers ---
+  const handleAddHighlight = () => {
+    const text = newHighlightText.trim();
+    if (!text) return;
+    if (releaseConfig.featureHighlights.length >= 10) {
+      triggerNotice('Maximum 10 highlights per release.');
+      return;
+    }
+    setReleaseConfig((prev) => ({
+      ...prev,
+      featureHighlights: [...prev.featureHighlights, text]
+    }));
+    setNewHighlightText('');
+  };
+
+  const handleRemoveHighlight = (index: number) => {
+    setReleaseConfig((prev) => ({
+      ...prev,
+      featureHighlights: prev.featureHighlights.filter((_, i) => i !== index)
+    }));
+  };
+
+  const handleToggleFeatureFlag = (key: keyof OTAFeatureFlags) => {
+    setReleaseConfig((prev) => ({
+      ...prev,
+      featureFlags: {
+        ...prev.featureFlags,
+        [key]: !prev.featureFlags[key]
+      }
+    }));
+  };
+
+  const handleEnableAllFlags = () => {
+    setReleaseConfig((prev) => ({
+      ...prev,
+      featureFlags: { ...DEFAULT_OTA_FEATURE_FLAGS }
+    }));
+    triggerNotice('All 17 modules enabled in draft. Click Publish OTA Release to push live.');
+  };
+
+  const handleUpdateFeatureNote = (key: OTAFeatureKey, note: string) => {
+    setReleaseConfig((prev) => ({
+      ...prev,
+      pausedFeatureNotes: {
+        ...prev.pausedFeatureNotes,
+        [key]: note
+      }
+    }));
+  };
+
+  const handlePublishRelease = async () => {
+    if (!isValidSemver(releaseConfig.latestVersion)) {
+      triggerNotice('Latest version must follow major.minor.patch (e.g. 2.4.0).');
+      return;
+    }
+    if (!isValidSemver(releaseConfig.minimumSupportedVersion)) {
+      triggerNotice('Minimum supported version must follow major.minor.patch (e.g. 2.2.0).');
+      return;
+    }
+    if (!releaseConfig.releaseTitle.trim()) {
+      triggerNotice('Please enter a release title.');
+      return;
+    }
+
+    setIsSavingRelease(true);
+    try {
+      const saved = await saveOTAAppRelease({
+        ...releaseConfig,
+        publishedBy: currentUserProfile?.email || 'martorefe@gmail.com'
+      });
+      setReleaseConfig(saved);
+      triggerNotice(
+        `OTA release v${saved.latestVersion} (${saved.upgradeMode.toUpperCase()}) published live!`
+      );
+    } catch (err: any) {
+      triggerNotice(`Failed to publish OTA release: ${err?.message || 'Check permissions'}`);
+    } finally {
+      setIsSavingRelease(false);
+    }
+  };
+
+  const handleResetReleaseDefaults = () => {
+    setReleaseConfig({
+      ...DEFAULT_OTA_APP_RELEASE,
+      publishedAt: new Date().toISOString()
+    });
+    triggerNotice('Draft reset to baseline v2.3.0. Click Publish OTA Update to apply live.');
+  };
+
+  const previewOverride: AppUpdateGatePreviewOverride | null = previewMode
+    ? {
+        mode: previewMode,
+        release: releaseConfig,
+        onClosePreview: () => setPreviewMode(null)
+      }
+    : null;
+
   return (
     <div className="w-full flex flex-col gap-5 p-4 sm:p-6 bg-[#08101E] text-slate-100 rounded-2xl border border-slate-800 shadow-xl">
       {/* Top Header */}
@@ -283,41 +425,65 @@ export const OTACompetitionManager: React.FC = () => {
       )}
 
       {/* Master Tabs */}
-      <div className="grid grid-cols-3 gap-1.5 p-1 bg-slate-900/80 rounded-xl border border-slate-800 max-w-xl">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5 p-1 bg-slate-900/80 rounded-xl border border-slate-800 max-w-4xl">
         <button
           onClick={() => setActiveTab('ticker')}
-          className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+          className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
             activeTab === 'ticker'
               ? 'bg-[#14233C] text-[#84E000] shadow-sm border border-[#223B63]'
               : 'text-slate-400 hover:text-white'
           }`}
         >
-          <Tv className="w-3.5 h-3.5" />
+          <Tv className="w-3.5 h-3.5 shrink-0" />
           <span>TV News Ticker</span>
         </button>
 
         <button
           onClick={() => setActiveTab('popup')}
-          className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+          className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
             activeTab === 'popup'
               ? 'bg-[#14233C] text-[#84E000] shadow-sm border border-[#223B63]'
               : 'text-slate-400 hover:text-white'
           }`}
         >
-          <ImageIcon className="w-3.5 h-3.5" />
+          <ImageIcon className="w-3.5 h-3.5 shrink-0" />
           <span>Pop-Up Flyer</span>
         </button>
 
         <button
           onClick={() => setActiveTab('competition')}
-          className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+          className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
             activeTab === 'competition'
               ? 'bg-[#14233C] text-[#84E000] shadow-sm border border-[#223B63]'
               : 'text-slate-400 hover:text-white'
           }`}
         >
-          <Trophy className="w-3.5 h-3.5" />
+          <Trophy className="w-3.5 h-3.5 shrink-0" />
           <span>Competition Arena</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('app_updates')}
+          className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+            activeTab === 'app_updates'
+              ? 'bg-[#14233C] text-[#84E000] shadow-sm border border-[#223B63]'
+              : 'text-slate-400 hover:text-white'
+          }`}
+        >
+          <Rocket className="w-3.5 h-3.5 shrink-0" />
+          <span>App Updates</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('push_reminders')}
+          className={`col-span-2 sm:col-span-1 flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+            activeTab === 'push_reminders'
+              ? 'bg-[#14233C] text-[#84E000] shadow-sm border border-[#223B63]'
+              : 'text-slate-400 hover:text-white'
+          }`}
+        >
+          <Bell className="w-3.5 h-3.5 shrink-0" />
+          <span>Push & Reminders</span>
         </button>
       </div>
 
@@ -1213,6 +1379,639 @@ export const OTACompetitionManager: React.FC = () => {
             </div>
           )}
         </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* TAB 4: OTA APP UPDATES, VERSION UPGRADES, FEATURE FLAGS & MAINTENANCE LOCK */}
+      {/* ========================================================================= */}
+      {activeTab === 'app_updates' && (
+        <div className="flex flex-col gap-6">
+          {/* Interactive Preview Overlay */}
+          {previewOverride && <AppUpdateGate previewOverride={previewOverride} />}
+
+          {/* Admin Exemption Notice + Client Version Check */}
+          <div className="p-4 bg-[#0D1930] border border-slate-800 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-start gap-2.5">
+              <ShieldCheck className="w-5 h-5 text-[#84E000] shrink-0 mt-0.5" />
+              <div className="text-xs">
+                <p className="font-bold text-white">
+                  Super Admin Bypass Protection Enabled
+                </p>
+                <p className="text-slate-400 mt-0.5">
+                  Mandatory upgrade locks and maintenance mode block all Student, Parent, Tutor, Partner & School Admin sessions—while Super Admin stays unlocked to manage rollouts.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0 text-xs font-mono tabular-nums bg-slate-950 px-3 py-2 rounded-lg border border-slate-800">
+              <span className="text-slate-400">Local Client:</span>
+              <span className="text-[#84E000] font-bold">v{installedAppVersion}</span>
+              {installedAppVersion !== '2.1.0' ? (
+                <button
+                  type="button"
+                  onClick={() => setLocalInstalledAppVersion('2.1.0')}
+                  className="ml-2 px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 font-sans font-semibold text-[11px] whitespace-nowrap cursor-pointer"
+                >
+                  Simulate v2.1.0
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setLocalInstalledAppVersion(releaseConfig.latestVersion)}
+                  className="ml-2 px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 font-sans font-semibold text-[11px] whitespace-nowrap cursor-pointer"
+                >
+                  Reset v{releaseConfig.latestVersion}
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* LEFT COLUMN: VERSIONING, UPGRADE TIER & RELEASE NOTES */}
+            <div className="flex flex-col gap-5">
+              <div className="p-4 sm:p-5 bg-slate-900/70 border border-slate-800 rounded-xl flex flex-col gap-4">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <Rocket className="w-4 h-4 text-[#84E000]" />
+                    <h2 className="text-sm font-bold text-white">App Version & Upgrade Policy</h2>
+                  </div>
+                  <span className="text-[11px] font-mono tabular-nums text-slate-400">
+                    Target v{releaseConfig.latestVersion}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-slate-300 font-semibold">Latest Version (Semver)</label>
+                    <input
+                      type="text"
+                      value={releaseConfig.latestVersion}
+                      onChange={(e) =>
+                        setReleaseConfig({ ...releaseConfig, latestVersion: e.target.value })
+                      }
+                      placeholder="2.4.0"
+                      className="px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white font-mono tabular-nums focus:outline-none focus:border-[#84E000]"
+                    />
+                    <div className="flex items-center gap-1.5">
+                      {(['patch', 'minor', 'major'] as const).map((part) => (
+                        <button
+                          key={part}
+                          type="button"
+                          onClick={() =>
+                            setReleaseConfig({
+                              ...releaseConfig,
+                              latestVersion: bumpSemver(releaseConfig.latestVersion, part)
+                            })
+                          }
+                          className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-semibold capitalize whitespace-nowrap cursor-pointer"
+                        >
+                          +{part}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-slate-300 font-semibold">
+                      Minimum Supported Version
+                    </label>
+                    <input
+                      type="text"
+                      value={releaseConfig.minimumSupportedVersion}
+                      onChange={(e) =>
+                        setReleaseConfig({
+                          ...releaseConfig,
+                          minimumSupportedVersion: e.target.value
+                        })
+                      }
+                      placeholder="2.2.0"
+                      className="px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white font-mono tabular-nums focus:outline-none focus:border-[#84E000]"
+                    />
+                    <p className="text-[11px] text-slate-400 leading-snug">
+                      Clients below this version are always locked until upgraded.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Upgrade Prompt Enforcement Tier */}
+                <div className="flex flex-col gap-2">
+                  <label className="text-xs font-semibold text-slate-300">
+                    When Update Is Available, Show Users:
+                  </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    {[
+                      {
+                        id: 'mild' as const,
+                        label: 'Mild Notification',
+                        desc: 'Dismissible top in-app banner',
+                        icon: Bell,
+                        activeClass: 'bg-[#14233C] border-[#84E000] text-[#84E000]'
+                      },
+                      {
+                        id: 'recommended' as const,
+                        label: 'Recommended Modal',
+                        desc: 'Skippable What\'s New popup',
+                        icon: ArrowUpCircle,
+                        activeClass: 'bg-amber-950/50 border-amber-400 text-amber-300'
+                      },
+                      {
+                        id: 'mandatory' as const,
+                        label: 'Mandatory Lock',
+                        desc: 'Must upgrade to use app',
+                        icon: Lock,
+                        activeClass: 'bg-rose-950/60 border-[#FF5B00] text-[#FF5B00]'
+                      }
+                    ].map((tier) => {
+                      const Icon = tier.icon;
+                      const selected = releaseConfig.upgradeMode === tier.id;
+                      return (
+                        <button
+                          key={tier.id}
+                          type="button"
+                          onClick={() =>
+                            setReleaseConfig({ ...releaseConfig, upgradeMode: tier.id })
+                          }
+                          className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col gap-1 ${
+                            selected
+                              ? tier.activeClass
+                              : 'bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700'
+                          }`}
+                        >
+                          <div className="flex items-center gap-1.5 font-bold text-xs whitespace-nowrap">
+                            <Icon className="w-3.5 h-3.5 shrink-0" />
+                            <span>{tier.label}</span>
+                          </div>
+                          <span className="text-[11px] text-slate-400 leading-snug">
+                            {tier.desc}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-1 text-xs">
+                  <label className="text-slate-300 font-semibold">
+                    Optional Play Store / APK Download Link
+                  </label>
+                  <input
+                    type="url"
+                    value={releaseConfig.downloadUrl || ''}
+                    onChange={(e) =>
+                      setReleaseConfig({ ...releaseConfig, downloadUrl: e.target.value })
+                    }
+                    placeholder="https://play.google.com/store/apps/details?id=..."
+                    className="px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-[#84E000]"
+                  />
+                  <span className="text-[11px] text-slate-400">
+                    Leave blank for pure instant in-app OTA upgrade, or add URL to show Store link alongside Upgrade Now.
+                  </span>
+                </div>
+              </div>
+
+              {/* Release Headline, Notes & Highlights */}
+              <div className="p-4 sm:p-5 bg-slate-900/70 border border-slate-800 rounded-xl flex flex-col gap-4">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-[#84E000]" />
+                  <h2 className="text-sm font-bold text-white">Release Notes & New Features</h2>
+                </div>
+
+                <div className="flex flex-col gap-1 text-xs">
+                  <label className="text-slate-300 font-semibold">Release Title</label>
+                  <input
+                    type="text"
+                    value={releaseConfig.releaseTitle}
+                    onChange={(e) =>
+                      setReleaseConfig({ ...releaseConfig, releaseTitle: e.target.value })
+                    }
+                    placeholder="e.g. Student Companion v2.4.0 · Exam Speed Booster"
+                    className="px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white"
+                  />
+                </div>
+
+                <div className="flex flex-col gap-1 text-xs">
+                  <label className="text-slate-300 font-semibold">Summary Message</label>
+                  <textarea
+                    value={releaseConfig.releaseNotes}
+                    onChange={(e) =>
+                      setReleaseConfig({ ...releaseConfig, releaseNotes: e.target.value })
+                    }
+                    rows={2}
+                    placeholder="Short explanation of why students and parents should install this update..."
+                    className="px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white resize-y"
+                  />
+                </div>
+
+                <div className="flex flex-col gap-2 text-xs">
+                  <label className="text-slate-300 font-semibold flex items-center justify-between">
+                    <span>What&apos;s New Highlights ({releaseConfig.featureHighlights.length}/10)</span>
+                  </label>
+
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={newHighlightText}
+                      onChange={(e) => setNewHighlightText(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleAddHighlight();
+                        }
+                      }}
+                      placeholder="e.g. Faster WAEC 2025 Past Question CBT explanations"
+                      className="flex-1 px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white placeholder-slate-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleAddHighlight}
+                      className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-lg flex items-center gap-1 whitespace-nowrap cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Add</span>
+                    </button>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    {releaseConfig.featureHighlights.map((hl, idx) => (
+                      <div
+                        key={idx}
+                        className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-slate-950 border border-slate-800"
+                      >
+                        <span className="text-xs text-slate-200 flex items-center gap-2 min-w-0">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-[#84E000] shrink-0" />
+                          <span className="truncate">{hl}</span>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveHighlight(idx)}
+                          aria-label={`Remove highlight ${idx + 1}`}
+                          className="p-1 text-rose-400 hover:text-white rounded cursor-pointer shrink-0"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* RIGHT COLUMN: LIVE FEATURE FLAGS, MAINTENANCE LOCK & PREVIEW */}
+            <div className="flex flex-col gap-5">
+              {/* Feature Flags: Full 17-Module App Switchboard */}
+              <div className="p-4 sm:p-5 bg-slate-900/70 border border-slate-800 rounded-xl flex flex-col gap-3.5">
+                {(() => {
+                  const enabledCount = OTA_FEATURE_CATALOG.filter(
+                    (m) => releaseConfig.featureFlags[m.key] !== false
+                  ).length;
+                  const pausedCount = OTA_FEATURE_CATALOG.length - enabledCount;
+                  const searchTerm = flagSearch.trim().toLowerCase();
+                  const filteredModules = OTA_FEATURE_CATALOG.filter((m) => {
+                    const matchesCategory = flagCategory === 'all' || m.category === flagCategory;
+                    const matchesSearch =
+                      !searchTerm ||
+                      m.title.toLowerCase().includes(searchTerm) ||
+                      m.description.toLowerCase().includes(searchTerm);
+                    return matchesCategory && matchesSearch;
+                  });
+
+                  const categoryLabel = (cat: 'study' | 'enrichment' | 'portals') =>
+                    cat === 'study'
+                      ? 'Study & Exams'
+                      : cat === 'enrichment'
+                      ? 'Enrichment & AI'
+                      : 'Role Portal';
+
+                  return (
+                    <>
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <Sliders className="w-4 h-4 text-[#84E000]" />
+                          <h2 className="text-sm font-bold text-white">
+                            Live Feature Pause Switchboard
+                          </h2>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] font-mono tabular-nums px-2 py-0.5 rounded bg-slate-950 border border-slate-800 text-slate-300 whitespace-nowrap">
+                            {enabledCount} / {OTA_FEATURE_CATALOG.length} Enabled · {pausedCount} Paused
+                          </span>
+                          {pausedCount > 0 && (
+                            <button
+                              type="button"
+                              onClick={handleEnableAllFlags}
+                              className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-[#84E000] text-[11px] font-bold whitespace-nowrap cursor-pointer"
+                            >
+                              Enable All
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Shared Default Paused Notice Message */}
+                      <div className="flex flex-col gap-1 text-xs">
+                        <label className="text-slate-300 font-semibold flex items-center justify-between">
+                          <span>Shared Default Paused Message</span>
+                          <span className="text-[10px] font-mono text-slate-400 tabular-nums">
+                            {releaseConfig.defaultPausedMessage.length}/300
+                          </span>
+                        </label>
+                        <input
+                          type="text"
+                          maxLength={300}
+                          value={releaseConfig.defaultPausedMessage}
+                          onChange={(e) =>
+                            setReleaseConfig({
+                              ...releaseConfig,
+                              defaultPausedMessage: e.target.value
+                            })
+                          }
+                          placeholder={DEFAULT_PAUSED_FEATURE_MESSAGE}
+                          className="px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white placeholder-slate-500 text-xs focus:outline-none focus:border-[#84E000]"
+                        />
+                        <span className="text-[11px] text-slate-400">
+                          Shown to users when any paused feature is tapped without a custom note.
+                        </span>
+                      </div>
+
+                      {/* Filter Controls: Category Pills + Search */}
+                      <div className="flex flex-col gap-2 pt-1">
+                        <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5">
+                          {(
+                            [
+                              { id: 'all', label: `All (${OTA_FEATURE_CATALOG.length})` },
+                              { id: 'study', label: 'Study & Exams' },
+                              { id: 'enrichment', label: 'Enrichment & AI' },
+                              { id: 'portals', label: 'Role Portals' }
+                            ] as const
+                          ).map((cat) => (
+                            <button
+                              key={cat.id}
+                              type="button"
+                              onClick={() => setFlagCategory(cat.id)}
+                              className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold whitespace-nowrap cursor-pointer border transition-colors ${
+                                flagCategory === cat.id
+                                  ? 'bg-[#14233C] border-[#84E000]/70 text-[#84E000]'
+                                  : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
+                              }`}
+                            >
+                              {cat.label}
+                            </button>
+                          ))}
+                        </div>
+
+                        <div className="relative">
+                          <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                          <input
+                            type="text"
+                            value={flagSearch}
+                            onChange={(e) => setFlagSearch(e.target.value)}
+                            placeholder="Filter modules (e.g. Lesson Notes, Termly Drill, Parent Portal)..."
+                            className="w-full pl-8 pr-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-[#84E000]"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Module List */}
+                      <div className="space-y-2 text-xs max-h-[440px] overflow-y-auto pr-1">
+                        {filteredModules.length === 0 ? (
+                          <div className="p-4 text-center text-slate-400 bg-slate-950 rounded-xl border border-slate-800">
+                            No modules match your search filter.
+                          </div>
+                        ) : (
+                          filteredModules.map((mod) => {
+                            const enabled = releaseConfig.featureFlags[mod.key] !== false;
+                            const customNote = releaseConfig.pausedFeatureNotes?.[mod.key] || '';
+                            const hasCustomNote = customNote.trim().length > 0;
+                            const isNoteExpanded = expandedNoteKey === mod.key;
+
+                            return (
+                              <div
+                                key={mod.key}
+                                className={`p-3 rounded-xl border transition-colors ${
+                                  enabled
+                                    ? 'bg-slate-950 border-slate-800'
+                                    : 'bg-amber-950/20 border-amber-500/45'
+                                }`}
+                              >
+                                <div className="flex items-center justify-between gap-2.5">
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <p className="font-bold text-white truncate">{mod.title}</p>
+                                      {flagCategory === 'all' && (
+                                        <span className="text-[10px] font-semibold text-slate-400 bg-slate-900 px-1.5 py-0.2 rounded border border-slate-800 whitespace-nowrap">
+                                          {categoryLabel(mod.category)}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <p className="text-[11px] text-slate-400 truncate mt-0.5">
+                                      {mod.description}
+                                    </p>
+                                  </div>
+
+                                  <div className="flex items-center gap-1.5 shrink-0">
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setExpandedNoteKey(isNoteExpanded ? null : mod.key)
+                                      }
+                                      title="Optional custom pause note"
+                                      className={`px-2 py-1.5 rounded-lg text-[11px] font-semibold border whitespace-nowrap cursor-pointer inline-flex items-center gap-1 transition-colors ${
+                                        hasCustomNote || isNoteExpanded
+                                          ? 'bg-amber-950/60 border-amber-500/50 text-amber-300'
+                                          : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                                      }`}
+                                    >
+                                      <MessageSquare className="w-3 h-3 shrink-0" />
+                                      <span>{hasCustomNote ? 'Note Added' : 'Note'}</span>
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      role="switch"
+                                      aria-checked={enabled}
+                                      onClick={() => handleToggleFeatureFlag(mod.key)}
+                                      className={`px-2.5 py-1.5 rounded-lg text-[11px] font-black whitespace-nowrap shrink-0 border cursor-pointer inline-flex items-center gap-1 transition-colors ${
+                                        enabled
+                                          ? 'bg-emerald-950/80 border-emerald-500/60 text-[#84E000]'
+                                          : 'bg-amber-500/15 border-amber-400/60 text-amber-300'
+                                      }`}
+                                    >
+                                      {enabled ? (
+                                        <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                                      ) : (
+                                        <PauseCircle className="w-3.5 h-3.5 shrink-0" />
+                                      )}
+                                      <span>{enabled ? 'Enabled' : 'Paused'}</span>
+                                    </button>
+                                  </div>
+                                </div>
+
+                                {(isNoteExpanded || (!enabled && hasCustomNote)) && (
+                                  <div className="mt-2.5 pt-2.5 border-t border-slate-800/80 flex items-center gap-2">
+                                    <input
+                                      type="text"
+                                      maxLength={240}
+                                      value={customNote}
+                                      onChange={(e) =>
+                                        handleUpdateFeatureNote(mod.key, e.target.value)
+                                      }
+                                      placeholder={`Optional custom note when ${mod.title} is paused (leave blank for shared message)`}
+                                      className="flex-1 px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-[11px] text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
+                                    />
+                                    {hasCustomNote && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleUpdateFeatureNote(mod.key, '')}
+                                        className="px-2 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-bold whitespace-nowrap cursor-pointer"
+                                      >
+                                        Clear
+                                      </button>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+                    </>
+                  );
+                })()}
+              </div>
+
+              {/* Emergency / Scheduled Maintenance Lock */}
+              <div
+                className={`p-4 sm:p-5 rounded-xl border flex flex-col gap-3.5 transition-colors ${
+                  releaseConfig.maintenanceMode
+                    ? 'bg-amber-950/30 border-amber-500/60'
+                    : 'bg-slate-900/70 border-slate-800'
+                }`}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <Wrench className="w-4 h-4 text-amber-400" />
+                    <h2 className="text-sm font-bold text-white">Maintenance Mode Lock</h2>
+                  </div>
+
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={releaseConfig.maintenanceMode}
+                    onClick={() =>
+                      setReleaseConfig({
+                        ...releaseConfig,
+                        maintenanceMode: !releaseConfig.maintenanceMode
+                      })
+                    }
+                    className={`px-3 py-1.5 rounded-lg text-xs font-black whitespace-nowrap cursor-pointer border transition-colors ${
+                      releaseConfig.maintenanceMode
+                        ? 'bg-amber-500 text-slate-950 border-amber-400'
+                        : 'bg-slate-950 text-slate-300 border-slate-700 hover:border-slate-600'
+                    }`}
+                  >
+                    {releaseConfig.maintenanceMode ? 'Maintenance ON' : 'Maintenance OFF'}
+                  </button>
+                </div>
+
+                {releaseConfig.maintenanceMode && (
+                  <div className="flex items-start gap-2 text-xs text-amber-200 bg-amber-950/60 border border-amber-500/40 rounded-lg p-2.5">
+                    <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                    <span>
+                      When published, all non-Super-Admin users will see the maintenance lock screen until turned off.
+                    </span>
+                  </div>
+                )}
+
+                <div className="flex flex-col gap-1 text-xs">
+                  <label className="text-slate-300 font-semibold">Maintenance Notice Message</label>
+                  <textarea
+                    value={releaseConfig.maintenanceMessage}
+                    onChange={(e) =>
+                      setReleaseConfig({ ...releaseConfig, maintenanceMessage: e.target.value })
+                    }
+                    rows={2}
+                    className="px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white resize-y"
+                  />
+                </div>
+              </div>
+
+              {/* Interactive Prompt Previews */}
+              <div className="p-4 sm:p-5 bg-slate-900/70 border border-slate-800 rounded-xl flex flex-col gap-3">
+                <div className="flex items-center gap-2">
+                  <Eye className="w-4 h-4 text-[#84E000]" />
+                  <h2 className="text-sm font-bold text-white">Preview User Experience</h2>
+                </div>
+                <p className="text-xs text-slate-400">
+                  Test how your current draft renders for students without affecting your Admin session.
+                </p>
+
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setPreviewMode('mild')}
+                    className="px-3 py-2 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-700 text-slate-200 font-bold whitespace-nowrap cursor-pointer"
+                  >
+                    Preview Mild Banner
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPreviewMode('recommended')}
+                    className="px-3 py-2 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-700 text-amber-300 font-bold whitespace-nowrap cursor-pointer"
+                  >
+                    Preview Recommended Modal
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPreviewMode('mandatory')}
+                    className="px-3 py-2 rounded-lg bg-slate-950 hover:bg-slate-800 border border-[#FF5B00]/50 text-[#FF5B00] font-bold whitespace-nowrap cursor-pointer"
+                  >
+                    Preview Mandatory Lock
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPreviewMode('maintenance')}
+                    className="px-3 py-2 rounded-lg bg-slate-950 hover:bg-slate-800 border border-amber-500/40 text-amber-200 font-bold whitespace-nowrap cursor-pointer"
+                  >
+                    Preview Maintenance
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Publish Bar */}
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-800">
+            <button
+              type="button"
+              onClick={handleResetReleaseDefaults}
+              className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 text-xs font-bold flex items-center gap-1.5 whitespace-nowrap cursor-pointer"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Reset Draft to Baseline</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handlePublishRelease}
+              disabled={isSavingRelease}
+              className="py-2.5 px-6 bg-[#84E000] hover:bg-[#74c700] text-slate-950 font-black text-xs sm:text-sm rounded-xl flex items-center gap-2 shadow-lg transition-all active:scale-95 whitespace-nowrap cursor-pointer disabled:opacity-60"
+            >
+              <Save className="w-4 h-4" />
+              <span>
+                {isSavingRelease
+                  ? 'Publishing OTA Update...'
+                  : `Publish OTA Release v${releaseConfig.latestVersion}`}
+              </span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* TAB 5: PUSH NOTIFICATIONS & DRAW-BACK REMINDER STUDIO */}
+      {/* ========================================================================= */}
+      {activeTab === 'push_reminders' && (
+        <OTAPushRemindersTab onFeedback={triggerNotice} />
       )}
     </div>
   );

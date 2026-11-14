@@ -16,11 +16,13 @@ import {
   Volume2,
   VolumeX
 } from 'lucide-react';
+import { OTAFeatureKey } from '../../types';
+import { PausedBadge } from '../common/AppUpdateGate';
 import { playSound, toggleSoundMuted, getSoundMuted } from '../../utils/audioSynthesis';
 import { motion, AnimatePresence } from 'motion/react';
 
 export const StudentBottomNav: React.FC = () => {
-  const { activeStudentTab, setActiveStudentTab, student } = useApp();
+  const { activeStudentTab, setActiveStudentTab, student, isFeatureEnabled } = useApp();
   const [isMoreDrawerOpen, setIsMoreDrawerOpen] = useState(false);
   const [isMuted, setIsMuted] = useState(getSoundMuted());
 
@@ -37,7 +39,12 @@ export const StudentBottomNav: React.FC = () => {
   };
 
   // 4 Primary tabs exactly matching the user reference designs (Main_dashboard_5a95f712.jpg)
-  const primaryTabs = [
+  const primaryTabs: Array<{
+    id: 'dashboard' | 'games' | 'tutors' | 'more';
+    label: string;
+    icon: React.ComponentType<{ className?: string }>;
+    featureKey?: OTAFeatureKey;
+  }> = [
     {
       id: 'dashboard',
       label: 'Home',
@@ -47,28 +54,36 @@ export const StudentBottomNav: React.FC = () => {
       id: 'games',
       label: 'Games',
       icon: Gamepad2,
+      featureKey: 'gamesHub',
     },
     {
       id: 'tutors',
       label: 'Tutors',
       icon: Users,
+      featureKey: 'tutorMarketplace',
     },
     {
       id: 'more',
       label: 'More',
       icon: User,
     },
-  ] as const;
+  ];
 
-  // Secondary hubs accessible in the smooth quick-access drawer
-  const secondaryHubs = [
-    { id: 'ai-coach', label: 'AI Study Coach', icon: Sparkles, color: 'text-[#84CC16] bg-[#84CC16]/10 border-[#84CC16]/30' },
-    { id: 'cbt', label: 'CBT Exam Drills', icon: Trophy, color: 'text-[#FF5B00] bg-[#FF5B00]/10 border-[#FF5B00]/30' },
-    { id: 'exam-prep', label: 'Prepare For Exam', icon: Calendar, color: 'text-amber-400 bg-amber-400/10 border-amber-400/30' },
-    { id: 'syllabus', label: 'Lesson Notes & NERDC', icon: BookOpen, color: 'text-cyan-400 bg-cyan-400/10 border-cyan-400/30' },
-    { id: 'formulas', label: 'STEM Formulas Sheet', icon: Atom, color: 'text-purple-400 bg-purple-400/10 border-purple-400/30' },
-    { id: 'community', label: 'Student Forum', icon: MessageSquare, color: 'text-emerald-400 bg-emerald-400/10 border-emerald-400/30' },
-    { id: 'competitions', label: 'Competitions & League', icon: Trophy, color: 'text-yellow-400 bg-yellow-400/10 border-yellow-400/30' },
+  // Secondary hubs accessible in quick-access drawer; paused hubs remain visible with Paused indicator
+  const secondaryHubs: Array<{
+    id: 'ai-coach' | 'cbt' | 'exam-prep' | 'syllabus' | 'formulas' | 'community' | 'competitions';
+    label: string;
+    icon: React.ComponentType<{ className?: string }>;
+    color: string;
+    featureKey: OTAFeatureKey;
+  }> = [
+    { id: 'ai-coach', label: 'AI Study Coach', icon: Sparkles, color: 'text-[#84CC16] bg-[#84CC16]/10 border-[#84CC16]/30', featureKey: 'aiCoach' },
+    { id: 'cbt', label: 'CBT Exam Drills', icon: Trophy, color: 'text-[#FF5B00] bg-[#FF5B00]/10 border-[#FF5B00]/30', featureKey: 'cbtExams' },
+    { id: 'exam-prep', label: 'Prepare For Exam', icon: Calendar, color: 'text-amber-400 bg-amber-400/10 border-amber-400/30', featureKey: 'examPrep' },
+    { id: 'syllabus', label: 'Lesson Notes & NERDC', icon: BookOpen, color: 'text-cyan-400 bg-cyan-400/10 border-cyan-400/30', featureKey: 'lessonNotes' },
+    { id: 'formulas', label: 'STEM Formulas Sheet', icon: Atom, color: 'text-purple-400 bg-purple-400/10 border-purple-400/30', featureKey: 'scienceFormulas' },
+    { id: 'community', label: 'Student Forum', icon: MessageSquare, color: 'text-emerald-400 bg-emerald-400/10 border-emerald-400/30', featureKey: 'communityForum' },
+    { id: 'competitions', label: 'Competitions & League', icon: Trophy, color: 'text-yellow-400 bg-yellow-400/10 border-yellow-400/30', featureKey: 'competitions' },
   ];
 
   return (
@@ -84,6 +99,7 @@ export const StudentBottomNav: React.FC = () => {
           const isActive = isMore 
             ? isMoreDrawerOpen || (activeStudentTab !== 'dashboard' && activeStudentTab !== 'games' && activeStudentTab !== 'tutors')
             : activeStudentTab === item.id && !isMoreDrawerOpen;
+          const isTabPaused = item.featureKey ? !isFeatureEnabled(item.featureKey) : false;
 
           return (
             <button
@@ -109,6 +125,12 @@ export const StudentBottomNav: React.FC = () => {
                   className="absolute -top-2 w-8 h-1 rounded-full bg-[#84CC16] shadow-[0_0_12px_#84CC16]"
                   transition={{ type: 'spring' as const, stiffness: 400, damping: 30 }}
                 />
+              )}
+
+              {isTabPaused && (
+                <span className="absolute -top-1 right-1 px-1 py-0.2 rounded-full bg-amber-950 border border-amber-400/70 text-[8px] font-black text-amber-300 uppercase leading-tight">
+                  Paused
+                </span>
               )}
 
               <div
@@ -137,7 +159,7 @@ export const StudentBottomNav: React.FC = () => {
         </button>
       </nav>
 
-      {/* "More Hubs" Drawer - Guarantees zero feature loss while keeping bottom nav clean */}
+      {/* "More Hubs" Drawer - Shows all learning hubs with Paused badge when paused */}
       <AnimatePresence>
         {isMoreDrawerOpen && (
           <div className="fixed inset-0 z-50 flex flex-col justify-end">
@@ -179,26 +201,35 @@ export const StudentBottomNav: React.FC = () => {
                 {secondaryHubs.map((hub) => {
                   const Icon = hub.icon;
                   const isActive = activeStudentTab === hub.id;
+                  const isPaused = !isFeatureEnabled(hub.featureKey);
                   return (
                     <button
                       key={hub.id}
                       onClick={() => handleTabClick(hub.id)}
-                      className={`p-3 rounded-2xl border text-left flex items-start gap-3 transition-all cursor-pointer active:scale-97 ${
+                      className={`p-3 rounded-2xl border text-left flex items-start gap-2.5 transition-all cursor-pointer active:scale-97 ${
                         isActive
                           ? 'bg-[#18264A] border-[#84CC16] shadow-lg shadow-[#84CC16]/20'
+                          : isPaused
+                          ? 'bg-[#0E172B]/80 border-amber-500/40 hover:bg-[#14203D]'
                           : 'bg-[#0E172B] hover:bg-[#14203D] border-slate-800'
                       }`}
                     >
                       <div className={`p-2 rounded-xl border ${hub.color} shrink-0`}>
                         <Icon className="w-4 h-4" />
                       </div>
-                      <div className="min-w-0">
+                      <div className="min-w-0 flex-1">
                         <span className="text-xs font-bold text-white block truncate">
                           {hub.label}
                         </span>
-                        <span className="text-[10px] text-slate-400 block mt-0.5">
-                          Tap to open
-                        </span>
+                        {isPaused ? (
+                          <div className="mt-1">
+                            <PausedBadge />
+                          </div>
+                        ) : (
+                          <span className="text-[10px] text-slate-400 block mt-0.5">
+                            Tap to open
+                          </span>
+                        )}
                       </div>
                     </button>
                   );

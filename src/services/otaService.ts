@@ -15,7 +15,11 @@ import {
   OTAPopupAnnouncement,
   OTACompetitionConfig,
   OTAWeeklyCompetitionConfig,
-  OTASchoolLeagueConfig
+  OTASchoolLeagueConfig,
+  OTAAppReleaseConfig,
+  OTAFeatureFlags,
+  OTAFeatureKey,
+  OTAUpgradeMode
 } from '../types';
 import {
   TERMLY_CHAMPIONSHIP_PRIZES,
@@ -30,6 +34,172 @@ const CACHE_KEY_COMPETITION = 'sc_ota_competition_v1';
 const CACHE_KEY_WEEKLY = 'sc_ota_weekly_v1';
 const CACHE_KEY_SCHOOL_LEAGUE = 'sc_ota_school_league_v1';
 const CACHE_KEY_DISMISSED_POPUP = 'sc_ota_dismissed_popup_date';
+const CACHE_KEY_APP_RELEASE = 'sc_ota_app_release_v1';
+const STORAGE_KEY_INSTALLED_VERSION = 'sc_installed_app_version';
+const STORAGE_KEY_DISMISSED_RELEASE = 'sc_ota_dismissed_release_v1';
+const STORAGE_KEY_DISMISSED_RECOMMENDED_AT = 'sc_ota_dismissed_recommended_at_v1';
+
+export const BASE_APP_VERSION = '2.3.0';
+
+export const DEFAULT_PAUSED_FEATURE_MESSAGE =
+  'This module is temporarily paused over-the-air while improvements are rolled out. Other study tools remain available.';
+
+export interface OTAFeatureMetadata {
+  key: OTAFeatureKey;
+  title: string;
+  description: string;
+  category: 'study' | 'enrichment' | 'portals';
+}
+
+export const OTA_FEATURE_CATALOG: OTAFeatureMetadata[] = [
+  // Study & Assessments
+  {
+    key: 'lessonNotes',
+    title: 'Lesson Notes & NERDC Syllabus',
+    description: 'Scheme of Work explorer, weekly notes & verified reading timers',
+    category: 'study'
+  },
+  {
+    key: 'termlyDrill',
+    title: 'Termly Assessment Drills',
+    description: '40-question NERDC termly mocks & BECE/WAEC/NECO/JAMB drill generator',
+    category: 'study'
+  },
+  {
+    key: 'cbtExams',
+    title: 'CBT Exam Practice & Quizzes',
+    description: 'Interactive quizzes, past exam simulator & CBT catalog',
+    category: 'study'
+  },
+  {
+    key: 'examPrep',
+    title: 'Prepare For Exam Planner',
+    description: 'AI daily study timetable, diagnostic profiler & tutor credits',
+    category: 'study'
+  },
+  {
+    key: 'scienceFormulas',
+    title: 'STEM Formulas Sheet',
+    description: 'Physics, Math & Chemistry equations reference bank',
+    category: 'study'
+  },
+  {
+    key: 'uniformVerification',
+    title: 'Uniform AI Verification',
+    description: 'Student uniform camera scanner & Verified Scholar badge',
+    category: 'study'
+  },
+  // Enrichment, AI & Tutoring
+  {
+    key: 'aiCoach',
+    title: 'AI Study Coach',
+    description: '24/7 AI tutor chat & topic diagnostics',
+    category: 'enrichment'
+  },
+  {
+    key: 'gamesHub',
+    title: 'Games & Brain Arcade',
+    description: '12 subject speed & puzzle mini-games',
+    category: 'enrichment'
+  },
+  {
+    key: 'tutorMarketplace',
+    title: 'Tutor Marketplace & Booking',
+    description: 'Discover vetted tutors, chat & schedule tutoring sessions',
+    category: 'enrichment'
+  },
+  {
+    key: 'virtualClassroom',
+    title: 'Live Virtual Classroom',
+    description: 'Interactive digital tutoring whiteboard & live audio',
+    category: 'enrichment'
+  },
+  {
+    key: 'competitions',
+    title: 'Competitions & School League',
+    description: 'Termly championship, weekly challenge & inter-school standings',
+    category: 'enrichment'
+  },
+  {
+    key: 'aspirantHub',
+    title: 'JAMB & Aspirant CBT Hub',
+    description: 'UTME simulator, admission cut-off guide & mock tournaments',
+    category: 'enrichment'
+  },
+  {
+    key: 'communityForum',
+    title: 'Student Community Forum',
+    description: 'Peer discussion channels & moderated study Q&A',
+    category: 'enrichment'
+  },
+  // Role Portals
+  {
+    key: 'parentPortal',
+    title: 'Parent Guardian Portal',
+    description: 'Ward progress overview, PIN wallet, approvals & parent lounge',
+    category: 'portals'
+  },
+  {
+    key: 'tutorPortal',
+    title: 'Educator / Tutor Portal',
+    description: 'Session schedules, payout earnings, credentials & chat',
+    category: 'portals'
+  },
+  {
+    key: 'schoolAdminPortal',
+    title: 'School Administrator Portal',
+    description: 'Institutional publishing studio, school materials & accreditation',
+    category: 'portals'
+  },
+  {
+    key: 'growthPartnerPortal',
+    title: 'Growth Partner Portal',
+    description: 'Referral network analytics, partner wallet & marketing toolkit',
+    category: 'portals'
+  }
+];
+
+export const DEFAULT_OTA_FEATURE_FLAGS: OTAFeatureFlags = {
+  lessonNotes: true,
+  termlyDrill: true,
+  cbtExams: true,
+  examPrep: true,
+  scienceFormulas: true,
+  uniformVerification: true,
+  aiCoach: true,
+  gamesHub: true,
+  tutorMarketplace: true,
+  virtualClassroom: true,
+  competitions: true,
+  aspirantHub: true,
+  communityForum: true,
+  parentPortal: true,
+  tutorPortal: true,
+  schoolAdminPortal: true,
+  growthPartnerPortal: true
+};
+
+export const DEFAULT_OTA_APP_RELEASE: OTAAppReleaseConfig = {
+  id: 'active_release',
+  latestVersion: BASE_APP_VERSION,
+  minimumSupportedVersion: '2.2.0',
+  upgradeMode: 'mild',
+  releaseTitle: 'Student Companion v2.3.0 · Verified Study Engine',
+  releaseNotes: 'Includes realistic active reading timers, cross-session lesson progress persistence, and enhanced CBT audio diagnostics.',
+  featureHighlights: [
+    'Verified active reading study timers (20–35 min)',
+    'Cross-session reading progress & offline resilience',
+    'Smooth sign-in chime & instant Lottie transitions'
+  ],
+  downloadUrl: '',
+  featureFlags: DEFAULT_OTA_FEATURE_FLAGS,
+  defaultPausedMessage: DEFAULT_PAUSED_FEATURE_MESSAGE,
+  pausedFeatureNotes: {},
+  maintenanceMode: false,
+  maintenanceMessage: 'Scheduled OTA platform maintenance is underway to improve speed and reliability. We will be back shortly.',
+  publishedAt: new Date().toISOString(),
+  publishedBy: 'martorefe@gmail.com'
+};
 
 // ==========================================
 // CANONICAL DEFAULT BUNDLES (OFFLINE-SAFE)
@@ -473,3 +643,236 @@ export function markPopupDismissedToday(popupId: string): void {
     localStorage.setItem(`${CACHE_KEY_DISMISSED_POPUP}_${popupId}`, today);
   } catch {}
 }
+
+// ==========================================
+// OTA APP RELEASES, SEMVER & UPGRADE GATE
+// ==========================================
+
+export function normalizeSemver(version?: string | null): string {
+  if (!version) return BASE_APP_VERSION;
+  const cleaned = version.trim().replace(/^v/i, '');
+  return /^\d+\.\d+\.\d+$/.test(cleaned) ? cleaned : BASE_APP_VERSION;
+}
+
+export function isValidSemver(version?: string | null): boolean {
+  if (!version) return false;
+  return /^v?\d+\.\d+\.\d+$/.test(version.trim());
+}
+
+/**
+ * Returns -1 if vA < vB, 0 if equal, 1 if vA > vB
+ */
+export function compareSemver(vA: string, vB: string): number {
+  const partsA = normalizeSemver(vA).split('.').map(Number);
+  const partsB = normalizeSemver(vB).split('.').map(Number);
+  for (let i = 0; i < 3; i++) {
+    const a = partsA[i] || 0;
+    const b = partsB[i] || 0;
+    if (a < b) return -1;
+    if (a > b) return 1;
+  }
+  return 0;
+}
+
+export function bumpSemver(version: string, part: 'major' | 'minor' | 'patch'): string {
+  const [maj, min, pat] = normalizeSemver(version).split('.').map(Number);
+  if (part === 'major') return `${maj + 1}.0.0`;
+  if (part === 'minor') return `${maj}.${min + 1}.0`;
+  return `${maj}.${min}.${pat + 1}`;
+}
+
+export function getInstalledAppVersion(): string {
+  try {
+    if (typeof window === 'undefined') return BASE_APP_VERSION;
+    const stored = localStorage.getItem(STORAGE_KEY_INSTALLED_VERSION);
+    if (stored && isValidSemver(stored)) {
+      return normalizeSemver(stored);
+    }
+  } catch {}
+  return BASE_APP_VERSION;
+}
+
+export function setInstalledAppVersion(version: string): string {
+  const normalized = normalizeSemver(version);
+  try {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(STORAGE_KEY_INSTALLED_VERSION, normalized);
+    }
+  } catch {}
+  return normalized;
+}
+
+export function isReleaseDismissed(version: string, mode: OTAUpgradeMode): boolean {
+  if (mode === 'mandatory') return false;
+  const normalized = normalizeSemver(version);
+  try {
+    if (typeof window === 'undefined') return false;
+    if (mode === 'mild') {
+      return localStorage.getItem(STORAGE_KEY_DISMISSED_RELEASE) === normalized;
+    }
+    if (mode === 'recommended') {
+      const dismissedVer = localStorage.getItem(STORAGE_KEY_DISMISSED_RELEASE);
+      const dismissedDate = localStorage.getItem(STORAGE_KEY_DISMISSED_RECOMMENDED_AT);
+      const today = new Date().toISOString().slice(0, 10);
+      return dismissedVer === normalized && dismissedDate === today;
+    }
+  } catch {}
+  return false;
+}
+
+export function dismissReleasePrompt(version: string, mode: OTAUpgradeMode): void {
+  if (mode === 'mandatory') return;
+  const normalized = normalizeSemver(version);
+  try {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(STORAGE_KEY_DISMISSED_RELEASE, normalized);
+      if (mode === 'recommended') {
+        localStorage.setItem(
+          STORAGE_KEY_DISMISSED_RECOMMENDED_AT,
+          new Date().toISOString().slice(0, 10)
+        );
+      }
+    }
+  } catch {}
+}
+
+export function clearReleaseDismissal(): void {
+  try {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(STORAGE_KEY_DISMISSED_RELEASE);
+      localStorage.removeItem(STORAGE_KEY_DISMISSED_RECOMMENDED_AT);
+    }
+  } catch {}
+}
+
+function sanitizeReleaseConfig(raw: Partial<OTAAppReleaseConfig> | null | undefined): OTAAppReleaseConfig {
+  const rawFlags = (raw?.featureFlags || {}) as Partial<OTAFeatureFlags>;
+  const sanitizedFlags: OTAFeatureFlags = { ...DEFAULT_OTA_FEATURE_FLAGS };
+  for (const meta of OTA_FEATURE_CATALOG) {
+    const val = rawFlags[meta.key];
+    sanitizedFlags[meta.key] = typeof val === 'boolean' ? val : true;
+  }
+
+  const rawNotes = (raw?.pausedFeatureNotes || {}) as Partial<Record<OTAFeatureKey, unknown>>;
+  const sanitizedNotes: Partial<Record<OTAFeatureKey, string>> = {};
+  for (const meta of OTA_FEATURE_CATALOG) {
+    const val = rawNotes[meta.key];
+    if (typeof val === 'string' && val.trim().length > 0) {
+      sanitizedNotes[meta.key] = val.trim().slice(0, 240);
+    }
+  }
+
+  const highlights = Array.isArray(raw?.featureHighlights)
+    ? raw!.featureHighlights
+        .map((h) => String(h || '').trim())
+        .filter(Boolean)
+        .slice(0, 10)
+    : DEFAULT_OTA_APP_RELEASE.featureHighlights;
+
+  const cleanDownload = typeof raw?.downloadUrl === 'string' ? raw.downloadUrl.trim().slice(0, 500) : '';
+  const cleanDefaultPaused =
+    typeof raw?.defaultPausedMessage === 'string' && raw.defaultPausedMessage.trim().length > 0
+      ? raw.defaultPausedMessage.trim().slice(0, 300)
+      : DEFAULT_PAUSED_FEATURE_MESSAGE;
+
+  return {
+    id: 'active_release',
+    latestVersion: normalizeSemver(raw?.latestVersion || BASE_APP_VERSION),
+    minimumSupportedVersion: normalizeSemver(raw?.minimumSupportedVersion || DEFAULT_OTA_APP_RELEASE.minimumSupportedVersion),
+    upgradeMode:
+      raw?.upgradeMode === 'mild' || raw?.upgradeMode === 'recommended' || raw?.upgradeMode === 'mandatory'
+        ? raw.upgradeMode
+        : 'mild',
+    releaseTitle: (raw?.releaseTitle || DEFAULT_OTA_APP_RELEASE.releaseTitle).trim().slice(0, 160),
+    releaseNotes: (raw?.releaseNotes || '').trim().slice(0, 2000),
+    featureHighlights: highlights,
+    ...(cleanDownload ? { downloadUrl: cleanDownload } : {}),
+    featureFlags: sanitizedFlags,
+    defaultPausedMessage: cleanDefaultPaused,
+    pausedFeatureNotes: sanitizedNotes,
+    maintenanceMode: Boolean(raw?.maintenanceMode),
+    maintenanceMessage: (raw?.maintenanceMessage || DEFAULT_OTA_APP_RELEASE.maintenanceMessage).trim().slice(0, 500),
+    publishedAt: raw?.publishedAt || new Date().toISOString(),
+    publishedBy: (raw?.publishedBy || 'martorefe@gmail.com').trim().slice(0, 150)
+  };
+}
+
+export function resolvePausedFeatureMessage(
+  release: OTAAppReleaseConfig,
+  featureKey: OTAFeatureKey
+): string {
+  const custom = release.pausedFeatureNotes?.[featureKey]?.trim();
+  if (custom) return custom;
+  const fallback = release.defaultPausedMessage?.trim();
+  return fallback || DEFAULT_PAUSED_FEATURE_MESSAGE;
+}
+
+const releaseListeners = new Set<(config: OTAAppReleaseConfig) => void>();
+
+export function subscribeToOTAAppRelease(
+  callback: (config: OTAAppReleaseConfig) => void
+): () => void {
+  const cached = sanitizeReleaseConfig(
+    readLocalJson<OTAAppReleaseConfig>(CACHE_KEY_APP_RELEASE, DEFAULT_OTA_APP_RELEASE)
+  );
+  callback(cached);
+  releaseListeners.add(callback);
+
+  let unsubFirestore = () => {};
+  try {
+    const docRef = doc(db, 'otaAppReleases', 'active_release');
+    unsubFirestore = onSnapshot(
+      docRef,
+      (snap) => {
+        if (snap.exists()) {
+          const sanitized = sanitizeReleaseConfig(snap.data() as Partial<OTAAppReleaseConfig>);
+          writeLocalJson(CACHE_KEY_APP_RELEASE, sanitized);
+          releaseListeners.forEach((cb) => cb(sanitized));
+        }
+      },
+      (error) => {
+        console.warn('OTA app release listener offline, using cached:', error);
+      }
+    );
+  } catch (err) {
+    console.warn('Failed to subscribe to OTA app release:', err);
+  }
+
+  return () => {
+    releaseListeners.delete(callback);
+    unsubFirestore();
+  };
+}
+
+export async function saveOTAAppRelease(config: OTAAppReleaseConfig): Promise<OTAAppReleaseConfig> {
+  const payload = sanitizeReleaseConfig({
+    ...config,
+    id: 'active_release',
+    publishedAt: new Date().toISOString()
+  });
+
+  writeLocalJson(CACHE_KEY_APP_RELEASE, payload);
+  releaseListeners.forEach((cb) => cb(payload));
+
+  const docRef = doc(db, 'otaAppReleases', 'active_release');
+  await setDoc(docRef, payload);
+  return payload;
+}
+
+export function applyInAppOTAUpgrade(release: OTAAppReleaseConfig): string {
+  const updatedVer = setInstalledAppVersion(release.latestVersion);
+  clearReleaseDismissal();
+  writeLocalJson(CACHE_KEY_APP_RELEASE, sanitizeReleaseConfig(release));
+  return updatedVer;
+}
+
+export function isValidSafeExternalUrl(url?: string | null): boolean {
+  if (!url) return false;
+  try {
+    const parsed = new URL(url.trim());
+    return parsed.protocol === 'https:' || parsed.protocol === 'http:';
+  } catch {
+    return false;
+  }
+}
+

@@ -749,6 +749,48 @@
         "updatedAt": { "type": "string", "maxLength": 100 }
       },
       "required": ["id", "classLevel", "stream", "subject", "term", "weekNumber", "topicTitle", "subtopics", "readingTimeMinutes", "summary", "contentMarkdown", "keyTakeaways", "associatedQuizId", "uploadMode", "uploadedBy", "createdAt", "updatedAt"]
+    },
+    "OTAAppRelease": {
+      "title": "OTAAppRelease",
+      "description": "Super Admin Over-The-Air application version upgrade, release notes, 17-module pause switches, pause messages, and maintenance lock configuration",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+        "latestVersion": { "type": "string", "maxLength": 32, "pattern": "^v?[0-9]+\\.[0-9]+\\.[0-9]+$" },
+        "minimumSupportedVersion": { "type": "string", "maxLength": 32, "pattern": "^v?[0-9]+\\.[0-9]+\\.[0-9]+$" },
+        "upgradeMode": { "type": "string", "enum": ["mild", "recommended", "mandatory"] },
+        "releaseTitle": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "releaseNotes": { "type": "string", "maxLength": 2000 },
+        "featureHighlights": { "type": "array" },
+        "downloadUrl": { "type": "string", "maxLength": 500 },
+        "featureFlags": { "type": "object" },
+        "defaultPausedMessage": { "type": "string", "maxLength": 300 },
+        "pausedFeatureNotes": { "type": "object" },
+        "maintenanceMode": { "type": "boolean" },
+        "maintenanceMessage": { "type": "string", "maxLength": 500 },
+        "publishedAt": { "type": "string", "maxLength": 100 },
+        "publishedBy": { "type": "string", "maxLength": 150 }
+      },
+      "required": ["id", "latestVersion", "minimumSupportedVersion", "upgradeMode", "releaseTitle", "releaseNotes", "featureHighlights", "featureFlags", "defaultPausedMessage", "pausedFeatureNotes", "maintenanceMode", "maintenanceMessage", "publishedAt", "publishedBy"]
+    },
+    "OTANotificationBroadcast": {
+      "title": "OTANotificationBroadcast",
+      "description": "Super Admin published Over-The-Air push notification and draw-back reminder targeting selected user personas",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+        "title": { "type": "string", "minLength": 1, "maxLength": 90 },
+        "body": { "type": "string", "minLength": 1, "maxLength": 280 },
+        "category": { "type": "string", "enum": ["streak_risk", "inactivity_nudge", "ota_engagement"] },
+        "targetRoles": { "type": "array" },
+        "deepLinkTab": { "type": "string", "maxLength": 64 },
+        "actionLabel": { "type": "string", "maxLength": 40 },
+        "priority": { "type": "string", "enum": ["standard", "high"] },
+        "isActive": { "type": "boolean" },
+        "createdAt": { "type": "string", "maxLength": 100 },
+        "createdBy": { "type": "string", "maxLength": 150 }
+      },
+      "required": ["id", "title", "body", "category", "targetRoles", "deepLinkTab", "actionLabel", "priority", "isActive", "createdAt", "createdBy"]
     }
   },
   "firestore": {
@@ -871,6 +913,18 @@
         "$ref": "#/entities/AdminLessonNote"
       },
       "description": "Super Admin published weekly curriculum lesson note overrides across JSS 1 to SS 3"
+    },
+    "/otaAppReleases/{releaseId}": {
+      "schema": {
+        "$ref": "#/entities/OTAAppRelease"
+      },
+      "description": "Live Over-The-Air application updates, forced upgrade prompts, feature flags, and maintenance lock state"
+    },
+    "/otaNotifications/{notificationId}": {
+      "schema": {
+        "$ref": "#/entities/OTANotificationBroadcast"
+      },
+      "description": "Super Admin published Over-The-Air notifications and re-engagement reminder broadcasts"
     }
   }
 }

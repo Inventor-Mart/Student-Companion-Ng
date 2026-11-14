@@ -1,8 +1,12 @@
 import React, { useState } from 'react';
-import { Mail, Lock, ArrowLeft, CheckCircle2, AlertCircle, X, RefreshCw } from 'lucide-react';
+import { Mail, Lock, ArrowLeft, CheckCircle2, AlertCircle, X, RefreshCw, Loader2 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { sendPasswordResetEmail } from 'firebase/auth';
 import { auth } from '../../lib/firebase';
+import { primeLoginAudio } from '../../utils/audioSynthesis';
+import { LoginSuccessOverlay } from './LoginSuccessOverlay';
+
+type AuthStatus = 'idle' | 'loading' | 'success' | 'error';
 
 interface SignInPageProps {
   onBackToLanding: () => void;
@@ -15,11 +19,19 @@ export const SignInPage: React.FC<SignInPageProps> = ({
   onSignInSuccess,
   onNavigateToSignUp
 }) => {
-  const { loginWithGoogle, authLoading, currentUser, currentUserProfile, loginAsDeveloper } = useApp();
+  const {
+    loginWithGoogle,
+    authenticateUser,
+    activateQuickStudentSession,
+    authLoading
+  } = useApp();
   const [emailOrUsername, setEmailOrUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [authStatus, setAuthStatus] = useState<AuthStatus>('idle');
+  const [authenticatedName, setAuthenticatedName] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const isSubmitting = authStatus === 'loading' || authStatus === 'success';
 
   // Live Firebase Password Recovery States
   const [isForgotModalOpen, setIsForgotModalOpen] = useState(false);
@@ -57,54 +69,64 @@ export const SignInPage: React.FC<SignInPageProps> = ({
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
+
+    primeLoginAudio();
     setErrorMsg(null);
 
-    const cleanInput = emailOrUsername.trim().toLowerCase();
-
     if (!emailOrUsername.trim()) {
+      setAuthStatus('error');
       setErrorMsg('Please enter your email or username');
       return;
     }
 
     if (!password) {
+      setAuthStatus('error');
       setErrorMsg('Please enter your password');
       return;
     }
 
-    setIsSubmitting(true);
-    setTimeout(() => {
-      setIsSubmitting(false);
+    setAuthStatus('loading');
+    const result = await authenticateUser(emailOrUsername, password);
 
-      // If signing in with the developer email, verify and grant developer access
-      if (cleanInput === 'martorefe@gmail.com') {
-        loginAsDeveloper('martorefe@gmail.com');
-        onSignInSuccess();
-        return;
-      }
-
-      if (currentUserProfile) {
-        onSignInSuccess();
-      } else if (onNavigateToSignUp) {
-        onNavigateToSignUp();
-      } else {
-        onSignInSuccess();
-      }
-    }, 350);
+    if (result.success) {
+      setAuthenticatedName(result.profile?.fullName || null);
+      setAuthStatus('success');
+    } else {
+      setAuthStatus('error');
+      setErrorMsg(result.error || 'Unable to sign in. Please verify your details.');
+    }
   };
 
   const handleGoogleSignIn = async () => {
-    try {
-      setErrorMsg(null);
-      await loginWithGoogle();
-      onSignInSuccess();
-    } catch (err: any) {
-      if (err?.code !== 'auth/unauthorized-domain') {
-        console.warn('Google Sign In notice:', err?.message || err);
-        setErrorMsg('Google sign in was cancelled. Please try again.');
-      }
+    if (isSubmitting) return;
+    primeLoginAudio();
+    setErrorMsg(null);
+    setAuthStatus('loading');
+
+    const result = await loginWithGoogle({ skipNavigate: true });
+    if (result.success) {
+      setAuthenticatedName(result.profile?.fullName || null);
+      setAuthStatus('success');
+    } else {
+      setAuthStatus('error');
+      setErrorMsg(result.error || 'Google sign in was cancelled. Please try again.');
     }
+  };
+
+  const handleQuickStudentSignIn = () => {
+    if (isSubmitting) return;
+    primeLoginAudio();
+    setErrorMsg(null);
+    setAuthStatus('loading');
+
+    window.setTimeout(() => {
+      const profile = activateQuickStudentSession();
+      setAuthenticatedName(profile.fullName || null);
+      setAuthStatus('success');
+    }, 320);
   };
 
   return (
@@ -198,8 +220,9 @@ export const SignInPage: React.FC<SignInPageProps> = ({
         {/* --- Sign In Form --- */}
         <form onSubmit={handleSubmit} className="w-full flex flex-col gap-5">
           {errorMsg && (
-            <div className="p-2.5 rounded-xl bg-rose-950/80 border border-rose-800 text-rose-300 text-xs text-center font-medium">
-              {errorMsg}
+            <div role="alert" className="p-2.5 rounded-xl bg-rose-950/80 border border-rose-800 text-rose-300 text-xs text-center font-medium flex items-center justify-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>{errorMsg}</span>
             </div>
           )}
 
@@ -211,9 +234,10 @@ export const SignInPage: React.FC<SignInPageProps> = ({
             <input
               type="text"
               value={emailOrUsername}
+              disabled={isSubmitting}
               onChange={(e) => setEmailOrUsername(e.target.value)}
               placeholder="Email or Username"
-              className="w-full bg-[#0C172B] text-white text-sm font-medium rounded-full py-4 pl-14 pr-5 border-2 border-[#84E000] shadow-[0_0_18px_rgba(132,224,0,0.22)] focus:outline-none focus:ring-2 focus:ring-[#84E000] placeholder-[#728198] transition-all"
+              className="w-full bg-[#0C172B] text-white text-sm font-medium rounded-full py-4 pl-14 pr-5 border-2 border-[#84E000] shadow-[0_0_18px_rgba(132,224,0,0.22)] focus:outline-none focus:ring-2 focus:ring-[#84E000] placeholder-[#728198] disabled:opacity-60 transition-all"
             />
           </div>
 
@@ -225,9 +249,10 @@ export const SignInPage: React.FC<SignInPageProps> = ({
             <input
               type="password"
               value={password}
+              disabled={isSubmitting}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Password"
-              className="w-full bg-[#0C172B] text-white text-sm font-medium rounded-full py-4 pl-14 pr-5 border-2 border-[#FF5B00] shadow-[0_0_18px_rgba(255,91,0,0.22)] focus:outline-none focus:ring-2 focus:ring-[#FF5B00] placeholder-[#728198] transition-all"
+              className="w-full bg-[#0C172B] text-white text-sm font-medium rounded-full py-4 pl-14 pr-5 border-2 border-[#FF5B00] shadow-[0_0_18px_rgba(255,91,0,0.22)] focus:outline-none focus:ring-2 focus:ring-[#FF5B00] placeholder-[#728198] disabled:opacity-60 transition-all"
             />
           </div>
 
@@ -235,13 +260,14 @@ export const SignInPage: React.FC<SignInPageProps> = ({
           <div className="w-full flex justify-end -mt-1 pr-2">
             <button
               type="button"
+              disabled={isSubmitting}
               onClick={() => {
                 setResetEmail(emailOrUsername);
                 setResetErrorMsg(null);
                 setResetSuccessMsg(null);
                 setIsForgotModalOpen(true);
               }}
-              className="text-sm font-semibold text-[#FF5B00] hover:underline cursor-pointer"
+              className="text-sm font-semibold text-[#FF5B00] hover:underline disabled:opacity-50 cursor-pointer"
             >
               Forgot?
             </button>
@@ -251,9 +277,16 @@ export const SignInPage: React.FC<SignInPageProps> = ({
           <button
             type="submit"
             disabled={isSubmitting}
-            className="w-full py-4 px-6 rounded-full bg-[#84E000] hover:bg-[#75c900] active:scale-[0.98] text-[#08101E] font-black text-base tracking-wider uppercase shadow-lg shadow-[#84E000]/30 transition-all cursor-pointer text-center mt-2"
+            className="w-full py-4 px-6 rounded-full bg-[#84E000] hover:bg-[#75c900] disabled:opacity-75 active:scale-[0.98] text-[#08101E] font-black text-base tracking-wider uppercase shadow-lg shadow-[#84E000]/30 transition-all cursor-pointer flex items-center justify-center gap-2 mt-2"
           >
-            {isSubmitting ? 'SIGNING IN...' : 'SIGN IN'}
+            {authStatus === 'loading' ? (
+              <>
+                <Loader2 className="w-5 h-5 animate-spin" />
+                <span>Signing In...</span>
+              </>
+            ) : (
+              <span>Log In</span>
+            )}
           </button>
         </form>
 
@@ -271,8 +304,8 @@ export const SignInPage: React.FC<SignInPageProps> = ({
             {/* Google Icon with Lime Green Ring */}
             <button
               onClick={handleGoogleSignIn}
-              disabled={authLoading}
-              className="w-13 h-13 rounded-full bg-[#0C172B] border-2 border-[#84E000] shadow-[0_0_14px_rgba(132,224,0,0.25)] hover:scale-105 active:scale-95 flex items-center justify-center transition-all cursor-pointer group"
+              disabled={authLoading || isSubmitting}
+              className="w-13 h-13 rounded-full bg-[#0C172B] border-2 border-[#84E000] shadow-[0_0_14px_rgba(132,224,0,0.25)] hover:scale-105 active:scale-95 disabled:opacity-60 flex items-center justify-center transition-all cursor-pointer group"
               title="Sign in with Google"
               type="button"
             >
@@ -298,8 +331,9 @@ export const SignInPage: React.FC<SignInPageProps> = ({
 
             {/* Mascot / Secondary Icon with Electric Orange Ring */}
             <button
-              onClick={() => onSignInSuccess()}
-              className="w-13 h-13 rounded-full bg-[#0C172B] border-2 border-[#FF5B00] shadow-[0_0_14px_rgba(255,91,0,0.25)] hover:scale-105 active:scale-95 flex items-center justify-center transition-all cursor-pointer group"
+              onClick={handleQuickStudentSignIn}
+              disabled={isSubmitting}
+              className="w-13 h-13 rounded-full bg-[#0C172B] border-2 border-[#FF5B00] shadow-[0_0_14px_rgba(255,91,0,0.25)] hover:scale-105 active:scale-95 disabled:opacity-60 flex items-center justify-center transition-all cursor-pointer group"
               title="Quick Guest / Student Sign In"
               type="button"
             >
@@ -428,6 +462,13 @@ export const SignInPage: React.FC<SignInPageProps> = ({
           </div>
         </div>
       )}
+      {/* Lottie Login Success Animation + Audio Chime Overlay */}
+      <LoginSuccessOverlay
+        isVisible={authStatus === 'success'}
+        userName={authenticatedName}
+        onComplete={onSignInSuccess}
+        durationMs={1500}
+      />
     </div>
   );
 };

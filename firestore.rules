@@ -284,6 +284,101 @@ service cloud.firestore {
              data.updatedAt is string && data.updatedAt.size() <= 100;
     }
 
+    function isValidOtaFeatureFlags(flags) {
+      return flags is map &&
+             flags.keys().hasAll([
+               'lessonNotes', 'termlyDrill', 'cbtExams', 'examPrep', 'scienceFormulas', 'uniformVerification',
+               'aiCoach', 'gamesHub', 'tutorMarketplace', 'virtualClassroom', 'competitions', 'aspirantHub', 'communityForum',
+               'parentPortal', 'tutorPortal', 'schoolAdminPortal', 'growthPartnerPortal'
+             ]) &&
+             flags.keys().hasOnly([
+               'lessonNotes', 'termlyDrill', 'cbtExams', 'examPrep', 'scienceFormulas', 'uniformVerification',
+               'aiCoach', 'gamesHub', 'tutorMarketplace', 'virtualClassroom', 'competitions', 'aspirantHub', 'communityForum',
+               'parentPortal', 'tutorPortal', 'schoolAdminPortal', 'growthPartnerPortal'
+             ]) &&
+             flags.lessonNotes is bool &&
+             flags.termlyDrill is bool &&
+             flags.cbtExams is bool &&
+             flags.examPrep is bool &&
+             flags.scienceFormulas is bool &&
+             flags.uniformVerification is bool &&
+             flags.aiCoach is bool &&
+             flags.gamesHub is bool &&
+             flags.tutorMarketplace is bool &&
+             flags.virtualClassroom is bool &&
+             flags.competitions is bool &&
+             flags.aspirantHub is bool &&
+             flags.communityForum is bool &&
+             flags.parentPortal is bool &&
+             flags.tutorPortal is bool &&
+             flags.schoolAdminPortal is bool &&
+             flags.growthPartnerPortal is bool;
+    }
+
+    function isValidPausedFeatureNotes(notes) {
+      return notes is map &&
+             notes.size() <= 17 &&
+             notes.keys().hasOnly([
+               'lessonNotes', 'termlyDrill', 'cbtExams', 'examPrep', 'scienceFormulas', 'uniformVerification',
+               'aiCoach', 'gamesHub', 'tutorMarketplace', 'virtualClassroom', 'competitions', 'aspirantHub', 'communityForum',
+               'parentPortal', 'tutorPortal', 'schoolAdminPortal', 'growthPartnerPortal'
+             ]) &&
+             (!('lessonNotes' in notes) || (notes.lessonNotes is string && notes.lessonNotes.size() <= 240)) &&
+             (!('termlyDrill' in notes) || (notes.termlyDrill is string && notes.termlyDrill.size() <= 240)) &&
+             (!('cbtExams' in notes) || (notes.cbtExams is string && notes.cbtExams.size() <= 240)) &&
+             (!('examPrep' in notes) || (notes.examPrep is string && notes.examPrep.size() <= 240)) &&
+             (!('scienceFormulas' in notes) || (notes.scienceFormulas is string && notes.scienceFormulas.size() <= 240)) &&
+             (!('uniformVerification' in notes) || (notes.uniformVerification is string && notes.uniformVerification.size() <= 240)) &&
+             (!('aiCoach' in notes) || (notes.aiCoach is string && notes.aiCoach.size() <= 240)) &&
+             (!('gamesHub' in notes) || (notes.gamesHub is string && notes.gamesHub.size() <= 240)) &&
+             (!('tutorMarketplace' in notes) || (notes.tutorMarketplace is string && notes.tutorMarketplace.size() <= 240)) &&
+             (!('virtualClassroom' in notes) || (notes.virtualClassroom is string && notes.virtualClassroom.size() <= 240)) &&
+             (!('competitions' in notes) || (notes.competitions is string && notes.competitions.size() <= 240)) &&
+             (!('aspirantHub' in notes) || (notes.aspirantHub is string && notes.aspirantHub.size() <= 240)) &&
+             (!('communityForum' in notes) || (notes.communityForum is string && notes.communityForum.size() <= 240)) &&
+             (!('parentPortal' in notes) || (notes.parentPortal is string && notes.parentPortal.size() <= 240)) &&
+             (!('tutorPortal' in notes) || (notes.tutorPortal is string && notes.tutorPortal.size() <= 240)) &&
+             (!('schoolAdminPortal' in notes) || (notes.schoolAdminPortal is string && notes.schoolAdminPortal.size() <= 240)) &&
+             (!('growthPartnerPortal' in notes) || (notes.growthPartnerPortal is string && notes.growthPartnerPortal.size() <= 240));
+    }
+
+    function isValidOtaAppRelease(data) {
+      return data.keys().hasAll(['id', 'latestVersion', 'minimumSupportedVersion', 'upgradeMode', 'releaseTitle', 'releaseNotes', 'featureHighlights', 'featureFlags', 'defaultPausedMessage', 'pausedFeatureNotes', 'maintenanceMode', 'maintenanceMessage', 'publishedAt', 'publishedBy']) &&
+             data.keys().hasOnly(['id', 'latestVersion', 'minimumSupportedVersion', 'upgradeMode', 'releaseTitle', 'releaseNotes', 'featureHighlights', 'downloadUrl', 'featureFlags', 'defaultPausedMessage', 'pausedFeatureNotes', 'maintenanceMode', 'maintenanceMessage', 'publishedAt', 'publishedBy']) &&
+             data.id is string && isValidId(data.id) &&
+             data.latestVersion is string && data.latestVersion.size() >= 5 && data.latestVersion.size() <= 32 && data.latestVersion.matches('^v?[0-9]+\\.[0-9]+\\.[0-9]+$') &&
+             data.minimumSupportedVersion is string && data.minimumSupportedVersion.size() >= 5 && data.minimumSupportedVersion.size() <= 32 && data.minimumSupportedVersion.matches('^v?[0-9]+\\.[0-9]+\\.[0-9]+$') &&
+             data.upgradeMode in ['mild', 'recommended', 'mandatory'] &&
+             data.releaseTitle is string && data.releaseTitle.size() >= 1 && data.releaseTitle.size() <= 160 &&
+             data.releaseNotes is string && data.releaseNotes.size() <= 2000 &&
+             data.featureHighlights is list && data.featureHighlights.size() <= 10 &&
+             (data.featureHighlights.size() == 0 || data.featureHighlights[0] is string) &&
+             (!('downloadUrl' in data) || (data.downloadUrl is string && data.downloadUrl.size() <= 500)) &&
+             isValidOtaFeatureFlags(data.featureFlags) &&
+             data.defaultPausedMessage is string && data.defaultPausedMessage.size() <= 300 &&
+             isValidPausedFeatureNotes(data.pausedFeatureNotes) &&
+             data.maintenanceMode is bool &&
+             data.maintenanceMessage is string && data.maintenanceMessage.size() <= 500 &&
+             data.publishedAt is string && data.publishedAt.size() <= 100 &&
+             data.publishedBy is string && data.publishedBy.size() <= 150;
+    }
+
+    function isValidOtaNotificationBroadcast(data) {
+      return data.keys().hasAll(['id', 'title', 'body', 'category', 'targetRoles', 'deepLinkTab', 'actionLabel', 'priority', 'isActive', 'createdAt', 'createdBy']) &&
+             data.keys().hasOnly(['id', 'title', 'body', 'category', 'targetRoles', 'deepLinkTab', 'actionLabel', 'priority', 'isActive', 'createdAt', 'createdBy']) &&
+             data.id is string && isValidId(data.id) &&
+             data.title is string && data.title.size() >= 1 && data.title.size() <= 90 &&
+             data.body is string && data.body.size() >= 1 && data.body.size() <= 280 &&
+             data.category in ['streak_risk', 'inactivity_nudge', 'ota_engagement'] &&
+             data.targetRoles is list && data.targetRoles.size() >= 1 && data.targetRoles.size() <= 6 &&
+             data.deepLinkTab is string && data.deepLinkTab.size() >= 1 && data.deepLinkTab.size() <= 64 &&
+             data.actionLabel is string && data.actionLabel.size() >= 1 && data.actionLabel.size() <= 40 &&
+             data.priority in ['standard', 'high'] &&
+             data.isActive is bool &&
+             data.createdAt is string && data.createdAt.size() <= 100 &&
+             data.createdBy is string && data.createdBy.size() <= 150;
+    }
+
     // --- COLLECTION RULES ---
 
     // 1. Students Collection
@@ -473,6 +568,22 @@ service cloud.firestore {
       allow create: if isAdmin() && isValidId(noteId) && incoming().id == noteId && isValidAdminLessonNote(incoming());
       allow update: if isAdmin() && isValidId(noteId) && incoming().id == existing().id && incoming().createdAt == existing().createdAt && isValidAdminLessonNote(incoming());
       allow delete: if isAdmin() && isValidId(noteId);
+    }
+
+    // 23. OTA App Releases & Version Upgrades (Public read; Super Admin only write)
+    match /otaAppReleases/{releaseId} {
+      allow get, list: if true;
+      allow create: if isAdmin() && isValidId(releaseId) && incoming().id == releaseId && isValidOtaAppRelease(incoming());
+      allow update: if isAdmin() && isValidId(releaseId) && incoming().id == existing().id && isValidOtaAppRelease(incoming());
+      allow delete: if isAdmin() && isValidId(releaseId);
+    }
+
+    // 24. OTA Notification & Draw-Back Reminder Broadcasts (Public read; Super Admin only write)
+    match /otaNotifications/{notificationId} {
+      allow get, list: if true;
+      allow create: if isAdmin() && isValidId(notificationId) && incoming().id == notificationId && isValidOtaNotificationBroadcast(incoming());
+      allow update: if isAdmin() && isValidId(notificationId) && incoming().id == existing().id && isValidOtaNotificationBroadcast(incoming());
+      allow delete: if isAdmin() && isValidId(notificationId);
     }
   }
 }

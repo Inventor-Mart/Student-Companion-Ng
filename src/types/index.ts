@@ -928,6 +928,124 @@ export interface OTASchoolLeagueConfig {
   updatedBy: string;
 }
 
+export type OTAUpgradeMode = 'mild' | 'recommended' | 'mandatory';
 
+export type OTAFeatureKey =
+  // Study & Assessments
+  | 'lessonNotes'
+  | 'termlyDrill'
+  | 'cbtExams'
+  | 'examPrep'
+  | 'scienceFormulas'
+  | 'uniformVerification'
+  // Enrichment, AI & Tutoring
+  | 'aiCoach'
+  | 'gamesHub'
+  | 'tutorMarketplace'
+  | 'virtualClassroom'
+  | 'competitions'
+  | 'aspirantHub'
+  | 'communityForum'
+  // Role Portals
+  | 'parentPortal'
+  | 'tutorPortal'
+  | 'schoolAdminPortal'
+  | 'growthPartnerPortal';
+
+export type OTAFeatureFlags = Record<OTAFeatureKey, boolean>;
+
+export interface OTAAppReleaseConfig {
+  id: string; // 'active_release'
+  latestVersion: string; // Semantic version e.g. '2.4.0'
+  minimumSupportedVersion: string; // Semantic version e.g. '2.2.0'
+  upgradeMode: OTAUpgradeMode;
+  releaseTitle: string;
+  releaseNotes: string;
+  featureHighlights: string[];
+  downloadUrl?: string; // Optional Play Store / APK download link
+  featureFlags: OTAFeatureFlags;
+  defaultPausedMessage: string;
+  pausedFeatureNotes: Partial<Record<OTAFeatureKey, string>>;
+  maintenanceMode: boolean;
+  maintenanceMessage: string;
+  publishedAt: string;
+  publishedBy: string;
+}
+
+// ==========================================
+// CROSS-PERSONA NOTIFICATIONS & REMINDERS
+// ==========================================
+
+export type NotificationCategory = 'streak_risk' | 'inactivity_nudge' | 'ota_engagement';
+
+export type NotificationSource = 'automated_streak' | 'automated_inactivity' | 'ota_broadcast';
+
+export type NotificationDeepLinkTab =
+  | 'dashboard'
+  | 'syllabus'
+  | 'cbt'
+  | 'competitions'
+  | 'formulas'
+  | 'tutors'
+  | 'games'
+  | 'ai-coach'
+  | 'community'
+  | 'exam-prep'
+  | 'aspirant-cbt'
+  | 'admission-guide'
+  | 'mock-tournaments'
+  | 'parent_overview'
+  | 'parent_approvals'
+  | 'parent_community'
+  | 'tutor_overview'
+  | 'tutor_sessions'
+  | 'tutor_profile'
+  | 'tutor_chat'
+  | 'school_overview'
+  | 'school_publishing'
+  | 'school_materials'
+  | 'school_students'
+  | 'partner_overview'
+  | 'partner_referrals'
+  | 'partner_transactions'
+  | 'partner_marketing';
+
+export interface AppNotificationItem {
+  id: string;
+  source: NotificationSource;
+  category: NotificationCategory;
+  targetRoles: (UserRole | 'all')[];
+  title: string;
+  body: string;
+  deepLinkTab: NotificationDeepLinkTab;
+  actionLabel: string;
+  createdAt: string;
+  read: boolean;
+  priority?: 'standard' | 'high';
+}
+
+export interface OTANotificationBroadcast {
+  id: string;
+  title: string;
+  body: string;
+  category: NotificationCategory;
+  targetRoles: (UserRole | 'all')[];
+  deepLinkTab: NotificationDeepLinkTab;
+  actionLabel: string;
+  priority: 'standard' | 'high';
+  isActive: boolean;
+  createdAt: string;
+  createdBy: string;
+}
+
+export interface NotificationPreferences {
+  browserPushEnabled: boolean;
+  streakReminders: boolean;
+  inactivityNudges: boolean;
+  otaBroadcasts: boolean;
+  quietHoursEnabled: boolean;
+  quietStartHour: number;
+  quietEndHour: number;
+}
 
 

@@ -33,6 +33,7 @@ import { PopupAnnouncementModal } from './components/student/PopupAnnouncementMo
 import { StudentSubscriptionModal } from './components/student/StudentSubscriptionModal';
 import { XPAwardNotification } from './components/student/XPAwardNotification';
 import { SplashScreen } from './components/common/SplashScreen';
+import { AppUpdateGate, OTAModulePausedCard, PausedFeatureModal } from './components/common/AppUpdateGate';
 
 const AppContent: React.FC = () => {
   const [quotaExceeded, setQuotaExceeded] = React.useState(false);
@@ -57,6 +58,9 @@ const AppContent: React.FC = () => {
     setCurrentScreen,
     isAuthenticated,
     isSuperAdmin,
+    isFeatureEnabled,
+    getPausedFeatureMessage,
+    signOutApp,
     isStudentSubscriptionModalOpen,
     targetSubscriptionPlan,
     closeStudentSubscriptionModal
@@ -77,12 +81,15 @@ const AppContent: React.FC = () => {
   // Screen 1: The New Concept Landing Page (Public Discovery)
   if (currentScreen === 'landing') {
     return (
-      <LandingPage
+      <>
+        <AppUpdateGate />
+        <LandingPage
         onOpenKnowMore={() => setCurrentScreen('know_more')}
         onGetStarted={() => {
           setTargetSignUpRole(null);
           setCurrentScreen('signup');
         }}
+        onSignIn={() => setCurrentScreen('signin')}
         onDiscoverTutors={() => {
           if (!isAuthenticated) {
             setTargetSignUpRole('student');
@@ -118,6 +125,7 @@ const AppContent: React.FC = () => {
           }
         }}
       />
+      </>
     );
   }
 
@@ -179,6 +187,9 @@ const AppContent: React.FC = () => {
 
   return (
     <div className="w-full min-h-screen bg-[#070D18] flex flex-col items-center justify-center font-sans text-slate-100 selection:bg-[#FF5B00] selection:text-white relative">
+      {/* Global OTA App Update Banner, Recommended Modal & Mandatory Upgrade Lock */}
+      <AppUpdateGate />
+
       {/* Google Maps Quota Exceeded Sticky Banner */}
       {quotaExceeded && (
         <div className="w-full bg-amber-50 border-b border-amber-200 text-amber-900 px-4 py-2.5 text-xs md:text-sm text-center sticky top-0 z-50 shadow-sm">
@@ -216,18 +227,138 @@ const AppContent: React.FC = () => {
 
                 <div className="flex-1 min-h-0 w-full overflow-hidden flex flex-col">
                   {activeStudentTab === 'dashboard' && <StudentDashboard />}
-                  {activeStudentTab === 'aspirant-cbt' && <AspirantCBTSimulator />}
-                  {activeStudentTab === 'admission-guide' && <UniversityAdmissionGuide />}
-                  {activeStudentTab === 'mock-tournaments' && <NationalMockTournaments />}
-                  {activeStudentTab === 'ai-coach' && <AiStudyCoach />}
-                  {activeStudentTab === 'syllabus' && <SchemeOfWorkHub />}
-                  {activeStudentTab === 'cbt' && <CBTEngine />}
-                  {activeStudentTab === 'competitions' && <CompetitionsHub />}
-                  {activeStudentTab === 'formulas' && <ScienceFormulasHub />}
-                  {activeStudentTab === 'tutors' && <TutorDiscovery />}
-                  {activeStudentTab === 'games' && <GamesHub />}
-                  {activeStudentTab === 'community' && <StudentCommunityForum />}
-                  {activeStudentTab === 'exam-prep' && <PrepareForExamHub />}
+                  {activeStudentTab === 'aspirant-cbt' && (
+                    isFeatureEnabled('aspirantHub') ? (
+                      <AspirantCBTSimulator />
+                    ) : (
+                      <OTAModulePausedCard
+                        moduleName="Aspirant CBT Simulator"
+                        message={getPausedFeatureMessage('aspirantHub')}
+                        onBackToDashboard={() => setActiveStudentTab('dashboard')}
+                      />
+                    )
+                  )}
+                  {activeStudentTab === 'admission-guide' && (
+                    isFeatureEnabled('aspirantHub') ? (
+                      <UniversityAdmissionGuide />
+                    ) : (
+                      <OTAModulePausedCard
+                        moduleName="University Admission Guide"
+                        message={getPausedFeatureMessage('aspirantHub')}
+                        onBackToDashboard={() => setActiveStudentTab('dashboard')}
+                      />
+                    )
+                  )}
+                  {activeStudentTab === 'mock-tournaments' && (
+                    isFeatureEnabled('aspirantHub') ? (
+                      <NationalMockTournaments />
+                    ) : (
+                      <OTAModulePausedCard
+                        moduleName="National Mock Tournaments"
+                        message={getPausedFeatureMessage('aspirantHub')}
+                        onBackToDashboard={() => setActiveStudentTab('dashboard')}
+                      />
+                    )
+                  )}
+                  {activeStudentTab === 'ai-coach' && (
+                    isFeatureEnabled('aiCoach') ? (
+                      <AiStudyCoach />
+                    ) : (
+                      <OTAModulePausedCard
+                        moduleName="SC AI Study Coach"
+                        message={getPausedFeatureMessage('aiCoach')}
+                        onBackToDashboard={() => setActiveStudentTab('dashboard')}
+                      />
+                    )
+                  )}
+                  {activeStudentTab === 'syllabus' && (
+                    isFeatureEnabled('lessonNotes') ? (
+                      <SchemeOfWorkHub />
+                    ) : (
+                      <OTAModulePausedCard
+                        moduleName="Lesson Notes & NERDC Syllabus"
+                        message={getPausedFeatureMessage('lessonNotes')}
+                        onBackToDashboard={() => setActiveStudentTab('dashboard')}
+                      />
+                    )
+                  )}
+                  {activeStudentTab === 'cbt' && (
+                    isFeatureEnabled('cbtExams') ? (
+                      <CBTEngine />
+                    ) : (
+                      <OTAModulePausedCard
+                        moduleName="CBT Exam Practice & Quizzes"
+                        message={getPausedFeatureMessage('cbtExams')}
+                        onBackToDashboard={() => setActiveStudentTab('dashboard')}
+                      />
+                    )
+                  )}
+                  {activeStudentTab === 'competitions' && (
+                    isFeatureEnabled('competitions') ? (
+                      <CompetitionsHub />
+                    ) : (
+                      <OTAModulePausedCard
+                        moduleName="Competitions & School League"
+                        message={getPausedFeatureMessage('competitions')}
+                        onBackToDashboard={() => setActiveStudentTab('dashboard')}
+                      />
+                    )
+                  )}
+                  {activeStudentTab === 'formulas' && (
+                    isFeatureEnabled('scienceFormulas') ? (
+                      <ScienceFormulasHub />
+                    ) : (
+                      <OTAModulePausedCard
+                        moduleName="STEM Formulas Sheet"
+                        message={getPausedFeatureMessage('scienceFormulas')}
+                        onBackToDashboard={() => setActiveStudentTab('dashboard')}
+                      />
+                    )
+                  )}
+                  {activeStudentTab === 'tutors' && (
+                    isFeatureEnabled('tutorMarketplace') ? (
+                      <TutorDiscovery />
+                    ) : (
+                      <OTAModulePausedCard
+                        moduleName="Tutor Marketplace & Booking"
+                        message={getPausedFeatureMessage('tutorMarketplace')}
+                        onBackToDashboard={() => setActiveStudentTab('dashboard')}
+                      />
+                    )
+                  )}
+                  {activeStudentTab === 'games' && (
+                    isFeatureEnabled('gamesHub') ? (
+                      <GamesHub />
+                    ) : (
+                      <OTAModulePausedCard
+                        moduleName="Games & Brain Arcade"
+                        message={getPausedFeatureMessage('gamesHub')}
+                        onBackToDashboard={() => setActiveStudentTab('dashboard')}
+                      />
+                    )
+                  )}
+                  {activeStudentTab === 'community' && (
+                    isFeatureEnabled('communityForum') ? (
+                      <StudentCommunityForum />
+                    ) : (
+                      <OTAModulePausedCard
+                        moduleName="Student Community Forum"
+                        message={getPausedFeatureMessage('communityForum')}
+                        onBackToDashboard={() => setActiveStudentTab('dashboard')}
+                      />
+                    )
+                  )}
+                  {activeStudentTab === 'exam-prep' && (
+                    isFeatureEnabled('examPrep') ? (
+                      <PrepareForExamHub />
+                    ) : (
+                      <OTAModulePausedCard
+                        moduleName="Prepare For Exam Planner"
+                        message={getPausedFeatureMessage('examPrep')}
+                        onBackToDashboard={() => setActiveStudentTab('dashboard')}
+                      />
+                    )
+                  )}
                   {activeStudentTab === 'educator-importer' && (
                     isSuperAdmin ? (
                       <EducatorQuestionImporter
@@ -265,18 +396,78 @@ const AppContent: React.FC = () => {
           </div>
         )}
 
-        {currentRole === 'growth_partner' && <GrowthPartnerPortal />}
+        {currentRole === 'growth_partner' && (
+          isFeatureEnabled('growthPartnerPortal') ? (
+            <GrowthPartnerPortal />
+          ) : (
+            <OTAModulePausedCard
+              moduleName="Growth Partner Portal"
+              message={getPausedFeatureMessage('growthPartnerPortal')}
+              actionLabel="Sign Out / Switch Account"
+              onBackToDashboard={signOutApp}
+            />
+          )
+        )}
 
-        {currentRole === 'parent' && <ParentPortal />}
+        {currentRole === 'parent' && (
+          isFeatureEnabled('parentPortal') ? (
+            <ParentPortal />
+          ) : (
+            <OTAModulePausedCard
+              moduleName="Parent Guardian Portal"
+              message={getPausedFeatureMessage('parentPortal')}
+              actionLabel="Sign Out / Switch Account"
+              onBackToDashboard={signOutApp}
+            />
+          )
+        )}
 
-        {currentRole === 'tutor' && <TutorPortal />}
+        {currentRole === 'tutor' && (
+          isFeatureEnabled('tutorPortal') ? (
+            <TutorPortal />
+          ) : (
+            <OTAModulePausedCard
+              moduleName="Educator / Tutor Portal"
+              message={getPausedFeatureMessage('tutorPortal')}
+              actionLabel="Sign Out / Switch Account"
+              onBackToDashboard={signOutApp}
+            />
+          )
+        )}
 
-        {currentRole === 'school_admin' && <SchoolAdminPortal />}
+        {currentRole === 'school_admin' && (
+          isFeatureEnabled('schoolAdminPortal') ? (
+            <SchoolAdminPortal />
+          ) : (
+            <OTAModulePausedCard
+              moduleName="School Administrator Portal"
+              message={getPausedFeatureMessage('schoolAdminPortal')}
+              actionLabel="Sign Out / Switch Account"
+              onBackToDashboard={signOutApp}
+            />
+          )
+        )}
 
-        {currentRole === 'admin' && (isSuperAdmin ? <SuperAdminPortal /> : <SchoolAdminPortal />)}
+        {currentRole === 'admin' && (
+          isSuperAdmin ? (
+            <SuperAdminPortal />
+          ) : isFeatureEnabled('schoolAdminPortal') ? (
+            <SchoolAdminPortal />
+          ) : (
+            <OTAModulePausedCard
+              moduleName="School Administrator Portal"
+              message={getPausedFeatureMessage('schoolAdminPortal')}
+              actionLabel="Sign Out / Switch Account"
+              onBackToDashboard={signOutApp}
+            />
+          )
+        )}
 
         {/* Global Virtual Classroom Modal Overlay */}
         <VirtualClassroomModal />
+
+        {/* Global Paused Feature Notice Modal (for modal/action-triggered modules) */}
+        <PausedFeatureModal />
       </AndroidDeviceFrame>
     </div>
   );

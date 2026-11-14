@@ -695,3 +695,97 @@ export function speakText(text: string, rate: number = 0.9): Promise<void> {
     }
   });
 }
+
+let cachedChimeAvailability: 'unknown' | 'available' | 'missing' = 'unknown';
+
+/**
+ * Unlocks Web Audio cleanly during the initial Sign-In tap gesture
+ * so async login completion audio never gets blocked by browser autoplay rules.
+ */
+export function primeLoginAudio(): void {
+  if (isSoundMuted) return;
+  try {
+    getAudioContext();
+  } catch {}
+}
+
+function playSuccessChimeSynth(): void {
+  if (isSoundMuted) return;
+  try {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+
+    // Uplifting Cmaj9 harmonic bell chime
+    const notes = [
+      { freq: 523.25, delay: 0, gain: 0.14, dur: 0.32 },     // C5
+      { freq: 659.25, delay: 0.07, gain: 0.14, dur: 0.34 },  // E5
+      { freq: 783.99, delay: 0.14, gain: 0.15, dur: 0.38 },  // G5
+      { freq: 987.77, delay: 0.21, gain: 0.12, dur: 0.42 },  // B5
+      { freq: 1046.5, delay: 0.26, gain: 0.16, dur: 0.55 }   // C6
+    ];
+
+    notes.forEach(({ freq, delay, gain, dur }) => {
+      const osc = ctx.createOscillator();
+      const overtone = ctx.createOscillator();
+      const noteGain = ctx.createGain();
+      const overtoneGain = ctx.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, now + delay);
+
+      overtone.type = 'triangle';
+      overtone.frequency.setValueAtTime(freq * 2, now + delay);
+
+      noteGain.gain.setValueAtTime(0.001, now + delay);
+      noteGain.gain.linearRampToValueAtTime(gain, now + delay + 0.015);
+      noteGain.gain.exponentialRampToValueAtTime(0.0008, now + delay + dur);
+
+      overtoneGain.gain.setValueAtTime(0.001, now + delay);
+      overtoneGain.gain.linearRampToValueAtTime(gain * 0.22, now + delay + 0.015);
+      overtoneGain.gain.exponentialRampToValueAtTime(0.0005, now + delay + dur * 0.6);
+
+      osc.connect(noteGain);
+      overtone.connect(overtoneGain);
+      noteGain.connect(ctx.destination);
+      overtoneGain.connect(ctx.destination);
+
+      osc.start(now + delay);
+      overtone.start(now + delay);
+      osc.stop(now + delay + dur + 0.02);
+      overtone.stop(now + delay + dur + 0.02);
+    });
+  } catch {}
+}
+
+/**
+ * Plays /assets/audio/success_chime.m4a when present as a real audio asset,
+ * falling back seamlessly to a crisp Web Audio success chime synthesizer.
+ */
+export async function playLoginSuccessChime(): Promise<void> {
+  if (isSoundMuted || typeof window === 'undefined') return;
+  triggerHaptic('medium');
+
+  try {
+    if (cachedChimeAvailability === 'unknown') {
+      const probe = await fetch('/assets/audio/success_chime.m4a', { method: 'HEAD' });
+      const contentType = probe.headers.get('content-type') || '';
+      cachedChimeAvailability =
+        probe.ok && (contentType.startsWith('audio/') || contentType.includes('mp4') || contentType.includes('octet-stream'))
+          ? 'available'
+          : 'missing';
+    }
+
+    if (cachedChimeAvailability === 'available') {
+      const audio = new Audio('/assets/audio/success_chime.m4a');
+      audio.volume = 0.8;
+      await audio.play();
+      return;
+    }
+  } catch {
+    cachedChimeAvailability = 'missing';
+  }
+
+  playSuccessChimeSynth();
+}
+
