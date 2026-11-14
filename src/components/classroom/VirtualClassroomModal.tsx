@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { CollaborativeWhiteboard } from './CollaborativeWhiteboard';
 import { ClassroomCanvasHUD } from './ClassroomCanvasHUD';
+import { InteractiveStemFormulaDrawer } from './InteractiveStemFormulaDrawer';
 import { ClassroomChatMessage } from '../../types';
-import { NairaText, NairaSign } from '../../utils/currency';
+import { NairaText } from '../../utils/currency';
 import {
   Mic,
   MicOff,
@@ -18,9 +19,7 @@ import {
   Star,
   Sparkles,
   Wifi,
-  ChevronRight,
-  Award,
-  AlertCircle
+  Calculator
 } from 'lucide-react';
 
 const QUICK_MATH_FORMULAS = [
@@ -53,6 +52,8 @@ export const VirtualClassroomModal: React.FC = () => {
   const [sessionRating, setSessionRating] = useState<number>(5);
   const [studentFeedback, setStudentFeedback] = useState<string>('Excellent lesson! Clear step-by-step explanations.');
   const [isReleasingEscrow, setIsReleasingEscrow] = useState<boolean>(false);
+  const [pendingBoardFormula, setPendingBoardFormula] = useState<{ id: number; latex: string } | null>(null);
+  const [isSideFormulaBuilderOpen, setIsSideFormulaBuilderOpen] = useState<boolean>(true);
 
   // Sync initial messages when session loads
   useEffect(() => {
@@ -242,6 +243,7 @@ export const VirtualClassroomModal: React.FC = () => {
             topic={activeClassroomSession.topic}
             subject={activeClassroomSession.subject}
             tutorName={activeClassroomSession.tutorName}
+            externalFormulaToStamp={pendingBoardFormula}
           />
         </div>
 
@@ -337,8 +339,40 @@ export const VirtualClassroomModal: React.FC = () => {
               </form>
             </div>
           ) : (
-            /* Curriculum Formulas & Study Tips Drawer */
+            /* Curriculum Formulas Value Input & Quick Reference Drawer */
             <div className="flex-1 overflow-y-auto p-3 space-y-3 text-xs">
+              {isSideFormulaBuilderOpen ? (
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between px-1">
+                    <span className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
+                      <Calculator className="w-3.5 h-3.5" />
+                      <span>Formula Value Input</span>
+                    </span>
+                    <span className="text-[10px] text-slate-400">Enter values & stamp</span>
+                  </div>
+                  <InteractiveStemFormulaDrawer
+                    insertButtonLabel="Send to Chat"
+                    onStampFormula={(latex) => {
+                      setPendingBoardFormula({ id: Date.now(), latex });
+                    }}
+                    onInsertLatex={(latex) => {
+                      setChatInput(prev => (prev ? `${prev} ${latex}` : latex));
+                      setActiveSideTab('chat');
+                    }}
+                    onClose={() => setIsSideFormulaBuilderOpen(false)}
+                  />
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setIsSideFormulaBuilderOpen(true)}
+                  className="w-full py-2.5 px-3 rounded-xl bg-emerald-950/70 hover:bg-emerald-900/70 border border-emerald-700/60 text-emerald-300 font-bold text-xs flex items-center justify-center gap-2 cursor-pointer transition-colors"
+                >
+                  <Calculator className="w-4 h-4" />
+                  <span>Open Formula Value Input</span>
+                </button>
+              )}
+
               <div className="bg-slate-950 p-3 rounded-2xl border border-slate-800 space-y-2">
                 <span className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider block">
                   WAEC & JAMB High-Yield Formulas
@@ -370,7 +404,7 @@ export const VirtualClassroomModal: React.FC = () => {
                   Child Safety & Integrity Rule
                 </span>
                 <p className="text-[11px] text-slate-400 leading-relaxed">
-                  Sessions are protected under Nigeria's Child Online Safety Guidelines. All whiteboard snapshots and chats are securely logged for quality assurance.
+                  Sessions are protected under Nigeria's Child Online Safety Guidelines. Video recording is paused; use Save Notes for static PNG board captures.
                 </p>
               </div>
             </div>

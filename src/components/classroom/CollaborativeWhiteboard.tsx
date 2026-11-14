@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect, useCallback } from 'react';
+import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react';
 import { WhiteboardTool, WhiteboardStroke, BoardStickerNote, WhiteboardGridMode } from '../../types';
 import {
   Pen,
@@ -12,26 +12,21 @@ import {
   RotateCw,
   Trash2,
   Download,
-  Grid,
-  FileText,
-  SquareDashed,
   Sparkles,
   Type,
   Mic,
-  MicOff,
   Check,
   X,
   Plus,
   GripVertical,
   Edit3,
-  Move,
   Layers,
-  ChevronDown,
-  Video
+  ChevronDown
 } from 'lucide-react';
 import { renderFormattedMathText, MATH_SHORTCUTS } from '../../utils/mathRenderer';
 import { InteractiveStemFormulaDrawer } from './InteractiveStemFormulaDrawer';
-import { SessionRecordingModal } from './SessionRecordingModal';
+
+const LESSON_RECORDING_PAUSED = true;
 
 interface CollaborativeWhiteboardProps {
   participantRole: 'student' | 'tutor';
@@ -39,7 +34,95 @@ interface CollaborativeWhiteboardProps {
   subject?: string;
   tutorName?: string;
   onStrokeDrawn?: (stroke: WhiteboardStroke) => void;
+  externalFormulaToStamp?: { id: number; latex: string } | null;
 }
+
+interface BoardStickerItemProps {
+  note: BoardStickerNote;
+  gridMode: WhiteboardGridMode;
+  isDragging: boolean;
+  onStartDrag: (note: BoardStickerNote, e: React.PointerEvent<HTMLDivElement>) => void;
+  onPointerMove: (e: React.PointerEvent<HTMLDivElement>) => void;
+  onPointerUp: (e: React.PointerEvent<HTMLDivElement>) => void;
+  onEdit: (note: BoardStickerNote, e: React.MouseEvent) => void;
+  onDelete: (noteId: string, e: React.MouseEvent) => void;
+}
+
+const BoardStickerItem = React.memo<BoardStickerItemProps>(({
+  note,
+  gridMode,
+  isDragging,
+  onStartDrag,
+  onPointerMove,
+  onPointerUp,
+  onEdit,
+  onDelete
+}) => {
+  // Memoize KaTeX formatting strictly by note text so typing, tool switching, or dragging never re-runs LaTeX parsing
+  const renderedHtml = useMemo(() => renderFormattedMathText(note.text), [note.text]);
+
+  const displayColor =
+    gridMode === 'whiteboard' && (note.color === '#F8FAFC' || note.color === '#ffffff')
+      ? '#0F172A'
+      : note.color;
+
+  return (
+    <div
+      data-note-id={note.id}
+      onPointerDown={e => onStartDrag(note, e)}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerUp}
+      onDoubleClick={e => onEdit(note, e)}
+      style={{
+        transform: `translate3d(${note.x}px, ${note.y}px, 0)`,
+        touchAction: 'none'
+      }}
+      className={`absolute top-0 left-0 z-10 max-w-xs sm:max-w-md select-none group p-1.5 rounded-lg ${
+        isDragging
+          ? 'cursor-grabbing border border-dashed border-emerald-400/80 bg-emerald-950/20 z-30'
+          : 'cursor-grab bg-transparent border border-transparent hover:border-dashed hover:border-slate-500/50 hover:bg-slate-900/20'
+      }`}
+    >
+      {/* Subtle On-Hover Micro-Toolbar */}
+      <div className="absolute -top-7 left-0 hidden group-hover:flex items-center gap-1 bg-slate-900/95 px-2 py-0.5 rounded-md border border-slate-700 text-[10px] text-slate-300 shadow-xl pointer-events-auto z-40">
+        <GripVertical className="w-3 h-3 text-slate-400" />
+        <span className="font-semibold text-[9px] uppercase tracking-wider text-slate-400">
+          {note.authorRole}
+        </span>
+        <div className="w-[1px] h-3 bg-slate-700 mx-0.5" />
+        <button
+          type="button"
+          onClick={e => onEdit(note, e)}
+          className="p-0.5 rounded hover:bg-slate-800 text-slate-300 hover:text-emerald-400 transition-colors cursor-pointer"
+          title="Double-click or click to edit text"
+        >
+          <Edit3 className="w-2.5 h-2.5" />
+        </button>
+        <button
+          type="button"
+          onClick={e => onDelete(note.id, e)}
+          className="p-0.5 rounded hover:bg-slate-800 text-slate-400 hover:text-rose-400 transition-colors cursor-pointer"
+          title="Delete note"
+        >
+          <Trash2 className="w-2.5 h-2.5" />
+        </button>
+      </div>
+
+      {/* Embedded Surface Note Content */}
+      <div
+        style={{
+          color: displayColor,
+          fontSize: `${note.fontSize}px`,
+          lineHeight: 1.45,
+          textShadow: gridMode === 'whiteboard' ? 'none' : '0 1px 2px rgba(0,0,0,0.5)'
+        }}
+        className="font-semibold whitespace-pre-wrap break-words tracking-normal leading-relaxed"
+        dangerouslySetInnerHTML={{ __html: renderedHtml }}
+      />
+    </div>
+  );
+});
 
 const COLOR_PALETTE = [
   { name: 'Chalk White', hex: '#F8FAFC' },
@@ -80,11 +163,12 @@ const MATH_STAMPS = ['∫', '∑', '√x', 'π', 'θ', 'd/dx', '⇌', 'Δ', 'λ'
 const CollaborativeWhiteboardComponent: React.FC<CollaborativeWhiteboardProps> = ({
   participantRole,
   topic,
-  subject,
-  tutorName,
-  onStrokeDrawn
+  onStrokeDrawn,
+  externalFormulaToStamp
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const bgCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const bgCacheKeyRef = useRef<string>('');
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   // Tools & Appearance
@@ -135,14 +219,17 @@ const CollaborativeWhiteboardComponent: React.FC<CollaborativeWhiteboardProps> =
   } | null>(null);
   const [isStemDrawerOpen, setIsStemDrawerOpen] = useState<boolean>(false);
 
-  // Dragging state for sticker notes
+  // Dragging state for sticker notes (transform-only during move for 0-lag)
   const [draggingNoteId, setDraggingNoteId] = useState<string | null>(null);
   const dragStartPosRef = useRef<{
     noteId: string;
+    element: HTMLDivElement;
     startPointerX: number;
     startPointerY: number;
     noteStartX: number;
     noteStartY: number;
+    latestX: number;
+    latestY: number;
   } | null>(null);
 
   // Speech-to-Text State
@@ -151,38 +238,36 @@ const CollaborativeWhiteboardComponent: React.FC<CollaborativeWhiteboardProps> =
   const [speechError, setSpeechError] = useState<string | null>(null);
   const recognitionRef = useRef<any>(null);
 
-  // ==========================================
-  // LIVE SESSION RECORDING & CLOUD DISPATCH STATE
-  // Target Account: studentcompanion.ng@gmail.com
-  // ==========================================
-  const [isRecording, setIsRecording] = useState<boolean>(false);
-  const [recordingDuration, setRecordingDuration] = useState<number>(0);
-  const [capturedVideoBlob, setCapturedVideoBlob] = useState<Blob | null>(null);
-  const [isRecordingModalOpen, setIsRecordingModalOpen] = useState<boolean>(false);
-  const [recordingError, setRecordingError] = useState<string | null>(null);
-
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const recordedChunksRef = useRef<Blob[]>([]);
-  const audioStreamRef = useRef<MediaStream | null>(null);
-  const recordingTimerRef = useRef<any>(null);
-
   // High Performance Drawing Refs (Bypasses React State during mouse move for 60FPS)
   const isDrawingRef = useRef<boolean>(false);
   const currentPointsRef = useRef<{ x: number; y: number }[]>([]);
   const rafIdRef = useRef<number | null>(null);
 
-  // Clean up recording on unmount
+  // Stamp custom formula pushed from side Formulas tab into the board
+  const lastExternalStampIdRef = useRef<number | null>(null);
   useEffect(() => {
-    return () => {
-      if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
-      if (audioStreamRef.current) {
-        audioStreamRef.current.getTracks().forEach(t => t.stop());
-      }
-      if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-        try { mediaRecorderRef.current.stop(); } catch {}
-      }
+    if (!externalFormulaToStamp || !externalFormulaToStamp.latex) return;
+    if (lastExternalStampIdRef.current === externalFormulaToStamp.id) return;
+    lastExternalStampIdRef.current = externalFormulaToStamp.id;
+
+    const canvas = canvasRef.current;
+    const posX = canvas ? Math.max(36, Math.min(canvas.width * 0.25, 160)) : 48;
+    const posY = canvas
+      ? Math.max(72, Math.min(canvas.height - 120, 84 + (stickerNotes.length % 5) * 56))
+      : 84;
+
+    const newNote: BoardStickerNote = {
+      id: `sn-stem-${externalFormulaToStamp.id}`,
+      type: 'text',
+      x: posX,
+      y: posY,
+      text: externalFormulaToStamp.latex,
+      color: activeColor,
+      fontSize: 18,
+      authorRole: participantRole
     };
-  }, []);
+    setStickerNotes(prev => [...prev, newNote]);
+  }, [externalFormulaToStamp, activeColor, participantRole, stickerNotes.length]);
 
   // Background selector helper
   const handleSelectBackground = (bg: WhiteboardGridMode) => {
@@ -441,16 +526,35 @@ const CollaborativeWhiteboardComponent: React.FC<CollaborativeWhiteboardProps> =
     ctx.restore();
   };
 
-  // Full canvas redraw function
+  // Full canvas redraw function using cached static offscreen background
   const redrawCanvas = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    drawBackground(ctx, canvas.width, canvas.height);
+    const width = canvas.width;
+    const height = canvas.height;
+    const cacheKey = `${width}x${height}:${gridMode}`;
+
+    if (!bgCanvasRef.current) {
+      bgCanvasRef.current = document.createElement('canvas');
+    }
+    const bgCanvas = bgCanvasRef.current;
+
+    if (bgCacheKeyRef.current !== cacheKey) {
+      bgCanvas.width = width;
+      bgCanvas.height = height;
+      const bgCtx = bgCanvas.getContext('2d');
+      if (bgCtx) {
+        drawBackground(bgCtx, width, height);
+        bgCacheKeyRef.current = cacheKey;
+      }
+    }
+
+    ctx.drawImage(bgCanvas, 0, 0);
     strokes.forEach(stroke => renderSingleStroke(ctx, stroke));
-  }, [drawBackground, strokes]);
+  }, [drawBackground, gridMode, strokes]);
 
   // Sync canvas size on mount/resize
   useEffect(() => {
@@ -677,53 +781,61 @@ const CollaborativeWhiteboardComponent: React.FC<CollaborativeWhiteboardProps> =
   };
 
   // ==========================================
-  // MOVABLE & EDITABLE STICKER NOTE HANDLERS
+  // MOVABLE & EDITABLE STICKER NOTE HANDLERS (ZERO-LAG TRANSFORM DRAG)
   // ==========================================
-  const handleStartDragNote = (note: BoardStickerNote, e: React.PointerEvent) => {
+  const handleStartDragNote = useCallback((note: BoardStickerNote, e: React.PointerEvent<HTMLDivElement>) => {
     e.stopPropagation();
-    const target = e.currentTarget as HTMLElement;
+    const target = e.currentTarget;
     target.setPointerCapture?.(e.pointerId);
     setDraggingNoteId(note.id);
     dragStartPosRef.current = {
       noteId: note.id,
+      element: target,
       startPointerX: e.clientX,
       startPointerY: e.clientY,
       noteStartX: note.x,
-      noteStartY: note.y
+      noteStartY: note.y,
+      latestX: note.x,
+      latestY: note.y
     };
-  };
+  }, []);
 
-  const handlePointerMoveNote = (e: React.PointerEvent) => {
-    if (!dragStartPosRef.current) return;
+  const handlePointerMoveNote = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    const drag = dragStartPosRef.current;
+    if (!drag) return;
     e.stopPropagation();
-    const { noteId, startPointerX, startPointerY, noteStartX, noteStartY } = dragStartPosRef.current;
-    const dx = e.clientX - startPointerX;
-    const dy = e.clientY - startPointerY;
+    const dx = e.clientX - drag.startPointerX;
+    const dy = e.clientY - drag.startPointerY;
+    const container = containerRef.current;
+    const maxX = container ? container.clientWidth - 140 : 1000;
+    const maxY = container ? container.clientHeight - 60 : 800;
+    const nextX = Math.max(10, Math.min(maxX, drag.noteStartX + dx));
+    const nextY = Math.max(50, Math.min(maxY, drag.noteStartY + dy));
 
-    setStickerNotes(prev =>
-      prev.map(n => {
-        if (n.id !== noteId) return n;
-        const container = containerRef.current;
-        const maxX = container ? container.clientWidth - 140 : 1000;
-        const maxY = container ? container.clientHeight - 60 : 800;
-        return {
-          ...n,
-          x: Math.max(10, Math.min(maxX, noteStartX + dx)),
-          y: Math.max(50, Math.min(maxY, noteStartY + dy))
-        };
-      })
-    );
-  };
+    drag.latestX = nextX;
+    drag.latestY = nextY;
+    drag.element.style.transform = `translate3d(${nextX}px, ${nextY}px, 0)`;
+  }, []);
 
-  const handlePointerUpNote = (e: React.PointerEvent) => {
-    if (dragStartPosRef.current) {
-      e.stopPropagation();
-      dragStartPosRef.current = null;
-      setDraggingNoteId(null);
+  const handlePointerUpNote = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    const drag = dragStartPosRef.current;
+    if (!drag) return;
+    e.stopPropagation();
+    const { noteId, latestX, latestY, noteStartX, noteStartY, element } = drag;
+    if (element.hasPointerCapture?.(e.pointerId)) {
+      try { element.releasePointerCapture(e.pointerId); } catch {}
     }
-  };
+    dragStartPosRef.current = null;
+    setDraggingNoteId(null);
 
-  const handleStartEditNote = (note: BoardStickerNote, e?: React.MouseEvent) => {
+    if (latestX !== noteStartX || latestY !== noteStartY) {
+      setStickerNotes(prev =>
+        prev.map(n => (n.id === noteId ? { ...n, x: latestX, y: latestY } : n))
+      );
+    }
+  }, []);
+
+  const handleStartEditNote = useCallback((note: BoardStickerNote, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     setActiveInlineEditor({
       id: note.id,
@@ -734,12 +846,12 @@ const CollaborativeWhiteboardComponent: React.FC<CollaborativeWhiteboardProps> =
       color: note.color,
       isEditingExisting: true
     });
-  };
+  }, []);
 
-  const handleDeleteNote = (noteId: string, e?: React.MouseEvent) => {
+  const handleDeleteNote = useCallback((noteId: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     setStickerNotes(prev => prev.filter(n => n.id !== noteId));
-  };
+  }, []);
 
   // Commit typed note directly to the board as a movable sticker
   const handleCommitInlineNote = () => {
@@ -862,118 +974,7 @@ const CollaborativeWhiteboardComponent: React.FC<CollaborativeWhiteboardProps> =
     setIsSpeechListening(false);
   };
 
-  // ==========================================
-  // LIVE WHITEBOARD + AUDIO RECORDING CONTROLS
-  // ==========================================
-  const formatRecordingTime = (sec: number) => {
-    const m = Math.floor(sec / 60).toString().padStart(2, '0');
-    const s = (sec % 60).toString().padStart(2, '0');
-    return `${m}:${s}`;
-  };
-
-  const handleStartRecording = async () => {
-    setRecordingError(null);
-    recordedChunksRef.current = [];
-    const canvas = canvasRef.current;
-
-    if (!canvas) {
-      setRecordingError('Whiteboard canvas not ready');
-      return;
-    }
-
-    try {
-      // 1. Capture microphone audio stream
-      const audioStream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true
-        }
-      });
-      audioStreamRef.current = audioStream;
-
-      // 2. Capture canvas 30FPS video stream
-      const canvasStream = (canvas as any).captureStream
-        ? (canvas as any).captureStream(30)
-        : (canvas as any).mozCaptureStream
-        ? (canvas as any).mozCaptureStream(30)
-        : null;
-
-      if (!canvasStream) {
-        throw new Error('Canvas recording is not supported in this browser.');
-      }
-
-      // 3. Combine canvas visual stream + teacher microphone audio stream
-      const combinedTracks = [
-        ...canvasStream.getVideoTracks(),
-        ...audioStream.getAudioTracks()
-      ];
-      const combinedStream = new MediaStream(combinedTracks);
-
-      // 4. Determine supported codec
-      const mimeTypes = [
-        'video/webm;codecs=vp9,opus',
-        'video/webm;codecs=vp8,opus',
-        'video/webm',
-        'video/mp4'
-      ];
-      const selectedMime = mimeTypes.find(m => MediaRecorder.isTypeSupported(m)) || 'video/webm';
-
-      const recorder = new MediaRecorder(combinedStream, {
-        mimeType: selectedMime,
-        videoBitsPerSecond: 1500000 // 1.5 Mbps crisp notation
-      });
-
-      recorder.ondataavailable = (e) => {
-        if (e.data && e.data.size > 0) {
-          recordedChunksRef.current.push(e.data);
-        }
-      };
-
-      recorder.onstop = () => {
-        const finalBlob = new Blob(recordedChunksRef.current, { type: selectedMime });
-        setCapturedVideoBlob(finalBlob);
-        setIsRecordingModalOpen(true);
-        setIsRecording(false);
-        if (recordingTimerRef.current) {
-          clearInterval(recordingTimerRef.current);
-          recordingTimerRef.current = null;
-        }
-      };
-
-      recorder.start(1000);
-      mediaRecorderRef.current = recorder;
-      setIsRecording(true);
-      setRecordingDuration(0);
-
-      recordingTimerRef.current = setInterval(() => {
-        setRecordingDuration(prev => prev + 1);
-      }, 1000);
-    } catch (err: any) {
-      console.error('Failed to start recording:', err);
-      setRecordingError(err?.message || 'Microphone access denied or recording not supported.');
-    }
-  };
-
-  const handleStopRecording = () => {
-    if (recordingTimerRef.current) {
-      clearInterval(recordingTimerRef.current);
-      recordingTimerRef.current = null;
-    }
-
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-      try {
-        mediaRecorderRef.current.stop();
-      } catch (err) {
-        console.error('Error stopping recorder:', err);
-      }
-    }
-
-    if (audioStreamRef.current) {
-      audioStreamRef.current.getTracks().forEach(track => track.stop());
-      audioStreamRef.current = null;
-    }
-  };
+  // Lesson video recording & cloud upload/download controls are paused for all students and tutors.
 
   // Undo / Redo / Clear
   const handleUndo = () => {
@@ -1049,7 +1050,7 @@ const CollaborativeWhiteboardComponent: React.FC<CollaborativeWhiteboardProps> =
       {/* Top Floating Whiteboard Control Bar */}
       <div className="absolute top-3 inset-x-3 z-20 flex flex-wrap items-center justify-between gap-2 pointer-events-none">
         {/* Left: Drawing Tools & Text Typing Mode */}
-        <div className="flex items-center gap-1 bg-slate-900/95 backdrop-blur-md p-1.5 rounded-2xl border border-slate-800 shadow-xl pointer-events-auto">
+        <div className="flex items-center gap-1 bg-slate-900/95 p-1.5 rounded-2xl border border-slate-800 shadow-xl pointer-events-auto">
           <button
             type="button"
             onClick={() => setActiveTool('pen')}
@@ -1178,8 +1179,8 @@ const CollaborativeWhiteboardComponent: React.FC<CollaborativeWhiteboardProps> =
           </button>
         </div>
 
-        {/* Right: Board Utilities (Undo, Redo, Grid, Snapshot) */}
-        <div className="flex items-center gap-1 bg-slate-900/95 backdrop-blur-md p-1.5 rounded-2xl border border-slate-800 shadow-xl pointer-events-auto">
+        {/* Right: Board Utilities (Undo, Redo, Grid, Save Notes PNG) */}
+        <div className="flex items-center gap-1 bg-slate-900/95 p-1.5 rounded-2xl border border-slate-800 shadow-xl pointer-events-auto">
           {/* Multi-Theme Board Background Picker */}
           <div className="relative">
             <button
@@ -1280,35 +1281,8 @@ const CollaborativeWhiteboardComponent: React.FC<CollaborativeWhiteboardProps> =
             <span className="hidden sm:inline text-[11px]">Save Notes</span>
           </button>
 
-          <div className="w-[1px] h-5 bg-slate-800 mx-0.5" />
-
-          {/* Live Recording HUD & Dispatch Control */}
-          {!isRecording ? (
-            <button
-              type="button"
-              onClick={handleStartRecording}
-              className="px-2.5 py-1.5 rounded-xl bg-red-950/70 hover:bg-red-900/90 text-red-200 border border-red-800/80 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm"
-              title="Record lesson video & audio (Auto-sends to Google Drive & YouTube)"
-            >
-              <Video className="w-3.5 h-3.5 text-red-400" />
-              <span className="hidden sm:inline text-[11px]">Record Lesson</span>
-            </button>
-          ) : (
-            <div className="flex items-center gap-1.5 bg-red-950/95 border border-red-500/90 rounded-xl px-2.5 py-1 shadow-lg">
-              <span className="w-2 h-2 rounded-full bg-red-500 animate-ping" />
-              <span className="text-[11px] font-bold text-red-100 font-mono tracking-wider">
-                REC {formatRecordingTime(recordingDuration)}
-              </span>
-              <button
-                type="button"
-                onClick={handleStopRecording}
-                className="ml-1 px-2 py-0.5 rounded-lg bg-red-600 hover:bg-red-500 text-white text-[10px] font-bold transition-colors cursor-pointer shadow-sm"
-                title="Finish recording and dispatch to Google Drive & YouTube"
-              >
-                Stop & Send
-              </button>
-            </div>
-          )}
+          {/* Video recording, cloud upload, and recording download controls are paused and hidden */}
+          {!LESSON_RECORDING_PAUSED && null}
         </div>
       </div>
 
@@ -1360,79 +1334,29 @@ const CollaborativeWhiteboardComponent: React.FC<CollaborativeWhiteboardProps> =
         </div>
       )}
 
-      {/* Embedded Surface Notes Overlay (Direct text on board, zero card box) */}
-      {stickerNotes.map(note => {
-        const isDragging = draggingNoteId === note.id;
-        const displayColor =
-          gridMode === 'whiteboard' && (note.color === '#F8FAFC' || note.color === '#ffffff')
-            ? '#0F172A'
-            : note.color;
+      {/* Embedded Surface Notes Overlay (Memoized per-note KaTeX rendering, zero lag while typing/dragging) */}
+      {stickerNotes.map(note => (
+        <BoardStickerItem
+          key={note.id}
+          note={note}
+          gridMode={gridMode}
+          isDragging={draggingNoteId === note.id}
+          onStartDrag={handleStartDragNote}
+          onPointerMove={handlePointerMoveNote}
+          onPointerUp={handlePointerUpNote}
+          onEdit={handleStartEditNote}
+          onDelete={handleDeleteNote}
+        />
+      ))}
 
-        return (
-          <div
-            key={note.id}
-            onPointerDown={e => handleStartDragNote(note, e)}
-            onPointerMove={handlePointerMoveNote}
-            onPointerUp={handlePointerUpNote}
-            onDoubleClick={e => handleStartEditNote(note, e)}
-            style={{
-              transform: `translate3d(${note.x}px, ${note.y}px, 0)`,
-              touchAction: 'none'
-            }}
-            className={`absolute top-0 left-0 z-10 max-w-xs sm:max-w-md select-none group transition-all p-1.5 rounded-lg ${
-              isDragging
-                ? 'cursor-grabbing border border-dashed border-emerald-400/80 bg-emerald-950/20 z-30'
-                : 'cursor-grab bg-transparent border border-transparent hover:border-dashed hover:border-slate-500/50 hover:bg-slate-900/20'
-            }`}
-          >
-            {/* Subtle On-Hover Micro-Toolbar (Revealed on hover/drag only) */}
-            <div className="absolute -top-7 left-0 hidden group-hover:flex items-center gap-1 bg-slate-900/95 backdrop-blur-md px-2 py-0.5 rounded-md border border-slate-700 text-[10px] text-slate-300 shadow-xl pointer-events-auto z-40">
-              <GripVertical className="w-3 h-3 text-slate-400" />
-              <span className="font-semibold text-[9px] uppercase tracking-wider text-slate-400">
-                {note.authorRole}
-              </span>
-              <div className="w-[1px] h-3 bg-slate-700 mx-0.5" />
-              <button
-                type="button"
-                onClick={e => handleStartEditNote(note, e)}
-                className="p-0.5 rounded hover:bg-slate-800 text-slate-300 hover:text-emerald-400 transition-colors cursor-pointer"
-                title="Double-click or click to edit text"
-              >
-                <Edit3 className="w-2.5 h-2.5" />
-              </button>
-              <button
-                type="button"
-                onClick={e => handleDeleteNote(note.id, e)}
-                className="p-0.5 rounded hover:bg-slate-800 text-slate-400 hover:text-rose-400 transition-colors cursor-pointer"
-                title="Delete note"
-              >
-                <Trash2 className="w-2.5 h-2.5" />
-              </button>
-            </div>
-
-            {/* Embedded Surface Note Content (Pure text directly on board) */}
-            <div
-              style={{
-                color: displayColor,
-                fontSize: `${note.fontSize}px`,
-                lineHeight: 1.45,
-                textShadow: gridMode === 'whiteboard' ? 'none' : '0 1px 2px rgba(0,0,0,0.5)'
-              }}
-              className="font-semibold whitespace-pre-wrap break-words tracking-normal leading-relaxed"
-              dangerouslySetInnerHTML={{ __html: renderFormattedMathText(note.text) }}
-            />
-          </div>
-        );
-      })}
-
-      {/* Direct In-Place Text Typing Box with KaTeX LaTeX Engine */}
+      {/* Direct In-Place Text Typing Box (Live LaTeX preview paused during typing for instant speed) */}
       {activeInlineEditor && (
         <div
           style={{
             left: `${Math.max(12, Math.min((containerRef.current?.clientWidth || 1000) - (isStemDrawerOpen ? 580 : 390), activeInlineEditor.x))}px`,
             top: `${Math.max(12, Math.min((containerRef.current?.clientHeight || 800) - (isStemDrawerOpen ? 520 : 360), activeInlineEditor.y))}px`
           }}
-          className={`absolute z-30 ${isStemDrawerOpen ? 'w-[94vw] max-w-xl' : 'w-80 sm:w-96'} bg-slate-900/98 backdrop-blur-md border border-emerald-500 rounded-2xl p-3 shadow-2xl space-y-2 pointer-events-auto transition-all`}
+          className={`absolute z-30 ${isStemDrawerOpen ? 'w-[94vw] max-w-xl' : 'w-80 sm:w-96'} bg-slate-900/98 border border-emerald-500 rounded-2xl p-3 shadow-2xl space-y-2 pointer-events-auto`}
         >
           <div className="flex items-center justify-between gap-2">
             <span className="text-[11px] font-bold text-white flex items-center gap-1.5 truncate">
@@ -1543,18 +1467,11 @@ const CollaborativeWhiteboardComponent: React.FC<CollaborativeWhiteboardProps> =
             }}
           />
 
-          {/* Live KaTeX Rendered Preview */}
-          {activeInlineEditor.text && (
-            <div className="bg-slate-950/90 rounded-xl p-2 border border-slate-800 text-xs">
-              <div className="text-[9px] uppercase tracking-wider text-slate-400 font-semibold mb-1">
-                Live Mathematical Preview
-              </div>
-              <div
-                className="text-emerald-300 font-medium overflow-x-auto text-sm py-0.5"
-                dangerouslySetInnerHTML={{ __html: renderFormattedMathText(activeInlineEditor.text) }}
-              />
-            </div>
-          )}
+          {/* Instant Typing Mode Note (Live LaTeX rendering paused during typing for zero lag) */}
+          <div className="text-[10px] text-slate-400 px-1 flex items-center justify-between">
+            <span>Fast typing mode · Math formats automatically on the board</span>
+            <span className="text-emerald-400/80 font-mono">LaTeX on Stamp</span>
+          </div>
 
           <div className="flex items-center justify-between pt-1">
             {/* Font size toggles */}
@@ -1615,7 +1532,7 @@ const CollaborativeWhiteboardComponent: React.FC<CollaborativeWhiteboardProps> =
       {/* Bottom Floating Palette & Math Stamper Dock */}
       <div className="absolute bottom-3 inset-x-3 z-20 flex flex-wrap items-center justify-between gap-2 pointer-events-none">
         {/* Color Palette */}
-        <div className="flex items-center gap-1.5 bg-slate-900/95 backdrop-blur-md p-1.5 rounded-2xl border border-slate-800 shadow-xl pointer-events-auto">
+        <div className="flex items-center gap-1.5 bg-slate-900/95 p-1.5 rounded-2xl border border-slate-800 shadow-xl pointer-events-auto">
           {(gridMode === 'whiteboard' ? WHITEBOARD_INK_PALETTE : COLOR_PALETTE).map(c => (
             <button
               key={c.hex}
@@ -1655,7 +1572,7 @@ const CollaborativeWhiteboardComponent: React.FC<CollaborativeWhiteboardProps> =
         </div>
 
         {/* STEM Math Formula Quick Stampers */}
-        <div className="flex items-center gap-1 bg-slate-900/95 backdrop-blur-md p-1.5 rounded-2xl border border-slate-800 shadow-xl overflow-x-auto scrollbar-none max-w-sm pointer-events-auto">
+        <div className="flex items-center gap-1 bg-slate-900/95 p-1.5 rounded-2xl border border-slate-800 shadow-xl overflow-x-auto scrollbar-none max-w-sm pointer-events-auto">
           <div className="flex items-center gap-1 px-1.5 text-amber-400 text-[11px] font-bold shrink-0">
             <Sparkles className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">STEM:</span>
@@ -1703,34 +1620,6 @@ const CollaborativeWhiteboardComponent: React.FC<CollaborativeWhiteboardProps> =
         </div>
       </div>
 
-      {/* Recording Error Notification */}
-      {recordingError && (
-        <div className="absolute top-16 right-4 z-40 bg-red-950/95 border border-red-500/80 rounded-xl p-3 shadow-xl max-w-sm text-xs text-red-200 flex items-start justify-between gap-2">
-          <span>{recordingError}</span>
-          <button
-            type="button"
-            onClick={() => setRecordingError(null)}
-            className="text-red-400 hover:text-white"
-          >
-            <X className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      )}
-
-      {/* Post-Session Cloud Dispatch Modal (Google Drive & YouTube) */}
-      {capturedVideoBlob && (
-        <SessionRecordingModal
-          isOpen={isRecordingModalOpen}
-          videoBlob={capturedVideoBlob}
-          metadata={{
-            topic,
-            subject: subject || 'STEM Interactive Whiteboard',
-            level: 'Secondary (WAEC / JAMB / NECO)',
-            tutorName: tutorName || (participantRole === 'tutor' ? 'Host Tutor' : 'Student Scholar')
-          }}
-          onClose={() => setIsRecordingModalOpen(false)}
-        />
-      )}
     </div>
   );
 };

@@ -18,9 +18,9 @@ export const ClassroomCanvasHUD: React.FC<ClassroomCanvasHUDProps> = ({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
-  // User toggleable Eco mode state (mirrored into a ref for zero-re-render RAF reads)
-  const [isEcoMode, setIsEcoMode] = useState<boolean>(false);
-  const isEcoModeRef = useRef<boolean>(false);
+  // User toggleable Eco mode state (default true to conserve CPU/GPU during liveboard typing)
+  const [isEcoMode, setIsEcoMode] = useState<boolean>(true);
+  const isEcoModeRef = useRef<boolean>(true);
   isEcoModeRef.current = isEcoMode;
 
   const isMicActiveRef = useRef<boolean>(isMicActive);
@@ -55,9 +55,13 @@ export const ClassroomCanvasHUD: React.FC<ClassroomCanvasHUDProps> = ({
     if (!canvas) return;
 
     // Frame rate pacing governor
-    // Normal: 60 FPS (~16.6ms frame target)
-    // Eco Mode: 30 FPS (~33.3ms frame target) to conserve battery on low-end mobile devices
-    const targetInterval = isEcoModeRef.current ? 33.3 : 16.6;
+    // Muted: 1 FPS (1000ms) since only the 1-second countdown clock updates
+    // Active Mic + Eco Mode: 24 FPS (~41.6ms) | Active Mic + Max: 45 FPS (~22.2ms)
+    const targetInterval = !isMicActiveRef.current
+      ? 1000
+      : isEcoModeRef.current
+      ? 41.6
+      : 22.2;
     const elapsedSinceLast = now - lastFrameTimeRef.current;
 
     if (elapsedSinceLast < targetInterval) {

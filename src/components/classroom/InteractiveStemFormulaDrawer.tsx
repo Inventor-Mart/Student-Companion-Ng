@@ -22,12 +22,14 @@ interface InteractiveStemFormulaDrawerProps {
   onInsertLatex: (latex: string) => void;
   onStampFormula?: (latex: string) => void;
   onClose: () => void;
+  insertButtonLabel?: string;
 }
 
 export const InteractiveStemFormulaDrawer: React.FC<InteractiveStemFormulaDrawerProps> = ({
   onInsertLatex,
   onStampFormula,
-  onClose
+  onClose,
+  insertButtonLabel = 'Insert into Note'
 }) => {
   const [selectedSubject, setSelectedSubject] = useState<'all' | StemSubject>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -50,6 +52,15 @@ export const InteractiveStemFormulaDrawer: React.FC<InteractiveStemFormulaDrawer
     }
   }, [activeTemplate]);
 
+  // Pre-render static catalog card previews once so filtering/searching never re-runs KaTeX
+  const catalogPreviewHtmlMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const tpl of STEM_FORMULA_TEMPLATES) {
+      map[tpl.id] = renderLatex(tpl.previewLatex, false);
+    }
+    return map;
+  }, []);
+
   // Filter templates by subject and search query
   const filteredTemplates = useMemo(() => {
     return STEM_FORMULA_TEMPLATES.filter(tpl => {
@@ -70,6 +81,24 @@ export const InteractiveStemFormulaDrawer: React.FC<InteractiveStemFormulaDrawer
     if (!activeTemplate) return '';
     return interpolateFormulaTemplate(activeTemplate.templatePattern, slotValues);
   }, [activeTemplate, slotValues]);
+
+  // Debounce KaTeX rendering in the slot editor (~120ms) so slot typing stays zero-lag
+  const [debouncedLatex, setDebouncedLatex] = useState<string>('');
+  useEffect(() => {
+    if (!currentInterpolatedLatex) {
+      setDebouncedLatex('');
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setDebouncedLatex(currentInterpolatedLatex);
+    }, 120);
+    return () => window.clearTimeout(timer);
+  }, [currentInterpolatedLatex]);
+
+  const renderedSlotPreviewHtml = useMemo(() => {
+    const target = debouncedLatex || currentInterpolatedLatex;
+    return target ? renderLatex(target, true) : '';
+  }, [debouncedLatex, currentInterpolatedLatex]);
 
   // Handle slot value change
   const handleSlotChange = (key: string, val: string) => {
@@ -202,10 +231,10 @@ export const InteractiveStemFormulaDrawer: React.FC<InteractiveStemFormulaDrawer
                       </span>
                     </div>
 
-                    {/* KaTeX Preview Box */}
+                    {/* Pre-cached KaTeX Preview Box */}
                     <div
                       className="bg-slate-950 p-2 rounded-lg border border-slate-800/70 text-emerald-400 flex items-center justify-center min-h-[46px] overflow-x-auto text-sm"
-                      dangerouslySetInnerHTML={{ __html: renderLatex(tpl.previewLatex, false) }}
+                      dangerouslySetInnerHTML={{ __html: catalogPreviewHtmlMap[tpl.id] || '' }}
                     />
 
                     <div className="flex items-center justify-between text-[10px] text-slate-400 pt-0.5">
@@ -245,15 +274,15 @@ export const InteractiveStemFormulaDrawer: React.FC<InteractiveStemFormulaDrawer
             </button>
           </div>
 
-          {/* Live KaTeX Formula Preview */}
+          {/* Debounced KaTeX Formula Preview */}
           <div className="bg-slate-900/90 p-3 rounded-xl border border-emerald-500/40 space-y-1">
             <div className="text-[9px] uppercase tracking-wider text-slate-400 font-semibold flex items-center justify-between">
-              <span>Live Rendered Mathematical Output</span>
-              <span className="text-emerald-400 text-[10px] font-mono">KaTeX Synchronous</span>
+              <span>Formula Output Preview</span>
+              <span className="text-emerald-400 text-[10px] font-mono">Formula Value Input</span>
             </div>
             <div
               className="py-1 text-emerald-300 text-base sm:text-lg flex items-center justify-center overflow-x-auto min-h-[50px]"
-              dangerouslySetInnerHTML={{ __html: renderLatex(currentInterpolatedLatex, true) }}
+              dangerouslySetInnerHTML={{ __html: renderedSlotPreviewHtml }}
             />
           </div>
 
@@ -331,10 +360,10 @@ export const InteractiveStemFormulaDrawer: React.FC<InteractiveStemFormulaDrawer
                 type="button"
                 onClick={handleInsert}
                 className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all shadow-md cursor-pointer flex items-center gap-1.5"
-                title="Insert this formatted formula into your lesson note"
+                title={insertButtonLabel}
               >
                 <Check className="w-3.5 h-3.5" />
-                <span>Insert into Note</span>
+                <span>{insertButtonLabel}</span>
               </button>
             </div>
           </div>
