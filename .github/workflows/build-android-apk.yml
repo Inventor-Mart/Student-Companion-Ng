@@ -33,7 +33,7 @@ jobs:
 
       - name: Install dependencies & build offline web bundle
         run: |
-          npm install --no-audit --no-fund
+          npm install --legacy-peer-deps
           npm run build
           rm -rf android-project/app/src/main/assets/www
           mkdir -p android-project/app/src/main/assets/www
