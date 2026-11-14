@@ -49,40 +49,18 @@ import {
   VerifiedLessonReadLog,
   SecurityStatusSnapshot,
   AspirantReferralReward,
-  OTAAppRelease,
-  OTAFeatureFlag,
+  OTAAppReleaseConfig,
   OTAFeatureKey,
-  PersonaNotificationItem,
-  ReminderPreferences
+  AppNotificationItem,
+  OTANotificationBroadcast,
+  NotificationPreferences,
+  NotificationDeepLinkTab
 } from '../types';
 import {
-  CURRENT_APP_VERSION,
-  DEFAULT_OTA_APP_RELEASE,
-  DEFAULT_OTA_FEATURE_FLAGS,
-  compareSemver,
-  getEffectiveClientVersion,
-  subscribeToOTAAppRelease,
-  subscribeToOTAFeatureFlags,
-  executeOTAUpgrade
-} from '../services/otaService';
-import {
-  DEFAULT_REMINDER_PREFERENCES,
-  registerNotificationServiceWorker,
-  getBrowserNotificationPermission,
-  requestBrowserPushPermission,
-  triggerBrowserNotification,
-  generateSmartPersonaReminders,
-  subscribeToPersonaNotifications,
-  getReadNotificationIds,
-  saveReadNotificationIds,
-  loadLocalReminderPreferences,
-  saveReminderPreferences,
-  fetchRemoteReminderPreferences,
-  shouldAutoFirePushForNotification,
-  dispatchEmailDigest
-} from '../services/notificationService';
-import {
   getSecurityHeaders,
+  checkLoginBruteForce,
+  recordLoginFailure,
+  resetLoginFailures,
   checkPinBruteForce,
   recordPinFailure,
   resetPinFailures,
@@ -96,6 +74,35 @@ import {
   getNerdcTermAccessStatus
 } from '../utils/referralPromoPolicy';
 import { subscribeToAdminLessonNotes } from '../services/lessonNoteService';
+import {
+  DEFAULT_OTA_APP_RELEASE,
+  OTA_FEATURE_CATALOG,
+  resolvePausedFeatureMessage,
+  subscribeToOTAAppRelease,
+  getInstalledAppVersion,
+  setInstalledAppVersion,
+  applyInAppOTAUpgrade,
+  dismissReleasePrompt,
+  isReleaseDismissed
+} from '../services/otaService';
+import {
+  DEFAULT_NOTIFICATION_PREFERENCES,
+  registerNotificationServiceWorker,
+  getBrowserNotificationPermission,
+  requestBrowserNotificationPermission,
+  dispatchBrowserNotification,
+  getStoredNotificationPreferences,
+  saveStoredNotificationPreferences,
+  getStoredInboxNotifications,
+  saveStoredInboxNotifications,
+  getStoredReadOtaIds,
+  saveStoredReadOtaIds,
+  getStoredDismissedOtaIds,
+  saveStoredDismissedOtaIds,
+  subscribeToOTANotificationBroadcasts,
+  evaluateAutomatedReengagementNudges,
+  buildSamplePersonaNudge
+} from '../services/notificationService';
 import {
   calculateDynamicXP,
   calculateRank as calculateRankFromXP,
@@ -159,10 +166,12 @@ interface AppContextType {
   signOutApp: () => void;
   deleteAccount: (userId?: string) => Promise<void>;
 
-  // Firebase Auth
+  // Firebase & Credential Auth
   currentUser: User | null;
   authLoading: boolean;
-  loginWithGoogle: () => Promise<void>;
+  loginWithGoogle: (options?: { skipNavigate?: boolean } | unknown) => Promise<{ success: boolean; profile?: RegisteredUserProfile; error?: string }>;
+  authenticateUser: (identifier: string, password: string) => Promise<{ success: boolean; profile?: RegisteredUserProfile; error?: string }>;
+  activateQuickStudentSession: () => RegisteredUserProfile;
   logoutUser: () => Promise<void>;
   isFirebaseConnected: boolean;
 
@@ -300,7 +309,7 @@ interface AppContextType {
     adminEmailOverride?: string
   ) => Promise<{ success: boolean; error?: string }>;
   switchRole: (role: UserRole) => void;
-  loginAsDeveloper: (email?: string) => void;
+  loginAsDeveloper: (email?: string, options?: { skipNavigate?: boolean }) => RegisteredUserProfile;
 
   // School Administrator & Institutional Publishing
   schoolMaterials: SchoolMaterial[];
@@ -385,31 +394,36 @@ interface AppContextType {
     evidenceContext?: string;
   }) => Promise<{ success: boolean; reportId?: string; error?: string }>;
 
-  // OTA App Releases, Version Enforcement & Feature Maintenance Toggles
-  appVersion: string;
-  otaAppRelease: OTAAppRelease;
-  isUpdateAvailable: boolean;
-  isForceUpgradeRequired: boolean;
-  isMildUpdateDismissed: boolean;
-  dismissMildUpdate: () => void;
-  triggerOTAUpgrade: () => Promise<void>;
-  otaFeatureFlags: Record<OTAFeatureKey, OTAFeatureFlag>;
-  isFeaturePaused: (featureKey: OTAFeatureKey) => boolean;
-  isFeatureBlockedForCurrentUser: (featureKey: OTAFeatureKey) => boolean;
-  getPausedFeatureInfo: (featureKey: OTAFeatureKey) => OTAFeatureFlag | null;
+  // OTA App Updates, Version Upgrades & Feature Flags
+  otaAppRelease: OTAAppReleaseConfig;
+  installedAppVersion: string;
+  isCurrentReleaseDismissed: boolean;
+  applyOTAUpgrade: () => Promise<string>;
+  dismissOTAPrompt: () => void;
+  setLocalInstalledAppVersion: (ver: string) => void;
+  isFeatureEnabled: (key: OTAFeatureKey) => boolean;
+  getPausedFeatureMessage: (key: OTAFeatureKey) => string;
+  pausedFeatureNotice: { featureKey: OTAFeatureKey; title: string; message: string } | null;
+  openPausedFeatureNotice: (key: OTAFeatureKey, customTitle?: string) => void;
+  closePausedFeatureNotice: () => void;
 
-  // Cross-Persona Notifications & Engagement Reminders
-  personaNotifications: (PersonaNotificationItem & { isRead: boolean })[];
+  // Cross-Persona Notifications, Streak Reminders & Browser Push
+  notifications: AppNotificationItem[];
   unreadNotificationCount: number;
-  isNotificationInboxOpen: boolean;
-  setIsNotificationInboxOpen: (open: boolean) => void;
+  notificationPreferences: NotificationPreferences;
+  browserPermission: NotificationPermission | 'unsupported';
+  isNotificationDrawerOpen: boolean;
+  setIsNotificationDrawerOpen: (open: boolean) => void;
+  enableBrowserPushNotifications: () => Promise<NotificationPermission | 'unsupported'>;
+  updateNotificationPreferences: (updates: Partial<NotificationPreferences>) => void;
   markNotificationRead: (id: string) => void;
   markAllNotificationsRead: () => void;
-  reminderPreferences: ReminderPreferences;
-  updateReminderPreferences: (partial: Partial<ReminderPreferences>) => Promise<void>;
-  browserPushPermission: NotificationPermission | 'unsupported';
-  enableBrowserPushNotifications: () => Promise<NotificationPermission | 'unsupported'>;
-  sendSelfReminderTest: () => Promise<{ pushSent: boolean; emailSent: boolean; message: string }>;
+  clearReadNotifications: () => void;
+  sendTestNotification: () => Promise<boolean>;
+  triggerSampleStreakNudge: () => Promise<AppNotificationItem>;
+  handleNotificationAction: (item: AppNotificationItem) => void;
+  pendingPortalTab: { tab: NotificationDeepLinkTab; nonce: number } | null;
+  clearPendingPortalTab: () => void;
 }
 
 const INITIAL_EMPTY_STUDENT: StudentProfile = {
@@ -566,7 +580,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [activeStudentTab, setActiveStudentTab] = useState<'dashboard' | 'syllabus' | 'cbt' | 'competitions' | 'formulas' | 'tutors' | 'games' | 'ai-coach' | 'community' | 'exam-prep' | 'aspirant-cbt' | 'admission-guide' | 'mock-tournaments' | 'educator-importer'>('dashboard');
   const [activeReadingNote, setActiveReadingNote] = useState<CurriculumTopic | null>(null);
   const [activeExam, setActiveExam] = useState<CBTExam | null>(null);
-  const [isUniformModalOpen, setIsUniformModalOpen] = useState<boolean>(false);
+  const [isUniformModalOpen, setUniformModalOpenState] = useState<boolean>(false);
 
   // Prepare For Exam (AI Daily Study Calendar & ₦4,000 Tutor Credits)
   const [examPrepState, setExamPrepState] = useState<ExamPrepState>(() => {
@@ -1121,6 +1135,89 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return () => unsub();
   }, []);
 
+  // Live OTA App Updates, Feature Flags & Version Gate
+  const [otaAppRelease, setOtaAppRelease] = useState<OTAAppReleaseConfig>(DEFAULT_OTA_APP_RELEASE);
+  const [installedAppVersion, setInstalledAppVersionState] = useState<string>(() => getInstalledAppVersion());
+  const [otaDismissTick, setOtaDismissTick] = useState<number>(0);
+
+  useEffect(() => {
+    const unsub = subscribeToOTAAppRelease((release) => {
+      setOtaAppRelease(release);
+    });
+    return () => unsub();
+  }, []);
+
+  const isCurrentReleaseDismissed = React.useMemo(() => {
+    void otaDismissTick;
+    return isReleaseDismissed(otaAppRelease.latestVersion, otaAppRelease.upgradeMode);
+  }, [otaAppRelease.latestVersion, otaAppRelease.upgradeMode, otaDismissTick]);
+
+  const applyOTAUpgrade = useCallback(async (): Promise<string> => {
+    // Brief smooth install delay so user sees in-app OTA refresh feedback cleanly
+    await new Promise((resolve) => window.setTimeout(resolve, 650));
+    const nextVersion = applyInAppOTAUpgrade(otaAppRelease);
+    setInstalledAppVersionState(nextVersion);
+    setOtaDismissTick((prev) => prev + 1);
+    return nextVersion;
+  }, [otaAppRelease]);
+
+  const dismissOTAPrompt = useCallback(() => {
+    dismissReleasePrompt(otaAppRelease.latestVersion, otaAppRelease.upgradeMode);
+    setOtaDismissTick((prev) => prev + 1);
+  }, [otaAppRelease.latestVersion, otaAppRelease.upgradeMode]);
+
+  const setLocalInstalledAppVersion = useCallback((ver: string) => {
+    const normalized = setInstalledAppVersion(ver);
+    setInstalledAppVersionState(normalized);
+    setOtaDismissTick((prev) => prev + 1);
+  }, []);
+
+  const [pausedFeatureNotice, setPausedFeatureNotice] = useState<{
+    featureKey: OTAFeatureKey;
+    title: string;
+    message: string;
+  } | null>(null);
+
+  const isFeatureEnabled = useCallback(
+    (key: OTAFeatureKey): boolean => {
+      if (isSuperAdmin) return true;
+      return otaAppRelease.featureFlags[key] !== false;
+    },
+    [isSuperAdmin, otaAppRelease.featureFlags]
+  );
+
+  const getPausedFeatureMessage = useCallback(
+    (key: OTAFeatureKey): string => resolvePausedFeatureMessage(otaAppRelease, key),
+    [otaAppRelease]
+  );
+
+  const openPausedFeatureNotice = useCallback(
+    (key: OTAFeatureKey, customTitle?: string) => {
+      const meta = OTA_FEATURE_CATALOG.find((item) => item.key === key);
+      setPausedFeatureNotice({
+        featureKey: key,
+        title: customTitle || meta?.title || 'Feature',
+        message: resolvePausedFeatureMessage(otaAppRelease, key)
+      });
+    },
+    [otaAppRelease]
+  );
+
+  const closePausedFeatureNotice = useCallback(() => {
+    setPausedFeatureNotice(null);
+  }, []);
+
+  const setIsUniformModalOpen = useCallback(
+    (open: boolean) => {
+      if (open && !isFeatureEnabled('uniformVerification')) {
+        openPausedFeatureNotice('uniformVerification', 'Uniform AI Verification');
+        return;
+      }
+      setUniformModalOpenState(open);
+    },
+    [isFeatureEnabled, openPausedFeatureNotice]
+  );
+
   // Calculate Rank based on XP
   const calculateRank = (xp: number): StudentRank => {
     return calculateRankFromXP(xp);
@@ -1312,22 +1409,280 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, []);
 
-  const loginWithGoogle = async () => {
+  const loginWithGoogle = async (options?: { skipNavigate?: boolean } | unknown): Promise<{ success: boolean; profile?: RegisteredUserProfile; error?: string }> => {
+    const skipNavigate =
+      options && typeof options === 'object' && 'skipNavigate' in options
+        ? Boolean((options as { skipNavigate?: boolean }).skipNavigate)
+        : false;
+
     try {
-      await signInWithGoogle();
-      confetti({ particleCount: 50, spread: 60, origin: { y: 0.6 } });
+      const user = await signInWithGoogle();
+      if (isSuperAdminEmail(user.email)) {
+        const profile = loginAsDeveloper(user.email || SUPER_ADMIN_EMAIL, { skipNavigate });
+        return { success: true, profile };
+      }
+
+      const existing = allRegisteredUsers.find(
+        u => u.email.toLowerCase() === (user.email || '').toLowerCase()
+      );
+      if (existing?.accountStatus === 'deleted') {
+        return {
+          success: false,
+          error: existing.deletionReason || 'This account has been permanently closed.'
+        };
+      }
+      if (existing?.accountStatus === 'suspended') {
+        return {
+          success: false,
+          error: existing.suspensionReason || 'This account is currently suspended pending Super Admin review.'
+        };
+      }
+      if (
+        existing?.accountStatus === 'locked' &&
+        existing.lockedUntil &&
+        new Date(existing.lockedUntil).getTime() > Date.now()
+      ) {
+        return {
+          success: false,
+          error: existing.lockReason || 'This account is temporarily locked for security reasons.'
+        };
+      }
+
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...getSecurityHeaders({ userId: existing?.id || user.uid, userEmail: user.email || undefined })
+          },
+          body: JSON.stringify({
+            method: 'google',
+            userId: existing?.id || user.uid,
+            email: user.email || '',
+            role: existing?.role || currentUserProfile?.role || 'student',
+            hasLocalProfile: true
+          })
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          if (data?.error) {
+            return { success: false, error: data.error };
+          }
+        }
+      } catch {
+        // Offline fallback handled below
+      }
+
+      const profile: RegisteredUserProfile = existing || {
+        id: user.uid,
+        role: currentUserProfile?.role || 'student',
+        fullName: user.displayName || 'Student Companion Learner',
+        email: user.email || '',
+        avatarUrl: user.photoURL || undefined,
+        emailVerified: user.emailVerified ?? true,
+        createdAt: new Date().toISOString(),
+        studentData: student
+      };
+
+      setCurrentUserProfile(profile);
+      safeSetItem('sc_user_profile', JSON.stringify(profile));
+      setCurrentRole(profile.role);
+      if (profile.studentData) {
+        setStudent(profile.studentData);
+        safeSetItem('sc_student', JSON.stringify(profile.studentData));
+      }
+      if (!skipNavigate) {
+        confetti({ particleCount: 50, spread: 60, origin: { y: 0.6 } });
+      }
+      return { success: true, profile };
     } catch (error: any) {
       if (error?.code === 'auth/unauthorized-domain') {
         console.info(
           `[Firebase Auth] Origin domain "${window.location.hostname}" is not yet added to Firebase Console Authorized Domains. ` +
           `Activating preview developer session for wowrealities@gmail.com.`
         );
-        loginAsDeveloper('wowrealities@gmail.com');
-        confetti({ particleCount: 50, spread: 60, origin: { y: 0.6 } });
-        return;
+        const profile = loginAsDeveloper('wowrealities@gmail.com', { skipNavigate });
+        if (!skipNavigate) {
+          confetti({ particleCount: 50, spread: 60, origin: { y: 0.6 } });
+        }
+        return { success: true, profile };
       }
       console.warn('Google Sign In:', error?.message || error);
+      const isCancelled =
+        error?.code === 'auth/popup-closed-by-user' ||
+        error?.code === 'auth/cancelled-popup-request';
+      return {
+        success: false,
+        error: isCancelled
+          ? 'Google sign-in was cancelled. Please try again.'
+          : error?.message || 'Google sign-in failed. Please try again.'
+      };
     }
+  };
+
+  const authenticateUser = async (
+    identifier: string,
+    password: string
+  ): Promise<{ success: boolean; profile?: RegisteredUserProfile; error?: string }> => {
+    const cleanInput = identifier.trim().toLowerCase();
+    if (!cleanInput) {
+      return { success: false, error: 'Please enter your email or username.' };
+    }
+    if (!password || password.trim().length < 4) {
+      return { success: false, error: 'Password must be at least 4 characters.' };
+    }
+
+    const lockout = checkLoginBruteForce(cleanInput);
+    if (lockout.isLocked) {
+      const mins = Math.max(1, Math.ceil(lockout.remainingSeconds / 60));
+      return {
+        success: false,
+        error: `Too many failed sign-in attempts. Please wait ${mins} minute(s) before trying again.`
+      };
+    }
+
+    // Brief realistic verification step so loading state is clearly rendered
+    await new Promise(resolve => window.setTimeout(resolve, 420));
+
+    if (cleanInput === 'martorefe@gmail.com' || cleanInput === 'wowrealities@gmail.com') {
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...getSecurityHeaders({ userEmail: cleanInput })
+          },
+          body: JSON.stringify({
+            identifier: cleanInput,
+            password,
+            method: 'super_admin',
+            email: cleanInput,
+            hasLocalProfile: true
+          })
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          if (data?.error) {
+            recordLoginFailure(cleanInput);
+            return { success: false, error: data.error };
+          }
+        }
+      } catch {
+        // Offline fallback allowed for local Super Admin development
+      }
+      resetLoginFailures(cleanInput);
+      const devProfile = loginAsDeveloper(cleanInput, { skipNavigate: true });
+      return { success: true, profile: devProfile };
+    }
+
+    const matched =
+      allRegisteredUsers.find(
+        u =>
+          u.email.toLowerCase() === cleanInput ||
+          u.fullName.toLowerCase() === cleanInput
+      ) ||
+      (currentUserProfile &&
+      (currentUserProfile.email.toLowerCase() === cleanInput ||
+        currentUserProfile.fullName.toLowerCase() === cleanInput)
+        ? currentUserProfile
+        : null);
+
+    if (matched?.accountStatus === 'deleted') {
+      return {
+        success: false,
+        error: matched.deletionReason || 'This account has been permanently closed.'
+      };
+    }
+    if (matched?.accountStatus === 'suspended') {
+      return {
+        success: false,
+        error: matched.suspensionReason || 'This account is suspended pending Super Admin review.'
+      };
+    }
+    if (
+      matched?.accountStatus === 'locked' &&
+      matched.lockedUntil &&
+      new Date(matched.lockedUntil).getTime() > Date.now()
+    ) {
+      return {
+        success: false,
+        error: matched.lockReason || 'This account is temporarily locked. Please try again later.'
+      };
+    }
+
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getSecurityHeaders({
+            userId: matched?.id,
+            userEmail: matched?.email || (cleanInput.includes('@') ? cleanInput : undefined)
+          })
+        },
+        body: JSON.stringify({
+          identifier: cleanInput,
+          password,
+          method: 'password',
+          userId: matched?.id,
+          email: matched?.email || (cleanInput.includes('@') ? cleanInput : undefined),
+          role: matched?.role,
+          hasLocalProfile: Boolean(matched)
+        })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.authenticated) {
+        const failInfo = recordLoginFailure(cleanInput);
+        const lockNote = failInfo.isLocked
+          ? ' Account temporarily locked for 15 minutes due to repeated failures.'
+          : '';
+        return {
+          success: false,
+          error:
+            (data?.error ||
+              'No account found matching that email or username. Please Sign up or try Google Sign-In.') +
+            lockNote
+        };
+      }
+    } catch {
+      if (!matched) {
+        recordLoginFailure(cleanInput);
+        return {
+          success: false,
+          error: 'No account found matching that email or username. Please Sign up or try Google Sign-In.'
+        };
+      }
+    }
+
+    if (!matched) {
+      recordLoginFailure(cleanInput);
+      return {
+        success: false,
+        error: 'No account found matching that email or username. Please Sign up or try Google Sign-In.'
+      };
+    }
+
+    resetLoginFailures(cleanInput);
+    setCurrentUserProfile(matched);
+    safeSetItem('sc_user_profile', JSON.stringify(matched));
+    setCurrentRole(matched.role);
+    if (matched.studentData) {
+      setStudent(matched.studentData);
+      safeSetItem('sc_student', JSON.stringify(matched.studentData));
+    }
+    return { success: true, profile: matched };
+  };
+
+  const activateQuickStudentSession = (): RegisteredUserProfile => {
+    const profile = currentUserProfile || INITIAL_USER_DIRECTORY[1];
+    setCurrentUserProfile(profile);
+    safeSetItem('sc_user_profile', JSON.stringify(profile));
+    setCurrentRole(profile.role);
+    if (profile.studentData) {
+      setStudent(profile.studentData);
+      safeSetItem('sc_student', JSON.stringify(profile.studentData));
+    }
+    return profile;
   };
 
   const logoutUser = async () => {
@@ -1691,6 +2046,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const openNoteReader = (topic: CurriculumTopic) => {
+    if (!isFeatureEnabled('lessonNotes')) {
+      openPausedFeatureNotice('lessonNotes', 'Lesson Notes & NERDC Syllabus');
+      return;
+    }
     setActiveReadingNote(topic);
   };
 
@@ -1699,6 +2058,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const startExam = (exam: CBTExam) => {
+    const isTermly = exam.examType === 'TERM_MOCK' || exam.id?.startsWith('termly_');
+    if (isTermly && !isFeatureEnabled('termlyDrill')) {
+      openPausedFeatureNotice('termlyDrill', 'Termly Assessment Drills');
+      return;
+    }
+    if (
+      exam.examType === 'JAMB_UTME' &&
+      student.classLevel === 'University Aspirant' &&
+      !isFeatureEnabled('aspirantHub')
+    ) {
+      openPausedFeatureNotice('aspirantHub', 'JAMB & Aspirant CBT Hub');
+      return;
+    }
+    if (!isFeatureEnabled('cbtExams')) {
+      openPausedFeatureNotice('cbtExams', 'CBT Exam Practice & Quizzes');
+      return;
+    }
     setActiveExam(exam);
   };
 
@@ -1713,6 +2089,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     forceFresh?: boolean;
     topicsContext?: string[];
   }): Promise<{ success: boolean; drill?: CBTExam; error?: string; cached?: boolean }> => {
+    if (!isFeatureEnabled('termlyDrill')) {
+      openPausedFeatureNotice('termlyDrill', 'Termly Assessment Drills');
+      return {
+        success: false,
+        error: getPausedFeatureMessage('termlyDrill')
+      };
+    }
     try {
       const res = await fetch('/api/gemini/generate-termly-drill', {
         method: 'POST',
@@ -1754,6 +2137,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     subject: string;
     forceFresh?: boolean;
   }): Promise<{ success: boolean; drill?: CBTExam; error?: string; cached?: boolean }> => {
+    if (!isFeatureEnabled('termlyDrill')) {
+      openPausedFeatureNotice('termlyDrill', 'Termly Assessment Drills');
+      return {
+        success: false,
+        error: getPausedFeatureMessage('termlyDrill')
+      };
+    }
     try {
       const res = await fetch('/api/gemini/generate-certificate-drill', {
         method: 'POST',
@@ -2882,6 +3272,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [activeClassroomSession, setActiveClassroomSession] = useState<VirtualClassroomSession | null>(null);
 
   const launchVirtualClassroom = (bookingId: string, role?: 'student' | 'tutor') => {
+    if (!isFeatureEnabled('virtualClassroom')) {
+      openPausedFeatureNotice('virtualClassroom', 'Live Virtual Classroom');
+      return;
+    }
     let booking = tutorBookings.find(b => b.id === bookingId);
     if (!booking) {
       booking = tutorBookings.find(b => b.bookingType === 'online') || tutorBookings[0];
@@ -4275,7 +4669,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return { success: true };
   };
 
-  const loginAsDeveloper = (emailInput?: string) => {
+  const loginAsDeveloper = (emailInput?: string, options?: { skipNavigate?: boolean }): RegisteredUserProfile => {
     const targetEmail = (emailInput || SUPER_ADMIN_EMAIL).toLowerCase().trim();
     const devProfile: RegisteredUserProfile = {
       id: 'usr-dev-martorefe',
@@ -4294,280 +4688,427 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setCurrentUserProfile(devProfile);
     safeSetItem('sc_user_profile', JSON.stringify(devProfile));
     setCurrentRole('admin');
-    setCurrentScreen('app');
-    confetti({ particleCount: 60, spread: 70, origin: { y: 0.6 } });
+    if (!options?.skipNavigate) {
+      setCurrentScreen('app');
+      confetti({ particleCount: 60, spread: 70, origin: { y: 0.6 } });
+    }
+    return devProfile;
   };
 
   // ==========================================
-  // OTA RELEASES, FEATURE PAUSES & REMINDERS
+  // CROSS-PERSONA NOTIFICATIONS & REMINDERS
   // ==========================================
-  const [appVersion] = useState<string>(() => getEffectiveClientVersion() || CURRENT_APP_VERSION);
-  const [otaAppRelease, setOtaAppRelease] = useState<OTAAppRelease>(DEFAULT_OTA_APP_RELEASE);
-  const [isMildUpdateDismissed, setIsMildUpdateDismissed] = useState<boolean>(false);
-  const [otaFeatureFlags, setOtaFeatureFlags] = useState<Record<OTAFeatureKey, OTAFeatureFlag>>(
-    DEFAULT_OTA_FEATURE_FLAGS
-  );
-
-  const [remoteNotifications, setRemoteNotifications] = useState<PersonaNotificationItem[]>([]);
-  const [readNotificationIds, setReadNotificationIds] = useState<string[]>(() => getReadNotificationIds());
-  const [isNotificationInboxOpen, setIsNotificationInboxOpen] = useState<boolean>(false);
-  const [browserPushPermission, setBrowserPushPermission] = useState<NotificationPermission | 'unsupported'>(() =>
+  const notifUserScope = currentUser?.uid || currentUserProfile?.id || 'guest';
+  const [isNotificationDrawerOpen, setIsNotificationDrawerOpen] = useState<boolean>(false);
+  const [browserPermission, setBrowserPermission] = useState<NotificationPermission | 'unsupported'>(() =>
     getBrowserNotificationPermission()
   );
-  const [reminderPreferences, setReminderPreferences] = useState<ReminderPreferences>(() =>
-    loadLocalReminderPreferences(
-      currentUserProfile?.id || 'guest',
-      currentRole,
-      currentUserProfile?.email
-    )
+  const [notificationPreferences, setNotificationPreferences] = useState<NotificationPreferences>(() =>
+    getStoredNotificationPreferences(notifUserScope)
+  );
+  const [personalInbox, setPersonalInbox] = useState<AppNotificationItem[]>(() =>
+    getStoredInboxNotifications(notifUserScope)
+  );
+  const [otaBroadcastNotifs, setOtaBroadcastNotifs] = useState<OTANotificationBroadcast[]>([]);
+  const [readOtaIds, setReadOtaIds] = useState<string[]>(() => getStoredReadOtaIds(notifUserScope));
+  const [dismissedOtaIds, setDismissedOtaIds] = useState<string[]>(() =>
+    getStoredDismissedOtaIds(notifUserScope)
+  );
+  const [pendingPortalTab, setPendingPortalTab] = useState<{
+    tab: NotificationDeepLinkTab;
+    nonce: number;
+  } | null>(null);
+
+  const seenLiveOtaIdsRef = React.useRef<Set<string>>(new Set());
+  const otaHydratedRef = React.useRef<boolean>(false);
+
+  // Sync user-scoped notification storage when account switches
+  useEffect(() => {
+    setNotificationPreferences(getStoredNotificationPreferences(notifUserScope));
+    setPersonalInbox(getStoredInboxNotifications(notifUserScope));
+    setReadOtaIds(getStoredReadOtaIds(notifUserScope));
+    setDismissedOtaIds(getStoredDismissedOtaIds(notifUserScope));
+  }, [notifUserScope]);
+
+  const routeToDeepLinkTab = useCallback(
+    (tab: NotificationDeepLinkTab) => {
+      // Student routes
+      const studentTabs = new Set([
+        'dashboard',
+        'syllabus',
+        'cbt',
+        'competitions',
+        'formulas',
+        'tutors',
+        'games',
+        'ai-coach',
+        'community',
+        'exam-prep',
+        'aspirant-cbt',
+        'admission-guide',
+        'mock-tournaments'
+      ]);
+
+      setCurrentScreen('app');
+
+      if (studentTabs.has(tab)) {
+        if (currentRole === 'student' || isSuperAdmin) {
+          if (currentRole !== 'student' && isSuperAdmin) {
+            setCurrentRole('student');
+          }
+          setActiveReadingNote(null);
+          setActiveExam(null);
+          setActiveStudentTab(tab as typeof activeStudentTab);
+          return;
+        }
+      }
+
+      if (tab.startsWith('parent_') && (currentRole === 'parent' || isSuperAdmin)) {
+        if (currentRole !== 'parent' && isSuperAdmin) setCurrentRole('parent');
+        setPendingPortalTab({ tab, nonce: Date.now() });
+        return;
+      }
+      if (tab.startsWith('tutor_') && (currentRole === 'tutor' || isSuperAdmin)) {
+        if (currentRole !== 'tutor' && isSuperAdmin) setCurrentRole('tutor');
+        setPendingPortalTab({ tab, nonce: Date.now() });
+        return;
+      }
+      if (tab.startsWith('school_') && (currentRole === 'school_admin' || currentRole === 'admin')) {
+        if (currentRole !== 'school_admin' && isSuperAdmin) setCurrentRole('school_admin');
+        setPendingPortalTab({ tab, nonce: Date.now() });
+        return;
+      }
+      if (tab.startsWith('partner_') && (currentRole === 'growth_partner' || isSuperAdmin)) {
+        if (currentRole !== 'growth_partner' && isSuperAdmin) setCurrentRole('growth_partner');
+        setPendingPortalTab({ tab, nonce: Date.now() });
+        return;
+      }
+
+      // Generic fallback to pending portal tab if role matches partially
+      setPendingPortalTab({ tab, nonce: Date.now() });
+    },
+    [currentRole, isSuperAdmin, setActiveStudentTab, setCurrentRole, setCurrentScreen]
   );
 
+  const clearPendingPortalTab = useCallback(() => {
+    setPendingPortalTab(null);
+  }, []);
+
+  const markNotificationRead = useCallback(
+    (id: string) => {
+      if (id.startsWith('ota_') || otaBroadcastNotifs.some((b) => b.id === id)) {
+        setReadOtaIds((prev) => {
+          if (prev.includes(id)) return prev;
+          const next = [...prev, id];
+          saveStoredReadOtaIds(notifUserScope, next);
+          return next;
+        });
+      }
+      setPersonalInbox((prev) => {
+        const changed = prev.some((n) => n.id === id && !n.read);
+        if (!changed) return prev;
+        const next = prev.map((n) => (n.id === id ? { ...n, read: true } : n));
+        saveStoredInboxNotifications(notifUserScope, next);
+        return next;
+      });
+    },
+    [notifUserScope, otaBroadcastNotifs]
+  );
+
+  const handleNotificationAction = useCallback(
+    (item: AppNotificationItem) => {
+      markNotificationRead(item.id);
+      setIsNotificationDrawerOpen(false);
+      routeToDeepLinkTab(item.deepLinkTab);
+    },
+    [markNotificationRead, routeToDeepLinkTab]
+  );
+
+  // Register Service Worker, parse ?notifTab URL deep links, and listen to SW click messages
   useEffect(() => {
     registerNotificationServiceWorker();
-    const unsubRelease = subscribeToOTAAppRelease((release) => {
-      setOtaAppRelease(release);
-    });
-    const unsubFeatures = subscribeToOTAFeatureFlags((flags) => {
-      setOtaFeatureFlags(flags);
-    });
-    const unsubNotifications = subscribeToPersonaNotifications((items) => {
-      setRemoteNotifications(items);
-    });
+    setBrowserPermission(getBrowserNotificationPermission());
 
-    const handleSwMessage = (event: MessageEvent) => {
-      if (event.data && event.data.type === 'SC_NOTIFICATION_CLICKED' && event.data.actionTarget) {
-        const target = String(event.data.actionTarget);
-        if (currentRole === 'student' && target !== 'ota_upgrade' && target !== 'dashboard') {
-          setActiveStudentTab(target as any);
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const urlTab = params.get('notifTab') as NotificationDeepLinkTab | null;
+      const urlNotifId = params.get('notifId');
+      if (urlTab) {
+        if (urlNotifId) markNotificationRead(urlNotifId);
+        if (isAuthenticated) {
+          routeToDeepLinkTab(urlTab);
+        } else {
+          setPendingPortalTab({ tab: urlTab, nonce: Date.now() });
         }
-        setIsNotificationInboxOpen(true);
+        params.delete('notifTab');
+        params.delete('notifId');
+        params.delete('notifRole');
+        const cleanedQuery = params.toString();
+        const nextUrl = window.location.pathname + (cleanedQuery ? `?${cleanedQuery}` : '');
+        window.history.replaceState({}, '', nextUrl);
       }
-    };
-    if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
-      navigator.serviceWorker.addEventListener('message', handleSwMessage);
     }
 
-    return () => {
-      unsubRelease();
-      unsubFeatures();
-      unsubNotifications();
-      if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
-        navigator.serviceWorker.removeEventListener('message', handleSwMessage);
+    if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
+    const handleSwMessage = (event: MessageEvent) => {
+      if (event.data && event.data.type === 'SC_NOTIFICATION_CLICK') {
+        const { deepLinkTab, notificationId } = event.data as {
+          deepLinkTab?: NotificationDeepLinkTab;
+          notificationId?: string;
+        };
+        if (notificationId) markNotificationRead(notificationId);
+        if (deepLinkTab) {
+          routeToDeepLinkTab(deepLinkTab);
+          setIsNotificationDrawerOpen(false);
+        }
       }
     };
-  }, [currentRole]);
+    navigator.serviceWorker.addEventListener('message', handleSwMessage);
+    return () => {
+      navigator.serviceWorker.removeEventListener('message', handleSwMessage);
+    };
+  }, [isAuthenticated, markNotificationRead, routeToDeepLinkTab]);
 
-  // Sync user reminder preferences on account/role change
+  // Subscribe to live Super Admin OTA Notification Broadcasts
   useEffect(() => {
-    const uid = currentUserProfile?.id || currentUser?.uid || 'guest';
-    const localPrefs = loadLocalReminderPreferences(uid, currentRole, currentUserProfile?.email);
-    setReminderPreferences(localPrefs);
+    const unsub = subscribeToOTANotificationBroadcasts((items) => {
+      setOtaBroadcastNotifs(items);
 
-    if (uid && uid !== 'guest') {
-      fetchRemoteReminderPreferences(uid).then((remote) => {
-        if (remote) {
-          setReminderPreferences(remote);
+      // Dispatch browser push for newly added active OTA broadcasts targeting the active user
+      if (!otaHydratedRef.current) {
+        items.forEach((b) => seenLiveOtaIdsRef.current.add(b.id));
+        otaHydratedRef.current = true;
+        return;
+      }
+
+      if (!isAuthenticated || !notificationPreferences.otaBroadcasts) {
+        items.forEach((b) => seenLiveOtaIdsRef.current.add(b.id));
+        return;
+      }
+
+      items.forEach((b) => {
+        if (!seenLiveOtaIdsRef.current.has(b.id)) {
+          seenLiveOtaIdsRef.current.add(b.id);
+          const matchesRole =
+            b.isActive &&
+            (b.targetRoles.includes('all') || b.targetRoles.includes(currentRole));
+          if (matchesRole) {
+            const notifItem: AppNotificationItem = {
+              id: b.id,
+              source: 'ota_broadcast',
+              category: b.category,
+              targetRoles: b.targetRoles,
+              title: b.title,
+              body: b.body,
+              deepLinkTab: b.deepLinkTab,
+              actionLabel: b.actionLabel,
+              createdAt: b.createdAt,
+              read: false,
+              priority: b.priority
+            };
+            dispatchBrowserNotification(notifItem, notificationPreferences, {
+              onForegroundClick: (clicked) => handleNotificationAction(clicked)
+            });
+          }
         }
       });
-    }
-  }, [currentUserProfile?.id, currentUserProfile?.email, currentUser?.uid, currentRole]);
+    });
+    return () => unsub();
+  }, [currentRole, handleNotificationAction, isAuthenticated, notificationPreferences]);
 
-  const isUpdateAvailable = Boolean(
-    otaAppRelease.isActive && compareSemver(otaAppRelease.latestVersion, appVersion) > 0
-  );
+  // Automated Streak & Inactivity Draw-Back Evaluation Loop
+  useEffect(() => {
+    if (!isAuthenticated || currentScreen !== 'app') return;
 
-  const isForceUpgradeRequired = Boolean(
-    !isSuperAdmin &&
-      otaAppRelease.isActive &&
-      (compareSemver(otaAppRelease.minimumSupportedVersion, appVersion) > 0 ||
-        (otaAppRelease.upgradeMode === 'force_blocking' &&
-          compareSemver(otaAppRelease.latestVersion, appVersion) > 0))
-  );
+    const runCheck = () => {
+      const existingIds = new Set(personalInbox.map((i) => i.id));
+      const newItems = evaluateAutomatedReengagementNudges({
+        userId: notifUserScope,
+        role: currentRole,
+        student,
+        tutorBookings,
+        championshipRegistrations,
+        prefs: notificationPreferences,
+        existingInboxIds: existingIds
+      });
 
-  const dismissMildUpdate = () => setIsMildUpdateDismissed(true);
+      if (newItems.length > 0) {
+        setPersonalInbox((prev) => {
+          const merged = [...newItems, ...prev].slice(0, 60);
+          saveStoredInboxNotifications(notifUserScope, merged);
+          return merged;
+        });
 
-  const triggerOTAUpgrade = async () => {
-    await executeOTAUpgrade(otaAppRelease.latestVersion);
-  };
-
-  const isFeaturePaused = useCallback(
-    (featureKey: OTAFeatureKey): boolean => {
-      return Boolean(otaFeatureFlags[featureKey]?.isPaused);
-    },
-    [otaFeatureFlags]
-  );
-
-  const isFeatureBlockedForCurrentUser = useCallback(
-    (featureKey: OTAFeatureKey): boolean => {
-      if (isSuperAdmin) return false;
-      return Boolean(otaFeatureFlags[featureKey]?.isPaused);
-    },
-    [isSuperAdmin, otaFeatureFlags]
-  );
-
-  const getPausedFeatureInfo = useCallback(
-    (featureKey: OTAFeatureKey): OTAFeatureFlag | null => {
-      const flag = otaFeatureFlags[featureKey];
-      return flag && flag.isPaused ? flag : null;
-    },
-    [otaFeatureFlags]
-  );
-
-  const personaNotifications = React.useMemo(() => {
-    const roleFilteredRemote = remoteNotifications.filter((n) => {
-      if (n.targetUserId && currentUserProfile?.id && n.targetUserId !== currentUserProfile.id) {
-        return false;
+        // Push up to 1 top automated alert to browser OS notifications when allowed
+        dispatchBrowserNotification(newItems[0], notificationPreferences, {
+          onForegroundClick: (clicked) => handleNotificationAction(clicked)
+        });
       }
-      return n.targetRole === 'all' || n.targetRole === currentRole;
-    });
+    };
 
-    const smart = generateSmartPersonaReminders({
-      role: currentRole,
-      student,
-      tutorBookings,
-      isUpdateAvailable,
-      latestVersion: otaAppRelease.latestVersion,
-      unreadNotesCount: Math.max(0, adminLessonNotes.length - (student.completedReadNoteIds?.length || 0))
-    });
-
-    const combined = [...roleFilteredRemote, ...smart];
-    const uniqueMap = new Map<string, PersonaNotificationItem>();
-    for (const item of combined) {
-      if (!uniqueMap.has(item.id)) uniqueMap.set(item.id, item);
-    }
-
-    return Array.from(uniqueMap.values())
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-      .map((item) => ({
-        ...item,
-        isRead: readNotificationIds.includes(item.id)
-      }));
+    runCheck();
+    const interval = window.setInterval(runCheck, 15 * 60 * 1000);
+    return () => window.clearInterval(interval);
   }, [
-    remoteNotifications,
+    championshipRegistrations,
     currentRole,
-    currentUserProfile?.id,
+    currentScreen,
+    handleNotificationAction,
+    isAuthenticated,
+    notifUserScope,
+    notificationPreferences,
+    personalInbox,
     student,
-    tutorBookings,
-    isUpdateAvailable,
-    otaAppRelease.latestVersion,
-    adminLessonNotes.length,
-    readNotificationIds
+    tutorBookings
+  ]);
+
+  // Combined visible notifications filtered for the active role & user preferences
+  const notifications = React.useMemo<AppNotificationItem[]>(() => {
+    const readSet = new Set(readOtaIds);
+    const dismissedSet = new Set(dismissedOtaIds);
+
+    const activeOtaItems: AppNotificationItem[] = notificationPreferences.otaBroadcasts
+      ? otaBroadcastNotifs
+          .filter(
+            (b) =>
+              b.isActive &&
+              !dismissedSet.has(b.id) &&
+              (b.targetRoles.includes('all') || b.targetRoles.includes(currentRole) || isSuperAdmin)
+          )
+          .map((b) => ({
+            id: b.id,
+            source: 'ota_broadcast',
+            category: b.category,
+            targetRoles: b.targetRoles,
+            title: b.title,
+            body: b.body,
+            deepLinkTab: b.deepLinkTab,
+            actionLabel: b.actionLabel,
+            createdAt: b.createdAt,
+            read: readSet.has(b.id),
+            priority: b.priority
+          }))
+      : [];
+
+    const rolePersonalItems = personalInbox.filter(
+      (item) =>
+        item.targetRoles.includes('all') ||
+        item.targetRoles.includes(currentRole)
+    );
+
+    const combined = [...rolePersonalItems, ...activeOtaItems];
+    combined.sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+    return combined;
+  }, [
+    currentRole,
+    dismissedOtaIds,
+    isSuperAdmin,
+    notificationPreferences.otaBroadcasts,
+    otaBroadcastNotifs,
+    personalInbox,
+    readOtaIds
   ]);
 
   const unreadNotificationCount = React.useMemo(
-    () => personaNotifications.filter((n) => !n.isRead).length,
-    [personaNotifications]
+    () => notifications.filter((n) => !n.read).length,
+    [notifications]
   );
 
-  // Dispatch browser push notification automatically when Super Admin sends a push-enabled notification
-  useEffect(() => {
-    if (!isAuthenticated || !reminderPreferences.browserPushEnabled) return;
-    if (browserPushPermission !== 'granted') return;
-
-    for (const item of remoteNotifications) {
-      const roleMatches = item.targetRole === 'all' || item.targetRole === currentRole;
-      if (roleMatches && item.sendBrowserPush && shouldAutoFirePushForNotification(item.id)) {
-        void triggerBrowserNotification({
-          title: item.title,
-          body: item.message,
-          tag: item.id,
-          actionTarget: item.actionTarget
-        });
-      }
-    }
-  }, [
-    isAuthenticated,
-    remoteNotifications,
-    currentRole,
-    reminderPreferences.browserPushEnabled,
-    browserPushPermission
-  ]);
-
-  const markNotificationRead = (id: string) => {
-    setReadNotificationIds((prev) => {
-      if (prev.includes(id)) return prev;
-      const next = [...prev, id];
-      saveReadNotificationIds(next);
-      return next;
-    });
-  };
-
-  const markAllNotificationsRead = () => {
-    const allIds = personaNotifications.map((n) => n.id);
-    const merged = Array.from(new Set([...readNotificationIds, ...allIds]));
-    setReadNotificationIds(merged);
-    saveReadNotificationIds(merged);
-  };
-
-  const updateReminderPreferences = async (partial: Partial<ReminderPreferences>) => {
-    const next: ReminderPreferences = {
-      ...reminderPreferences,
-      ...partial,
-      userId: currentUserProfile?.id || currentUser?.uid || 'guest',
-      role: currentRole,
-      email: currentUserProfile?.email || reminderPreferences.email,
-      updatedAt: new Date().toISOString()
-    };
-    setReminderPreferences(next);
-    await saveReminderPreferences(next);
-  };
-
-  const enableBrowserPushNotifications = async (): Promise<NotificationPermission | 'unsupported'> => {
-    const perm = await requestBrowserPushPermission();
-    setBrowserPushPermission(perm);
+  const enableBrowserPushNotifications = useCallback(async () => {
+    const perm = await requestBrowserNotificationPermission();
+    setBrowserPermission(perm);
     if (perm === 'granted') {
-      await updateReminderPreferences({ browserPushEnabled: true });
-      await triggerBrowserNotification({
-        title: 'Reminders Activated',
-        body: `You will now receive helpful ${currentRole.replace('_', ' ')} reminders from Student Companion.`
+      setNotificationPreferences((prev) => {
+        const next = { ...prev, browserPushEnabled: true };
+        saveStoredNotificationPreferences(notifUserScope, next);
+        return next;
       });
     }
     return perm;
-  };
+  }, [notifUserScope]);
 
-  const sendSelfReminderTest = async (): Promise<{
-    pushSent: boolean;
-    emailSent: boolean;
-    message: string;
-  }> => {
-    let pushSent = false;
-    let emailSent = false;
-    const notes: string[] = [];
-
-    if (browserPushPermission === 'granted') {
-      pushSent = await triggerBrowserNotification({
-        title: 'Student Companion Study Reminder',
-        body: 'Your streak and personalized hubs are waiting! Jump back in for 10 minutes today.'
+  const updateNotificationPreferences = useCallback(
+    (updates: Partial<NotificationPreferences>) => {
+      setNotificationPreferences((prev) => {
+        const next = { ...prev, ...updates };
+        saveStoredNotificationPreferences(notifUserScope, next);
+        return next;
       });
-      if (pushSent) notes.push('Browser notification sent');
-    }
+    },
+    [notifUserScope]
+  );
 
-    const emailTarget = currentUserProfile?.email || reminderPreferences.email;
-    if (reminderPreferences.emailDigestEnabled && emailTarget) {
-      const res = await dispatchEmailDigest({
-        recipients: [{ email: emailTarget, name: currentUserProfile?.fullName || student.name, role: currentRole }],
-        subject: '[Student Companion] Your Study & Activity Reminder',
-        title: 'Your Daily Learning Check-In Is Ready',
-        message:
-          currentRole === 'student'
-            ? `Keep your ${student.streakDays || 1}-day streak going! Complete a quick 10-question CBT drill or review this week's Lesson Notes.`
-            : 'Open your Student Companion dashboard to review updates, approvals, and activity alerts.',
-        actionLabel: 'Return to Student Companion'
+  const markAllNotificationsRead = useCallback(() => {
+    const otaIds = notifications
+      .filter((n) => n.source === 'ota_broadcast')
+      .map((n) => n.id);
+    if (otaIds.length > 0) {
+      setReadOtaIds((prev) => {
+        const next = Array.from(new Set([...prev, ...otaIds]));
+        saveStoredReadOtaIds(notifUserScope, next);
+        return next;
       });
-      if (res.success) {
-        emailSent = true;
-        notes.push(`Email digest sent to ${emailTarget}`);
-      } else if (res.error) {
-        notes.push(`Email note: ${res.error}`);
-      }
     }
+    setPersonalInbox((prev) => {
+      const next = prev.map((n) => ({ ...n, read: true }));
+      saveStoredInboxNotifications(notifUserScope, next);
+      return next;
+    });
+  }, [notifUserScope, notifications]);
 
-    return {
-      pushSent,
-      emailSent,
-      message: notes.length > 0 ? notes.join(' · ') : 'Reminder checked (enable browser push or email digest above to test delivery).'
-    };
-  };
+  const clearReadNotifications = useCallback(() => {
+    const readOtas = notifications
+      .filter((n) => n.source === 'ota_broadcast' && n.read)
+      .map((n) => n.id);
+    if (readOtas.length > 0) {
+      setDismissedOtaIds((prev) => {
+        const next = Array.from(new Set([...prev, ...readOtas]));
+        saveStoredDismissedOtaIds(notifUserScope, next);
+        return next;
+      });
+    }
+    setPersonalInbox((prev) => {
+      const next = prev.filter((n) => !n.read);
+      saveStoredInboxNotifications(notifUserScope, next);
+      return next;
+    });
+  }, [notifUserScope, notifications]);
+
+  const sendTestNotification = useCallback(async (): Promise<boolean> => {
+    const sample = buildSamplePersonaNudge(currentRole, student);
+    const perm =
+      browserPermission === 'granted'
+        ? 'granted'
+        : await enableBrowserPushNotifications();
+    if (perm !== 'granted') return false;
+    return dispatchBrowserNotification(sample, notificationPreferences, {
+      bypassQuietHours: true,
+      onForegroundClick: (clicked) => handleNotificationAction(clicked)
+    });
+  }, [
+    browserPermission,
+    currentRole,
+    enableBrowserPushNotifications,
+    handleNotificationAction,
+    notificationPreferences,
+    student
+  ]);
+
+  const triggerSampleStreakNudge = useCallback(async (): Promise<AppNotificationItem> => {
+    const sample = buildSamplePersonaNudge(currentRole, student);
+    setPersonalInbox((prev) => {
+      const next = [sample, ...prev].slice(0, 60);
+      saveStoredInboxNotifications(notifUserScope, next);
+      return next;
+    });
+    await dispatchBrowserNotification(sample, notificationPreferences, {
+      bypassQuietHours: true,
+      onForegroundClick: (clicked) => handleNotificationAction(clicked)
+    });
+    return sample;
+  }, [currentRole, handleNotificationAction, notifUserScope, notificationPreferences, student]);
 
   return (
     <AppContext.Provider
@@ -4597,6 +5138,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         currentUser,
         authLoading,
         loginWithGoogle,
+        authenticateUser,
+        activateQuickStudentSession,
         logoutUser,
         isFirebaseConnected,
         activeStudentTab,
@@ -4709,28 +5252,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         dismissSecurityAlert,
         refreshSecurityStatus,
         submitSecurityReport,
-        appVersion,
         otaAppRelease,
-        isUpdateAvailable,
-        isForceUpgradeRequired,
-        isMildUpdateDismissed,
-        dismissMildUpdate,
-        triggerOTAUpgrade,
-        otaFeatureFlags,
-        isFeaturePaused,
-        isFeatureBlockedForCurrentUser,
-        getPausedFeatureInfo,
-        personaNotifications,
+        installedAppVersion,
+        isCurrentReleaseDismissed,
+        applyOTAUpgrade,
+        dismissOTAPrompt,
+        setLocalInstalledAppVersion,
+        isFeatureEnabled,
+        getPausedFeatureMessage,
+        pausedFeatureNotice,
+        openPausedFeatureNotice,
+        closePausedFeatureNotice,
+        notifications,
         unreadNotificationCount,
-        isNotificationInboxOpen,
-        setIsNotificationInboxOpen,
+        notificationPreferences,
+        browserPermission,
+        isNotificationDrawerOpen,
+        setIsNotificationDrawerOpen,
+        enableBrowserPushNotifications,
+        updateNotificationPreferences,
         markNotificationRead,
         markAllNotificationsRead,
-        reminderPreferences,
-        updateReminderPreferences,
-        browserPushPermission,
-        enableBrowserPushNotifications,
-        sendSelfReminderTest
+        clearReadNotifications,
+        sendTestNotification,
+        triggerSampleStreakNudge,
+        handleNotificationAction,
+        pendingPortalTab,
+        clearPendingPortalTab
       }}
     >
       {children}

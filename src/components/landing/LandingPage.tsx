@@ -11,6 +11,7 @@ import {
 interface LandingPageProps {
   onOpenKnowMore: () => void;
   onGetStarted: () => void;
+  onSignIn?: () => void;
   onDiscoverTutors: () => void;
   onSelectFeature?: (feature: 'games' | 'cbt' | 'tutors') => void;
 }
@@ -18,6 +19,7 @@ interface LandingPageProps {
 export const LandingPage: React.FC<LandingPageProps> = ({
   onOpenKnowMore,
   onGetStarted,
+  onSignIn,
   onDiscoverTutors,
   onSelectFeature
 }) => {
@@ -144,6 +146,18 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           >
             Discover Tutors
           </button>
+
+          {onSignIn && (
+            <div className="w-full flex items-center justify-center pt-1">
+              <button
+                type="button"
+                onClick={onSignIn}
+                className="text-sm font-medium text-slate-300 hover:text-white transition-colors cursor-pointer py-1.5 px-3"
+              >
+                Already have an account? <span className="text-[#84E000] font-bold hover:underline">Sign In</span>
+              </button>
+            </div>
+          )}
         </div>
 
         {/* --- Bottom Feature Cards (3 Columns) --- */}

@@ -2680,12 +2680,74 @@ const CLEAN_REMOTE_URL = `https://github.com/${TARGET_GITHUB_OWNER}/${TARGET_GIT
 function scrubGitToken(text: string, token: string): string {
   if (!text) return '';
   let cleaned = String(text);
-  if (token) {
-    cleaned = cleaned.split(token).join('***');
-    cleaned = cleaned.split(encodeURIComponent(token)).join('***');
+  const envToken = (process.env.GITHUB_TOKEN || process.env.GH_TOKEN || '').trim();
+  for (const secret of [token, envToken]) {
+    if (secret) {
+      cleaned = cleaned.split(secret).join('***');
+      cleaned = cleaned.split(encodeURIComponent(secret)).join('***');
+    }
   }
   cleaned = cleaned.replace(/x-access-token:[^@]+@/gi, 'x-access-token:***@');
+  cleaned = cleaned.replace(/https:\/\/[^:@/\s]+:[^@/\s]+@github\.com/gi, 'https://***@github.com');
   return cleaned;
+}
+
+async function runGit(
+  args: string[],
+  options?: { timeout?: number; tokenToScrub?: string }
+): Promise<{ stdout: string; stderr: string }> {
+  const token = options?.tokenToScrub ?? (process.env.GITHUB_TOKEN || process.env.GH_TOKEN || '').trim();
+  try {
+    return await execFileAsync(
+      'git',
+      ['-c', `safe.directory=${__dirname}`, ...args],
+      {
+        cwd: __dirname,
+        env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+        timeout: options?.timeout ?? 30000,
+        maxBuffer: 10 * 1024 * 1024,
+      }
+    );
+  } catch (err: any) {
+    if (err?.message) err.message = scrubGitToken(String(err.message), token);
+    if (err?.stderr) err.stderr = scrubGitToken(String(err.stderr), token);
+    if (err?.stdout) err.stdout = scrubGitToken(String(err.stdout), token);
+    throw err;
+  }
+}
+
+async function fetchRemoteMainRef(token: string): Promise<{
+  remoteSha: string | null;
+  emptyRepo: boolean;
+  fetchError?: string;
+}> {
+  const remoteUrl = token
+    ? `https://x-access-token:${encodeURIComponent(token)}@github.com/${TARGET_GITHUB_OWNER}/${TARGET_GITHUB_REPO}.git`
+    : CLEAN_REMOTE_URL;
+
+  try {
+    await runGit(['fetch', remoteUrl, TARGET_GITHUB_BRANCH], {
+      timeout: 30000,
+      tokenToScrub: token,
+    });
+    const fetchHeadOut = await runGit(['rev-parse', 'FETCH_HEAD'], { tokenToScrub: token });
+    const remoteSha = fetchHeadOut.stdout.trim() || null;
+    if (remoteSha) {
+      try {
+        await runGit(['update-ref', `refs/remotes/origin/${TARGET_GITHUB_BRANCH}`, remoteSha], {
+          tokenToScrub: token,
+        });
+      } catch {}
+    }
+    return { remoteSha, emptyRepo: !remoteSha };
+  } catch (fetchErr: any) {
+    const rawMsg = String(fetchErr?.stderr || fetchErr?.message || 'Unable to fetch GitHub main branch.');
+    const cleaned = scrubGitToken(rawMsg, token);
+    if (cleaned.includes("couldn't find remote ref") || cleaned.includes('Remote branch')) {
+      return { remoteSha: null, emptyRepo: true };
+    }
+    return { remoteSha: null, emptyRepo: false, fetchError: cleaned };
+  }
 }
 
 type GitHubTokenStatus = 'missing' | 'valid' | 'read_only' | 'invalid' | 'not_found' | 'network_error';
@@ -2815,39 +2877,35 @@ async function ensureGitWorkspace(adminEmail: string): Promise<{ autoInitialized
 
   if (!fs.existsSync(gitDir)) {
     try {
-      await execFileAsync('git', ['init', '-b', TARGET_GITHUB_BRANCH], { cwd: __dirname });
+      await runGit(['init', '-b', TARGET_GITHUB_BRANCH]);
     } catch {
-      await execFileAsync('git', ['init'], { cwd: __dirname });
-      await execFileAsync('git', ['symbolic-ref', 'HEAD', `refs/heads/${TARGET_GITHUB_BRANCH}`], {
-        cwd: __dirname
-      });
+      await runGit(['init']);
+      await runGit(['symbolic-ref', 'HEAD', `refs/heads/${TARGET_GITHUB_BRANCH}`]);
     }
     autoInitialized = true;
   }
 
   try {
-    const nameOut = await execFileAsync('git', ['config', 'user.name'], { cwd: __dirname });
+    const nameOut = await runGit(['config', 'user.name']);
     if (!nameOut.stdout.trim()) throw new Error('empty');
   } catch {
-    await execFileAsync('git', ['config', 'user.name', 'Student Companion Admin'], { cwd: __dirname });
+    await runGit(['config', 'user.name', 'Student Companion Admin']);
   }
 
   try {
-    const emailOut = await execFileAsync('git', ['config', 'user.email'], { cwd: __dirname });
+    const emailOut = await runGit(['config', 'user.email']);
     if (!emailOut.stdout.trim()) throw new Error('empty');
   } catch {
-    await execFileAsync('git', ['config', 'user.email', adminEmail || 'martorefe@gmail.com'], {
-      cwd: __dirname
-    });
+    await runGit(['config', 'user.email', adminEmail || 'martorefe@gmail.com']);
   }
 
   try {
-    const remoteOut = await execFileAsync('git', ['remote', 'get-url', 'origin'], { cwd: __dirname });
+    const remoteOut = await runGit(['remote', 'get-url', 'origin']);
     if (remoteOut.stdout.trim() !== CLEAN_REMOTE_URL) {
-      await execFileAsync('git', ['remote', 'set-url', 'origin', CLEAN_REMOTE_URL], { cwd: __dirname });
+      await runGit(['remote', 'set-url', 'origin', CLEAN_REMOTE_URL]);
     }
   } catch {
-    await execFileAsync('git', ['remote', 'add', 'origin', CLEAN_REMOTE_URL], { cwd: __dirname });
+    await runGit(['remote', 'add', 'origin', CLEAN_REMOTE_URL]);
   }
 
   return { autoInitialized };
@@ -3285,42 +3343,146 @@ app.get('/api/git/status', async (req, res) => {
   }
 
   const token = (process.env.GITHUB_TOKEN || process.env.GH_TOKEN || '').trim();
-  const gitInitialized = fs.existsSync(path.join(__dirname, '.git'));
+  const shouldFetch = req.query.fetch === '1' || req.query.fetch === 'true';
+  let gitInitialized = fs.existsSync(path.join(__dirname, '.git'));
+  let lastError: string | undefined;
+
+  if (shouldFetch && !gitInitialized) {
+    try {
+      await ensureGitWorkspace(adminEmail);
+      gitInitialized = fs.existsSync(path.join(__dirname, '.git'));
+    } catch (initErr: any) {
+      lastError = scrubGitToken(String(initErr?.stderr || initErr?.message || 'Git auto-init failed.'), token);
+    }
+  }
 
   let branch = TARGET_GITHUB_BRANCH;
   let latestCommit = gitInitialized ? 'unborn' : 'not initialized';
-  let hasUncommitted = true;
+  let hasLocalHead = false;
+  let uncommittedCount = 0;
+  let hasUncommitted = false;
   let aheadCount = 0;
+  let behindCount = 0;
+  let remoteLatestCommit: string | undefined;
+  let incomingCommits: Array<{ sha: string; subject: string; author: string; date: string }> = [];
 
   if (gitInitialized) {
+    if (shouldFetch) {
+      const fetchResult = await fetchRemoteMainRef(token);
+      if (fetchResult.fetchError) {
+        lastError = fetchResult.fetchError;
+      }
+      if (fetchResult.remoteSha) {
+        remoteLatestCommit = fetchResult.remoteSha.slice(0, 7);
+      }
+    }
+
     try {
-      const branchOut = await execFileAsync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: __dirname });
+      const branchOut = await runGit(['rev-parse', '--abbrev-ref', 'HEAD'], { tokenToScrub: token });
       if (branchOut.stdout.trim()) branch = branchOut.stdout.trim();
     } catch {}
 
     try {
-      const headOut = await execFileAsync('git', ['rev-parse', '--short', 'HEAD'], { cwd: __dirname });
-      if (headOut.stdout.trim()) latestCommit = headOut.stdout.trim();
+      const headOut = await runGit(['rev-parse', '--short', 'HEAD'], { tokenToScrub: token });
+      if (headOut.stdout.trim()) {
+        latestCommit = headOut.stdout.trim();
+        hasLocalHead = true;
+      }
     } catch {
       latestCommit = 'unborn';
+      hasLocalHead = false;
     }
 
     try {
-      const statusOut = await execFileAsync('git', ['status', '--porcelain'], { cwd: __dirname });
-      hasUncommitted = Boolean(statusOut.stdout.trim());
-    } catch {
+      const statusOut = await runGit(['status', '--porcelain'], { tokenToScrub: token });
+      const lines = statusOut.stdout.split(/\r?\n/).filter((l) => l.trim().length > 0);
+      uncommittedCount = lines.length;
+      hasUncommitted = uncommittedCount > 0;
+    } catch (stErr: any) {
       hasUncommitted = true;
+      if (!lastError) {
+        lastError = scrubGitToken(String(stErr?.stderr || stErr?.message || 'Unable to read git status.'), token);
+      }
     }
 
+    const remoteTrackingRef = `refs/remotes/origin/${TARGET_GITHUB_BRANCH}`;
+    let hasRemoteTracking = false;
     try {
-      const aheadOut = await execFileAsync(
-        'git',
-        ['rev-list', '--count', `origin/${TARGET_GITHUB_BRANCH}..HEAD`],
-        { cwd: __dirname }
-      );
-      aheadCount = Number(aheadOut.stdout.trim()) || 0;
+      const remoteRefOut = await runGit(['rev-parse', '--short', remoteTrackingRef], { tokenToScrub: token });
+      if (remoteRefOut.stdout.trim()) {
+        hasRemoteTracking = true;
+        if (!remoteLatestCommit) remoteLatestCommit = remoteRefOut.stdout.trim();
+      }
     } catch {
-      aheadCount = 0;
+      hasRemoteTracking = false;
+    }
+
+    if (hasRemoteTracking) {
+      if (hasLocalHead) {
+        try {
+          const aheadOut = await runGit(['rev-list', '--count', `${remoteTrackingRef}..HEAD`], {
+            tokenToScrub: token,
+          });
+          aheadCount = Number(aheadOut.stdout.trim()) || 0;
+        } catch {
+          aheadCount = 0;
+        }
+
+        try {
+          const behindOut = await runGit(['rev-list', '--count', `HEAD..${remoteTrackingRef}`], {
+            tokenToScrub: token,
+          });
+          behindCount = Number(behindOut.stdout.trim()) || 0;
+        } catch {
+          behindCount = 0;
+        }
+
+        if (behindCount > 0) {
+          try {
+            const logOut = await runGit(
+              ['log', `HEAD..${remoteTrackingRef}`, '-n', '8', '--pretty=format:%h\t%s\t%an\t%ar'],
+              { tokenToScrub: token }
+            );
+            incomingCommits = logOut.stdout
+              .split(/\r?\n/)
+              .filter(Boolean)
+              .map((line) => {
+                const [sha, subject, author, date] = line.split('\t');
+                return {
+                  sha: sha || '',
+                  subject: subject || '(no message)',
+                  author: author || 'GitHub',
+                  date: date || '',
+                };
+              });
+          } catch {}
+        }
+      } else {
+        try {
+          const behindOut = await runGit(['rev-list', '--count', remoteTrackingRef], {
+            tokenToScrub: token,
+          });
+          behindCount = Number(behindOut.stdout.trim()) || 0;
+          if (behindCount > 0) {
+            const logOut = await runGit(
+              ['log', remoteTrackingRef, '-n', '8', '--pretty=format:%h\t%s\t%an\t%ar'],
+              { tokenToScrub: token }
+            );
+            incomingCommits = logOut.stdout
+              .split(/\r?\n/)
+              .filter(Boolean)
+              .map((line) => {
+                const [sha, subject, author, date] = line.split('\t');
+                return {
+                  sha: sha || '',
+                  subject: subject || '(no message)',
+                  author: author || 'GitHub',
+                  date: date || '',
+                };
+              });
+          }
+        } catch {}
+      }
     }
   }
 
@@ -3337,10 +3499,206 @@ app.get('/api/git/status', async (req, res) => {
     repo: `${TARGET_GITHUB_OWNER}/${TARGET_GITHUB_REPO}`,
     branch,
     aheadCount,
+    behindCount,
+    uncommittedCount,
+    incomingCommits,
     latestCommit,
-    remoteLatestCommit: tokenCheck.remoteLatestCommit,
+    remoteLatestCommit: tokenCheck.remoteLatestCommit || remoteLatestCommit,
     hasUncommitted,
+    lastError,
   });
+});
+
+app.post('/api/git/pull', async (req, res) => {
+  const adminEmail = String(req.body?.adminEmail || '').toLowerCase().trim();
+  if (!adminEmail || !AUTHORIZED_GIT_ADMINS.includes(adminEmail)) {
+    await securityService.logUnauthorizedProbe(req, '/api/git/pull', adminEmail);
+    return res.status(403).json({
+      success: false,
+      error: 'Unauthorized: Super Admin privileges required to pull updates.',
+    });
+  }
+
+  const token = (process.env.GITHUB_TOKEN || process.env.GH_TOKEN || '').trim();
+  let didStash = false;
+
+  try {
+    const { autoInitialized } = await ensureGitWorkspace(adminEmail);
+
+    const mergeHeadFile = path.join(__dirname, '.git', 'MERGE_HEAD');
+    if (fs.existsSync(mergeHeadFile)) {
+      return res.status(409).json({
+        success: false,
+        error:
+          'A git merge is already in progress in this workspace. Finish committing or resolve conflicts before pulling new updates.',
+      });
+    }
+
+    const fetchResult = await fetchRemoteMainRef(token);
+    if (fetchResult.fetchError) {
+      return res.status(502).json({
+        success: false,
+        error: fetchResult.fetchError,
+      });
+    }
+
+    const remoteSha = fetchResult.remoteSha;
+    if (!remoteSha) {
+      return res.json({
+        success: true,
+        autoInitialized,
+        pulledCommits: 0,
+        updatedFilesCount: 0,
+        latestCommit: 'unborn',
+        message: `${TARGET_GITHUB_OWNER}/${TARGET_GITHUB_REPO} (${TARGET_GITHUB_BRANCH}) has no commits to pull yet.`,
+      });
+    }
+
+    let prevHeadSha: string | null = null;
+    try {
+      const prevHeadOut = await runGit(['rev-parse', 'HEAD'], { tokenToScrub: token });
+      prevHeadSha = prevHeadOut.stdout.trim() || null;
+    } catch {
+      prevHeadSha = null;
+    }
+
+    let pulledCommits = 0;
+    if (prevHeadSha) {
+      const behindOut = await runGit(['rev-list', '--count', `HEAD..${remoteSha}`], {
+        tokenToScrub: token,
+      });
+      pulledCommits = Number(behindOut.stdout.trim()) || 0;
+      if (pulledCommits === 0) {
+        return res.json({
+          success: true,
+          autoInitialized,
+          pulledCommits: 0,
+          updatedFilesCount: 0,
+          latestCommit: prevHeadSha.slice(0, 7),
+          message: `Workspace is already up to date with GitHub ${TARGET_GITHUB_BRANCH} (${prevHeadSha.slice(0, 7)}).`,
+        });
+      }
+    } else {
+      const countOut = await runGit(['rev-list', '--count', remoteSha], { tokenToScrub: token });
+      pulledCommits = Number(countOut.stdout.trim()) || 1;
+    }
+
+    const statusOut = await runGit(['status', '--porcelain'], { tokenToScrub: token });
+    if (statusOut.stdout.trim()) {
+      await runGit(['stash', 'push', '-u', '-m', 'pre-pull-sync'], { tokenToScrub: token });
+      didStash = true;
+    }
+
+    if (!prevHeadSha) {
+      await runGit(['update-ref', `refs/heads/${TARGET_GITHUB_BRANCH}`, remoteSha], { tokenToScrub: token });
+      await runGit(['symbolic-ref', 'HEAD', `refs/heads/${TARGET_GITHUB_BRANCH}`], { tokenToScrub: token });
+      await runGit(['reset', '--hard', remoteSha], { tokenToScrub: token });
+    } else {
+      try {
+        await runGit(['merge', '--no-edit', remoteSha], { tokenToScrub: token });
+      } catch (mergeErr: any) {
+        const mergeMsg = String(mergeErr?.stderr || mergeErr?.message || '');
+        if (mergeMsg.toLowerCase().includes('unrelated histories')) {
+          try {
+            await runGit(['merge', '--no-edit', '--allow-unrelated-histories', remoteSha], {
+              tokenToScrub: token,
+            });
+          } catch (unrelErr: any) {
+            let conflicted: string[] = [];
+            try {
+              const diffOut = await runGit(['diff', '--name-only', '--diff-filter=U'], {
+                tokenToScrub: token,
+              });
+              conflicted = diffOut.stdout.split(/\r?\n/).filter(Boolean);
+            } catch {}
+            try {
+              await runGit(['merge', '--abort'], { tokenToScrub: token });
+            } catch {}
+            if (didStash) {
+              try {
+                await runGit(['stash', 'pop'], { tokenToScrub: token });
+              } catch {}
+              didStash = false;
+            }
+            return res.status(409).json({
+              success: false,
+              error:
+                conflicted.length > 0
+                  ? `Pull paused due to merge conflict(s) in: ${conflicted.slice(0, 5).join(', ')}. Resolve or commit local changes first.`
+                  : scrubGitToken(String(unrelErr?.stderr || unrelErr?.message || 'Merge conflict pulling GitHub updates.'), token),
+            });
+          }
+        } else {
+          let conflicted: string[] = [];
+          try {
+            const diffOut = await runGit(['diff', '--name-only', '--diff-filter=U'], {
+              tokenToScrub: token,
+            });
+            conflicted = diffOut.stdout.split(/\r?\n/).filter(Boolean);
+          } catch {}
+          try {
+            await runGit(['merge', '--abort'], { tokenToScrub: token });
+          } catch {}
+          if (didStash) {
+            try {
+              await runGit(['stash', 'pop'], { tokenToScrub: token });
+            } catch {}
+            didStash = false;
+          }
+          return res.status(409).json({
+            success: false,
+            error:
+              conflicted.length > 0
+                ? `Pull paused due to merge conflict(s) in: ${conflicted.slice(0, 5).join(', ')}. Resolve or commit local changes first.`
+                : scrubGitToken(mergeMsg || 'Merge conflict while pulling GitHub main.', token),
+          });
+        }
+      }
+    }
+
+    let stashWarning = '';
+    if (didStash) {
+      try {
+        await runGit(['stash', 'pop'], { tokenToScrub: token });
+      } catch (popErr: any) {
+        stashWarning = ` (Local uncommitted edits remain safely in git stash: ${scrubGitToken(String(popErr?.message || 'stash pop needs manual check'), token)})`;
+      }
+      didStash = false;
+    }
+
+    const headOut = await runGit(['rev-parse', '--short', 'HEAD'], { tokenToScrub: token });
+    let updatedFilesCount = 0;
+    if (prevHeadSha) {
+      try {
+        const diffFilesOut = await runGit(['diff', '--name-only', `${prevHeadSha}..HEAD`], {
+          tokenToScrub: token,
+        });
+        updatedFilesCount = diffFilesOut.stdout.split(/\r?\n/).filter(Boolean).length;
+      } catch {}
+    }
+
+    return res.json({
+      success: true,
+      autoInitialized,
+      repo: `${TARGET_GITHUB_OWNER}/${TARGET_GITHUB_REPO}`,
+      branch: TARGET_GITHUB_BRANCH,
+      pulledCommits,
+      updatedFilesCount,
+      latestCommit: headOut.stdout.trim(),
+      message: `Pulled ${pulledCommits} commit(s) (${updatedFilesCount} file(s) updated) from ${TARGET_GITHUB_OWNER}/${TARGET_GITHUB_REPO} (${TARGET_GITHUB_BRANCH}) · HEAD ${headOut.stdout.trim()}.${stashWarning}`,
+    });
+  } catch (err: any) {
+    if (didStash) {
+      try {
+        await runGit(['stash', 'pop'], { tokenToScrub: token });
+      } catch {}
+    }
+    const rawMsg = err?.stderr || err?.message || 'Failed to pull updates from GitHub.';
+    return res.status(500).json({
+      success: false,
+      error: scrubGitToken(String(rawMsg), token),
+    });
+  }
 });
 
 app.post('/api/git/push', async (req, res) => {
@@ -3370,136 +3728,220 @@ app.post('/api/git/push', async (req, res) => {
     });
   }
 
+  let didStash = false;
   try {
     const { autoInitialized } = await ensureGitWorkspace(adminEmail);
+
+    const mergeHeadFile = path.join(__dirname, '.git', 'MERGE_HEAD');
+    if (fs.existsSync(mergeHeadFile)) {
+      const unmergedOut = await runGit(['diff', '--name-only', '--diff-filter=U'], { tokenToScrub: token });
+      const unmergedFiles = unmergedOut.stdout.split(/\r?\n/).filter(Boolean);
+      if (unmergedFiles.length > 0) {
+        return res.status(409).json({
+          success: false,
+          error: `Cannot push while merge conflicts exist in: ${unmergedFiles.slice(0, 5).join(', ')}.`,
+        });
+      }
+      await runGit(['add', '-A'], { tokenToScrub: token });
+      await runGit(['commit', '--no-edit'], { tokenToScrub: token });
+    }
 
     const commitMsg =
       String(req.body?.commitMessage || '').trim().slice(0, 200) ||
       `chore: sync Student Companion updates [${new Date().toISOString()}]`;
 
     const authenticatedUrl = `https://x-access-token:${encodeURIComponent(token)}@github.com/${TARGET_GITHUB_OWNER}/${TARGET_GITHUB_REPO}.git`;
-    const gitEnv = { ...process.env, GIT_TERMINAL_PROMPT: '0' };
 
-    // Fetch current remote main (gracefully handle empty repositories)
-    let remoteSha: string | null = null;
-    try {
-      await execFileAsync('git', ['fetch', authenticatedUrl, TARGET_GITHUB_BRANCH], {
-        cwd: __dirname,
-        env: gitEnv,
-        timeout: 30000,
+    const fetchResult = await fetchRemoteMainRef(token);
+    if (fetchResult.fetchError) {
+      return res.status(502).json({
+        success: false,
+        error: fetchResult.fetchError,
       });
-      const fetchHeadOut = await execFileAsync('git', ['rev-parse', 'FETCH_HEAD'], { cwd: __dirname });
-      remoteSha = fetchHeadOut.stdout.trim() || null;
-    } catch (fetchErr: any) {
-      const msg = String(fetchErr?.stderr || fetchErr?.message || '');
-      if (msg.includes('couldn\'t find remote ref') || msg.includes('Remote branch')) {
-        remoteSha = null; // Empty remote repository
-      } else {
-        throw fetchErr;
-      }
+    }
+    const remoteSha = fetchResult.remoteSha;
+
+    let hasLocalHead = false;
+    try {
+      await runGit(['rev-parse', '--verify', 'HEAD'], { tokenToScrub: token });
+      hasLocalHead = true;
+    } catch {
+      hasLocalHead = false;
     }
 
     let pushedCommits = 0;
 
     if (remoteSha) {
-      // Check if local HEAD already descends from remoteSha
       let isAncestor = false;
-      try {
-        await execFileAsync('git', ['merge-base', '--is-ancestor', remoteSha, 'HEAD'], { cwd: __dirname });
-        isAncestor = true;
-      } catch {
-        isAncestor = false;
+      if (hasLocalHead) {
+        try {
+          await runGit(['merge-base', '--is-ancestor', remoteSha, 'HEAD'], { tokenToScrub: token });
+          isAncestor = true;
+        } catch {
+          isAncestor = false;
+        }
       }
 
-      if (isAncestor) {
-        const statusOut = await execFileAsync('git', ['status', '--porcelain'], { cwd: __dirname });
+      if (hasLocalHead && isAncestor) {
+        const statusOut = await runGit(['status', '--porcelain'], { tokenToScrub: token });
         if (statusOut.stdout.trim()) {
-          await execFileAsync('git', ['add', '-A'], { cwd: __dirname });
-          await execFileAsync('git', ['commit', '-m', commitMsg], { cwd: __dirname });
+          await runGit(['add', '-A'], { tokenToScrub: token });
+          await runGit(['commit', '-m', commitMsg], { tokenToScrub: token });
         }
-        const aheadOut = await execFileAsync(
-          'git',
-          ['rev-list', '--count', `${remoteSha}..HEAD`],
-          { cwd: __dirname }
-        );
+        const aheadOut = await runGit(['rev-list', '--count', `${remoteSha}..HEAD`], {
+          tokenToScrub: token,
+        });
         pushedCommits = Number(aheadOut.stdout.trim()) || 0;
         if (pushedCommits > 0) {
-          await execFileAsync('git', ['push', authenticatedUrl, `HEAD:refs/heads/${TARGET_GITHUB_BRANCH}`], {
-            cwd: __dirname,
-            env: gitEnv,
+          await runGit(['push', authenticatedUrl, `HEAD:refs/heads/${TARGET_GITHUB_BRANCH}`], {
             timeout: 45000,
+            tokenToScrub: token,
+          });
+        }
+      } else if (hasLocalHead && !isAncestor) {
+        // Local HEAD exists and remote main has commits not in HEAD: safely merge remote first!
+        const statusOut = await runGit(['status', '--porcelain'], { tokenToScrub: token });
+        if (statusOut.stdout.trim()) {
+          await runGit(['stash', 'push', '-u', '-m', 'pre-push-merge-sync'], { tokenToScrub: token });
+          didStash = true;
+        }
+
+        try {
+          await runGit(['merge', '--no-edit', remoteSha], { tokenToScrub: token });
+        } catch (mergeErr: any) {
+          const mergeMsg = String(mergeErr?.stderr || mergeErr?.message || '');
+          if (mergeMsg.toLowerCase().includes('unrelated histories')) {
+            try {
+              await runGit(['merge', '--no-edit', '--allow-unrelated-histories', remoteSha], {
+                tokenToScrub: token,
+              });
+            } catch (unrelErr: any) {
+              let conflicted: string[] = [];
+              try {
+                const diffOut = await runGit(['diff', '--name-only', '--diff-filter=U'], {
+                  tokenToScrub: token,
+                });
+                conflicted = diffOut.stdout.split(/\r?\n/).filter(Boolean);
+              } catch {}
+              try {
+                await runGit(['merge', '--abort'], { tokenToScrub: token });
+              } catch {}
+              if (didStash) {
+                try {
+                  await runGit(['stash', 'pop'], { tokenToScrub: token });
+                } catch {}
+                didStash = false;
+              }
+              return res.status(409).json({
+                success: false,
+                error:
+                  conflicted.length > 0
+                    ? `Sync paused: remote GitHub main has conflicting changes in ${conflicted.slice(0, 5).join(', ')}. Click "Pull from GitHub" or resolve locally first.`
+                    : scrubGitToken(String(unrelErr?.stderr || unrelErr?.message || 'Merge conflict syncing with remote main.'), token),
+              });
+            }
+          } else {
+            let conflicted: string[] = [];
+            try {
+              const diffOut = await runGit(['diff', '--name-only', '--diff-filter=U'], {
+                tokenToScrub: token,
+              });
+              conflicted = diffOut.stdout.split(/\r?\n/).filter(Boolean);
+            } catch {}
+            try {
+              await runGit(['merge', '--abort'], { tokenToScrub: token });
+            } catch {}
+            if (didStash) {
+              try {
+                await runGit(['stash', 'pop'], { tokenToScrub: token });
+              } catch {}
+              didStash = false;
+            }
+            return res.status(409).json({
+              success: false,
+              error:
+                conflicted.length > 0
+                  ? `Sync paused: remote GitHub main has conflicting changes in ${conflicted.slice(0, 5).join(', ')}.`
+                  : scrubGitToken(mergeMsg || 'Merge conflict syncing with remote main.', token),
+            });
+          }
+        }
+
+        if (didStash) {
+          await runGit(['stash', 'pop'], { tokenToScrub: token });
+          didStash = false;
+        }
+
+        const postMergeStatus = await runGit(['status', '--porcelain'], { tokenToScrub: token });
+        if (postMergeStatus.stdout.trim()) {
+          await runGit(['add', '-A'], { tokenToScrub: token });
+          await runGit(['commit', '-m', commitMsg], { tokenToScrub: token });
+        }
+
+        const aheadOut = await runGit(['rev-list', '--count', `${remoteSha}..HEAD`], {
+          tokenToScrub: token,
+        });
+        pushedCommits = Number(aheadOut.stdout.trim()) || 0;
+        if (pushedCommits > 0) {
+          await runGit(['push', authenticatedUrl, `HEAD:refs/heads/${TARGET_GITHUB_BRANCH}`], {
+            timeout: 45000,
+            tokenToScrub: token,
           });
         }
       } else {
-        // Fresh container (.git missing) or unrelated local history:
-        // Stage workspace files and stack cleanly as a child commit of remoteSha without losing GitHub history.
-        await execFileAsync('git', ['add', '-A'], { cwd: __dirname });
-        const treeOut = await execFileAsync('git', ['write-tree'], { cwd: __dirname });
+        // Fresh container (.git was missing / unborn HEAD):
+        // Stack workspace files cleanly as a child commit of remoteSha without losing GitHub history.
+        await runGit(['add', '-A'], { tokenToScrub: token });
+        const treeOut = await runGit(['write-tree'], { tokenToScrub: token });
         const workspaceTreeSha = treeOut.stdout.trim();
-        const remoteTreeOut = await execFileAsync('git', ['rev-parse', `${remoteSha}^{tree}`], {
-          cwd: __dirname
-        });
+        const remoteTreeOut = await runGit(['rev-parse', `${remoteSha}^{tree}`], { tokenToScrub: token });
         const remoteTreeSha = remoteTreeOut.stdout.trim();
 
         if (workspaceTreeSha === remoteTreeSha) {
-          await execFileAsync('git', ['update-ref', `refs/heads/${TARGET_GITHUB_BRANCH}`, remoteSha], {
-            cwd: __dirname
-          });
-          await execFileAsync('git', ['symbolic-ref', 'HEAD', `refs/heads/${TARGET_GITHUB_BRANCH}`], {
-            cwd: __dirname
-          });
-          await execFileAsync('git', ['reset', '--mixed', remoteSha], { cwd: __dirname });
+          await runGit(['update-ref', `refs/heads/${TARGET_GITHUB_BRANCH}`, remoteSha], { tokenToScrub: token });
+          await runGit(['symbolic-ref', 'HEAD', `refs/heads/${TARGET_GITHUB_BRANCH}`], { tokenToScrub: token });
+          await runGit(['reset', '--mixed', remoteSha], { tokenToScrub: token });
           pushedCommits = 0;
         } else {
-          const commitOut = await execFileAsync(
-            'git',
+          const commitOut = await runGit(
             ['commit-tree', workspaceTreeSha, '-p', remoteSha, '-m', commitMsg],
-            { cwd: __dirname }
+            { tokenToScrub: token }
           );
           const newCommitSha = commitOut.stdout.trim();
-          await execFileAsync('git', ['update-ref', `refs/heads/${TARGET_GITHUB_BRANCH}`, newCommitSha], {
-            cwd: __dirname
-          });
-          await execFileAsync('git', ['symbolic-ref', 'HEAD', `refs/heads/${TARGET_GITHUB_BRANCH}`], {
-            cwd: __dirname
-          });
-          await execFileAsync('git', ['reset', '--mixed', newCommitSha], { cwd: __dirname });
+          await runGit(['update-ref', `refs/heads/${TARGET_GITHUB_BRANCH}`, newCommitSha], { tokenToScrub: token });
+          await runGit(['symbolic-ref', 'HEAD', `refs/heads/${TARGET_GITHUB_BRANCH}`], { tokenToScrub: token });
+          await runGit(['reset', '--mixed', newCommitSha], { tokenToScrub: token });
 
-          await execFileAsync('git', ['push', authenticatedUrl, `HEAD:refs/heads/${TARGET_GITHUB_BRANCH}`], {
-            cwd: __dirname,
-            env: gitEnv,
+          await runGit(['push', authenticatedUrl, `HEAD:refs/heads/${TARGET_GITHUB_BRANCH}`], {
             timeout: 45000,
+            tokenToScrub: token,
           });
           pushedCommits = 1;
         }
       }
     } else {
       // Brand new empty repository
-      await execFileAsync('git', ['add', '-A'], { cwd: __dirname });
-      const statusOut = await execFileAsync('git', ['status', '--porcelain'], { cwd: __dirname });
+      await runGit(['add', '-A'], { tokenToScrub: token });
+      const statusOut = await runGit(['status', '--porcelain'], { tokenToScrub: token });
       if (statusOut.stdout.trim()) {
-        await execFileAsync('git', ['commit', '-m', commitMsg], { cwd: __dirname });
+        await runGit(['commit', '-m', commitMsg], { tokenToScrub: token });
       } else {
-        await execFileAsync('git', ['commit', '--allow-empty', '-m', commitMsg], { cwd: __dirname });
+        await runGit(['commit', '--allow-empty', '-m', commitMsg], { tokenToScrub: token });
       }
-      await execFileAsync('git', ['push', authenticatedUrl, `HEAD:refs/heads/${TARGET_GITHUB_BRANCH}`], {
-        cwd: __dirname,
-        env: gitEnv,
+      await runGit(['push', authenticatedUrl, `HEAD:refs/heads/${TARGET_GITHUB_BRANCH}`], {
         timeout: 45000,
+        tokenToScrub: token,
       });
       pushedCommits = 1;
     }
 
-    // Update local origin/main tracking ref cleanly
     try {
-      await execFileAsync(
-        'git',
-        ['update-ref', `refs/remotes/origin/${TARGET_GITHUB_BRANCH}`, 'HEAD'],
-        { cwd: __dirname }
-      );
+      await runGit(['update-ref', `refs/remotes/origin/${TARGET_GITHUB_BRANCH}`, 'HEAD'], {
+        tokenToScrub: token,
+      });
     } catch {}
 
-    const headOut = await execFileAsync('git', ['rev-parse', '--short', 'HEAD'], { cwd: __dirname });
+    const headOut = await runGit(['rev-parse', '--short', 'HEAD'], { tokenToScrub: token });
 
     return res.json({
       success: true,
@@ -3514,6 +3956,11 @@ app.post('/api/git/push', async (req, res) => {
           : `${TARGET_GITHUB_OWNER}/${TARGET_GITHUB_REPO} (${TARGET_GITHUB_BRANCH}) is already up to date (${headOut.stdout.trim()}).`,
     });
   } catch (err: any) {
+    if (didStash) {
+      try {
+        await runGit(['stash', 'pop'], { tokenToScrub: token });
+      } catch {}
+    }
     const rawMsg = err?.stderr || err?.message || 'GitHub push failed.';
     const cleaned = scrubGitToken(String(rawMsg), token);
     if (cleaned.toLowerCase().includes('workflow') && (cleaned.toLowerCase().includes('scope') || cleaned.toLowerCase().includes('refusing'))) {

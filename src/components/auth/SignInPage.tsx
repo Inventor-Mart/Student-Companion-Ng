@@ -1,30 +1,17 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useState } from 'react';
 import { Mail, Lock, ArrowLeft, CheckCircle2, AlertCircle, X, RefreshCw, Loader2 } from 'lucide-react';
-import { Lottie } from 'lottie-react';
 import { useApp } from '../../context/AppContext';
 import { sendPasswordResetEmail } from 'firebase/auth';
 import { auth } from '../../lib/firebase';
-import { playSound } from '../../utils/audioSynthesis';
-import { LOGIN_SUCCESS_LOTTIE_DATA } from '../../assets/loginSuccessLottie';
-import {
-  checkLoginBruteForce,
-  recordLoginFailure,
-  resetLoginFailures,
-  getSecurityHeaders
-} from '../../utils/securityGuard';
+import { primeLoginAudio } from '../../utils/audioSynthesis';
+import { LoginSuccessOverlay } from './LoginSuccessOverlay';
+
+type AuthStatus = 'idle' | 'loading' | 'success' | 'error';
 
 interface SignInPageProps {
   onBackToLanding: () => void;
   onSignInSuccess: () => void;
   onNavigateToSignUp?: () => void;
-}
-
-type AuthFlowStatus = 'idle' | 'loading' | 'success' | 'error';
-type AuthMethod = 'password' | 'super_admin' | 'google' | 'quick_student';
-
-interface AuthSuccessPayload {
-  displayName: string;
-  roleLabel: string;
 }
 
 export const SignInPage: React.FC<SignInPageProps> = ({
@@ -34,17 +21,17 @@ export const SignInPage: React.FC<SignInPageProps> = ({
 }) => {
   const {
     loginWithGoogle,
-    authLoading,
-    currentUserProfile,
-    allRegisteredUsers,
-    loginAsDeveloper
+    authenticateUser,
+    activateQuickStudentSession,
+    authLoading
   } = useApp();
-
   const [emailOrUsername, setEmailOrUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [authFlowStatus, setAuthFlowStatus] = useState<AuthFlowStatus>('idle');
+  const [authStatus, setAuthStatus] = useState<AuthStatus>('idle');
+  const [authenticatedName, setAuthenticatedName] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [successInfo, setSuccessInfo] = useState<AuthSuccessPayload | null>(null);
+
+  const isSubmitting = authStatus === 'loading' || authStatus === 'success';
 
   // Live Firebase Password Recovery States
   const [isForgotModalOpen, setIsForgotModalOpen] = useState(false);
@@ -52,313 +39,6 @@ export const SignInPage: React.FC<SignInPageProps> = ({
   const [resetLoading, setResetLoading] = useState(false);
   const [resetSuccessMsg, setResetSuccessMsg] = useState<string | null>(null);
   const [resetErrorMsg, setResetErrorMsg] = useState<string | null>(null);
-
-  const hasCompletedTransitionRef = useRef(false);
-  const redirectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const prefersReducedMotion =
-    typeof window !== 'undefined' &&
-    typeof window.matchMedia === 'function' &&
-    window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-  const isLoading = authFlowStatus === 'loading' || authLoading;
-  const isSuccess = authFlowStatus === 'success';
-
-  const completeDashboardNavigation = useCallback(() => {
-    if (hasCompletedTransitionRef.current) return;
-    hasCompletedTransitionRef.current = true;
-    if (redirectTimerRef.current) {
-      clearTimeout(redirectTimerRef.current);
-      redirectTimerRef.current = null;
-    }
-    onSignInSuccess();
-  }, [onSignInSuccess]);
-
-  useEffect(() => {
-    return () => {
-      if (redirectTimerRef.current) {
-        clearTimeout(redirectTimerRef.current);
-        redirectTimerRef.current = null;
-      }
-    };
-  }, []);
-
-  const triggerSuccessSequence = useCallback(
-    (payload: AuthSuccessPayload) => {
-      hasCompletedTransitionRef.current = false;
-      if (redirectTimerRef.current) {
-        clearTimeout(redirectTimerRef.current);
-      }
-
-      setErrorMsg(null);
-      setSuccessInfo(payload);
-      setAuthFlowStatus('success');
-
-      // Simultaneously trigger the audio player to play the login success chime
-      playSound.loginSuccess();
-
-      // Navigate to Main Dashboard after 1.5s fallback (or immediately when Lottie completes)
-      redirectTimerRef.current = setTimeout(() => {
-        completeDashboardNavigation();
-      }, 1500);
-    },
-    [completeDashboardNavigation]
-  );
-
-  /**
-   * Unified authentication workflow validating credentials, security blocks,
-   * and backend /api/auth/login standing before triggering Lottie + chime.
-   */
-  const authenticateUser = async (method: AuthMethod): Promise<void> => {
-    if (authFlowStatus === 'loading' || authFlowStatus === 'success') return;
-
-    setErrorMsg(null);
-    const cleanInput = emailOrUsername.trim().toLowerCase();
-
-    if (method === 'password') {
-      if (!emailOrUsername.trim()) {
-        setAuthFlowStatus('error');
-        setErrorMsg('Please enter your email or username');
-        return;
-      }
-
-      const lockout = checkLoginBruteForce(cleanInput);
-      if (lockout.isLocked) {
-        const mins = Math.max(1, Math.ceil(lockout.remainingSeconds / 60));
-        setAuthFlowStatus('error');
-        setErrorMsg(
-          `Security Lockout: Too many failed sign-in attempts. Please wait ${mins} minute(s) before trying again.`
-        );
-        return;
-      }
-
-      if (!password) {
-        setAuthFlowStatus('error');
-        setErrorMsg('Please enter your password');
-        return;
-      }
-    }
-
-    setAuthFlowStatus('loading');
-
-    try {
-      // Super Admin sign-in path
-      if (
-        method === 'password' &&
-        (cleanInput === 'martorefe@gmail.com' || cleanInput === 'wowrealities@gmail.com')
-      ) {
-        const res = await fetch('/api/auth/login', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...getSecurityHeaders({ userEmail: cleanInput })
-          },
-          body: JSON.stringify({
-            identifier: cleanInput,
-            email: cleanInput,
-            password,
-            method: 'super_admin'
-          })
-        });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok || !data?.authenticated) {
-          setAuthFlowStatus('error');
-          setErrorMsg(data?.error || 'Super Admin verification failed.');
-          return;
-        }
-        resetLoginFailures(cleanInput);
-        loginAsDeveloper(cleanInput);
-        triggerSuccessSequence({
-          displayName: 'Super Admin',
-          roleLabel: 'Executive Control Hub'
-        });
-        return;
-      }
-
-      // Google OAuth Sign-In path
-      if (method === 'google') {
-        await loginWithGoogle();
-        const signedEmail = auth.currentUser?.email || currentUserProfile?.email;
-        const signedId = auth.currentUser?.uid || currentUserProfile?.id;
-
-        if (!signedEmail && !signedId) {
-          setAuthFlowStatus('error');
-          setErrorMsg('Google sign in was cancelled. Please try again.');
-          return;
-        }
-
-        const res = await fetch('/api/auth/login', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...getSecurityHeaders({ userId: signedId, userEmail: signedEmail })
-          },
-          body: JSON.stringify({
-            identifier: signedEmail || signedId,
-            email: signedEmail,
-            userId: signedId,
-            method: 'google',
-            role: currentUserProfile?.role || 'student',
-            hasLocalProfile: true
-          })
-        });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok || !data?.authenticated) {
-          setAuthFlowStatus('error');
-          setErrorMsg(data?.error || 'Unable to verify Google account status.');
-          return;
-        }
-
-        const displayName =
-          auth.currentUser?.displayName ||
-          currentUserProfile?.fullName ||
-          (signedEmail ? signedEmail.split('@')[0] : 'Scholar');
-        triggerSuccessSequence({
-          displayName,
-          roleLabel: 'Main Dashboard'
-        });
-        return;
-      }
-
-      // Quick Student / Guest Sign-In path
-      if (method === 'quick_student') {
-        const res = await fetch('/api/auth/login', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...getSecurityHeaders({
-              userId: currentUserProfile?.id,
-              userEmail: currentUserProfile?.email
-            })
-          },
-          body: JSON.stringify({
-            identifier: currentUserProfile?.email || currentUserProfile?.id || 'guest_student',
-            userId: currentUserProfile?.id,
-            email: currentUserProfile?.email,
-            method: 'quick_student',
-            role: currentUserProfile?.role || 'student',
-            hasLocalProfile: true
-          })
-        });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok || !data?.authenticated) {
-          setAuthFlowStatus('error');
-          setErrorMsg(data?.error || 'Quick student sign-in is blocked on this device.');
-          return;
-        }
-        triggerSuccessSequence({
-          displayName: currentUserProfile?.fullName || 'Scholar',
-          roleLabel: 'Main Dashboard'
-        });
-        return;
-      }
-
-      // Standard Password / Registered Account path
-      const matchedLocal = allRegisteredUsers.find(
-        (u) => u.email.toLowerCase() === cleanInput || u.id.toLowerCase() === cleanInput
-      );
-
-      if (matchedLocal?.accountStatus === 'deleted') {
-        setAuthFlowStatus('error');
-        setErrorMsg(
-          `Account Closed: ${
-            matchedLocal.deletionReason ||
-            'This account was permanently deleted for policy or security violations.'
-          }`
-        );
-        return;
-      }
-      if (matchedLocal?.accountStatus === 'suspended') {
-        setAuthFlowStatus('error');
-        setErrorMsg(
-          `Account Suspended: ${
-            matchedLocal.suspensionReason ||
-            'Your account is suspended indefinitely pending Super Admin review.'
-          }`
-        );
-        return;
-      }
-      if (
-        matchedLocal?.accountStatus === 'locked' &&
-        (!matchedLocal.lockedUntil || new Date(matchedLocal.lockedUntil).getTime() > Date.now())
-      ) {
-        const minsLeft = matchedLocal.lockedUntil
-          ? Math.max(1, Math.ceil((new Date(matchedLocal.lockedUntil).getTime() - Date.now()) / 60000))
-          : 30;
-        setAuthFlowStatus('error');
-        setErrorMsg(
-          `Account Temporarily Locked (${minsLeft}m remaining): ${
-            matchedLocal.lockReason || 'Automated safety cooldown active.'
-          }`
-        );
-        return;
-      }
-
-      const targetUserId = matchedLocal?.id || (!cleanInput.includes('@') ? cleanInput : undefined);
-      const targetEmail = cleanInput.includes('@') ? cleanInput : matchedLocal?.email;
-      const hasValidSession = Boolean(
-        matchedLocal || (currentUserProfile && currentUserProfile.accountStatus !== 'deleted')
-      );
-
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...getSecurityHeaders({ userId: targetUserId, userEmail: targetEmail })
-        },
-        body: JSON.stringify({
-          identifier: cleanInput,
-          password,
-          method: 'password',
-          userId: targetUserId,
-          email: targetEmail,
-          role: matchedLocal?.role || currentUserProfile?.role || 'student',
-          hasLocalProfile: hasValidSession
-        })
-      });
-
-      const data = await res.json().catch(() => ({}));
-
-      if (!res.ok || !data?.authenticated) {
-        if (data?.needsSignup) {
-          const failState = recordLoginFailure(cleanInput);
-          if (failState.isLocked) {
-            setAuthFlowStatus('error');
-            setErrorMsg(
-              'Security Lockout Activated: 5 failed attempts detected. Account locked for 15 minutes.'
-            );
-            return;
-          }
-          setAuthFlowStatus('idle');
-          if (onNavigateToSignUp) {
-            onNavigateToSignUp();
-          } else {
-            setErrorMsg(data?.error || 'No matching account found.');
-          }
-          return;
-        }
-
-        setAuthFlowStatus('error');
-        setErrorMsg(data?.error || 'Sign-in could not be verified. Please try again.');
-        return;
-      }
-
-      resetLoginFailures(cleanInput);
-      triggerSuccessSequence({
-        displayName:
-          matchedLocal?.fullName ||
-          currentUserProfile?.fullName ||
-          (cleanInput.includes('@') ? cleanInput.split('@')[0] : emailOrUsername.trim()),
-        roleLabel: `${String(data.role || matchedLocal?.role || currentUserProfile?.role || 'student').replace(
-          '_',
-          ' '
-        )} Dashboard`
-      });
-    } catch (err: any) {
-      setAuthFlowStatus('error');
-      setErrorMsg(err?.message || 'Network error while signing in. Please try again.');
-    }
-  };
 
   const handleSendPasswordReset = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -393,7 +73,62 @@ export const SignInPage: React.FC<SignInPageProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    await authenticateUser('password');
+    if (isSubmitting) return;
+
+    primeLoginAudio();
+    setErrorMsg(null);
+
+    if (!emailOrUsername.trim()) {
+      setAuthStatus('error');
+      setErrorMsg('Please enter your email or username');
+      return;
+    }
+
+    if (!password) {
+      setAuthStatus('error');
+      setErrorMsg('Please enter your password');
+      return;
+    }
+
+    setAuthStatus('loading');
+    const result = await authenticateUser(emailOrUsername, password);
+
+    if (result.success) {
+      setAuthenticatedName(result.profile?.fullName || null);
+      setAuthStatus('success');
+    } else {
+      setAuthStatus('error');
+      setErrorMsg(result.error || 'Unable to sign in. Please verify your details.');
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    if (isSubmitting) return;
+    primeLoginAudio();
+    setErrorMsg(null);
+    setAuthStatus('loading');
+
+    const result = await loginWithGoogle({ skipNavigate: true });
+    if (result.success) {
+      setAuthenticatedName(result.profile?.fullName || null);
+      setAuthStatus('success');
+    } else {
+      setAuthStatus('error');
+      setErrorMsg(result.error || 'Google sign in was cancelled. Please try again.');
+    }
+  };
+
+  const handleQuickStudentSignIn = () => {
+    if (isSubmitting) return;
+    primeLoginAudio();
+    setErrorMsg(null);
+    setAuthStatus('loading');
+
+    window.setTimeout(() => {
+      const profile = activateQuickStudentSession();
+      setAuthenticatedName(profile.fullName || null);
+      setAuthStatus('success');
+    }, 320);
   };
 
   return (
@@ -408,7 +143,7 @@ export const SignInPage: React.FC<SignInPageProps> = ({
         <div className="w-full flex items-center justify-between">
           <button
             type="button"
-            disabled={isLoading || isSuccess}
+            disabled={isSubmitting}
             onClick={onBackToLanding}
             className="w-10 h-10 rounded-full bg-[#121E33] hover:bg-[#1A2A47] disabled:opacity-50 text-slate-300 hover:text-white flex items-center justify-center transition-colors cursor-pointer"
             title="Back to Landing Page"
@@ -465,10 +200,7 @@ export const SignInPage: React.FC<SignInPageProps> = ({
         {/* --- Sign In Form --- */}
         <form onSubmit={handleSubmit} className="w-full flex flex-col gap-5">
           {errorMsg && (
-            <div
-              role="alert"
-              className="p-3 rounded-xl bg-rose-950/85 border border-rose-700 text-rose-200 text-xs text-center font-medium flex items-center justify-center gap-2"
-            >
+            <div role="alert" className="p-3 rounded-xl bg-rose-950/85 border border-rose-700 text-rose-200 text-xs text-center font-medium flex items-center justify-center gap-2">
               <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
               <span>{errorMsg}</span>
             </div>
@@ -481,7 +213,7 @@ export const SignInPage: React.FC<SignInPageProps> = ({
             </div>
             <input
               type="text"
-              disabled={isLoading || isSuccess}
+              disabled={isSubmitting}
               value={emailOrUsername}
               onChange={(e) => {
                 setEmailOrUsername(e.target.value);
@@ -499,7 +231,7 @@ export const SignInPage: React.FC<SignInPageProps> = ({
             </div>
             <input
               type="password"
-              disabled={isLoading || isSuccess}
+              disabled={isSubmitting}
               value={password}
               onChange={(e) => {
                 setPassword(e.target.value);
@@ -514,7 +246,7 @@ export const SignInPage: React.FC<SignInPageProps> = ({
           <div className="w-full flex justify-end -mt-1 pr-2">
             <button
               type="button"
-              disabled={isLoading || isSuccess}
+              disabled={isSubmitting}
               onClick={() => {
                 setResetEmail(emailOrUsername);
                 setResetErrorMsg(null);
@@ -530,13 +262,13 @@ export const SignInPage: React.FC<SignInPageProps> = ({
           {/* Solid Lime Green LOG IN Button with explicit Loading State */}
           <button
             type="submit"
-            disabled={isLoading || isSuccess}
-            className="w-full min-h-[54px] py-4 px-6 rounded-full bg-[#84E000] hover:bg-[#96F716] active:scale-[0.98] disabled:opacity-80 disabled:cursor-not-allowed text-[#070D18] font-black text-base tracking-wider uppercase shadow-lg shadow-[#84E000]/30 transition-all cursor-pointer flex items-center justify-center gap-2 mt-2"
+            disabled={isSubmitting}
+            className="w-full min-h-[54px] py-4 px-6 rounded-full bg-[#84E000] hover:bg-[#96F716] active:scale-[0.98] disabled:opacity-75 disabled:cursor-not-allowed text-[#070D18] font-black text-base tracking-wider uppercase shadow-lg shadow-[#84E000]/30 transition-all cursor-pointer flex items-center justify-center gap-2 mt-2"
           >
-            {isLoading ? (
+            {authStatus === 'loading' ? (
               <>
                 <Loader2 className="w-5 h-5 animate-spin stroke-[2.6]" />
-                <span>Logging In...</span>
+                <span>Signing In...</span>
               </>
             ) : (
               <span>Log In</span>
@@ -555,9 +287,9 @@ export const SignInPage: React.FC<SignInPageProps> = ({
           <div className="flex items-center justify-center gap-5 my-2">
             {/* Google Icon with Lime Green Ring */}
             <button
-              onClick={() => void authenticateUser('google')}
-              disabled={isLoading || isSuccess}
-              className="w-13 h-13 rounded-full bg-[#0C172B] border-2 border-[#84E000] shadow-[0_0_14px_rgba(132,224,0,0.25)] hover:scale-105 active:scale-95 disabled:opacity-50 flex items-center justify-center transition-all cursor-pointer group"
+              onClick={handleGoogleSignIn}
+              disabled={authLoading || isSubmitting}
+              className="w-13 h-13 rounded-full bg-[#0C172B] border-2 border-[#84E000] shadow-[0_0_14px_rgba(132,224,0,0.25)] hover:scale-105 active:scale-95 disabled:opacity-60 flex items-center justify-center transition-all cursor-pointer group"
               title="Sign in with Google"
               type="button"
             >
@@ -583,9 +315,9 @@ export const SignInPage: React.FC<SignInPageProps> = ({
 
             {/* Quick Student Sign-In with Electric Orange Ring */}
             <button
-              onClick={() => void authenticateUser('quick_student')}
-              disabled={isLoading || isSuccess}
-              className="w-13 h-13 rounded-full bg-[#0C172B] border-2 border-[#FF5B00] shadow-[0_0_14px_rgba(255,91,0,0.25)] hover:scale-105 active:scale-95 disabled:opacity-50 flex items-center justify-center transition-all cursor-pointer group"
+              onClick={handleQuickStudentSignIn}
+              disabled={isSubmitting}
+              className="w-13 h-13 rounded-full bg-[#0C172B] border-2 border-[#FF5B00] shadow-[0_0_14px_rgba(255,91,0,0.25)] hover:scale-105 active:scale-95 disabled:opacity-60 flex items-center justify-center transition-all cursor-pointer group"
               title="Quick Guest / Student Sign In"
               type="button"
             >
@@ -605,12 +337,12 @@ export const SignInPage: React.FC<SignInPageProps> = ({
             Don't have an account?{' '}
             <button
               type="button"
-              disabled={isLoading || isSuccess}
+              disabled={isSubmitting}
               onClick={() => {
                 if (onNavigateToSignUp) {
                   onNavigateToSignUp();
                 } else {
-                  void authenticateUser('quick_student');
+                  handleQuickStudentSignIn();
                 }
               }}
               className="text-[#FF5B00] font-bold hover:underline cursor-pointer"
@@ -620,50 +352,6 @@ export const SignInPage: React.FC<SignInPageProps> = ({
           </div>
         </div>
       </div>
-
-      {/* Full-Screen Deep Navy Neon Login Success Lottie Overlay */}
-      {isSuccess && (
-        <div
-          role="status"
-          aria-live="polite"
-          style={{
-            backgroundImage:
-              'radial-gradient(circle at 50% 42%, rgba(132, 224, 0, 0.2), transparent 46%), radial-gradient(circle at 50% 60%, rgba(255, 91, 0, 0.14), transparent 55%)'
-          }}
-          className="fixed inset-0 z-50 bg-[#0A1328]/95 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center select-none"
-        >
-          <div className="relative flex flex-col items-center max-w-sm w-full space-y-4">
-            <div className="relative w-44 h-44 flex items-center justify-center">
-              <div className="absolute inset-4 rounded-full bg-[#84E000]/15 blur-2xl pointer-events-none" />
-              {prefersReducedMotion ? (
-                <div className="w-32 h-32 rounded-full border-4 border-[#84E000] bg-[#0F1D3D] shadow-[0_0_32px_rgba(132,224,0,0.45)] flex items-center justify-center">
-                  <CheckCircle2 className="w-16 h-16 text-[#84E000]" />
-                </div>
-              ) : (
-                <Lottie
-                  src={LOGIN_SUCCESS_LOTTIE_DATA}
-                  loop={false}
-                  autoplay={true}
-                  subscriptions={{ complete: completeDashboardNavigation }}
-                  className="w-44 h-44"
-                />
-              )}
-            </div>
-
-            <div className="space-y-1.5">
-              <p className="text-xs font-bold uppercase tracking-widest text-[#FF7A1A]">
-                Login Verified
-              </p>
-              <h3 className="text-2xl font-black text-white tracking-tight">
-                Welcome back{successInfo?.displayName ? `, ${successInfo.displayName}` : ''}
-              </h3>
-              <p className="text-sm text-[#C7FA85] font-medium">
-                Opening your {successInfo?.roleLabel || 'Main Dashboard'}...
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Live Firebase Password Reset Modal */}
       {isForgotModalOpen && (
@@ -756,6 +444,13 @@ export const SignInPage: React.FC<SignInPageProps> = ({
           </div>
         </div>
       )}
+      {/* Lottie Login Success Animation + Audio Chime Overlay */}
+      <LoginSuccessOverlay
+        isVisible={authStatus === 'success'}
+        userName={authenticatedName}
+        onComplete={onSignInSuccess}
+        durationMs={1500}
+      />
     </div>
   );
 };

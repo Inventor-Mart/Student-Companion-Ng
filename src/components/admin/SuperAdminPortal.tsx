@@ -41,7 +41,8 @@ import {
   Unlock,
   UserX,
   Snowflake,
-  Layers
+  Layers,
+  Download
 } from 'lucide-react';
 import { SchoolAdminPortal } from './SchoolAdminPortal';
 import { OTACompetitionManager } from './OTACompetitionManager';
@@ -98,12 +99,18 @@ export const SuperAdminPortal: React.FC = () => {
     repo: string;
     branch: string;
     aheadCount: number;
+    behindCount: number;
+    uncommittedCount: number;
+    incomingCommits: Array<{ sha: string; subject: string; author: string; date: string }>;
     latestCommit: string;
     remoteLatestCommit?: string;
     hasUncommitted: boolean;
+    lastError?: string;
   } | null>(null);
   const [gitCommitMessage, setGitCommitMessage] = useState<string>('');
   const [isLoadingGitStatus, setIsLoadingGitStatus] = useState<boolean>(false);
+  const [isCheckingUpdates, setIsCheckingUpdates] = useState<boolean>(false);
+  const [isPullingGit, setIsPullingGit] = useState<boolean>(false);
   const [isPushingGit, setIsPushingGit] = useState<boolean>(false);
   const [gitSyncFeedback, setGitSyncFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
@@ -153,11 +160,17 @@ export const SuperAdminPortal: React.FC = () => {
     }
   };
 
-  const fetchGitStatus = React.useCallback(async () => {
+  const fetchGitStatus = React.useCallback(async (fetchRemote = false) => {
     if (!authorizedAdminEmail) return;
-    setIsLoadingGitStatus(true);
+    if (fetchRemote) {
+      setIsCheckingUpdates(true);
+    } else {
+      setIsLoadingGitStatus(true);
+    }
     try {
-      const res = await fetch(`/api/git/status?adminEmail=${encodeURIComponent(authorizedAdminEmail)}`);
+      const res = await fetch(
+        `/api/git/status?adminEmail=${encodeURIComponent(authorizedAdminEmail)}${fetchRemote ? '&fetch=1' : ''}`
+      );
       const data = await res.json();
       if (res.ok && data.success) {
         setGitStatus({
@@ -170,10 +183,29 @@ export const SuperAdminPortal: React.FC = () => {
           repo: data.repo,
           branch: data.branch,
           aheadCount: Number(data.aheadCount) || 0,
+          behindCount: Number(data.behindCount) || 0,
+          uncommittedCount: Number(data.uncommittedCount) || 0,
+          incomingCommits: Array.isArray(data.incomingCommits) ? data.incomingCommits : [],
           latestCommit: data.latestCommit || 'unborn',
           remoteLatestCommit: data.remoteLatestCommit,
-          hasUncommitted: Boolean(data.hasUncommitted)
+          hasUncommitted: Boolean(data.hasUncommitted),
+          lastError: data.lastError || undefined,
         });
+        if (fetchRemote) {
+          if (data.lastError) {
+            setGitSyncFeedback({ type: 'error', message: data.lastError });
+          } else if (Number(data.behindCount) > 0) {
+            setGitSyncFeedback({
+              type: 'success',
+              message: `${data.behindCount} incoming commit(s) detected on ${data.repo} (${data.branch}). Click "Pull from GitHub" to merge them cleanly.`
+            });
+          } else {
+            setGitSyncFeedback({
+              type: 'success',
+              message: `Checked GitHub ${data.branch}: no new remote commits ahead of local workspace.`
+            });
+          }
+        }
       } else {
         setGitSyncFeedback({
           type: 'error',
@@ -187,12 +219,46 @@ export const SuperAdminPortal: React.FC = () => {
       });
     } finally {
       setIsLoadingGitStatus(false);
+      setIsCheckingUpdates(false);
     }
   }, [authorizedAdminEmail]);
 
   React.useEffect(() => {
-    fetchGitStatus();
+    void fetchGitStatus(false);
   }, [fetchGitStatus]);
+
+  const handlePullFromGithub = async () => {
+    if (!authorizedAdminEmail) return;
+    setIsPullingGit(true);
+    setGitSyncFeedback(null);
+    try {
+      const res = await fetch('/api/git/pull', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ adminEmail: authorizedAdminEmail })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setGitSyncFeedback({
+          type: 'success',
+          message: data.message || `Pulled ${data.pulledCommits ?? 0} commit(s) from GitHub.`
+        });
+        await fetchGitStatus(false);
+      } else {
+        setGitSyncFeedback({
+          type: 'error',
+          message: data.error || 'Failed to pull updates from GitHub.'
+        });
+      }
+    } catch (err: any) {
+      setGitSyncFeedback({
+        type: 'error',
+        message: err?.message || 'Network error pulling updates from GitHub.'
+      });
+    } finally {
+      setIsPullingGit(false);
+    }
+  };
 
   const handleSyncToGithub = async () => {
     if (!authorizedAdminEmail) return;
@@ -214,7 +280,7 @@ export const SuperAdminPortal: React.FC = () => {
           message: data.message || `Synced commits to ${data.repo} (${data.branch}).`
         });
         setGitCommitMessage('');
-        await fetchGitStatus();
+        await fetchGitStatus(false);
       } else {
         setGitSyncFeedback({
           type: 'error',
@@ -1180,7 +1246,7 @@ export const SuperAdminPortal: React.FC = () => {
 
       {/* GitHub Repository Sync Panel */}
       <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 space-y-3">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
             <div className="w-10 h-10 rounded-xl bg-[#0D1527] border border-slate-700 flex items-center justify-center text-[#84E000] shrink-0">
               <GitBranch className="w-5 h-5" />
@@ -1192,7 +1258,7 @@ export const SuperAdminPortal: React.FC = () => {
                   {gitStatus?.repo || 'Inventor-Mart/Student-Companion-Ng'} · {gitStatus?.branch || 'main'}
                 </span>
               </div>
-              <div className="flex items-center flex-wrap gap-x-2 gap-y-0.5 text-[11px] text-slate-400 mt-0.5 font-mono tabular-nums">
+              <div className="flex items-center flex-wrap gap-x-2 gap-y-1 text-[11px] text-slate-400 mt-1 font-mono tabular-nums">
                 <span>
                   Local:{' '}
                   {gitStatus
@@ -1207,32 +1273,63 @@ export const SuperAdminPortal: React.FC = () => {
                     <span>Remote main: {gitStatus.remoteLatestCommit}</span>
                   </>
                 )}
-                <span aria-hidden="true">·</span>
-                <span className={gitStatus?.hasUncommitted || (gitStatus?.aheadCount ?? 0) > 0 ? 'text-amber-300 font-semibold' : 'text-emerald-400'}>
-                  {gitStatus
-                    ? gitStatus.hasUncommitted
-                      ? 'Workspace changes ready'
-                      : `${gitStatus.aheadCount} commit(s) ahead`
-                    : 'Inspecting workspace...'}
-                </span>
+                {gitStatus && (
+                  <>
+                    <span aria-hidden="true">·</span>
+                    <span className={gitStatus.aheadCount > 0 ? 'text-amber-300 font-semibold' : 'text-slate-400'}>
+                      {gitStatus.aheadCount} ahead
+                    </span>
+                    <span aria-hidden="true">·</span>
+                    <span className={gitStatus.behindCount > 0 ? 'text-sky-300 font-semibold' : 'text-slate-400'}>
+                      {gitStatus.behindCount} behind
+                    </span>
+                    <span aria-hidden="true">·</span>
+                    <span className={gitStatus.hasUncommitted ? 'text-amber-300 font-semibold' : 'text-emerald-400'}>
+                      {gitStatus.hasUncommitted ? `${gitStatus.uncommittedCount} modified` : 'Working tree clean'}
+                    </span>
+                  </>
+                )}
               </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center flex-wrap gap-2 shrink-0">
             <button
               type="button"
-              onClick={fetchGitStatus}
-              disabled={isLoadingGitStatus}
-              className="px-3 py-2 rounded-xl bg-slate-950 hover:bg-slate-800 border border-slate-700 text-slate-300 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50 whitespace-nowrap shrink-0"
+              onClick={() => void fetchGitStatus(true)}
+              disabled={isLoadingGitStatus || isCheckingUpdates || isPullingGit || isPushingGit}
+              className="px-3 py-2 rounded-xl bg-slate-950 hover:bg-slate-800 border border-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50 whitespace-nowrap shrink-0"
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${isLoadingGitStatus ? 'animate-spin' : ''}`} />
-              <span>Refresh</span>
+              <RefreshCw className={`w-3.5 h-3.5 ${isCheckingUpdates || isLoadingGitStatus ? 'animate-spin' : ''}`} />
+              <span>{isCheckingUpdates ? 'Checking...' : 'Check Updates'}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => void handlePullFromGithub()}
+              disabled={isPullingGit || isPushingGit || isCheckingUpdates}
+              className="px-3.5 py-2 rounded-xl bg-sky-500/15 hover:bg-sky-500/25 border border-sky-500/40 text-sky-200 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap shrink-0"
+            >
+              {isPullingGit ? (
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Download className="w-3.5 h-3.5" />
+              )}
+              <span>
+                {isPullingGit
+                  ? 'Pulling...'
+                  : gitStatus && gitStatus.behindCount > 0
+                  ? `Pull from GitHub (${gitStatus.behindCount})`
+                  : 'Pull from GitHub'}
+              </span>
             </button>
             <button
               type="button"
               onClick={handleSyncToGithub}
-              disabled={isPushingGit || (gitStatus !== null && !gitStatus.canPush && gitStatus.tokenStatus !== 'network_error')}
+              disabled={
+                isPushingGit ||
+                isPullingGit ||
+                (gitStatus !== null && !gitStatus.canPush && gitStatus.tokenStatus !== 'network_error')
+              }
               className="px-4 py-2 rounded-xl bg-[#84E000] hover:bg-[#75c900] text-slate-950 text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer shadow-sm disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap shrink-0"
             >
               {isPushingGit ? (
@@ -1276,6 +1373,44 @@ export const SuperAdminPortal: React.FC = () => {
           </div>
         )}
 
+        {/* Live GitHub Incoming Commits Preview */}
+        {gitStatus && gitStatus.behindCount > 0 && gitStatus.incomingCommits.length > 0 && (
+          <div className="p-3 rounded-xl bg-sky-950/35 border border-sky-800/60 space-y-2">
+            <div className="flex items-center justify-between gap-2 text-xs">
+              <span className="font-bold text-sky-200">
+                Incoming Commits on GitHub main ({gitStatus.behindCount})
+              </span>
+              <span className="text-[11px] text-sky-300/80">
+                Pull before pushing or click Sync to auto-merge
+              </span>
+            </div>
+            <div className="space-y-1 max-h-36 overflow-y-auto pr-1">
+              {gitStatus.incomingCommits.map((commit) => (
+                <div
+                  key={commit.sha}
+                  className="flex items-center justify-between gap-2 text-[11px] font-mono bg-slate-950/60 px-2.5 py-1.5 rounded-lg border border-slate-800/80"
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-sky-400 shrink-0">{commit.sha}</span>
+                    <span className="text-slate-200 font-sans truncate">{commit.subject}</span>
+                  </div>
+                  <span className="text-slate-400 shrink-0 text-[10px]">
+                    {commit.author} · {commit.date}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Live Git Operation Error Strip (from status fetch) */}
+        {gitStatus?.lastError && !gitSyncFeedback && (
+          <div className="p-2.5 rounded-xl border border-rose-700/70 bg-rose-950/50 text-rose-200 text-xs flex items-start gap-2">
+            <XCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+            <span className="break-words">{gitStatus.lastError}</span>
+          </div>
+        )}
+
         {/* Optional Commit Message Field */}
         <div className="flex flex-col sm:flex-row sm:items-center gap-2">
           <label htmlFor="sc-git-commit-msg" className="text-[11px] font-semibold text-slate-400 whitespace-nowrap shrink-0">
@@ -1294,18 +1429,18 @@ export const SuperAdminPortal: React.FC = () => {
 
         {gitSyncFeedback && (
           <div
-            className={`p-3 rounded-xl border text-xs flex items-center gap-2 ${
+            className={`p-3 rounded-xl border text-xs flex items-start gap-2 ${
               gitSyncFeedback.type === 'success'
                 ? 'bg-emerald-950/70 border-emerald-700 text-emerald-200'
                 : 'bg-rose-950/70 border-rose-700 text-rose-200'
             }`}
           >
             {gitSyncFeedback.type === 'success' ? (
-              <CheckCircle2 className="w-4 h-4 text-[#84E000] shrink-0" />
+              <CheckCircle2 className="w-4 h-4 text-[#84E000] shrink-0 mt-0.5" />
             ) : (
-              <XCircle className="w-4 h-4 text-rose-400 shrink-0" />
+              <XCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
             )}
-            <span>{gitSyncFeedback.message}</span>
+            <span className="break-words">{gitSyncFeedback.message}</span>
           </div>
         )}
       </div>

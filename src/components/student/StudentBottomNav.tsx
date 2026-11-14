@@ -14,16 +14,15 @@ import {
   X,
   ChevronUp,
   Volume2,
-  VolumeX,
-  PauseCircle
+  VolumeX
 } from 'lucide-react';
-import { playSound, toggleSoundMuted, getSoundMuted } from '../../utils/audioSynthesis';
-import { resolveFeatureNotice } from '../../services/otaService';
-import { motion, AnimatePresence } from 'motion/react';
 import { OTAFeatureKey } from '../../types';
+import { PausedBadge } from '../common/AppUpdateGate';
+import { playSound, toggleSoundMuted, getSoundMuted } from '../../utils/audioSynthesis';
+import { motion, AnimatePresence } from 'motion/react';
 
 export const StudentBottomNav: React.FC = () => {
-  const { activeStudentTab, setActiveStudentTab, student, isFeaturePaused, otaFeatureFlags } = useApp();
+  const { activeStudentTab, setActiveStudentTab, student, isFeatureEnabled } = useApp();
   const [isMoreDrawerOpen, setIsMoreDrawerOpen] = useState(false);
   const [isMuted, setIsMuted] = useState(getSoundMuted());
 
@@ -39,8 +38,13 @@ export const StudentBottomNav: React.FC = () => {
     if (!nextMuted) playSound.tileTap();
   };
 
-  // 4 Primary tabs exactly matching the user reference designs (Main_dashboard_5a95f712.jpg)
-  const primaryTabs: { id: string; label: string; icon: any; featureKey?: OTAFeatureKey }[] = [
+  // 4 Primary tabs
+  const primaryTabs: Array<{
+    id: 'dashboard' | 'games' | 'tutors' | 'more';
+    label: string;
+    icon: React.ComponentType<{ className?: string }>;
+    featureKey?: OTAFeatureKey;
+  }> = [
     {
       id: 'dashboard',
       label: 'Home',
@@ -50,13 +54,13 @@ export const StudentBottomNav: React.FC = () => {
       id: 'games',
       label: 'Games',
       icon: Gamepad2,
-      featureKey: 'games_hub',
+      featureKey: 'gamesHub',
     },
     {
       id: 'tutors',
       label: 'Tutors',
       icon: Users,
-      featureKey: 'tutor_marketplace',
+      featureKey: 'tutorMarketplace',
     },
     {
       id: 'more',
@@ -65,14 +69,20 @@ export const StudentBottomNav: React.FC = () => {
     },
   ];
 
-  // Secondary hubs accessible in the smooth quick-access drawer
-  const secondaryHubs: { id: string; label: string; icon: any; color: string; featureKey: OTAFeatureKey }[] = [
-    { id: 'ai-coach', label: 'AI Study Coach', icon: Sparkles, color: 'text-[#84CC16] bg-[#84CC16]/10 border-[#84CC16]/30', featureKey: 'ai_study_coach' },
-    { id: 'cbt', label: 'CBT Exam Drills', icon: Trophy, color: 'text-[#FF5B00] bg-[#FF5B00]/10 border-[#FF5B00]/30', featureKey: 'cbt_quizzes' },
-    { id: 'exam-prep', label: 'Prepare For Exam', icon: Calendar, color: 'text-amber-400 bg-amber-400/10 border-amber-400/30', featureKey: 'exam_prep' },
-    { id: 'syllabus', label: 'Lesson Notes & NERDC', icon: BookOpen, color: 'text-cyan-400 bg-cyan-400/10 border-cyan-400/30', featureKey: 'lesson_notes' },
-    { id: 'formulas', label: 'STEM Formulas Sheet', icon: Atom, color: 'text-purple-400 bg-purple-400/10 border-purple-400/30', featureKey: 'science_formulas' },
-    { id: 'community', label: 'Student Forum', icon: MessageSquare, color: 'text-emerald-400 bg-emerald-400/10 border-emerald-400/30', featureKey: 'community_forum' },
+  // Secondary hubs accessible in quick-access drawer; paused hubs remain visible with Paused indicator
+  const secondaryHubs: Array<{
+    id: 'ai-coach' | 'cbt' | 'exam-prep' | 'syllabus' | 'formulas' | 'community' | 'competitions';
+    label: string;
+    icon: React.ComponentType<{ className?: string }>;
+    color: string;
+    featureKey: OTAFeatureKey;
+  }> = [
+    { id: 'ai-coach', label: 'AI Study Coach', icon: Sparkles, color: 'text-[#84CC16] bg-[#84CC16]/10 border-[#84CC16]/30', featureKey: 'aiCoach' },
+    { id: 'cbt', label: 'CBT Exam Drills', icon: Trophy, color: 'text-[#FF5B00] bg-[#FF5B00]/10 border-[#FF5B00]/30', featureKey: 'cbtExams' },
+    { id: 'exam-prep', label: 'Prepare For Exam', icon: Calendar, color: 'text-amber-400 bg-amber-400/10 border-amber-400/30', featureKey: 'examPrep' },
+    { id: 'syllabus', label: 'Lesson Notes & NERDC', icon: BookOpen, color: 'text-cyan-400 bg-cyan-400/10 border-cyan-400/30', featureKey: 'lessonNotes' },
+    { id: 'formulas', label: 'STEM Formulas Sheet', icon: Atom, color: 'text-purple-400 bg-purple-400/10 border-purple-400/30', featureKey: 'scienceFormulas' },
+    { id: 'community', label: 'Student Forum', icon: MessageSquare, color: 'text-emerald-400 bg-emerald-400/10 border-emerald-400/30', featureKey: 'communityForum' },
     { id: 'competitions', label: 'Competitions & League', icon: Trophy, color: 'text-yellow-400 bg-yellow-400/10 border-yellow-400/30', featureKey: 'competitions' },
   ];
 
@@ -89,6 +99,7 @@ export const StudentBottomNav: React.FC = () => {
           const isActive = isMore 
             ? isMoreDrawerOpen || (activeStudentTab !== 'dashboard' && activeStudentTab !== 'games' && activeStudentTab !== 'tutors')
             : activeStudentTab === item.id && !isMoreDrawerOpen;
+          const isTabPaused = item.featureKey ? !isFeatureEnabled(item.featureKey) : false;
 
           return (
             <button
@@ -116,6 +127,12 @@ export const StudentBottomNav: React.FC = () => {
                 />
               )}
 
+              {isTabPaused && (
+                <span className="absolute -top-1 right-1 px-1 py-0.2 rounded-full bg-amber-950 border border-amber-400/70 text-[8px] font-black text-amber-300 uppercase leading-tight">
+                  Paused
+                </span>
+              )}
+
               <div
                 className={`relative p-1.5 rounded-xl transition-all duration-200 ${
                   isActive
@@ -124,14 +141,6 @@ export const StudentBottomNav: React.FC = () => {
                 }`}
               >
                 <Icon className="w-5 h-5 stroke-[2.2]" />
-                {item.featureKey && isFeaturePaused(item.featureKey) && (
-                  <span
-                    className="absolute -top-0.5 -right-1 w-3.5 h-3.5 rounded-full bg-amber-500 text-slate-950 flex items-center justify-center shadow"
-                    title={resolveFeatureNotice(otaFeatureFlags[item.featureKey]).badge}
-                  >
-                    <PauseCircle className="w-2.5 h-2.5 stroke-[2.5]" />
-                  </span>
-                )}
               </div>
               <span className="text-[11px] tracking-tight mt-0.5 leading-none">
                 {item.label}
@@ -150,7 +159,7 @@ export const StudentBottomNav: React.FC = () => {
         </button>
       </nav>
 
-      {/* "More Hubs" Drawer - Guarantees zero feature loss while keeping bottom nav clean */}
+      {/* "More Hubs" Drawer - Shows all learning hubs with Paused badge when paused */}
       <AnimatePresence>
         {isMoreDrawerOpen && (
           <div className="fixed inset-0 z-50 flex flex-col justify-end">
@@ -192,14 +201,16 @@ export const StudentBottomNav: React.FC = () => {
                 {secondaryHubs.map((hub) => {
                   const Icon = hub.icon;
                   const isActive = activeStudentTab === hub.id;
-                  const paused = isFeaturePaused(hub.featureKey);
+                  const isPaused = !isFeatureEnabled(hub.featureKey);
                   return (
                     <button
                       key={hub.id}
                       onClick={() => handleTabClick(hub.id)}
-                      className={`p-3 rounded-2xl border text-left flex items-start gap-3 transition-all cursor-pointer active:scale-97 ${
+                      className={`p-3 rounded-2xl border text-left flex items-start gap-2.5 transition-all cursor-pointer active:scale-97 ${
                         isActive
                           ? 'bg-[#18264A] border-[#84CC16] shadow-lg shadow-[#84CC16]/20'
+                          : isPaused
+                          ? 'bg-[#0E172B]/80 border-amber-500/40 hover:bg-[#14203D]'
                           : 'bg-[#0E172B] hover:bg-[#14203D] border-slate-800'
                       }`}
                     >
@@ -210,11 +221,10 @@ export const StudentBottomNav: React.FC = () => {
                         <span className="text-xs font-bold text-white block truncate">
                           {hub.label}
                         </span>
-                        {paused ? (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-300 mt-0.5">
-                            <PauseCircle className="w-2.5 h-2.5 shrink-0" />
-                            <span className="truncate">{resolveFeatureNotice(otaFeatureFlags[hub.featureKey]).badge}</span>
-                          </span>
+                        {isPaused ? (
+                          <div className="mt-1">
+                            <PausedBadge />
+                          </div>
                         ) : (
                           <span className="text-[10px] text-slate-400 block mt-0.5">
                             Tap to open

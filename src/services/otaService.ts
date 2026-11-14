@@ -15,9 +15,10 @@ import {
   OTACompetitionConfig,
   OTAWeeklyCompetitionConfig,
   OTASchoolLeagueConfig,
-  OTAAppRelease,
-  OTAFeatureFlag,
-  OTAFeatureKey
+  OTAAppReleaseConfig,
+  OTAFeatureFlags,
+  OTAFeatureKey,
+  OTAUpgradeMode
 } from '../types';
 import {
   TERMLY_CHAMPIONSHIP_PRIZES,
@@ -35,8 +36,171 @@ const CACHE_KEY_WEEKLY = 'sc_ota_weekly_v1';
 const CACHE_KEY_SCHOOL_LEAGUE = 'sc_ota_school_league_v1';
 const CACHE_KEY_DISMISSED_POPUP = 'sc_ota_dismissed_popup_date';
 const CACHE_KEY_APP_RELEASE = 'sc_ota_app_release_v1';
-const CACHE_KEY_FEATURE_FLAGS = 'sc_ota_feature_flags_v1';
-const CACHE_KEY_UPGRADED_VERSION = 'sc_ota_client_upgraded_version_v1';
+const STORAGE_KEY_INSTALLED_VERSION = 'sc_installed_app_version';
+const STORAGE_KEY_DISMISSED_RELEASE = 'sc_ota_dismissed_release_v1';
+const STORAGE_KEY_DISMISSED_RECOMMENDED_AT = 'sc_ota_dismissed_recommended_at_v1';
+
+export const BASE_APP_VERSION = '2.3.0';
+
+export const DEFAULT_PAUSED_FEATURE_MESSAGE =
+  'This module is temporarily paused over-the-air while improvements are rolled out. Other study tools remain available.';
+
+export interface OTAFeatureMetadata {
+  key: OTAFeatureKey;
+  title: string;
+  description: string;
+  category: 'study' | 'enrichment' | 'portals';
+}
+
+export const OTA_FEATURE_CATALOG: OTAFeatureMetadata[] = [
+  // Study & Assessments
+  {
+    key: 'lessonNotes',
+    title: 'Lesson Notes & NERDC Syllabus',
+    description: 'Scheme of Work explorer, weekly notes & verified reading timers',
+    category: 'study'
+  },
+  {
+    key: 'termlyDrill',
+    title: 'Termly Assessment Drills',
+    description: '40-question NERDC termly mocks & BECE/WAEC/NECO/JAMB drill generator',
+    category: 'study'
+  },
+  {
+    key: 'cbtExams',
+    title: 'CBT Exam Practice & Quizzes',
+    description: 'Interactive quizzes, past exam simulator & CBT catalog',
+    category: 'study'
+  },
+  {
+    key: 'examPrep',
+    title: 'Prepare For Exam Planner',
+    description: 'AI daily study timetable, diagnostic profiler & tutor credits',
+    category: 'study'
+  },
+  {
+    key: 'scienceFormulas',
+    title: 'STEM Formulas Sheet',
+    description: 'Physics, Math & Chemistry equations reference bank',
+    category: 'study'
+  },
+  {
+    key: 'uniformVerification',
+    title: 'Uniform AI Verification',
+    description: 'Student uniform camera scanner & Verified Scholar badge',
+    category: 'study'
+  },
+  // Enrichment, AI & Tutoring
+  {
+    key: 'aiCoach',
+    title: 'AI Study Coach',
+    description: '24/7 AI tutor chat & topic diagnostics',
+    category: 'enrichment'
+  },
+  {
+    key: 'gamesHub',
+    title: 'Games & Brain Arcade',
+    description: '12 subject speed & puzzle mini-games',
+    category: 'enrichment'
+  },
+  {
+    key: 'tutorMarketplace',
+    title: 'Tutor Marketplace & Booking',
+    description: 'Discover vetted tutors, chat & schedule tutoring sessions',
+    category: 'enrichment'
+  },
+  {
+    key: 'virtualClassroom',
+    title: 'Live Virtual Classroom',
+    description: 'Interactive digital tutoring whiteboard & live audio',
+    category: 'enrichment'
+  },
+  {
+    key: 'competitions',
+    title: 'Competitions & School League',
+    description: 'Termly championship, weekly challenge & inter-school standings',
+    category: 'enrichment'
+  },
+  {
+    key: 'aspirantHub',
+    title: 'JAMB & Aspirant CBT Hub',
+    description: 'UTME simulator, admission cut-off guide & mock tournaments',
+    category: 'enrichment'
+  },
+  {
+    key: 'communityForum',
+    title: 'Student Community Forum',
+    description: 'Peer discussion channels & moderated study Q&A',
+    category: 'enrichment'
+  },
+  // Role Portals
+  {
+    key: 'parentPortal',
+    title: 'Parent Guardian Portal',
+    description: 'Ward progress overview, PIN wallet, approvals & parent lounge',
+    category: 'portals'
+  },
+  {
+    key: 'tutorPortal',
+    title: 'Educator / Tutor Portal',
+    description: 'Session schedules, payout earnings, credentials & chat',
+    category: 'portals'
+  },
+  {
+    key: 'schoolAdminPortal',
+    title: 'School Administrator Portal',
+    description: 'Institutional publishing studio, school materials & accreditation',
+    category: 'portals'
+  },
+  {
+    key: 'growthPartnerPortal',
+    title: 'Growth Partner Portal',
+    description: 'Referral network analytics, partner wallet & marketing toolkit',
+    category: 'portals'
+  }
+];
+
+export const DEFAULT_OTA_FEATURE_FLAGS: OTAFeatureFlags = {
+  lessonNotes: true,
+  termlyDrill: true,
+  cbtExams: true,
+  examPrep: true,
+  scienceFormulas: true,
+  uniformVerification: true,
+  aiCoach: true,
+  gamesHub: true,
+  tutorMarketplace: true,
+  virtualClassroom: true,
+  competitions: true,
+  aspirantHub: true,
+  communityForum: true,
+  parentPortal: true,
+  tutorPortal: true,
+  schoolAdminPortal: true,
+  growthPartnerPortal: true
+};
+
+export const DEFAULT_OTA_APP_RELEASE: OTAAppReleaseConfig = {
+  id: 'active_release',
+  latestVersion: BASE_APP_VERSION,
+  minimumSupportedVersion: '2.2.0',
+  upgradeMode: 'mild',
+  releaseTitle: 'Student Companion v2.3.0 · Verified Study Engine',
+  releaseNotes: 'Includes realistic active reading timers, cross-session lesson progress persistence, and enhanced CBT audio diagnostics.',
+  featureHighlights: [
+    'Verified active reading study timers (20–35 min)',
+    'Cross-session reading progress & offline resilience',
+    'Smooth sign-in chime & instant Lottie transitions'
+  ],
+  downloadUrl: '',
+  featureFlags: DEFAULT_OTA_FEATURE_FLAGS,
+  defaultPausedMessage: DEFAULT_PAUSED_FEATURE_MESSAGE,
+  pausedFeatureNotes: {},
+  maintenanceMode: false,
+  maintenanceMessage: 'Scheduled OTA platform maintenance is underway to improve speed and reliability. We will be back shortly.',
+  publishedAt: new Date().toISOString(),
+  publishedBy: 'martorefe@gmail.com'
+};
 
 // ==========================================
 // CANONICAL DEFAULT BUNDLES (OFFLINE-SAFE)
@@ -536,546 +700,252 @@ export function markPopupDismissedToday(popupId: string): void {
 }
 
 // ==========================================
-// OTA APP RELEASES & VERSION ENFORCEMENT
+// OTA APP RELEASES, SEMVER & UPGRADE GATE
 // ==========================================
 
-export function compareSemver(a: string, b: string): number {
-  const parse = (v: string) =>
-    String(v || '0.0.0')
-      .replace(/^v/i, '')
-      .split('.')
-      .map((n) => parseInt(n.replace(/[^0-9]/g, ''), 10) || 0);
-  const pa = parse(a);
-  const pb = parse(b);
-  const len = Math.max(pa.length, pb.length, 3);
-  for (let i = 0; i < len; i++) {
-    const da = pa[i] || 0;
-    const db = pb[i] || 0;
-    if (da > db) return 1;
-    if (da < db) return -1;
+export function normalizeSemver(version?: string | null): string {
+  if (!version) return BASE_APP_VERSION;
+  const cleaned = version.trim().replace(/^v/i, '');
+  return /^\d+\.\d+\.\d+$/.test(cleaned) ? cleaned : BASE_APP_VERSION;
+}
+
+export function isValidSemver(version?: string | null): boolean {
+  if (!version) return false;
+  return /^v?\d+\.\d+\.\d+$/.test(version.trim());
+}
+
+/**
+ * Returns -1 if vA < vB, 0 if equal, 1 if vA > vB
+ */
+export function compareSemver(vA: string, vB: string): number {
+  const partsA = normalizeSemver(vA).split('.').map(Number);
+  const partsB = normalizeSemver(vB).split('.').map(Number);
+  for (let i = 0; i < 3; i++) {
+    const a = partsA[i] || 0;
+    const b = partsB[i] || 0;
+    if (a < b) return -1;
+    if (a > b) return 1;
   }
   return 0;
 }
 
-export function getEffectiveClientVersion(): string {
-  try {
-    if (typeof window === 'undefined') return CURRENT_APP_VERSION;
-    const stored = localStorage.getItem(CACHE_KEY_UPGRADED_VERSION);
-    if (stored && compareSemver(stored, CURRENT_APP_VERSION) >= 0) {
-      return stored;
-    }
-  } catch {}
-  return CURRENT_APP_VERSION;
+export function bumpSemver(version: string, part: 'major' | 'minor' | 'patch'): string {
+  const [maj, min, pat] = normalizeSemver(version).split('.').map(Number);
+  if (part === 'major') return `${maj + 1}.0.0`;
+  if (part === 'minor') return `${maj}.${min + 1}.0`;
+  return `${maj}.${min}.${pat + 1}`;
 }
 
-export const DEFAULT_OTA_APP_RELEASE: OTAAppRelease = {
-  id: 'current_release',
-  latestVersion: CURRENT_APP_VERSION,
-  minimumSupportedVersion: '2.0.0',
-  releaseTitle: 'Student Companion Bento & Live Reminders Update',
-  changelog:
-    'Vibrant Bento hubs across all portals, 3-gate verified lesson reading, live engagement reminders, and enhanced security.',
-  featureHighlights: [
-    'Vibrant Bento-grid learning hubs & tactile audio chimes',
-    'Smart streak reminders, browser push & email digests',
-    '3-gate verified NERDC lesson note reading & progress sync'
-  ],
-  upgradeMode: 'mild_notice',
-  upgradeUrl: '',
-  isActive: false,
-  publishedAt: new Date().toISOString(),
-  publishedBy: 'wowrealities@gmail.com'
-};
+export function getInstalledAppVersion(): string {
+  try {
+    if (typeof window === 'undefined') return BASE_APP_VERSION;
+    const stored = localStorage.getItem(STORAGE_KEY_INSTALLED_VERSION);
+    if (stored && isValidSemver(stored)) {
+      return normalizeSemver(stored);
+    }
+  } catch {}
+  return BASE_APP_VERSION;
+}
+
+export function setInstalledAppVersion(version: string): string {
+  const normalized = normalizeSemver(version);
+  try {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(STORAGE_KEY_INSTALLED_VERSION, normalized);
+    }
+  } catch {}
+  return normalized;
+}
+
+export function isReleaseDismissed(version: string, mode: OTAUpgradeMode): boolean {
+  if (mode === 'mandatory') return false;
+  const normalized = normalizeSemver(version);
+  try {
+    if (typeof window === 'undefined') return false;
+    if (mode === 'mild') {
+      return localStorage.getItem(STORAGE_KEY_DISMISSED_RELEASE) === normalized;
+    }
+    if (mode === 'recommended') {
+      const dismissedVer = localStorage.getItem(STORAGE_KEY_DISMISSED_RELEASE);
+      const dismissedDate = localStorage.getItem(STORAGE_KEY_DISMISSED_RECOMMENDED_AT);
+      const today = new Date().toISOString().slice(0, 10);
+      return dismissedVer === normalized && dismissedDate === today;
+    }
+  } catch {}
+  return false;
+}
+
+export function dismissReleasePrompt(version: string, mode: OTAUpgradeMode): void {
+  if (mode === 'mandatory') return;
+  const normalized = normalizeSemver(version);
+  try {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(STORAGE_KEY_DISMISSED_RELEASE, normalized);
+      if (mode === 'recommended') {
+        localStorage.setItem(
+          STORAGE_KEY_DISMISSED_RECOMMENDED_AT,
+          new Date().toISOString().slice(0, 10)
+        );
+      }
+    }
+  } catch {}
+}
+
+export function clearReleaseDismissal(): void {
+  try {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(STORAGE_KEY_DISMISSED_RELEASE);
+      localStorage.removeItem(STORAGE_KEY_DISMISSED_RECOMMENDED_AT);
+    }
+  } catch {}
+}
+
+function sanitizeReleaseConfig(raw: Partial<OTAAppReleaseConfig> | null | undefined): OTAAppReleaseConfig {
+  const rawFlags = (raw?.featureFlags || {}) as Partial<OTAFeatureFlags>;
+  const sanitizedFlags: OTAFeatureFlags = { ...DEFAULT_OTA_FEATURE_FLAGS };
+  for (const meta of OTA_FEATURE_CATALOG) {
+    const val = rawFlags[meta.key];
+    sanitizedFlags[meta.key] = typeof val === 'boolean' ? val : true;
+  }
+
+  const rawNotes = (raw?.pausedFeatureNotes || {}) as Partial<Record<OTAFeatureKey, unknown>>;
+  const sanitizedNotes: Partial<Record<OTAFeatureKey, string>> = {};
+  for (const meta of OTA_FEATURE_CATALOG) {
+    const val = rawNotes[meta.key];
+    if (typeof val === 'string' && val.trim().length > 0) {
+      sanitizedNotes[meta.key] = val.trim().slice(0, 240);
+    }
+  }
+
+  const highlights = Array.isArray(raw?.featureHighlights)
+    ? raw!.featureHighlights
+        .map((h) => String(h || '').trim())
+        .filter(Boolean)
+        .slice(0, 10)
+    : DEFAULT_OTA_APP_RELEASE.featureHighlights;
+
+  const cleanDownload = typeof raw?.downloadUrl === 'string' ? raw.downloadUrl.trim().slice(0, 500) : '';
+  const cleanDefaultPaused =
+    typeof raw?.defaultPausedMessage === 'string' && raw.defaultPausedMessage.trim().length > 0
+      ? raw.defaultPausedMessage.trim().slice(0, 300)
+      : DEFAULT_PAUSED_FEATURE_MESSAGE;
+
+  return {
+    id: 'active_release',
+    latestVersion: normalizeSemver(raw?.latestVersion || BASE_APP_VERSION),
+    minimumSupportedVersion: normalizeSemver(raw?.minimumSupportedVersion || DEFAULT_OTA_APP_RELEASE.minimumSupportedVersion),
+    upgradeMode:
+      raw?.upgradeMode === 'mild' || raw?.upgradeMode === 'recommended' || raw?.upgradeMode === 'mandatory'
+        ? raw.upgradeMode
+        : 'mild',
+    releaseTitle: (raw?.releaseTitle || DEFAULT_OTA_APP_RELEASE.releaseTitle).trim().slice(0, 160),
+    releaseNotes: (raw?.releaseNotes || '').trim().slice(0, 2000),
+    featureHighlights: highlights,
+    ...(cleanDownload ? { downloadUrl: cleanDownload } : {}),
+    featureFlags: sanitizedFlags,
+    defaultPausedMessage: cleanDefaultPaused,
+    pausedFeatureNotes: sanitizedNotes,
+    maintenanceMode: Boolean(raw?.maintenanceMode),
+    maintenanceMessage: (raw?.maintenanceMessage || DEFAULT_OTA_APP_RELEASE.maintenanceMessage).trim().slice(0, 500),
+    publishedAt: raw?.publishedAt || new Date().toISOString(),
+    publishedBy: (raw?.publishedBy || 'martorefe@gmail.com').trim().slice(0, 150)
+  };
+}
+
+export function resolvePausedFeatureMessage(
+  release: OTAAppReleaseConfig,
+  featureKey: OTAFeatureKey
+): string {
+  const custom = release.pausedFeatureNotes?.[featureKey]?.trim();
+  if (custom) return custom;
+  const fallback = release.defaultPausedMessage?.trim();
+  return fallback || DEFAULT_PAUSED_FEATURE_MESSAGE;
+}
+
+const releaseListeners = new Set<(config: OTAAppReleaseConfig) => void>();
 
 export function subscribeToOTAAppRelease(
-  callback: (release: OTAAppRelease) => void
+  callback: (config: OTAAppReleaseConfig) => void
 ): () => void {
-  const cached = readLocalJson<OTAAppRelease>(CACHE_KEY_APP_RELEASE, DEFAULT_OTA_APP_RELEASE);
+  const cached = sanitizeReleaseConfig(
+    readLocalJson<OTAAppReleaseConfig>(CACHE_KEY_APP_RELEASE, DEFAULT_OTA_APP_RELEASE)
+  );
   callback(cached);
+  releaseListeners.add(callback);
 
-  // Also check Express mirror immediately
+  // Optional Express mirror fallback when payload matches OTAAppReleaseConfig schema
   fetch('/api/ota/state')
     .then((r) => (r.ok ? r.json() : null))
     .then((data) => {
-      if (data && data.appRelease && data.appRelease.latestVersion) {
-        const merged: OTAAppRelease = { ...DEFAULT_OTA_APP_RELEASE, ...data.appRelease };
-        writeLocalJson(CACHE_KEY_APP_RELEASE, merged);
-        callback(merged);
+      if (data?.appRelease?.latestVersion && data.appRelease.featureFlags) {
+        const sanitized = sanitizeReleaseConfig(data.appRelease as Partial<OTAAppReleaseConfig>);
+        writeLocalJson(CACHE_KEY_APP_RELEASE, sanitized);
+        releaseListeners.forEach((cb) => cb(sanitized));
       }
     })
     .catch(() => {});
 
-  const docRef = doc(db, 'otaAppReleases', 'current_release');
-  const handleSnap = (snap: { exists: () => boolean; data: () => unknown }) => {
-    if (snap.exists()) {
-      const remote = { ...DEFAULT_OTA_APP_RELEASE, ...(snap.data() as Partial<OTAAppRelease>) };
-      writeLocalJson(CACHE_KEY_APP_RELEASE, remote);
-      callback(remote);
-    }
-  };
-
-  return createAuthGatedSubscription(
-    async () => {
-      const snap = await getDoc(docRef);
-      handleSnap(snap);
-    },
-    () =>
-      onSnapshot(
-        docRef,
-        (snap) => handleSnap(snap),
-        () => {
-          callback(readLocalJson<OTAAppRelease>(CACHE_KEY_APP_RELEASE, DEFAULT_OTA_APP_RELEASE));
+  let unsubFirestore = () => {};
+  try {
+    const docRef = doc(db, 'otaAppReleases', 'active_release');
+    unsubFirestore = onSnapshot(
+      docRef,
+      (snap) => {
+        if (snap.exists()) {
+          const sanitized = sanitizeReleaseConfig(snap.data() as Partial<OTAAppReleaseConfig>);
+          writeLocalJson(CACHE_KEY_APP_RELEASE, sanitized);
+          releaseListeners.forEach((cb) => cb(sanitized));
         }
-      )
-  );
+      },
+      (error) => {
+        console.warn('OTA app release listener offline, using cached:', error);
+      }
+    );
+  } catch (err) {
+    console.warn('Failed to subscribe to OTA app release:', err);
+  }
+
+  return () => {
+    releaseListeners.delete(callback);
+    unsubFirestore();
+  };
 }
 
-export async function saveOTAAppRelease(release: OTAAppRelease): Promise<void> {
-  const payload: OTAAppRelease = {
-    ...release,
-    id: 'current_release',
+export async function saveOTAAppRelease(config: OTAAppReleaseConfig): Promise<OTAAppReleaseConfig> {
+  const payload = sanitizeReleaseConfig({
+    ...config,
+    id: 'active_release',
     publishedAt: new Date().toISOString()
-  };
-  writeLocalJson(CACHE_KEY_APP_RELEASE, payload);
+  });
 
-  await fetch('/api/ota/release', {
+  writeLocalJson(CACHE_KEY_APP_RELEASE, payload);
+  releaseListeners.forEach((cb) => cb(payload));
+
+  fetch('/api/ota/release', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
   }).catch(() => {});
 
-  try {
-    await setDoc(doc(db, 'otaAppReleases', 'current_release'), payload, { merge: true });
-  } catch (err) {
-    console.warn('Firestore OTA release write warning (mirrored via API):', err);
-  }
+  const docRef = doc(db, 'otaAppReleases', 'active_release');
+  await setDoc(docRef, payload);
+  return payload;
 }
 
-export async function executeOTAUpgrade(targetVersion: string): Promise<void> {
+export function applyInAppOTAUpgrade(release: OTAAppReleaseConfig): string {
+  const updatedVer = setInstalledAppVersion(release.latestVersion);
+  clearReleaseDismissal();
+  writeLocalJson(CACHE_KEY_APP_RELEASE, sanitizeReleaseConfig(release));
+  return updatedVer;
+}
+
+export function isValidSafeExternalUrl(url?: string | null): boolean {
+  if (!url) return false;
   try {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(CACHE_KEY_UPGRADED_VERSION, targetVersion);
-      if ('caches' in window) {
-        const keys = await caches.keys();
-        await Promise.all(keys.map((k) => caches.delete(k)));
-      }
-      if ('serviceWorker' in navigator) {
-        const regs = await navigator.serviceWorker.getRegistrations();
-        for (const reg of regs) {
-          if (reg.waiting) {
-            reg.waiting.postMessage({ type: 'SKIP_WAITING' });
-          }
-          reg.active?.postMessage({ type: 'CLEAR_CACHES' });
-          await reg.update().catch(() => {});
-        }
-      }
-      window.location.reload();
-    }
+    const parsed = new URL(url.trim());
+    return parsed.protocol === 'https:' || parsed.protocol === 'http:';
   } catch {
-    if (typeof window !== 'undefined') {
-      window.location.reload();
-    }
-  }
-}
-
-// ==========================================
-// PER-FEATURE PAUSE & CUSTOM NOTICE CONTROLS
-// ==========================================
-
-const nowIso = new Date().toISOString();
-
-const LEGACY_SEEDED_MAINTENANCE_REASONS = new Set<string>([
-  'Curriculum content maintenance is underway.',
-  'Question bank maintenance is in progress.',
-  'AI tutor model maintenance is in progress.',
-  'Competition leaderboard recalculation and maintenance.',
-  'Tutor matching service is under scheduled maintenance.',
-  'Arcade games are undergoing scheduled updates.',
-  'Formula reference library maintenance is underway.',
-  'Community forum moderation and maintenance in progress.',
-  'Exam Prep planner maintenance is underway.',
-  'University Aspirant portal is under maintenance.',
-  'Uniform verification scanner is under maintenance.',
-  'Parent Portal is undergoing scheduled maintenance.',
-  'Tutor Portal is undergoing scheduled maintenance.',
-  'Growth Partner Portal is under scheduled maintenance.',
-  'School Admin Portal is under scheduled maintenance.',
-  'Virtual Classroom servers are undergoing scheduled maintenance.',
-  'Payment gateway maintenance is in progress. No charges will be processed.'
-]);
-
-export function resolveFeatureNotice(flag?: Partial<OTAFeatureFlag> | null): {
-  badge: string;
-  headline: string;
-  message: string;
-  eta: string;
-} {
-  const rawReason = (flag?.pauseReason || '').trim();
-  const safeReason = LEGACY_SEEDED_MAINTENANCE_REASONS.has(rawReason) ? '' : rawReason;
-  return {
-    badge: (flag?.customBadge || '').trim() || 'Paused',
-    headline: (flag?.customTitle || '').trim() || flag?.label || 'Feature Paused',
-    message: safeReason || 'This feature is currently paused. Please check back later.',
-    eta: (flag?.estimatedResume || '').trim()
-  };
-}
-
-export function sanitizeOTAFeatureFlag(flag: OTAFeatureFlag): OTAFeatureFlag {
-  const rawReason = (flag.pauseReason || '').trim();
-  return {
-    ...flag,
-    customBadge: (flag.customBadge || '').trim().slice(0, 40),
-    customTitle: (flag.customTitle || '').trim().slice(0, 120),
-    pauseReason: (LEGACY_SEEDED_MAINTENANCE_REASONS.has(rawReason) ? '' : rawReason).slice(0, 500),
-    estimatedResume: (flag.estimatedResume || '').trim().slice(0, 100),
-    updatedAt: flag.updatedAt || new Date().toISOString()
-  };
-}
-
-export const DEFAULT_OTA_FEATURE_FLAGS: Record<OTAFeatureKey, OTAFeatureFlag> = {
-  lesson_notes: {
-    featureKey: 'lesson_notes',
-    label: 'Lesson Notes & NERDC Syllabus',
-    description: 'Scheme of Work, weekly notes, and verified reading tracker',
-    category: 'Student Hub',
-    isPaused: false,
-    customBadge: '',
-    customTitle: '',
-    pauseReason: '',
-    estimatedResume: '',
-    updatedAt: nowIso,
-    updatedBy: 'system'
-  },
-  cbt_quizzes: {
-    featureKey: 'cbt_quizzes',
-    label: 'Interactive Quizzes & CBT Engine',
-    description: 'Termly drills, mock assessments, and WAEC/NECO/BECE CBT runs',
-    category: 'Student Hub',
-    isPaused: false,
-    customBadge: '',
-    customTitle: '',
-    pauseReason: '',
-    estimatedResume: '',
-    updatedAt: nowIso,
-    updatedBy: 'system'
-  },
-  ai_study_coach: {
-    featureKey: 'ai_study_coach',
-    label: 'AI Study Coach',
-    description: '24/7 AI tutoring explanations and guided problem solving',
-    category: 'Student Hub',
-    isPaused: false,
-    customBadge: '',
-    customTitle: '',
-    pauseReason: '',
-    estimatedResume: '',
-    updatedAt: nowIso,
-    updatedBy: 'system'
-  },
-  competitions: {
-    featureKey: 'competitions',
-    label: 'Competitions & School League',
-    description: 'Termly Championship Arena, Weekly Challenges & School Leaderboard',
-    category: 'Student Hub',
-    isPaused: false,
-    customBadge: '',
-    customTitle: '',
-    pauseReason: '',
-    estimatedResume: '',
-    updatedAt: nowIso,
-    updatedBy: 'system'
-  },
-  tutor_marketplace: {
-    featureKey: 'tutor_marketplace',
-    label: 'Tutor Marketplace & Discovery',
-    description: 'Browse verified tutors and book 1-on-1 tutoring sessions',
-    category: 'Student Hub',
-    isPaused: false,
-    customBadge: '',
-    customTitle: '',
-    pauseReason: '',
-    estimatedResume: '',
-    updatedAt: nowIso,
-    updatedBy: 'system'
-  },
-  games_hub: {
-    featureKey: 'games_hub',
-    label: 'Games Hub (Arcade)',
-    description: 'Educational STEM, Speed Concord, History & Logic mini-games',
-    category: 'Student Hub',
-    isPaused: false,
-    customBadge: '',
-    customTitle: '',
-    pauseReason: '',
-    estimatedResume: '',
-    updatedAt: nowIso,
-    updatedBy: 'system'
-  },
-  science_formulas: {
-    featureKey: 'science_formulas',
-    label: 'Science & Math Formulas Sheet',
-    description: 'Interactive Physics, Chemistry, and Maths reference formulas',
-    category: 'Student Hub',
-    isPaused: false,
-    customBadge: '',
-    customTitle: '',
-    pauseReason: '',
-    estimatedResume: '',
-    updatedAt: nowIso,
-    updatedBy: 'system'
-  },
-  community_forum: {
-    featureKey: 'community_forum',
-    label: 'Student Community Forum',
-    description: 'Moderated peer study channels and Q&A discussions',
-    category: 'Student Hub',
-    isPaused: false,
-    customBadge: '',
-    customTitle: '',
-    pauseReason: '',
-    estimatedResume: '',
-    updatedAt: nowIso,
-    updatedBy: 'system'
-  },
-  exam_prep: {
-    featureKey: 'exam_prep',
-    label: 'Prepare For Exam Hub',
-    description: 'Personalized 30-day AI study calendar and exam readiness planner',
-    category: 'Student Hub',
-    isPaused: false,
-    customBadge: '',
-    customTitle: '',
-    pauseReason: '',
-    estimatedResume: '',
-    updatedAt: nowIso,
-    updatedBy: 'system'
-  },
-  aspirant_hub: {
-    featureKey: 'aspirant_hub',
-    label: 'University Aspirant Hub (UTME)',
-    description: 'JAMB UTME simulator, Admission Guide & National Mock Tournaments',
-    category: 'Student Hub',
-    isPaused: false,
-    customBadge: '',
-    customTitle: '',
-    pauseReason: '',
-    estimatedResume: '',
-    updatedAt: nowIso,
-    updatedBy: 'system'
-  },
-  uniform_verification: {
-    featureKey: 'uniform_verification',
-    label: 'AI Uniform Verification',
-    description: 'Camera-based school uniform verification scanner',
-    category: 'Student Hub',
-    isPaused: false,
-    customBadge: '',
-    customTitle: '',
-    pauseReason: '',
-    estimatedResume: '',
-    updatedAt: nowIso,
-    updatedBy: 'system'
-  },
-  parent_portal: {
-    featureKey: 'parent_portal',
-    label: 'Parent Portal & Ward Monitoring',
-    description: 'Ward academic tracking, escrow approvals & parent wallet',
-    category: 'Persona Portal',
-    isPaused: false,
-    customBadge: '',
-    customTitle: '',
-    pauseReason: '',
-    estimatedResume: '',
-    updatedAt: nowIso,
-    updatedBy: 'system'
-  },
-  tutor_portal: {
-    featureKey: 'tutor_portal',
-    label: 'Tutor Portal & Bookings',
-    description: 'Tutor schedule, student session queue & earnings management',
-    category: 'Persona Portal',
-    isPaused: false,
-    customBadge: '',
-    customTitle: '',
-    pauseReason: '',
-    estimatedResume: '',
-    updatedAt: nowIso,
-    updatedBy: 'system'
-  },
-  growth_partner_portal: {
-    featureKey: 'growth_partner_portal',
-    label: 'Growth Partner Portal',
-    description: 'Referral tracking, commission ledger & withdrawal center',
-    category: 'Persona Portal',
-    isPaused: false,
-    customBadge: '',
-    customTitle: '',
-    pauseReason: '',
-    estimatedResume: '',
-    updatedAt: nowIso,
-    updatedBy: 'system'
-  },
-  school_admin_portal: {
-    featureKey: 'school_admin_portal',
-    label: 'School Admin Portal',
-    description: 'School accreditation, bulk student roster & material uploads',
-    category: 'Persona Portal',
-    isPaused: false,
-    customBadge: '',
-    customTitle: '',
-    pauseReason: '',
-    estimatedResume: '',
-    updatedAt: nowIso,
-    updatedBy: 'system'
-  },
-  virtual_classroom: {
-    featureKey: 'virtual_classroom',
-    label: 'Virtual Live Classroom',
-    description: 'Live audio/video tutoring whiteboard sessions',
-    category: 'Core Service',
-    isPaused: false,
-    customBadge: '',
-    customTitle: '',
-    pauseReason: '',
-    estimatedResume: '',
-    updatedAt: nowIso,
-    updatedBy: 'system'
-  },
-  wallet_payments: {
-    featureKey: 'wallet_payments',
-    label: 'Subscriptions & Paystack Checkout',
-    description: 'Plan upgrades, wallet top-ups, and escrow checkout flows',
-    category: 'Core Service',
-    isPaused: false,
-    customBadge: '',
-    customTitle: '',
-    pauseReason: '',
-    estimatedResume: '',
-    updatedAt: nowIso,
-    updatedBy: 'system'
-  }
-};
-
-function mergeFlagsWithDefaults(
-  partialList: Partial<OTAFeatureFlag>[]
-): Record<OTAFeatureKey, OTAFeatureFlag> {
-  const merged = { ...DEFAULT_OTA_FEATURE_FLAGS };
-  for (const item of partialList) {
-    if (item && item.featureKey && merged[item.featureKey]) {
-      const cleanedReason =
-        typeof item.pauseReason === 'string' && LEGACY_SEEDED_MAINTENANCE_REASONS.has(item.pauseReason.trim())
-          ? ''
-          : item.pauseReason;
-      merged[item.featureKey] = {
-        ...merged[item.featureKey],
-        ...item,
-        pauseReason: cleanedReason ?? ''
-      };
-    }
-  }
-  return merged;
-}
-
-export function subscribeToOTAFeatureFlags(
-  callback: (flags: Record<OTAFeatureKey, OTAFeatureFlag>) => void
-): () => void {
-  const cached = mergeFlagsWithDefaults(
-    Object.values(readLocalJson<Record<string, OTAFeatureFlag>>(CACHE_KEY_FEATURE_FLAGS, {}))
-  );
-  callback(cached);
-
-  fetch('/api/ota/state')
-    .then((r) => (r.ok ? r.json() : null))
-    .then((data) => {
-      if (data && data.featureFlags && typeof data.featureFlags === 'object') {
-        const merged = mergeFlagsWithDefaults(Object.values(data.featureFlags));
-        writeLocalJson(CACHE_KEY_FEATURE_FLAGS, merged);
-        callback(merged);
-      }
-    })
-    .catch(() => {});
-
-  const colRef = collection(db, 'otaFeatureFlags');
-  const handleSnap = (snap: { empty: boolean; forEach: (fn: (d: { id: string; data: () => unknown }) => void) => void }) => {
-    if (!snap.empty) {
-      const list: Partial<OTAFeatureFlag>[] = [];
-      snap.forEach((d) => {
-        const val = d.data() as Partial<OTAFeatureFlag>;
-        list.push({ ...val, featureKey: (val.featureKey || d.id) as OTAFeatureKey });
-      });
-      const merged = mergeFlagsWithDefaults(list);
-      writeLocalJson(CACHE_KEY_FEATURE_FLAGS, merged);
-      callback(merged);
-    }
-  };
-
-  return createAuthGatedSubscription(
-    async () => {
-      const snap = await getDocs(colRef);
-      handleSnap(snap);
-    },
-    () =>
-      onSnapshot(
-        colRef,
-        (snap) => handleSnap(snap),
-        () => {
-          const fallback = mergeFlagsWithDefaults(
-            Object.values(readLocalJson<Record<string, OTAFeatureFlag>>(CACHE_KEY_FEATURE_FLAGS, {}))
-          );
-          callback(fallback);
-        }
-      )
-  );
-}
-
-export async function saveOTAFeatureFlag(flag: OTAFeatureFlag): Promise<void> {
-  const payload = sanitizeOTAFeatureFlag({
-    ...flag,
-    updatedAt: new Date().toISOString()
-  });
-
-  const current = mergeFlagsWithDefaults(
-    Object.values(readLocalJson<Record<string, OTAFeatureFlag>>(CACHE_KEY_FEATURE_FLAGS, {}))
-  );
-  current[payload.featureKey] = payload;
-  writeLocalJson(CACHE_KEY_FEATURE_FLAGS, current);
-
-  await fetch('/api/ota/features', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ flag: payload })
-  }).catch(() => {});
-
-  try {
-    await setDoc(doc(db, 'otaFeatureFlags', payload.featureKey), payload, { merge: true });
-  } catch (err) {
-    console.warn('Firestore feature flag write warning (mirrored via API):', err);
-  }
-}
-
-export async function saveAllOTAFeatureFlags(
-  flagsMap: Record<OTAFeatureKey, OTAFeatureFlag>
-): Promise<void> {
-  const sanitizedMap = { ...flagsMap };
-  (Object.keys(sanitizedMap) as OTAFeatureKey[]).forEach((key) => {
-    sanitizedMap[key] = sanitizeOTAFeatureFlag(sanitizedMap[key]);
-  });
-
-  writeLocalJson(CACHE_KEY_FEATURE_FLAGS, sanitizedMap);
-
-  await fetch('/api/ota/features', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ flagsMap: sanitizedMap })
-  }).catch(() => {});
-
-  const entries = Object.values(sanitizedMap);
-  for (const f of entries) {
-    try {
-      await setDoc(doc(db, 'otaFeatureFlags', f.featureKey), f, { merge: true });
-    } catch {
-      break;
-    }
+    return false;
   }
 }
 

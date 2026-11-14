@@ -875,78 +875,45 @@
     },
     "OTAAppRelease": {
       "title": "OTAAppRelease",
-      "description": "Over-The-Air application version release and upgrade enforcement policy",
+      "description": "Super Admin Over-The-Air application version upgrade, release notes, 17-module pause switches, pause messages, and maintenance lock configuration",
       "type": "object",
       "properties": {
-        "id": { "type": "string", "maxLength": 128 },
-        "latestVersion": { "type": "string", "maxLength": 32 },
-        "minimumSupportedVersion": { "type": "string", "maxLength": 32 },
-        "releaseTitle": { "type": "string", "maxLength": 200 },
-        "changelog": { "type": "string", "maxLength": 2000 },
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+        "latestVersion": { "type": "string", "maxLength": 32, "pattern": "^v?[0-9]+\\.[0-9]+\\.[0-9]+$" },
+        "minimumSupportedVersion": { "type": "string", "maxLength": 32, "pattern": "^v?[0-9]+\\.[0-9]+\\.[0-9]+$" },
+        "upgradeMode": { "type": "string", "enum": ["mild", "recommended", "mandatory"] },
+        "releaseTitle": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "releaseNotes": { "type": "string", "maxLength": 2000 },
         "featureHighlights": { "type": "array" },
-        "upgradeMode": { "type": "string", "enum": ["mild_notice", "force_blocking"] },
-        "upgradeUrl": { "type": "string", "maxLength": 500 },
-        "isActive": { "type": "boolean" },
+        "downloadUrl": { "type": "string", "maxLength": 500 },
+        "featureFlags": { "type": "object" },
+        "defaultPausedMessage": { "type": "string", "maxLength": 300 },
+        "pausedFeatureNotes": { "type": "object" },
+        "maintenanceMode": { "type": "boolean" },
+        "maintenanceMessage": { "type": "string", "maxLength": 500 },
         "publishedAt": { "type": "string", "maxLength": 100 },
         "publishedBy": { "type": "string", "maxLength": 150 }
       },
-      "required": ["id", "latestVersion", "minimumSupportedVersion", "releaseTitle", "changelog", "upgradeMode", "isActive", "publishedAt", "publishedBy"]
+      "required": ["id", "latestVersion", "minimumSupportedVersion", "upgradeMode", "releaseTitle", "releaseNotes", "featureHighlights", "featureFlags", "defaultPausedMessage", "pausedFeatureNotes", "maintenanceMode", "maintenanceMessage", "publishedAt", "publishedBy"]
     },
-    "OTAFeatureFlag": {
-      "title": "OTAFeatureFlag",
-      "description": "Super Admin per-feature pause and custom notice toggle configuration",
+    "OTANotificationBroadcast": {
+      "title": "OTANotificationBroadcast",
+      "description": "Super Admin published Over-The-Air push notification and draw-back reminder targeting selected user personas",
       "type": "object",
       "properties": {
-        "featureKey": { "type": "string", "maxLength": 64 },
-        "label": { "type": "string", "maxLength": 120 },
-        "description": { "type": "string", "maxLength": 300 },
-        "category": { "type": "string", "enum": ["Student Hub", "Persona Portal", "Core Service"] },
-        "isPaused": { "type": "boolean" },
-        "customBadge": { "type": "string", "maxLength": 40 },
-        "customTitle": { "type": "string", "maxLength": 120 },
-        "pauseReason": { "type": "string", "maxLength": 500 },
-        "estimatedResume": { "type": "string", "maxLength": 100 },
-        "updatedAt": { "type": "string", "maxLength": 100 },
-        "updatedBy": { "type": "string", "maxLength": 150 }
-      },
-      "required": ["featureKey", "label", "category", "isPaused", "updatedAt", "updatedBy"]
-    },
-    "PersonaNotification": {
-      "title": "PersonaNotification",
-      "description": "Cross-persona notification and engagement reminder pushed by Super Admin",
-      "type": "object",
-      "properties": {
-        "id": { "type": "string", "maxLength": 128 },
-        "targetRole": { "type": "string", "enum": ["all", "student", "parent", "tutor", "growth_partner", "school_admin", "admin"] },
-        "targetUserId": { "type": "string", "maxLength": 128 },
-        "title": { "type": "string", "maxLength": 200 },
-        "message": { "type": "string", "maxLength": 1000 },
-        "category": { "type": "string", "enum": ["study_reminder", "streak_alert", "ota_update", "tutor_activity", "parent_alert", "partner_earnings", "school_notice", "campaign"] },
-        "actionLabel": { "type": "string", "maxLength": 80 },
-        "actionTarget": { "type": "string", "maxLength": 80 },
-        "sendBrowserPush": { "type": "boolean" },
-        "sendEmailDigest": { "type": "boolean" },
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+        "title": { "type": "string", "minLength": 1, "maxLength": 90 },
+        "body": { "type": "string", "minLength": 1, "maxLength": 280 },
+        "category": { "type": "string", "enum": ["streak_risk", "inactivity_nudge", "ota_engagement"] },
+        "targetRoles": { "type": "array" },
+        "deepLinkTab": { "type": "string", "maxLength": 64 },
+        "actionLabel": { "type": "string", "maxLength": 40 },
+        "priority": { "type": "string", "enum": ["standard", "high"] },
+        "isActive": { "type": "boolean" },
         "createdAt": { "type": "string", "maxLength": 100 },
         "createdBy": { "type": "string", "maxLength": 150 }
       },
-      "required": ["id", "targetRole", "title", "message", "category", "createdAt", "createdBy"]
-    },
-    "ReminderPreference": {
-      "title": "ReminderPreference",
-      "description": "User opt-in preferences for browser push notifications, email digests, and daily reminder schedules",
-      "type": "object",
-      "properties": {
-        "userId": { "type": "string", "maxLength": 128 },
-        "role": { "type": "string", "maxLength": 40 },
-        "email": { "type": "string", "maxLength": 150 },
-        "browserPushEnabled": { "type": "boolean" },
-        "emailDigestEnabled": { "type": "boolean" },
-        "dailyReminderTime": { "type": "string", "maxLength": 20 },
-        "streakAlerts": { "type": "boolean" },
-        "inactivityNudgeHours": { "type": "number" },
-        "updatedAt": { "type": "string", "maxLength": 100 }
-      },
-      "required": ["userId", "role", "browserPushEnabled", "emailDigestEnabled", "dailyReminderTime", "streakAlerts", "updatedAt"]
+      "required": ["id", "title", "body", "category", "targetRoles", "deepLinkTab", "actionLabel", "priority", "isActive", "createdAt", "createdBy"]
     }
   },
   "firestore": {
@@ -1110,25 +1077,13 @@
       "schema": {
         "$ref": "#/entities/OTAAppRelease"
       },
-      "description": "Active Over-The-Air application version update and forced-upgrade configuration"
+      "description": "Live Over-The-Air application updates, forced upgrade prompts, feature flags, and maintenance lock state"
     },
-    "/otaFeatureFlags/{featureKey}": {
+    "/otaNotifications/{notificationId}": {
       "schema": {
-        "$ref": "#/entities/OTAFeatureFlag"
+        "$ref": "#/entities/OTANotificationBroadcast"
       },
-      "description": "Super Admin per-feature maintenance and pause switches"
-    },
-    "/personaNotifications/{notificationId}": {
-      "schema": {
-        "$ref": "#/entities/PersonaNotification"
-      },
-      "description": "Cross-persona notifications and engagement reminders"
-    },
-    "/reminderPreferences/{userId}": {
-      "schema": {
-        "$ref": "#/entities/ReminderPreference"
-      },
-      "description": "User notification and reminder opt-in preferences"
+      "description": "Super Admin published Over-The-Air notifications and re-engagement reminder broadcasts"
     }
   }
 }

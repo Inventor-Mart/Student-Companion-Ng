@@ -18,16 +18,13 @@ import {
   DEFAULT_OTA_SCHOOL_LEAGUE_CONFIG,
   DEFAULT_OTA_APP_RELEASE,
   DEFAULT_OTA_FEATURE_FLAGS,
+  DEFAULT_PAUSED_FEATURE_MESSAGE,
+  OTA_FEATURE_CATALOG,
+  subscribeToOTAAppRelease,
   saveOTAAppRelease,
-  saveOTAFeatureFlag,
-  saveAllOTAFeatureFlags
+  bumpSemver,
+  isValidSemver
 } from '../../services/otaService';
-import {
-  publishPersonaNotification,
-  deletePersonaNotification,
-  dispatchEmailDigest,
-  triggerBrowserNotification
-} from '../../services/notificationService';
 import {
   OTABroadcastItem,
   OTAPopupAnnouncement,
@@ -36,17 +33,17 @@ import {
   OTASchoolLeagueConfig,
   OTASchoolLeagueSchool,
   OTABroadcastCategory,
-  OTAAppRelease,
+  OTAAppReleaseConfig,
   OTAUpgradeMode,
-  OTAFeatureFlag,
-  OTAFeatureKey,
-  PersonaNotificationCategory,
-  UserRole
+  OTAFeatureFlags,
+  OTAFeatureKey
 } from '../../types';
 import { CBT_EXAMS_DATABASE } from '../../data/cbtExamData';
 import { useApp } from '../../context/AppContext';
 import { NairaText, NairaSign } from '../../utils/currency';
 import { DeviceImageUploader } from './DeviceImageUploader';
+import { OTAPushRemindersTab } from './OTAPushRemindersTab';
+import { AppUpdateGate, AppUpdateGatePreviewOverride } from '../common/AppUpdateGate';
 import {
   Radio,
   Tv,
@@ -69,16 +66,18 @@ import {
   Zap,
   Timer,
   Gift,
+  Rocket,
+  Lock,
+  Bell,
   ArrowUpCircle,
+  Eye,
+  Sliders,
+  Wrench,
+  ShieldCheck,
+  AlertTriangle,
+  Search,
   PauseCircle,
-  BellRing,
-  Mail,
-  Send,
-  ShieldAlert,
-  Play,
-  Pause,
-  Download,
-  ExternalLink
+  MessageSquare
 } from 'lucide-react';
 
 const PRESET_FLYER_IMAGES = [
@@ -104,54 +103,16 @@ export const OTACompetitionManager: React.FC = () => {
   const {
     isSuperAdmin,
     isFirebaseConnected,
-    appVersion,
-    otaAppRelease,
-    otaFeatureFlags,
-    personaNotifications,
-    allRegisteredUsers,
-    currentUserProfile
+    currentUserProfile,
+    installedAppVersion,
+    setLocalInstalledAppVersion
   } = useApp();
 
   const [activeTab, setActiveTab] = useState<
-    'app_updates' | 'feature_toggles' | 'reminders' | 'ticker' | 'popup' | 'competition'
+    'ticker' | 'popup' | 'competition' | 'app_updates' | 'push_reminders'
   >('app_updates');
   const [compSubTab, setCompSubTab] = useState<'termly' | 'weekly' | 'schools'>('termly');
   const [saveFeedback, setSaveFeedback] = useState<string | null>(null);
-
-  // 0A. App Release OTA state
-  const [releaseDraft, setReleaseDraft] = useState<OTAAppRelease>(otaAppRelease || DEFAULT_OTA_APP_RELEASE);
-  const [highlightsText, setHighlightsText] = useState<string>(
-    (otaAppRelease?.featureHighlights || DEFAULT_OTA_APP_RELEASE.featureHighlights).join('\n')
-  );
-  const [isSavingRelease, setIsSavingRelease] = useState(false);
-
-  useEffect(() => {
-    setReleaseDraft(otaAppRelease);
-    setHighlightsText((otaAppRelease.featureHighlights || []).join('\n'));
-  }, [otaAppRelease]);
-
-  // 0B. Feature Pause Toggles state
-  const [featureCategoryFilter, setFeatureCategoryFilter] = useState<'All' | 'Student Hub' | 'Persona Portal' | 'Core Service'>('All');
-  const [featureDrafts, setFeatureDrafts] = useState<Record<OTAFeatureKey, OTAFeatureFlag>>(
-    otaFeatureFlags || DEFAULT_OTA_FEATURE_FLAGS
-  );
-  const [isSavingFeatures, setIsSavingFeatures] = useState(false);
-
-  useEffect(() => {
-    setFeatureDrafts(otaFeatureFlags);
-  }, [otaFeatureFlags]);
-
-  // 0C. Cross-Persona Reminders & Email Digest state
-  const [reminderTargetRole, setReminderTargetRole] = useState<'all' | UserRole>('student');
-  const [reminderCategory, setReminderCategory] = useState<PersonaNotificationCategory>('study_reminder');
-  const [reminderTitle, setReminderTitle] = useState<string>('');
-  const [reminderMessage, setReminderMessage] = useState<string>('');
-  const [reminderActionLabel, setReminderActionLabel] = useState<string>('Open Study Hub');
-  const [reminderActionTarget, setReminderActionTarget] = useState<string>('cbt');
-  const [sendInAppInbox, setSendInAppInbox] = useState<boolean>(true);
-  const [sendBrowserPush, setSendBrowserPush] = useState<boolean>(true);
-  const [sendEmailDigest, setSendEmailDigest] = useState<boolean>(false);
-  const [isSendingReminder, setIsSendingReminder] = useState<boolean>(false);
 
   // 1. Ticker state
   const [broadcastItems, setBroadcastItems] = useState<OTABroadcastItem[]>([]);
@@ -168,6 +129,15 @@ export const OTACompetitionManager: React.FC = () => {
   const [weeklyConfig, setWeeklyConfig] = useState<OTAWeeklyCompetitionConfig>(DEFAULT_OTA_WEEKLY_CONFIG);
   const [leagueConfig, setLeagueConfig] = useState<OTASchoolLeagueConfig>(DEFAULT_OTA_SCHOOL_LEAGUE_CONFIG);
 
+  // 4. App Updates & Releases state
+  const [releaseConfig, setReleaseConfig] = useState<OTAAppReleaseConfig>(DEFAULT_OTA_APP_RELEASE);
+  const [newHighlightText, setNewHighlightText] = useState<string>('');
+  const [isSavingRelease, setIsSavingRelease] = useState<boolean>(false);
+  const [previewMode, setPreviewMode] = useState<OTAUpgradeMode | 'maintenance' | null>(null);
+  const [flagSearch, setFlagSearch] = useState<string>('');
+  const [flagCategory, setFlagCategory] = useState<'all' | 'study' | 'enrichment' | 'portals'>('all');
+  const [expandedNoteKey, setExpandedNoteKey] = useState<OTAFeatureKey | null>(null);
+
   // School addition state
   const [newSchoolName, setNewSchoolName] = useState<string>('');
   const [newSchoolState, setNewSchoolState] = useState<string>('Lagos');
@@ -181,6 +151,7 @@ export const OTACompetitionManager: React.FC = () => {
     const unsubComp = subscribeToOTACompetition(setCompConfig);
     const unsubWeekly = subscribeToOTAWeeklyCompetition(setWeeklyConfig);
     const unsubLeague = subscribeToOTASchoolLeague(setLeagueConfig);
+    const unsubRelease = subscribeToOTAAppRelease(setReleaseConfig);
 
     return () => {
       unsubBroadcasts();
@@ -188,195 +159,13 @@ export const OTACompetitionManager: React.FC = () => {
       unsubComp();
       unsubWeekly();
       unsubLeague();
+      unsubRelease();
     };
   }, []);
 
   const triggerNotice = (msg: string) => {
     setSaveFeedback(msg);
     setTimeout(() => setSaveFeedback(null), 4000);
-  };
-
-  // --- App Release OTA Handlers ---
-  const handleSaveAppRelease = async (overrideActive?: boolean) => {
-    setIsSavingRelease(true);
-    try {
-      const highlights = highlightsText
-        .split('\n')
-        .map((line) => line.trim())
-        .filter(Boolean);
-
-      const payload: OTAAppRelease = {
-        ...releaseDraft,
-        featureHighlights: highlights,
-        isActive: overrideActive !== undefined ? overrideActive : releaseDraft.isActive,
-        publishedAt: new Date().toISOString(),
-        publishedBy: currentUserProfile?.email || (isSuperAdmin ? 'martorefe@gmail.com' : 'admin')
-      };
-      await saveOTAAppRelease(payload);
-      setReleaseDraft(payload);
-      triggerNotice(
-        payload.isActive
-          ? `OTA v${payload.latestVersion} rollout published (${payload.upgradeMode === 'force_blocking' ? 'Mandatory Upgrade Gate' : 'Mild Notification'}).`
-          : `OTA release settings saved (rollout banner inactive).`
-      );
-    } catch (err: any) {
-      triggerNotice(`Failed to save OTA release: ${err?.message || 'Check connection'}`);
-    } finally {
-      setIsSavingRelease(false);
-    }
-  };
-
-  // --- Feature Pause Flag Handlers ---
-  const handleToggleFeaturePause = async (key: OTAFeatureKey) => {
-    const current = featureDrafts[key];
-    if (!current) return;
-    const nextFlag: OTAFeatureFlag = {
-      ...current,
-      isPaused: !current.isPaused,
-      updatedBy: currentUserProfile?.email || 'super_admin'
-    };
-    setFeatureDrafts((prev) => ({ ...prev, [key]: nextFlag }));
-    await saveOTAFeatureFlag(nextFlag);
-    const hasCustomNotice = Boolean(
-      (nextFlag.customBadge || '').trim() ||
-        (nextFlag.customTitle || '').trim() ||
-        (nextFlag.pauseReason || '').trim()
-    );
-    triggerNotice(
-      `${nextFlag.label} is now ${
-        nextFlag.isPaused
-          ? hasCustomNotice
-            ? 'PAUSED (custom notice shown to users)'
-            : 'PAUSED'
-          : 'ACTIVE'
-      }.`
-    );
-  };
-
-  const handleSaveFeatureDraftDetails = async (key: OTAFeatureKey) => {
-    const flag = featureDrafts[key];
-    if (!flag) return;
-    await saveOTAFeatureFlag({
-      ...flag,
-      updatedBy: currentUserProfile?.email || 'super_admin'
-    });
-    triggerNotice(`Saved custom pause notice for ${flag.label}.`);
-  };
-
-  const handleClearFeatureDraftDetails = async (key: OTAFeatureKey) => {
-    const flag = featureDrafts[key];
-    if (!flag) return;
-    const cleared: OTAFeatureFlag = {
-      ...flag,
-      customBadge: '',
-      customTitle: '',
-      pauseReason: '',
-      estimatedResume: '',
-      updatedBy: currentUserProfile?.email || 'super_admin'
-    };
-    setFeatureDrafts((prev) => ({ ...prev, [key]: cleared }));
-    await saveOTAFeatureFlag(cleared);
-    triggerNotice(`Cleared custom pause notice fields for ${flag.label}.`);
-  };
-
-  const handleBulkFeatureState = async (mode: 'resume_all' | 'pause_student_hubs') => {
-    setIsSavingFeatures(true);
-    try {
-      const nextMap = { ...featureDrafts };
-      const now = new Date().toISOString();
-      const actor = currentUserProfile?.email || 'super_admin';
-      (Object.keys(nextMap) as OTAFeatureKey[]).forEach((k) => {
-        const f = nextMap[k];
-        if (mode === 'resume_all') {
-          nextMap[k] = { ...f, isPaused: false, updatedAt: now, updatedBy: actor };
-        } else if (f.category === 'Student Hub') {
-          nextMap[k] = { ...f, isPaused: true, updatedAt: now, updatedBy: actor };
-        }
-      });
-      setFeatureDrafts(nextMap);
-      await saveAllOTAFeatureFlags(nextMap);
-      triggerNotice(
-        mode === 'resume_all'
-          ? 'All platform features resumed and live.'
-          : 'All Student Hub modules paused.'
-      );
-    } finally {
-      setIsSavingFeatures(false);
-    }
-  };
-
-  // --- Cross-Persona Reminder Handlers ---
-  const matchingEmailRecipients = allRegisteredUsers
-    .filter((u) => {
-      if (!u.email || !u.email.includes('@')) return false;
-      if (reminderTargetRole === 'all') return true;
-      return u.role === reminderTargetRole;
-    })
-    .map((u) => ({
-      email: u.email,
-      name: u.fullName,
-      role: u.role
-    }));
-
-  const handleSendPersonaReminder = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!reminderTitle.trim() || !reminderMessage.trim()) return;
-    setIsSendingReminder(true);
-    try {
-      const notifId = `notif_ota_${Date.now()}`;
-      if (sendInAppInbox) {
-        await publishPersonaNotification({
-          id: notifId,
-          targetRole: reminderTargetRole,
-          title: reminderTitle.trim(),
-          message: reminderMessage.trim(),
-          category: reminderCategory,
-          actionLabel: reminderActionLabel.trim() || undefined,
-          actionTarget: reminderActionTarget || undefined,
-          createdAt: new Date().toISOString(),
-          createdBy: currentUserProfile?.email || 'super_admin'
-        });
-      }
-
-      if (sendBrowserPush) {
-        await triggerBrowserNotification({
-          title: reminderTitle.trim(),
-          body: reminderMessage.trim(),
-          tag: notifId,
-          actionTarget: reminderActionTarget
-        });
-      }
-
-      let emailNotice = '';
-      if (sendEmailDigest) {
-        if (matchingEmailRecipients.length === 0) {
-          emailNotice = ' No matching accounts had a valid email for digest.';
-        } else {
-          const emailRes = await dispatchEmailDigest({
-            recipients: matchingEmailRecipients,
-            subject: reminderTitle.trim(),
-            title: reminderTitle.trim(),
-            message: reminderMessage.trim(),
-            actionLabel: reminderActionLabel.trim() || 'Open Student Companion',
-            adminEmail: currentUserProfile?.email || 'martorefe@gmail.com'
-          });
-          emailNotice = emailRes.success
-            ? ` Email digest delivered to ${emailRes.sentCount ?? matchingEmailRecipients.length} account(s) via ${emailRes.provider}.`
-            : ` Email digest notice: ${emailRes.error}`;
-        }
-      }
-
-      setReminderTitle('');
-      setReminderMessage('');
-      triggerNotice(`Reminder dispatched to ${reminderTargetRole.replace('_', ' ')} audience.${emailNotice}`);
-    } finally {
-      setIsSendingReminder(false);
-    }
-  };
-
-  const handleDeleteNotification = async (id: string) => {
-    await deletePersonaNotification(id);
-    triggerNotice('Published reminder removed.');
   };
 
   // --- Ticker Handlers ---
@@ -505,6 +294,103 @@ export const OTACompetitionManager: React.FC = () => {
     triggerNotice('School removed from roster. Click Save to publish.');
   };
 
+  // --- App Updates & Releases Handlers ---
+  const handleAddHighlight = () => {
+    const text = newHighlightText.trim();
+    if (!text) return;
+    if (releaseConfig.featureHighlights.length >= 10) {
+      triggerNotice('Maximum 10 highlights per release.');
+      return;
+    }
+    setReleaseConfig((prev) => ({
+      ...prev,
+      featureHighlights: [...prev.featureHighlights, text]
+    }));
+    setNewHighlightText('');
+  };
+
+  const handleRemoveHighlight = (index: number) => {
+    setReleaseConfig((prev) => ({
+      ...prev,
+      featureHighlights: prev.featureHighlights.filter((_, i) => i !== index)
+    }));
+  };
+
+  const handleToggleFeatureFlag = (key: keyof OTAFeatureFlags) => {
+    setReleaseConfig((prev) => ({
+      ...prev,
+      featureFlags: {
+        ...prev.featureFlags,
+        [key]: !prev.featureFlags[key]
+      }
+    }));
+  };
+
+  const handleEnableAllFlags = () => {
+    setReleaseConfig((prev) => ({
+      ...prev,
+      featureFlags: { ...DEFAULT_OTA_FEATURE_FLAGS }
+    }));
+    triggerNotice('All 17 modules enabled in draft. Click Publish OTA Release to push live.');
+  };
+
+  const handleUpdateFeatureNote = (key: OTAFeatureKey, note: string) => {
+    setReleaseConfig((prev) => ({
+      ...prev,
+      pausedFeatureNotes: {
+        ...prev.pausedFeatureNotes,
+        [key]: note
+      }
+    }));
+  };
+
+  const handlePublishRelease = async () => {
+    if (!isValidSemver(releaseConfig.latestVersion)) {
+      triggerNotice('Latest version must follow major.minor.patch (e.g. 2.4.0).');
+      return;
+    }
+    if (!isValidSemver(releaseConfig.minimumSupportedVersion)) {
+      triggerNotice('Minimum supported version must follow major.minor.patch (e.g. 2.2.0).');
+      return;
+    }
+    if (!releaseConfig.releaseTitle.trim()) {
+      triggerNotice('Please enter a release title.');
+      return;
+    }
+
+    setIsSavingRelease(true);
+    try {
+      const saved = await saveOTAAppRelease({
+        ...releaseConfig,
+        publishedBy: currentUserProfile?.email || 'martorefe@gmail.com'
+      });
+      setReleaseConfig(saved);
+      triggerNotice(
+        `OTA release v${saved.latestVersion} (${saved.upgradeMode.toUpperCase()}) published live!`
+      );
+    } catch (err: any) {
+      triggerNotice(`Failed to publish OTA release: ${err?.message || 'Check permissions'}`);
+    } finally {
+      setIsSavingRelease(false);
+    }
+  };
+
+  const handleResetReleaseDefaults = () => {
+    setReleaseConfig({
+      ...DEFAULT_OTA_APP_RELEASE,
+      publishedAt: new Date().toISOString()
+    });
+    triggerNotice('Draft reset to baseline v2.3.0. Click Publish OTA Update to apply live.');
+  };
+
+  const previewOverride: AppUpdateGatePreviewOverride | null = previewMode
+    ? {
+        mode: previewMode,
+        release: releaseConfig,
+        onClosePreview: () => setPreviewMode(null)
+      }
+    : null;
+
   return (
     <div className="w-full flex flex-col gap-5 p-4 sm:p-6 bg-[#08101E] text-slate-100 rounded-2xl border border-slate-800 shadow-xl">
       {/* Top Header */}
@@ -539,50 +425,37 @@ export const OTACompetitionManager: React.FC = () => {
       )}
 
       {/* Master Tabs */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-1.5 p-1.5 bg-slate-900/80 rounded-xl border border-slate-800">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5 p-1 bg-slate-900/80 rounded-xl border border-slate-800 max-w-4xl">
         <button
           type="button"
           onClick={() => setActiveTab('app_updates')}
-          className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+          className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
             activeTab === 'app_updates'
               ? 'bg-[#14233C] text-[#84E000] shadow-sm border border-[#223B63]'
               : 'text-slate-400 hover:text-white'
           }`}
         >
-          <ArrowUpCircle className="w-3.5 h-3.5 shrink-0" />
+          <Rocket className="w-3.5 h-3.5 shrink-0" />
           <span>App Updates</span>
         </button>
 
         <button
           type="button"
-          onClick={() => setActiveTab('feature_toggles')}
-          className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
-            activeTab === 'feature_toggles'
+          onClick={() => setActiveTab('push_reminders')}
+          className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+            activeTab === 'push_reminders'
               ? 'bg-[#14233C] text-[#84E000] shadow-sm border border-[#223B63]'
               : 'text-slate-400 hover:text-white'
           }`}
         >
-          <PauseCircle className="w-3.5 h-3.5 shrink-0" />
-          <span>Feature Toggles</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveTab('reminders')}
-          className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
-            activeTab === 'reminders'
-              ? 'bg-[#14233C] text-[#84E000] shadow-sm border border-[#223B63]'
-              : 'text-slate-400 hover:text-white'
-          }`}
-        >
-          <BellRing className="w-3.5 h-3.5 shrink-0" />
-          <span>Reminders &amp; Push</span>
+          <Bell className="w-3.5 h-3.5 shrink-0" />
+          <span>Push &amp; Reminders</span>
         </button>
 
         <button
           type="button"
           onClick={() => setActiveTab('ticker')}
-          className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+          className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
             activeTab === 'ticker'
               ? 'bg-[#14233C] text-[#84E000] shadow-sm border border-[#223B63]'
               : 'text-slate-400 hover:text-white'
@@ -595,7 +468,7 @@ export const OTACompetitionManager: React.FC = () => {
         <button
           type="button"
           onClick={() => setActiveTab('popup')}
-          className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+          className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
             activeTab === 'popup'
               ? 'bg-[#14233C] text-[#84E000] shadow-sm border border-[#223B63]'
               : 'text-slate-400 hover:text-white'
@@ -608,635 +481,16 @@ export const OTACompetitionManager: React.FC = () => {
         <button
           type="button"
           onClick={() => setActiveTab('competition')}
-          className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+          className={`col-span-2 sm:col-span-1 flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
             activeTab === 'competition'
               ? 'bg-[#14233C] text-[#84E000] shadow-sm border border-[#223B63]'
               : 'text-slate-400 hover:text-white'
           }`}
         >
           <Trophy className="w-3.5 h-3.5 shrink-0" />
-          <span>Competitions</span>
+          <span>Competition Arena</span>
         </button>
       </div>
-
-      {/* ========================================================================= */}
-      {/* TAB 0A: OTA APP UPDATES, FEATURES & VERSION UPGRADE GATE */}
-      {/* ========================================================================= */}
-      {activeTab === 'app_updates' && (
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
-          <div className="lg:col-span-3 p-4 sm:p-5 bg-slate-900/70 border border-slate-800 rounded-xl flex flex-col gap-4">
-            <div className="flex items-center justify-between gap-2 flex-wrap">
-              <div>
-                <h2 className="text-sm font-bold text-white flex items-center gap-2">
-                  <ArrowUpCircle className="w-4 h-4 text-[#84E000]" />
-                  <span>App Version Upgrade &amp; OTA Rollout</span>
-                </h2>
-                <p className="text-xs text-slate-400 mt-0.5 font-mono tabular-nums">
-                  Current client build: v{appVersion} · Published target: v{otaAppRelease.latestVersion}
-                </p>
-              </div>
-
-              <label className="flex items-center gap-2 text-xs font-bold text-slate-200 cursor-pointer bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-800">
-                <input
-                  type="checkbox"
-                  checked={releaseDraft.isActive}
-                  onChange={(e) => setReleaseDraft({ ...releaseDraft, isActive: e.target.checked })}
-                  className="rounded text-[#84E000] bg-slate-900"
-                />
-                <span>Rollout Active</span>
-              </label>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-              <div className="flex flex-col gap-1">
-                <label className="text-slate-300 font-semibold">Latest Version (Semver)</label>
-                <input
-                  type="text"
-                  value={releaseDraft.latestVersion}
-                  onChange={(e) => setReleaseDraft({ ...releaseDraft, latestVersion: e.target.value })}
-                  placeholder="e.g. 2.5.0"
-                  className="px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white font-mono"
-                />
-              </div>
-
-              <div className="flex flex-col gap-1">
-                <label className="text-slate-300 font-semibold">Minimum Supported Version</label>
-                <input
-                  type="text"
-                  value={releaseDraft.minimumSupportedVersion}
-                  onChange={(e) =>
-                    setReleaseDraft({ ...releaseDraft, minimumSupportedVersion: e.target.value })
-                  }
-                  placeholder="e.g. 2.0.0"
-                  className="px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white font-mono"
-                />
-              </div>
-            </div>
-
-            {/* Enforcement Mode Selector */}
-            <div className="space-y-2">
-              <label className="text-xs font-semibold text-slate-300 block">
-                User Upgrade Prompt Mode
-              </label>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={() =>
-                    setReleaseDraft({ ...releaseDraft, upgradeMode: 'mild_notice' as OTAUpgradeMode })
-                  }
-                  className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer ${
-                    releaseDraft.upgradeMode === 'mild_notice'
-                      ? 'bg-[#14233C] border-[#84E000] shadow-md'
-                      : 'bg-slate-950 border-slate-800 hover:border-slate-700'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-white">Mild In-App Notice</span>
-                    <span className="text-[10px] font-mono text-[#84E000]">Dismissible</span>
-                  </div>
-                  <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">
-                    Shows a clean top banner and inbox notification with an Upgrade button. Users can dismiss and keep using the app.
-                  </p>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    setReleaseDraft({ ...releaseDraft, upgradeMode: 'force_blocking' as OTAUpgradeMode })
-                  }
-                  className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer ${
-                    releaseDraft.upgradeMode === 'force_blocking'
-                      ? 'bg-[#2A140B] border-[#FF5B00] shadow-md'
-                      : 'bg-slate-950 border-slate-800 hover:border-slate-700'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-white">Mandatory Blocking Gate</span>
-                    <span className="text-[10px] font-mono text-[#FF5B00]">Required</span>
-                  </div>
-                  <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">
-                    Blocks all standard user screens until they click Upgrade to update to the latest version. Super Admins retain bypass.
-                  </p>
-                </button>
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-1 text-xs">
-              <label className="text-slate-300 font-semibold">Update Headline</label>
-              <input
-                type="text"
-                value={releaseDraft.releaseTitle}
-                onChange={(e) => setReleaseDraft({ ...releaseDraft, releaseTitle: e.target.value })}
-                className="px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white"
-                placeholder="e.g. Student Companion v2.5.0 — Live Mock & Voice Update"
-              />
-            </div>
-
-            <div className="flex flex-col gap-1 text-xs">
-              <label className="text-slate-300 font-semibold">Release Summary / Notes</label>
-              <textarea
-                value={releaseDraft.changelog}
-                onChange={(e) => setReleaseDraft({ ...releaseDraft, changelog: e.target.value })}
-                rows={2}
-                className="px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white resize-y"
-              />
-            </div>
-
-            <div className="flex flex-col gap-1 text-xs">
-              <label className="text-slate-300 font-semibold">
-                Feature Highlights (One bullet per line)
-              </label>
-              <textarea
-                value={highlightsText}
-                onChange={(e) => setHighlightsText(e.target.value)}
-                rows={3}
-                className="px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white font-sans resize-y"
-                placeholder="New WAEC/JAMB Physics simulations&#10;Faster CBT engine offline caching"
-              />
-            </div>
-
-            <div className="flex flex-col gap-1 text-xs">
-              <label className="text-slate-300 font-semibold">
-                Optional Store or APK Download URL
-              </label>
-              <input
-                type="url"
-                value={releaseDraft.upgradeUrl || ''}
-                onChange={(e) => setReleaseDraft({ ...releaseDraft, upgradeUrl: e.target.value })}
-                placeholder="https://play.google.com/store/apps/details?id=..."
-                className="px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white font-mono"
-              />
-            </div>
-
-            <div className="flex flex-wrap items-center justify-end gap-2 pt-1">
-              {releaseDraft.isActive && (
-                <button
-                  type="button"
-                  disabled={isSavingRelease}
-                  onClick={() => void handleSaveAppRelease(false)}
-                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs font-bold cursor-pointer"
-                >
-                  Deactivate Rollout
-                </button>
-              )}
-              <button
-                type="button"
-                disabled={isSavingRelease}
-                onClick={() => void handleSaveAppRelease(true)}
-                className="px-5 py-2.5 rounded-xl bg-[#84E000] hover:bg-[#74c700] text-slate-950 text-xs font-black flex items-center gap-2 cursor-pointer shadow-md"
-              >
-                <Download className="w-4 h-4" />
-                <span>{isSavingRelease ? 'Publishing...' : 'Publish App Update Live OTA'}</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Right Live Preview Card */}
-          <div className="lg:col-span-2 flex flex-col gap-3">
-            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-              Live Rollout Preview
-            </h3>
-            <div className="p-5 bg-[#060C18] border border-slate-800 rounded-2xl space-y-4">
-              <div className="flex items-center justify-between gap-2 text-xs">
-                <span className="font-mono text-slate-400">
-                  Mode: <strong className="text-white">{releaseDraft.upgradeMode === 'force_blocking' ? 'Mandatory Gate' : 'Mild Banner'}</strong>
-                </span>
-                <span
-                  className={`font-bold text-[11px] px-2 py-0.5 rounded border ${
-                    releaseDraft.isActive
-                      ? 'bg-emerald-950/80 border-emerald-600/60 text-[#84E000]'
-                      : 'bg-slate-900 border-slate-700 text-slate-400'
-                  }`}
-                >
-                  {releaseDraft.isActive ? 'Rollout Active' : 'Draft / Inactive'}
-                </span>
-              </div>
-
-              <div className="bg-[#0B1526] border border-[#223B63] rounded-2xl p-4 space-y-3">
-                <div className="text-[11px] font-bold uppercase tracking-wider text-[#FF5B00]">
-                  {releaseDraft.upgradeMode === 'force_blocking' ? 'Required App Update' : 'Update Available'} · v{releaseDraft.latestVersion || appVersion}
-                </div>
-                <h4 className="text-sm font-black text-white leading-snug">
-                  {releaseDraft.releaseTitle || 'New Version Ready'}
-                </h4>
-                <p className="text-xs text-slate-300 leading-relaxed">
-                  {releaseDraft.changelog}
-                </p>
-
-                <div className="pt-1 space-y-2">
-                  <div className="w-full py-2 rounded-lg bg-[#FF5B00] text-white font-black text-xs text-center">
-                    Upgrade &amp; Reload to v{releaseDraft.latestVersion || appVersion}
-                  </div>
-                  {releaseDraft.upgradeUrl?.trim() && (
-                    <div className="w-full py-1.5 rounded-lg bg-[#14233C] border border-[#223B63] text-[#84E000] font-bold text-[11px] flex items-center justify-center gap-1">
-                      <ExternalLink className="w-3 h-3" />
-                      <span>External Store / APK Link Attached</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <p className="text-[11px] text-slate-400 leading-relaxed">
-                Tip: To test the prompt right away, set <strong>Latest Version</strong> higher than <span className="font-mono text-slate-200">{appVersion}</span> (e.g. <span className="font-mono text-[#84E000]">2.5.0</span>) and publish.
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ========================================================================= */}
-      {/* TAB 0B: PER-FEATURE PAUSE & CUSTOM NOTICE CONTROL */}
-      {/* ========================================================================= */}
-      {activeTab === 'feature_toggles' && (
-        <div className="flex flex-col gap-4">
-          <div className="p-4 bg-slate-900/70 border border-slate-800 rounded-xl flex flex-col md:flex-row md:items-center justify-between gap-3">
-            <div>
-              <h2 className="text-sm font-bold text-white flex items-center gap-2">
-                <PauseCircle className="w-4 h-4 text-amber-400" />
-                <span>Feature Pause &amp; Custom Notice Controls</span>
-              </h2>
-              <p className="text-xs text-slate-400 mt-0.5">
-                Pause any individual feature with your own custom badge, headline, and message. Leave fields blank to use a neutral Paused notice; Super Admins retain bypass.
-              </p>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                disabled={isSavingFeatures}
-                onClick={() => void handleBulkFeatureState('resume_all')}
-                className="px-3 py-1.5 rounded-lg bg-[#84E000] hover:bg-[#75C800] text-slate-950 text-xs font-black flex items-center gap-1.5 cursor-pointer"
-              >
-                <Play className="w-3.5 h-3.5" />
-                <span>Resume All</span>
-              </button>
-              <button
-                type="button"
-                disabled={isSavingFeatures}
-                onClick={() => void handleBulkFeatureState('pause_student_hubs')}
-                className="px-3 py-1.5 rounded-lg bg-amber-950/90 hover:bg-amber-900 border border-amber-600/70 text-amber-200 text-xs font-bold flex items-center gap-1.5 cursor-pointer"
-              >
-                <Pause className="w-3.5 h-3.5" />
-                <span>Pause Student Hubs</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Category Filter */}
-          <div className="flex items-center gap-2 overflow-x-auto pb-1">
-            {(['All', 'Student Hub', 'Persona Portal', 'Core Service'] as const).map((cat) => {
-              const allFlags = Object.values(featureDrafts);
-              const count = cat === 'All' ? allFlags.length : allFlags.filter((f) => f.category === cat).length;
-              const pausedCount = (cat === 'All' ? allFlags : allFlags.filter((f) => f.category === cat)).filter(
-                (f) => f.isPaused
-              ).length;
-              return (
-                <button
-                  key={cat}
-                  type="button"
-                  onClick={() => setFeatureCategoryFilter(cat)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
-                    featureCategoryFilter === cat
-                      ? 'bg-[#14233C] border-[#84E000] text-[#84E000]'
-                      : 'bg-slate-900/70 border-slate-800 text-slate-400 hover:text-white'
-                  }`}
-                >
-                  <span>{cat}</span>
-                  <span className="font-mono tabular-nums text-[10px] text-slate-400">
-                    ({count}{pausedCount > 0 ? ` · ${pausedCount} paused` : ''})
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Feature Cards Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {(Object.values(featureDrafts) as OTAFeatureFlag[])
-              .filter((f) => featureCategoryFilter === 'All' || f.category === featureCategoryFilter)
-              .map((flag) => (
-                <div
-                  key={flag.featureKey}
-                  className={`p-4 rounded-xl border transition-colors flex flex-col gap-3 ${
-                    flag.isPaused
-                      ? 'bg-amber-950/20 border-amber-500/60'
-                      : 'bg-slate-900/70 border-slate-800'
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 text-[11px] text-slate-400 flex-wrap">
-                        <span className="font-semibold text-slate-300">{flag.category}</span>
-                        <span aria-hidden="true">·</span>
-                        <span className="font-mono text-slate-500">{flag.featureKey}</span>
-                      </div>
-                      <h3 className="text-sm font-bold text-white mt-0.5">{flag.label}</h3>
-                      <p className="text-xs text-slate-400 mt-0.5">{flag.description}</p>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => void handleToggleFeaturePause(flag.featureKey)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-black border flex items-center gap-1.5 shrink-0 cursor-pointer transition-colors ${
-                        flag.isPaused
-                          ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 border-amber-300'
-                          : 'bg-emerald-950/80 hover:bg-emerald-900 text-[#84E000] border-emerald-600/60'
-                      }`}
-                    >
-                      {flag.isPaused ? (
-                        <>
-                          <PauseCircle className="w-3.5 h-3.5" />
-                          <span>Paused</span>
-                        </>
-                      ) : (
-                        <>
-                          <CheckCircle2 className="w-3.5 h-3.5" />
-                          <span>Active</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
-
-                  {/* Custom Notice Details */}
-                  <div className="pt-2.5 border-t border-slate-800/80 flex flex-col gap-2 text-xs">
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                      <input
-                        type="text"
-                        maxLength={40}
-                        value={flag.customBadge || ''}
-                        onChange={(e) =>
-                          setFeatureDrafts((prev) => ({
-                            ...prev,
-                            [flag.featureKey]: { ...flag, customBadge: e.target.value }
-                          }))
-                        }
-                        placeholder="Badge label (e.g. Term Break)"
-                        className="px-2.5 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 text-xs placeholder:text-slate-500"
-                      />
-                      <input
-                        type="text"
-                        maxLength={120}
-                        value={flag.customTitle || ''}
-                        onChange={(e) =>
-                          setFeatureDrafts((prev) => ({
-                            ...prev,
-                            [flag.featureKey]: { ...flag, customTitle: e.target.value }
-                          }))
-                        }
-                        placeholder={`Custom headline (default: ${flag.label})`}
-                        className="sm:col-span-2 px-2.5 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 text-xs placeholder:text-slate-500"
-                      />
-                    </div>
-
-                    <textarea
-                      rows={2}
-                      maxLength={500}
-                      value={flag.pauseReason || ''}
-                      onChange={(e) =>
-                        setFeatureDrafts((prev) => ({
-                          ...prev,
-                          [flag.featureKey]: { ...flag, pauseReason: e.target.value }
-                        }))
-                      }
-                      placeholder="Custom message shown to users when paused (leave blank for neutral Paused fallback)..."
-                      className="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 text-xs placeholder:text-slate-500 resize-y min-h-[54px]"
-                    />
-
-                    <div className="flex items-center gap-1.5">
-                      <input
-                        type="text"
-                        maxLength={100}
-                        value={flag.estimatedResume || ''}
-                        onChange={(e) =>
-                          setFeatureDrafts((prev) => ({
-                            ...prev,
-                            [flag.featureKey]: { ...flag, estimatedResume: e.target.value }
-                          }))
-                        }
-                        placeholder="Optional ETA e.g. Friday 9:00 AM"
-                        className="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 text-xs placeholder:text-slate-500"
-                      />
-                      {(flag.customBadge || flag.customTitle || flag.pauseReason || flag.estimatedResume) && (
-                        <button
-                          type="button"
-                          onClick={() => void handleClearFeatureDraftDetails(flag.featureKey)}
-                          className="px-2.5 py-1.5 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-800 text-slate-400 hover:text-white text-[11px] font-semibold cursor-pointer shrink-0"
-                          title="Clear custom badge, headline, message, and ETA"
-                        >
-                          Clear
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => void handleSaveFeatureDraftDetails(flag.featureKey)}
-                        className="px-3 py-1.5 rounded-lg bg-[#14233C] hover:bg-[#1D3254] border border-[#223B63] text-[#84E000] text-[11px] font-bold cursor-pointer shrink-0"
-                        title="Save custom notice text"
-                      >
-                        Save
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-          </div>
-        </div>
-      )}
-
-      {/* ========================================================================= */}
-      {/* TAB 0C: CROSS-PERSONA REMINDERS, BROWSER PUSH & EMAIL DIGESTS */}
-      {/* ========================================================================= */}
-      {activeTab === 'reminders' && (
-        <div className="flex flex-col gap-5">
-          <form
-            onSubmit={handleSendPersonaReminder}
-            className="p-4 sm:p-5 bg-slate-900/70 border border-slate-800 rounded-xl flex flex-col gap-4"
-          >
-            <div className="flex items-center justify-between flex-wrap gap-2">
-              <div className="flex items-center gap-2">
-                <BellRing className="w-4 h-4 text-[#FF5B00]" />
-                <h2 className="text-sm font-bold text-white">
-                  Send Engagement Reminder &amp; Re-Activation Campaign
-                </h2>
-              </div>
-              <span className="text-xs font-mono text-slate-400">
-                {matchingEmailRecipients.length} matching registered email(s)
-              </span>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
-              <div className="flex flex-col gap-1">
-                <label className="text-slate-300 font-semibold">Target Persona</label>
-                <select
-                  value={reminderTargetRole}
-                  onChange={(e) => setReminderTargetRole(e.target.value as 'all' | UserRole)}
-                  className="px-2.5 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white"
-                >
-                  <option value="all">All Personas</option>
-                  <option value="student">Students</option>
-                  <option value="parent">Parents / Guardians</option>
-                  <option value="tutor">Tutors</option>
-                  <option value="growth_partner">Growth Partners</option>
-                  <option value="school_admin">School Admins</option>
-                </select>
-              </div>
-
-              <div className="flex flex-col gap-1">
-                <label className="text-slate-300 font-semibold">Category</label>
-                <select
-                  value={reminderCategory}
-                  onChange={(e) => setReminderCategory(e.target.value as PersonaNotificationCategory)}
-                  className="px-2.5 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white"
-                >
-                  <option value="study_reminder">Study Reminder</option>
-                  <option value="streak_alert">Streak Protection Alert</option>
-                  <option value="ota_update">App Update Notice</option>
-                  <option value="parent_alert">Parent / Ward Update</option>
-                  <option value="tutor_activity">Tutor Marketplace Alert</option>
-                  <option value="partner_earnings">Growth Partner Payout</option>
-                </select>
-              </div>
-
-              <div className="flex flex-col gap-1">
-                <label className="text-slate-300 font-semibold">CTA Button Label</label>
-                <input
-                  type="text"
-                  value={reminderActionLabel}
-                  onChange={(e) => setReminderActionLabel(e.target.value)}
-                  className="px-2.5 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white"
-                  placeholder="e.g. Start Quick Drill"
-                />
-              </div>
-
-              <div className="flex flex-col gap-1">
-                <label className="text-slate-300 font-semibold">Target Hub / Action</label>
-                <select
-                  value={reminderActionTarget}
-                  onChange={(e) => setReminderActionTarget(e.target.value)}
-                  className="px-2.5 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white"
-                >
-                  <option value="cbt">CBT Quizzes</option>
-                  <option value="syllabus">Lesson Notes &amp; Syllabus</option>
-                  <option value="ai-coach">AI Study Coach</option>
-                  <option value="competitions">Competitions Arena</option>
-                  <option value="games">Games Hub</option>
-                  <option value="tutors">Tutor Marketplace</option>
-                  <option value="exam-prep">Prepare For Exam</option>
-                  <option value="dashboard">Persona Home Dashboard</option>
-                  <option value="ota_upgrade">Trigger App Upgrade</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-1 text-xs">
-              <label className="text-slate-300 font-semibold">Notification Title</label>
-              <input
-                type="text"
-                value={reminderTitle}
-                onChange={(e) => setReminderTitle(e.target.value)}
-                required
-                placeholder="e.g. Weekend WAEC & Mathematics Speed Challenge Opens Tonight!"
-                className="px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white"
-              />
-            </div>
-
-            <div className="flex flex-col gap-1 text-xs">
-              <label className="text-slate-300 font-semibold">Reminder Message</label>
-              <textarea
-                value={reminderMessage}
-                onChange={(e) => setReminderMessage(e.target.value)}
-                required
-                rows={3}
-                placeholder="Jump back into Student Companion for 10 minutes today to keep your study streak alive and claim +100 XP."
-                className="px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white resize-y"
-              />
-            </div>
-
-            <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
-              <div className="flex flex-wrap items-center gap-4 text-xs text-slate-300">
-                <label className="flex items-center gap-1.5 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={sendInAppInbox}
-                    onChange={(e) => setSendInAppInbox(e.target.checked)}
-                    className="rounded text-[#84E000] bg-slate-950"
-                  />
-                  <span>In-App Notification Inbox</span>
-                </label>
-                <label className="flex items-center gap-1.5 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={sendBrowserPush}
-                    onChange={(e) => setSendBrowserPush(e.target.checked)}
-                    className="rounded text-[#84E000] bg-slate-950"
-                  />
-                  <span>Browser Push Alert</span>
-                </label>
-                <label className="flex items-center gap-1.5 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={sendEmailDigest}
-                    onChange={(e) => setSendEmailDigest(e.target.checked)}
-                    className="rounded text-[#FF5B00] bg-slate-950"
-                  />
-                  <span className="flex items-center gap-1">
-                    <Mail className="w-3.5 h-3.5 text-[#FF5B00]" />
-                    <span>Email Digest Campaign ({matchingEmailRecipients.length})</span>
-                  </span>
-                </label>
-              </div>
-
-              <button
-                type="submit"
-                disabled={isSendingReminder}
-                className="px-5 py-2.5 bg-[#FF5B00] hover:bg-[#E04F00] text-white font-black text-xs rounded-xl flex items-center gap-2 shadow-md cursor-pointer transition-colors"
-              >
-                <Send className="w-3.5 h-3.5" />
-                <span>{isSendingReminder ? 'Dispatching...' : 'Send Reminder Now'}</span>
-              </button>
-            </div>
-          </form>
-
-          {/* Published Reminders History */}
-          <div className="flex flex-col gap-2.5">
-            <h3 className="text-sm font-bold text-white flex items-center justify-between">
-              <span>Active Persona Reminders &amp; Alerts ({personaNotifications.length})</span>
-              <span className="text-xs text-slate-400 font-normal">Synced to all matching user inboxes</span>
-            </h3>
-
-            <div className="space-y-2">
-              {personaNotifications.slice(0, 15).map((item) => (
-                <div
-                  key={item.id}
-                  className="p-3 bg-slate-900/60 border border-slate-800 rounded-xl flex items-start justify-between gap-3 text-xs"
-                >
-                  <div className="min-w-0 space-y-1">
-                    <div className="flex items-center gap-2 text-[11px] text-slate-400 flex-wrap">
-                      <span className="font-bold text-[#84E000] uppercase">{item.targetRole.replace('_', ' ')}</span>
-                      <span aria-hidden="true">·</span>
-                      <span>{item.category.replace('_', ' ')}</span>
-                      <span aria-hidden="true">·</span>
-                      <span className="font-mono">{new Date(item.createdAt).toLocaleString()}</span>
-                    </div>
-                    <div className="font-bold text-white">{item.title}</div>
-                    <div className="text-slate-300">{item.message}</div>
-                  </div>
-
-                  {!item.id.startsWith('smart_') && (
-                    <button
-                      type="button"
-                      onClick={() => void handleDeleteNotification(item.id)}
-                      className="p-1.5 rounded text-rose-400 hover:text-white hover:bg-rose-950/60 cursor-pointer shrink-0"
-                      title="Delete published reminder"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ========================================================================= */}
       {/* TAB 1: TV BROADCAST NEWS TICKER */}
@@ -2146,6 +1400,639 @@ export const OTACompetitionManager: React.FC = () => {
             </div>
           )}
         </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* TAB 4: OTA APP UPDATES, VERSION UPGRADES, FEATURE FLAGS & MAINTENANCE LOCK */}
+      {/* ========================================================================= */}
+      {activeTab === 'app_updates' && (
+        <div className="flex flex-col gap-6">
+          {/* Interactive Preview Overlay */}
+          {previewOverride && <AppUpdateGate previewOverride={previewOverride} />}
+
+          {/* Admin Exemption Notice + Client Version Check */}
+          <div className="p-4 bg-[#0D1930] border border-slate-800 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-start gap-2.5">
+              <ShieldCheck className="w-5 h-5 text-[#84E000] shrink-0 mt-0.5" />
+              <div className="text-xs">
+                <p className="font-bold text-white">
+                  Super Admin Bypass Protection Enabled
+                </p>
+                <p className="text-slate-400 mt-0.5">
+                  Mandatory upgrade locks and maintenance mode block all Student, Parent, Tutor, Partner & School Admin sessions—while Super Admin stays unlocked to manage rollouts.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0 text-xs font-mono tabular-nums bg-slate-950 px-3 py-2 rounded-lg border border-slate-800">
+              <span className="text-slate-400">Local Client:</span>
+              <span className="text-[#84E000] font-bold">v{installedAppVersion}</span>
+              {installedAppVersion !== '2.1.0' ? (
+                <button
+                  type="button"
+                  onClick={() => setLocalInstalledAppVersion('2.1.0')}
+                  className="ml-2 px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 font-sans font-semibold text-[11px] whitespace-nowrap cursor-pointer"
+                >
+                  Simulate v2.1.0
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setLocalInstalledAppVersion(releaseConfig.latestVersion)}
+                  className="ml-2 px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 font-sans font-semibold text-[11px] whitespace-nowrap cursor-pointer"
+                >
+                  Reset v{releaseConfig.latestVersion}
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* LEFT COLUMN: VERSIONING, UPGRADE TIER & RELEASE NOTES */}
+            <div className="flex flex-col gap-5">
+              <div className="p-4 sm:p-5 bg-slate-900/70 border border-slate-800 rounded-xl flex flex-col gap-4">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <Rocket className="w-4 h-4 text-[#84E000]" />
+                    <h2 className="text-sm font-bold text-white">App Version & Upgrade Policy</h2>
+                  </div>
+                  <span className="text-[11px] font-mono tabular-nums text-slate-400">
+                    Target v{releaseConfig.latestVersion}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-slate-300 font-semibold">Latest Version (Semver)</label>
+                    <input
+                      type="text"
+                      value={releaseConfig.latestVersion}
+                      onChange={(e) =>
+                        setReleaseConfig({ ...releaseConfig, latestVersion: e.target.value })
+                      }
+                      placeholder="2.4.0"
+                      className="px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white font-mono tabular-nums focus:outline-none focus:border-[#84E000]"
+                    />
+                    <div className="flex items-center gap-1.5">
+                      {(['patch', 'minor', 'major'] as const).map((part) => (
+                        <button
+                          key={part}
+                          type="button"
+                          onClick={() =>
+                            setReleaseConfig({
+                              ...releaseConfig,
+                              latestVersion: bumpSemver(releaseConfig.latestVersion, part)
+                            })
+                          }
+                          className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-semibold capitalize whitespace-nowrap cursor-pointer"
+                        >
+                          +{part}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-slate-300 font-semibold">
+                      Minimum Supported Version
+                    </label>
+                    <input
+                      type="text"
+                      value={releaseConfig.minimumSupportedVersion}
+                      onChange={(e) =>
+                        setReleaseConfig({
+                          ...releaseConfig,
+                          minimumSupportedVersion: e.target.value
+                        })
+                      }
+                      placeholder="2.2.0"
+                      className="px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white font-mono tabular-nums focus:outline-none focus:border-[#84E000]"
+                    />
+                    <p className="text-[11px] text-slate-400 leading-snug">
+                      Clients below this version are always locked until upgraded.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Upgrade Prompt Enforcement Tier */}
+                <div className="flex flex-col gap-2">
+                  <label className="text-xs font-semibold text-slate-300">
+                    When Update Is Available, Show Users:
+                  </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    {[
+                      {
+                        id: 'mild' as const,
+                        label: 'Mild Notification',
+                        desc: 'Dismissible top in-app banner',
+                        icon: Bell,
+                        activeClass: 'bg-[#14233C] border-[#84E000] text-[#84E000]'
+                      },
+                      {
+                        id: 'recommended' as const,
+                        label: 'Recommended Modal',
+                        desc: 'Skippable What\'s New popup',
+                        icon: ArrowUpCircle,
+                        activeClass: 'bg-amber-950/50 border-amber-400 text-amber-300'
+                      },
+                      {
+                        id: 'mandatory' as const,
+                        label: 'Mandatory Lock',
+                        desc: 'Must upgrade to use app',
+                        icon: Lock,
+                        activeClass: 'bg-rose-950/60 border-[#FF5B00] text-[#FF5B00]'
+                      }
+                    ].map((tier) => {
+                      const Icon = tier.icon;
+                      const selected = releaseConfig.upgradeMode === tier.id;
+                      return (
+                        <button
+                          key={tier.id}
+                          type="button"
+                          onClick={() =>
+                            setReleaseConfig({ ...releaseConfig, upgradeMode: tier.id })
+                          }
+                          className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col gap-1 ${
+                            selected
+                              ? tier.activeClass
+                              : 'bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700'
+                          }`}
+                        >
+                          <div className="flex items-center gap-1.5 font-bold text-xs whitespace-nowrap">
+                            <Icon className="w-3.5 h-3.5 shrink-0" />
+                            <span>{tier.label}</span>
+                          </div>
+                          <span className="text-[11px] text-slate-400 leading-snug">
+                            {tier.desc}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-1 text-xs">
+                  <label className="text-slate-300 font-semibold">
+                    Optional Play Store / APK Download Link
+                  </label>
+                  <input
+                    type="url"
+                    value={releaseConfig.downloadUrl || ''}
+                    onChange={(e) =>
+                      setReleaseConfig({ ...releaseConfig, downloadUrl: e.target.value })
+                    }
+                    placeholder="https://play.google.com/store/apps/details?id=..."
+                    className="px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-[#84E000]"
+                  />
+                  <span className="text-[11px] text-slate-400">
+                    Leave blank for pure instant in-app OTA upgrade, or add URL to show Store link alongside Upgrade Now.
+                  </span>
+                </div>
+              </div>
+
+              {/* Release Headline, Notes & Highlights */}
+              <div className="p-4 sm:p-5 bg-slate-900/70 border border-slate-800 rounded-xl flex flex-col gap-4">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-[#84E000]" />
+                  <h2 className="text-sm font-bold text-white">Release Notes & New Features</h2>
+                </div>
+
+                <div className="flex flex-col gap-1 text-xs">
+                  <label className="text-slate-300 font-semibold">Release Title</label>
+                  <input
+                    type="text"
+                    value={releaseConfig.releaseTitle}
+                    onChange={(e) =>
+                      setReleaseConfig({ ...releaseConfig, releaseTitle: e.target.value })
+                    }
+                    placeholder="e.g. Student Companion v2.4.0 · Exam Speed Booster"
+                    className="px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white"
+                  />
+                </div>
+
+                <div className="flex flex-col gap-1 text-xs">
+                  <label className="text-slate-300 font-semibold">Summary Message</label>
+                  <textarea
+                    value={releaseConfig.releaseNotes}
+                    onChange={(e) =>
+                      setReleaseConfig({ ...releaseConfig, releaseNotes: e.target.value })
+                    }
+                    rows={2}
+                    placeholder="Short explanation of why students and parents should install this update..."
+                    className="px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white resize-y"
+                  />
+                </div>
+
+                <div className="flex flex-col gap-2 text-xs">
+                  <label className="text-slate-300 font-semibold flex items-center justify-between">
+                    <span>What&apos;s New Highlights ({releaseConfig.featureHighlights.length}/10)</span>
+                  </label>
+
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={newHighlightText}
+                      onChange={(e) => setNewHighlightText(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleAddHighlight();
+                        }
+                      }}
+                      placeholder="e.g. Faster WAEC 2025 Past Question CBT explanations"
+                      className="flex-1 px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white placeholder-slate-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleAddHighlight}
+                      className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-lg flex items-center gap-1 whitespace-nowrap cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Add</span>
+                    </button>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    {releaseConfig.featureHighlights.map((hl, idx) => (
+                      <div
+                        key={idx}
+                        className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-slate-950 border border-slate-800"
+                      >
+                        <span className="text-xs text-slate-200 flex items-center gap-2 min-w-0">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-[#84E000] shrink-0" />
+                          <span className="truncate">{hl}</span>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveHighlight(idx)}
+                          aria-label={`Remove highlight ${idx + 1}`}
+                          className="p-1 text-rose-400 hover:text-white rounded cursor-pointer shrink-0"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* RIGHT COLUMN: LIVE FEATURE FLAGS, MAINTENANCE LOCK & PREVIEW */}
+            <div className="flex flex-col gap-5">
+              {/* Feature Flags: Full 17-Module App Switchboard */}
+              <div className="p-4 sm:p-5 bg-slate-900/70 border border-slate-800 rounded-xl flex flex-col gap-3.5">
+                {(() => {
+                  const enabledCount = OTA_FEATURE_CATALOG.filter(
+                    (m) => releaseConfig.featureFlags[m.key] !== false
+                  ).length;
+                  const pausedCount = OTA_FEATURE_CATALOG.length - enabledCount;
+                  const searchTerm = flagSearch.trim().toLowerCase();
+                  const filteredModules = OTA_FEATURE_CATALOG.filter((m) => {
+                    const matchesCategory = flagCategory === 'all' || m.category === flagCategory;
+                    const matchesSearch =
+                      !searchTerm ||
+                      m.title.toLowerCase().includes(searchTerm) ||
+                      m.description.toLowerCase().includes(searchTerm);
+                    return matchesCategory && matchesSearch;
+                  });
+
+                  const categoryLabel = (cat: 'study' | 'enrichment' | 'portals') =>
+                    cat === 'study'
+                      ? 'Study & Exams'
+                      : cat === 'enrichment'
+                      ? 'Enrichment & AI'
+                      : 'Role Portal';
+
+                  return (
+                    <>
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <Sliders className="w-4 h-4 text-[#84E000]" />
+                          <h2 className="text-sm font-bold text-white">
+                            Live Feature Pause Switchboard
+                          </h2>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] font-mono tabular-nums px-2 py-0.5 rounded bg-slate-950 border border-slate-800 text-slate-300 whitespace-nowrap">
+                            {enabledCount} / {OTA_FEATURE_CATALOG.length} Enabled · {pausedCount} Paused
+                          </span>
+                          {pausedCount > 0 && (
+                            <button
+                              type="button"
+                              onClick={handleEnableAllFlags}
+                              className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-[#84E000] text-[11px] font-bold whitespace-nowrap cursor-pointer"
+                            >
+                              Enable All
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Shared Default Paused Notice Message */}
+                      <div className="flex flex-col gap-1 text-xs">
+                        <label className="text-slate-300 font-semibold flex items-center justify-between">
+                          <span>Shared Default Paused Message</span>
+                          <span className="text-[10px] font-mono text-slate-400 tabular-nums">
+                            {releaseConfig.defaultPausedMessage.length}/300
+                          </span>
+                        </label>
+                        <input
+                          type="text"
+                          maxLength={300}
+                          value={releaseConfig.defaultPausedMessage}
+                          onChange={(e) =>
+                            setReleaseConfig({
+                              ...releaseConfig,
+                              defaultPausedMessage: e.target.value
+                            })
+                          }
+                          placeholder={DEFAULT_PAUSED_FEATURE_MESSAGE}
+                          className="px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white placeholder-slate-500 text-xs focus:outline-none focus:border-[#84E000]"
+                        />
+                        <span className="text-[11px] text-slate-400">
+                          Shown to users when any paused feature is tapped without a custom note.
+                        </span>
+                      </div>
+
+                      {/* Filter Controls: Category Pills + Search */}
+                      <div className="flex flex-col gap-2 pt-1">
+                        <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5">
+                          {(
+                            [
+                              { id: 'all', label: `All (${OTA_FEATURE_CATALOG.length})` },
+                              { id: 'study', label: 'Study & Exams' },
+                              { id: 'enrichment', label: 'Enrichment & AI' },
+                              { id: 'portals', label: 'Role Portals' }
+                            ] as const
+                          ).map((cat) => (
+                            <button
+                              key={cat.id}
+                              type="button"
+                              onClick={() => setFlagCategory(cat.id)}
+                              className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold whitespace-nowrap cursor-pointer border transition-colors ${
+                                flagCategory === cat.id
+                                  ? 'bg-[#14233C] border-[#84E000]/70 text-[#84E000]'
+                                  : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
+                              }`}
+                            >
+                              {cat.label}
+                            </button>
+                          ))}
+                        </div>
+
+                        <div className="relative">
+                          <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                          <input
+                            type="text"
+                            value={flagSearch}
+                            onChange={(e) => setFlagSearch(e.target.value)}
+                            placeholder="Filter modules (e.g. Lesson Notes, Termly Drill, Parent Portal)..."
+                            className="w-full pl-8 pr-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-[#84E000]"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Module List */}
+                      <div className="space-y-2 text-xs max-h-[440px] overflow-y-auto pr-1">
+                        {filteredModules.length === 0 ? (
+                          <div className="p-4 text-center text-slate-400 bg-slate-950 rounded-xl border border-slate-800">
+                            No modules match your search filter.
+                          </div>
+                        ) : (
+                          filteredModules.map((mod) => {
+                            const enabled = releaseConfig.featureFlags[mod.key] !== false;
+                            const customNote = releaseConfig.pausedFeatureNotes?.[mod.key] || '';
+                            const hasCustomNote = customNote.trim().length > 0;
+                            const isNoteExpanded = expandedNoteKey === mod.key;
+
+                            return (
+                              <div
+                                key={mod.key}
+                                className={`p-3 rounded-xl border transition-colors ${
+                                  enabled
+                                    ? 'bg-slate-950 border-slate-800'
+                                    : 'bg-amber-950/20 border-amber-500/45'
+                                }`}
+                              >
+                                <div className="flex items-center justify-between gap-2.5">
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <p className="font-bold text-white truncate">{mod.title}</p>
+                                      {flagCategory === 'all' && (
+                                        <span className="text-[10px] font-semibold text-slate-400 bg-slate-900 px-1.5 py-0.2 rounded border border-slate-800 whitespace-nowrap">
+                                          {categoryLabel(mod.category)}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <p className="text-[11px] text-slate-400 truncate mt-0.5">
+                                      {mod.description}
+                                    </p>
+                                  </div>
+
+                                  <div className="flex items-center gap-1.5 shrink-0">
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setExpandedNoteKey(isNoteExpanded ? null : mod.key)
+                                      }
+                                      title="Optional custom pause note"
+                                      className={`px-2 py-1.5 rounded-lg text-[11px] font-semibold border whitespace-nowrap cursor-pointer inline-flex items-center gap-1 transition-colors ${
+                                        hasCustomNote || isNoteExpanded
+                                          ? 'bg-amber-950/60 border-amber-500/50 text-amber-300'
+                                          : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                                      }`}
+                                    >
+                                      <MessageSquare className="w-3 h-3 shrink-0" />
+                                      <span>{hasCustomNote ? 'Note Added' : 'Note'}</span>
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      role="switch"
+                                      aria-checked={enabled}
+                                      onClick={() => handleToggleFeatureFlag(mod.key)}
+                                      className={`px-2.5 py-1.5 rounded-lg text-[11px] font-black whitespace-nowrap shrink-0 border cursor-pointer inline-flex items-center gap-1 transition-colors ${
+                                        enabled
+                                          ? 'bg-emerald-950/80 border-emerald-500/60 text-[#84E000]'
+                                          : 'bg-amber-500/15 border-amber-400/60 text-amber-300'
+                                      }`}
+                                    >
+                                      {enabled ? (
+                                        <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                                      ) : (
+                                        <PauseCircle className="w-3.5 h-3.5 shrink-0" />
+                                      )}
+                                      <span>{enabled ? 'Enabled' : 'Paused'}</span>
+                                    </button>
+                                  </div>
+                                </div>
+
+                                {(isNoteExpanded || (!enabled && hasCustomNote)) && (
+                                  <div className="mt-2.5 pt-2.5 border-t border-slate-800/80 flex items-center gap-2">
+                                    <input
+                                      type="text"
+                                      maxLength={240}
+                                      value={customNote}
+                                      onChange={(e) =>
+                                        handleUpdateFeatureNote(mod.key, e.target.value)
+                                      }
+                                      placeholder={`Optional custom note when ${mod.title} is paused (leave blank for shared message)`}
+                                      className="flex-1 px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-[11px] text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
+                                    />
+                                    {hasCustomNote && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleUpdateFeatureNote(mod.key, '')}
+                                        className="px-2 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-bold whitespace-nowrap cursor-pointer"
+                                      >
+                                        Clear
+                                      </button>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+                    </>
+                  );
+                })()}
+              </div>
+
+              {/* Emergency / Scheduled Maintenance Lock */}
+              <div
+                className={`p-4 sm:p-5 rounded-xl border flex flex-col gap-3.5 transition-colors ${
+                  releaseConfig.maintenanceMode
+                    ? 'bg-amber-950/30 border-amber-500/60'
+                    : 'bg-slate-900/70 border-slate-800'
+                }`}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <Wrench className="w-4 h-4 text-amber-400" />
+                    <h2 className="text-sm font-bold text-white">Maintenance Mode Lock</h2>
+                  </div>
+
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={releaseConfig.maintenanceMode}
+                    onClick={() =>
+                      setReleaseConfig({
+                        ...releaseConfig,
+                        maintenanceMode: !releaseConfig.maintenanceMode
+                      })
+                    }
+                    className={`px-3 py-1.5 rounded-lg text-xs font-black whitespace-nowrap cursor-pointer border transition-colors ${
+                      releaseConfig.maintenanceMode
+                        ? 'bg-amber-500 text-slate-950 border-amber-400'
+                        : 'bg-slate-950 text-slate-300 border-slate-700 hover:border-slate-600'
+                    }`}
+                  >
+                    {releaseConfig.maintenanceMode ? 'Maintenance ON' : 'Maintenance OFF'}
+                  </button>
+                </div>
+
+                {releaseConfig.maintenanceMode && (
+                  <div className="flex items-start gap-2 text-xs text-amber-200 bg-amber-950/60 border border-amber-500/40 rounded-lg p-2.5">
+                    <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                    <span>
+                      When published, all non-Super-Admin users will see the maintenance lock screen until turned off.
+                    </span>
+                  </div>
+                )}
+
+                <div className="flex flex-col gap-1 text-xs">
+                  <label className="text-slate-300 font-semibold">Maintenance Notice Message</label>
+                  <textarea
+                    value={releaseConfig.maintenanceMessage}
+                    onChange={(e) =>
+                      setReleaseConfig({ ...releaseConfig, maintenanceMessage: e.target.value })
+                    }
+                    rows={2}
+                    className="px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white resize-y"
+                  />
+                </div>
+              </div>
+
+              {/* Interactive Prompt Previews */}
+              <div className="p-4 sm:p-5 bg-slate-900/70 border border-slate-800 rounded-xl flex flex-col gap-3">
+                <div className="flex items-center gap-2">
+                  <Eye className="w-4 h-4 text-[#84E000]" />
+                  <h2 className="text-sm font-bold text-white">Preview User Experience</h2>
+                </div>
+                <p className="text-xs text-slate-400">
+                  Test how your current draft renders for students without affecting your Admin session.
+                </p>
+
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setPreviewMode('mild')}
+                    className="px-3 py-2 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-700 text-slate-200 font-bold whitespace-nowrap cursor-pointer"
+                  >
+                    Preview Mild Banner
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPreviewMode('recommended')}
+                    className="px-3 py-2 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-700 text-amber-300 font-bold whitespace-nowrap cursor-pointer"
+                  >
+                    Preview Recommended Modal
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPreviewMode('mandatory')}
+                    className="px-3 py-2 rounded-lg bg-slate-950 hover:bg-slate-800 border border-[#FF5B00]/50 text-[#FF5B00] font-bold whitespace-nowrap cursor-pointer"
+                  >
+                    Preview Mandatory Lock
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPreviewMode('maintenance')}
+                    className="px-3 py-2 rounded-lg bg-slate-950 hover:bg-slate-800 border border-amber-500/40 text-amber-200 font-bold whitespace-nowrap cursor-pointer"
+                  >
+                    Preview Maintenance
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Publish Bar */}
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-800">
+            <button
+              type="button"
+              onClick={handleResetReleaseDefaults}
+              className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 text-xs font-bold flex items-center gap-1.5 whitespace-nowrap cursor-pointer"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Reset Draft to Baseline</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handlePublishRelease}
+              disabled={isSavingRelease}
+              className="py-2.5 px-6 bg-[#84E000] hover:bg-[#74c700] text-slate-950 font-black text-xs sm:text-sm rounded-xl flex items-center gap-2 shadow-lg transition-all active:scale-95 whitespace-nowrap cursor-pointer disabled:opacity-60"
+            >
+              <Save className="w-4 h-4" />
+              <span>
+                {isSavingRelease
+                  ? 'Publishing OTA Update...'
+                  : `Publish OTA Release v${releaseConfig.latestVersion}`}
+              </span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* TAB 5: PUSH NOTIFICATIONS & DRAW-BACK REMINDER STUDIO */}
+      {/* ========================================================================= */}
+      {activeTab === 'push_reminders' && (
+        <OTAPushRemindersTab onFeedback={triggerNotice} />
       )}
     </div>
   );

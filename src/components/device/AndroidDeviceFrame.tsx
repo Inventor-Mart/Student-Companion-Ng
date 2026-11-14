@@ -2,8 +2,8 @@ import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Wifi, WifiOff, BatteryCharging, Signal, SlidersHorizontal, Bell } from 'lucide-react';
 import { InAppControlsDrawer } from './InAppControlsDrawer';
+import { NotificationCenterDrawer } from '../notifications/NotificationCenterDrawer';
 import { HeaderClassSwitcher } from '../student/HeaderClassSwitcher';
-import { NotificationInboxModal } from '../common/NotificationInboxModal';
 import { PWAInstallButton } from '../common/PWAInstallButton';
 
 export const AndroidDeviceFrame: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -13,7 +13,7 @@ export const AndroidDeviceFrame: React.FC<{ children: React.ReactNode }> = ({ ch
     currentRole,
     isSuperAdmin,
     unreadNotificationCount,
-    setIsNotificationInboxOpen
+    setIsNotificationDrawerOpen
   } = useApp();
   const [isControlsOpen, setIsControlsOpen] = useState(false);
 
@@ -58,21 +58,21 @@ export const AndroidDeviceFrame: React.FC<{ children: React.ReactNode }> = ({ ch
             )}
             <button
               type="button"
-              onClick={() => setIsNotificationInboxOpen(true)}
-              className="relative flex items-center justify-center min-w-[40px] min-h-[40px] px-2 sm:px-2.5 rounded-lg bg-[#14233C] hover:bg-[#1D3254] active:scale-95 text-slate-200 hover:text-white border border-[#223B63] transition-all cursor-pointer shrink-0"
-              title="Notifications & Reminders"
-              aria-label="Open notifications and reminders"
+              onClick={() => setIsNotificationDrawerOpen(true)}
+              className="relative min-h-[44px] min-w-[44px] px-2.5 rounded-lg bg-[#14233C] hover:bg-[#1D3254] active:scale-95 text-slate-200 hover:text-white border border-[#223B63] transition-all cursor-pointer flex items-center justify-center shrink-0"
+              title="Notifications and Reminders"
+              aria-label={`Notifications and Reminders${unreadNotificationCount > 0 ? ` (${unreadNotificationCount} unread)` : ''}`}
             >
-              <Bell className="w-4 h-4 text-[#FF5B00]" />
+              <Bell className="w-4 h-4 text-[#84E000]" />
               {unreadNotificationCount > 0 && (
-                <span className="ml-1 px-1.5 py-0.5 rounded-md bg-[#FF5B00] text-white font-mono text-[10px] font-black tabular-nums leading-none">
-                  {unreadNotificationCount > 9 ? '9+' : unreadNotificationCount}
+                <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-[#FF5B00] text-white font-mono text-[10px] font-bold tabular-nums flex items-center justify-center leading-none border border-[#0B1526]">
+                  {unreadNotificationCount > 99 ? '99+' : unreadNotificationCount}
                 </span>
               )}
             </button>
             <button
               onClick={() => setIsControlsOpen(true)}
-              className="flex items-center gap-1.5 px-2.5 sm:px-3 min-h-[40px] rounded-lg bg-[#14233C] hover:bg-[#1D3254] active:scale-95 text-slate-200 hover:text-white border border-[#223B63] transition-all cursor-pointer text-xs font-semibold whitespace-nowrap shrink-0"
+              className="flex items-center gap-1.5 px-3 min-h-[44px] rounded-lg bg-[#14233C] hover:bg-[#1D3254] active:scale-95 text-slate-200 hover:text-white border border-[#223B63] transition-all cursor-pointer text-xs font-semibold whitespace-nowrap shrink-0"
               title="Open Account Menu"
               aria-label="Open Account Menu"
             >
@@ -86,7 +86,7 @@ export const AndroidDeviceFrame: React.FC<{ children: React.ReactNode }> = ({ ch
         <div className="w-full flex-1 min-h-0 flex flex-col bg-slate-950 relative overflow-hidden">
           {children}
           <InAppControlsDrawer isOpen={isControlsOpen} onClose={() => setIsControlsOpen(false)} />
-          <NotificationInboxModal />
+          <NotificationCenterDrawer />
         </div>
       </main>
     );
@@ -149,22 +149,22 @@ export const AndroidDeviceFrame: React.FC<{ children: React.ReactNode }> = ({ ch
               <PWAInstallButton compact />
               <button
                 type="button"
-                onClick={() => setIsNotificationInboxOpen(true)}
-                className="relative flex items-center justify-center min-w-[36px] min-h-[36px] px-1.5 rounded-lg bg-[#14233C] hover:bg-[#1D3254] active:scale-95 text-slate-200 hover:text-white border border-[#223B63] transition-all cursor-pointer shrink-0"
-                title="Notifications & Reminders"
-                aria-label="Open notifications and reminders"
+                onClick={() => setIsNotificationDrawerOpen(true)}
+                className="relative min-h-[38px] min-w-[38px] px-2 rounded-lg bg-[#14233C] hover:bg-[#1D3254] active:scale-95 text-slate-200 hover:text-white border border-[#223B63] transition-all cursor-pointer flex items-center justify-center shrink-0"
+                title="Notifications and Reminders"
+                aria-label={`Notifications and Reminders${unreadNotificationCount > 0 ? ` (${unreadNotificationCount} unread)` : ''}`}
               >
-                <Bell className="w-3.5 h-3.5 text-[#FF5B00]" />
+                <Bell className="w-3.5 h-3.5 text-[#84E000]" />
                 {unreadNotificationCount > 0 && (
-                  <span className="ml-1 px-1 py-0.5 rounded bg-[#FF5B00] text-white font-mono text-[9px] font-black tabular-nums leading-none">
-                    {unreadNotificationCount > 9 ? '9+' : unreadNotificationCount}
+                  <span className="absolute -top-1 -right-1 min-w-[16px] h-[16px] px-1 rounded-full bg-[#FF5B00] text-white font-mono text-[9px] font-bold tabular-nums flex items-center justify-center leading-none border border-[#0B1526]">
+                    {unreadNotificationCount > 99 ? '99+' : unreadNotificationCount}
                   </span>
                 )}
               </button>
               {/* In-App Menu Drawer Trigger */}
               <button
                 onClick={() => setIsControlsOpen(true)}
-                className="flex items-center gap-1 px-2 min-h-[36px] rounded-lg bg-[#14233C] hover:bg-[#1D3254] active:scale-95 text-slate-200 hover:text-white border border-[#223B63] transition-all cursor-pointer text-[11px] font-semibold whitespace-nowrap shrink-0"
+                className="flex items-center gap-1 px-2.5 min-h-[38px] rounded-lg bg-[#14233C] hover:bg-[#1D3254] active:scale-95 text-slate-200 hover:text-white border border-[#223B63] transition-all cursor-pointer text-[11px] font-semibold whitespace-nowrap shrink-0"
                 title="Open Account Menu"
                 aria-label="Open Account Menu"
               >
@@ -179,7 +179,7 @@ export const AndroidDeviceFrame: React.FC<{ children: React.ReactNode }> = ({ ch
             {children}
             {/* Native In-App Drawer Modal */}
             <InAppControlsDrawer isOpen={isControlsOpen} onClose={() => setIsControlsOpen(false)} />
-            <NotificationInboxModal />
+            <NotificationCenterDrawer />
           </div>
 
           {/* Android Bottom Navigation / Gesture Bar */}

@@ -24,8 +24,10 @@ import {
   GraduationCap,
   ShieldCheck,
   Zap,
-  Lock
+  Lock,
+  PauseCircle
 } from 'lucide-react';
+import { PausedBadge } from '../common/AppUpdateGate';
 
 interface TermlyDrillHubProps {
   onStartExam: (exam: CBTExam) => void;
@@ -96,8 +98,13 @@ export const TermlyDrillHub: React.FC<TermlyDrillHubProps> = ({ onStartExam, onO
     fetchOrGenerateTermlyDrill,
     fetchOrGenerateCertificateDrill,
     deductWalletForFreshDrill,
-    isSubjectExamUnlocked
+    isSubjectExamUnlocked,
+    isFeatureEnabled,
+    getPausedFeatureMessage,
+    openPausedFeatureNotice
   } = useApp();
+
+  const isTermlyDrillPaused = !isFeatureEnabled('termlyDrill');
 
   const enrolledClass = (student?.classLevel && CLASS_OPTIONS.includes(student.classLevel))
     ? student.classLevel
@@ -267,6 +274,11 @@ export const TermlyDrillHub: React.FC<TermlyDrillHubProps> = ({ onStartExam, onO
 
   // Launch or generate drill
   const handleLaunchDrill = async (forceFresh = false) => {
+    if (isTermlyDrillPaused) {
+      openPausedFeatureNotice('termlyDrill', 'Termly Assessment Drills');
+      return;
+    }
+
     setErrorMessage(null);
     setRetryCountdown(null);
 
@@ -455,6 +467,7 @@ export const TermlyDrillHub: React.FC<TermlyDrillHubProps> = ({ onStartExam, onO
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
+            {isTermlyDrillPaused && <PausedBadge />}
             {checkingCache ? (
               <span className="text-[11px] text-slate-400 bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-800">
                 Checking Firestore...
@@ -472,6 +485,18 @@ export const TermlyDrillHub: React.FC<TermlyDrillHubProps> = ({ onStartExam, onO
             )}
           </div>
         </div>
+
+        {isTermlyDrillPaused && (
+          <div className="mt-3 p-3 rounded-xl bg-amber-950/50 border border-amber-500/45 flex items-start gap-2.5 text-xs text-amber-200">
+            <PauseCircle className="w-4 h-4 text-amber-300 shrink-0 mt-0.5" />
+            <div className="min-w-0">
+              <p className="font-bold text-amber-300">Termly & National Drills Temporarily Paused</p>
+              <p className="text-[11px] text-amber-100/90 mt-0.5 leading-relaxed">
+                {getPausedFeatureMessage('termlyDrill')}
+              </p>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Interactive Mode Switcher for Terminal Classes (JSS 3 & SS 3) */}
@@ -761,6 +786,10 @@ export const TermlyDrillHub: React.FC<TermlyDrillHubProps> = ({ onStartExam, onO
               type="button"
               disabled={isGenerating}
               onClick={() => {
+                if (isTermlyDrillPaused) {
+                  openPausedFeatureNotice('termlyDrill', 'Termly Assessment Drills');
+                  return;
+                }
                 setPaymentError(null);
                 setIsFreshModalOpen(true);
               }}

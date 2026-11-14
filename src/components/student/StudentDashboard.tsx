@@ -5,12 +5,9 @@ import { CBT_EXAMS_DATABASE } from '../../data/cbtExamData';
 import { compressImage } from '../../lib/storage';
 import { NigerianClassLevel, OTAFeatureKey } from '../../types';
 import { ExamPrepUnlockModal } from './exam-prep/ExamPrepUnlockModal';
-import { FeatureMaintenanceGate } from '../common/FeatureMaintenanceView';
 import { PersonaAvatar } from '../common/PersonaAvatar';
-import { resolveFeatureNotice } from '../../services/otaService';
 import {
   Flame,
-  PauseCircle,
   Award,
   BookOpen,
   ArrowRight,
@@ -46,6 +43,7 @@ import {
   CheckCircle
 } from 'lucide-react';
 import { AspirantDashboard } from './aspirant/AspirantDashboard';
+import { OTAModulePausedCard, PausedBadge } from '../common/AppUpdateGate';
 import { SchoolMaterial } from '../../types';
 import { playSound } from '../../utils/audioSynthesis';
 import { motion, AnimatePresence } from 'motion/react';
@@ -68,20 +66,9 @@ export const StudentDashboard: React.FC = () => {
     linkStudentToSchool,
     openStudentSubscriptionModal,
     checkStudentFeatureAccess,
-    isFeaturePaused,
-    otaFeatureFlags
+    isFeatureEnabled,
+    getPausedFeatureMessage
   } = useApp();
-
-  const renderMaintenanceBadge = (featureKey: OTAFeatureKey) => {
-    if (!isFeaturePaused(featureKey)) return null;
-    const notice = resolveFeatureNotice(otaFeatureFlags[featureKey]);
-    return (
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-950/95 border border-amber-400/70 text-amber-300 text-[10px] font-black uppercase tracking-wider shadow-sm shrink-0">
-        <PauseCircle className="w-3 h-3 shrink-0" />
-        <span className="truncate max-w-[110px]">{notice.badge}</span>
-      </span>
-    );
-  };
 
   const [isLinkSchoolModalOpen, setIsLinkSchoolModalOpen] = useState(false);
   const [inputSchoolCode, setInputSchoolCode] = useState('');
@@ -191,11 +178,17 @@ export const StudentDashboard: React.FC = () => {
 
   // Dedicated Aspirant Hub for University Aspirants
   if (student.classLevel === 'University Aspirant') {
-    return (
-      <FeatureMaintenanceGate featureKey="aspirant_hub">
-        <AspirantDashboard />
-      </FeatureMaintenanceGate>
-    );
+    if (!isFeatureEnabled('aspirantHub')) {
+      return (
+        <OTAModulePausedCard
+          moduleName="JAMB & Aspirant CBT Hub"
+          message={getPausedFeatureMessage('aspirantHub')}
+          actionLabel="Switch to SS 3 View"
+          onBackToDashboard={() => updateStudentClass('SS 3', 'Science')}
+        />
+      );
+    }
+    return <AspirantDashboard />;
   }
 
   // Motion animation variants for staggered cascade
@@ -391,9 +384,10 @@ export const StudentDashboard: React.FC = () => {
               playSound.tileTap();
               updateStudentClass('University Aspirant', 'Science');
             }}
-            className="text-[11px] text-amber-300 font-black bg-gradient-to-r from-amber-500/20 to-orange-500/20 hover:from-amber-500/30 hover:to-orange-500/30 px-2.5 py-1 rounded-xl border border-amber-500/40 shrink-0 cursor-pointer transition-all shadow-xs"
+            className="text-[11px] text-amber-300 font-black bg-gradient-to-r from-amber-500/20 to-orange-500/20 hover:from-amber-500/30 hover:to-orange-500/30 px-2.5 py-1 rounded-xl border border-amber-500/40 shrink-0 cursor-pointer transition-all shadow-xs inline-flex items-center gap-1.5 whitespace-nowrap"
           >
-            ★ Aspirant Hub
+            <span>★ Aspirant Hub</span>
+            {!isFeatureEnabled('aspirantHub') && <PausedBadge />}
           </button>
         </div>
 
@@ -483,10 +477,10 @@ export const StudentDashboard: React.FC = () => {
           <div className="flex items-start justify-between relative z-10">
             <div>
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs font-black uppercase tracking-wider text-white/80 block">
+                <span className="text-xs font-black uppercase tracking-wider text-white/80">
                   {student.classLevel} Syllabus · Week {currentTopic.weekNumber}
                 </span>
-                {renderMaintenanceBadge('lesson_notes')}
+                {!isFeatureEnabled('lessonNotes') && <PausedBadge />}
               </div>
               <h2 className="text-2xl font-black text-white tracking-tight mt-0.5">
                 Lesson Notes
@@ -584,8 +578,8 @@ export const StudentDashboard: React.FC = () => {
                 <span className="text-[10px] font-bold text-[#FF5B00] uppercase tracking-wider">
                   CBT Drills
                 </span>
-                {isFeaturePaused('cbt_quizzes') ? (
-                  renderMaintenanceBadge('cbt_quizzes')
+                {!isFeatureEnabled('cbtExams') ? (
+                  <PausedBadge />
                 ) : (
                   <span className="text-[10px] font-black text-amber-400 bg-amber-400/10 px-1.5 py-0.5 rounded-md border border-amber-400/20">
                     +50 XP
@@ -682,14 +676,14 @@ export const StudentDashboard: React.FC = () => {
               className="rounded-3xl p-4 bg-gradient-to-br from-[#84CC16] via-[#65A30D] to-[#4D7C0F] text-slate-950 shadow-xl border-2 border-white/20 cursor-pointer select-none group relative overflow-hidden"
             >
               <div>
-                <div className="flex items-center justify-between gap-1 flex-wrap">
+                <div className="flex items-start justify-between gap-1">
                   <h3 className="text-lg font-black text-slate-950 tracking-tight leading-tight">
                     AI Study Coach
                   </h3>
-                  {renderMaintenanceBadge('ai_study_coach')}
+                  {!isFeatureEnabled('aiCoach') && <PausedBadge />}
                 </div>
                 <p className="text-[11px] font-bold text-slate-900/90 mt-0.5">
-                  Ask any question 24/7
+                  {!isFeatureEnabled('aiCoach') ? 'Paused · Tap for notice' : 'Ask any question 24/7'}
                 </p>
               </div>
 
@@ -748,8 +742,8 @@ export const StudentDashboard: React.FC = () => {
                 <span className="text-[10px] font-bold text-indigo-300 uppercase tracking-wider">
                   National Cup
                 </span>
-                {isFeaturePaused('competitions') ? (
-                  renderMaintenanceBadge('competitions')
+                {!isFeatureEnabled('competitions') ? (
+                  <PausedBadge />
                 ) : (
                   <span className="text-[9px] font-bold text-amber-400 bg-amber-400/10 px-1.5 py-0.5 rounded border border-amber-400/20">
                     ₦50k Pool
@@ -796,11 +790,11 @@ export const StudentDashboard: React.FC = () => {
             className="rounded-3xl p-4 bg-[#14203D] border-2 border-blue-500/30 hover:border-blue-400 shadow-xl cursor-pointer select-none group flex flex-col justify-between"
           >
             <div>
-              <div className="flex items-start justify-between gap-1 mb-2">
+              <div className="flex items-start justify-between gap-2 mb-2">
                 <div className="w-10 h-10 rounded-2xl bg-blue-500/20 border border-blue-500/40 flex items-center justify-center text-blue-400">
                   <Compass className="w-5 h-5" />
                 </div>
-                {renderMaintenanceBadge('tutor_marketplace')}
+                {!isFeatureEnabled('tutorMarketplace') && <PausedBadge />}
               </div>
               <h3 className="text-base font-black text-white tracking-tight leading-tight">
                 Tutor Marketplace
@@ -824,7 +818,7 @@ export const StudentDashboard: React.FC = () => {
                 </div>
               </div>
               <span className="text-[10px] font-bold text-[#84CC16]">
-                +10 Verified
+                {!isFeatureEnabled('tutorMarketplace') ? 'Tap for notice' : '+10 Verified'}
               </span>
             </div>
           </motion.div>
@@ -841,11 +835,11 @@ export const StudentDashboard: React.FC = () => {
             className="rounded-3xl p-4 bg-gradient-to-br from-[#101C34] to-[#1C2C4E] border-2 border-[#84CC16]/30 hover:border-[#84CC16] shadow-xl cursor-pointer select-none group flex flex-col justify-between"
           >
             <div>
-              <div className="flex items-start justify-between gap-1 mb-2">
+              <div className="flex items-start justify-between gap-2 mb-2">
                 <div className="w-10 h-10 rounded-2xl bg-[#84CC16]/20 border border-[#84CC16]/40 flex items-center justify-center text-[#84CC16]">
                   <Radio className="w-5 h-5" />
                 </div>
-                {renderMaintenanceBadge('virtual_classroom')}
+                {!isFeatureEnabled('virtualClassroom') && <PausedBadge />}
               </div>
               <h3 className="text-base font-black text-white tracking-tight leading-tight">
                 Live Whiteboard
@@ -856,7 +850,7 @@ export const StudentDashboard: React.FC = () => {
             </div>
 
             <div className="mt-3 pt-2.5 border-t border-slate-800 flex items-center justify-between text-[10px] font-bold text-[#84CC16]">
-              <span>Enter Classroom</span>
+              <span>{!isFeatureEnabled('virtualClassroom') ? 'Paused · Tap for notice' : 'Enter Classroom'}</span>
               <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
             </div>
           </motion.div>
@@ -876,10 +870,10 @@ export const StudentDashboard: React.FC = () => {
           <div className="flex items-center justify-between relative z-10">
             <div>
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs font-bold text-purple-300 uppercase tracking-wider block">
+                <span className="text-xs font-bold text-purple-300 uppercase tracking-wider">
                   Brain Training & Arcade
                 </span>
-                {renderMaintenanceBadge('games_hub')}
+                {!isFeatureEnabled('gamesHub') && <PausedBadge />}
               </div>
               <h3 className="text-2xl font-black text-white tracking-tight mt-0.5">
                 Games Hub
@@ -905,9 +899,9 @@ export const StudentDashboard: React.FC = () => {
           </div>
 
           <div className="mt-3.5 pt-2.5 border-t border-purple-800/60 flex items-center justify-between text-xs font-bold text-purple-300">
-            <span>Play 12 Subject Games · Earn Streak XP</span>
+            <span>{!isFeatureEnabled('gamesHub') ? 'Paused · Tap for notice' : 'Play 12 Subject Games · Earn Streak XP'}</span>
             <span className="flex items-center gap-1 text-white">
-              <span>Launch Arcade</span>
+              <span>{!isFeatureEnabled('gamesHub') ? 'Status' : 'Launch Arcade'}</span>
               <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
             </span>
           </div>
@@ -939,11 +933,11 @@ export const StudentDashboard: React.FC = () => {
               className="rounded-3xl p-4 bg-gradient-to-br from-[#1D1433] to-[#120B24] border-2 border-purple-500/40 hover:border-purple-400 shadow-xl cursor-pointer select-none group flex flex-col justify-between"
             >
               <div>
-                <div className="flex items-start justify-between gap-1 mb-2">
+                <div className="flex items-start justify-between gap-2 mb-2">
                   <div className="w-10 h-10 rounded-2xl bg-purple-500/20 border border-purple-500/40 flex items-center justify-center text-purple-300">
                     <Atom className="w-5 h-5 stroke-[2.2]" />
                   </div>
-                  {renderMaintenanceBadge('science_formulas')}
+                  {!isFeatureEnabled('scienceFormulas') && <PausedBadge />}
                 </div>
                 <h3 className="text-base font-black text-white tracking-tight leading-tight">
                   STEM Formulas
@@ -971,11 +965,11 @@ export const StudentDashboard: React.FC = () => {
               className="rounded-3xl p-4 bg-gradient-to-br from-[#112433] to-[#0A1620] border-2 border-cyan-500/40 hover:border-cyan-400 shadow-xl cursor-pointer select-none group flex flex-col justify-between"
             >
               <div>
-                <div className="flex items-start justify-between gap-1 mb-2">
+                <div className="flex items-start justify-between gap-2 mb-2">
                   <div className="w-10 h-10 rounded-2xl bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-300">
                     <BookOpen className="w-5 h-5 stroke-[2.2]" />
                   </div>
-                  {renderMaintenanceBadge('lesson_notes')}
+                  {!isFeatureEnabled('lessonNotes') && <PausedBadge />}
                 </div>
                 <h3 className="text-base font-black text-white tracking-tight leading-tight">
                   NERDC Syllabus
@@ -1007,11 +1001,11 @@ export const StudentDashboard: React.FC = () => {
             className="rounded-3xl p-4 bg-gradient-to-br from-[#241A12] to-[#140E0A] border-2 border-amber-500/40 hover:border-amber-400 shadow-xl cursor-pointer select-none group flex flex-col justify-between"
           >
             <div>
-              <div className="flex items-start justify-between gap-1 mb-2">
+              <div className="flex items-start justify-between gap-2 mb-2">
                 <div className="w-10 h-10 rounded-2xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-300">
                   <Calendar className="w-5 h-5 stroke-[2.2]" />
                 </div>
-                {renderMaintenanceBadge('exam_prep')}
+                {!isFeatureEnabled('examPrep') && <PausedBadge />}
               </div>
               <h3 className="text-base font-black text-white tracking-tight leading-tight">
                 Prepare For Exam
@@ -1022,7 +1016,7 @@ export const StudentDashboard: React.FC = () => {
             </div>
 
             <div className="mt-3 pt-2.5 border-t border-amber-900/60 flex items-center justify-between text-[10px] font-bold text-amber-300">
-              <span>{examPrepState?.isUnlocked ? 'Timetable Active' : '₦4,000 Credits'}</span>
+              <span>{!isFeatureEnabled('examPrep') ? 'Paused · Tap for notice' : (examPrepState?.isUnlocked ? 'Timetable Active' : '₦4,000 Credits')}</span>
               <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
             </div>
           </motion.div>
@@ -1039,11 +1033,11 @@ export const StudentDashboard: React.FC = () => {
             className="rounded-3xl p-4 bg-gradient-to-br from-[#12241D] to-[#0A1612] border-2 border-[#84CC16]/40 hover:border-[#84CC16] shadow-xl cursor-pointer select-none group flex flex-col justify-between"
           >
             <div>
-              <div className="flex items-start justify-between gap-1 mb-2">
+              <div className="flex items-start justify-between gap-2 mb-2">
                 <div className="w-10 h-10 rounded-2xl bg-[#84CC16]/20 border border-[#84CC16]/40 flex items-center justify-center text-[#84CC16]">
                   <MessageSquare className="w-5 h-5 stroke-[2.2]" />
                 </div>
-                {renderMaintenanceBadge('community_forum')}
+                {!isFeatureEnabled('communityForum') && <PausedBadge />}
               </div>
               <h3 className="text-base font-black text-white tracking-tight leading-tight">
                 Student Forum
@@ -1054,7 +1048,7 @@ export const StudentDashboard: React.FC = () => {
             </div>
 
             <div className="mt-3 pt-2.5 border-t border-emerald-900/60 flex items-center justify-between text-[10px] font-bold text-[#84CC16]">
-              <span>Active Peer Threads</span>
+              <span>{!isFeatureEnabled('communityForum') ? 'Paused · Tap for notice' : 'Active Peer Threads'}</span>
               <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
             </div>
           </motion.div>
@@ -1081,10 +1075,13 @@ export const StudentDashboard: React.FC = () => {
                   <h3 className="text-base font-black text-white tracking-tight">
                     Competitions & League
                   </h3>
-                  <span className="text-[10px] font-black bg-[#FF5B00] text-slate-950 px-2 py-0.5 rounded-full uppercase">
-                    Prizes
-                  </span>
-                  {renderMaintenanceBadge('competitions')}
+                  {!isFeatureEnabled('competitions') ? (
+                    <PausedBadge />
+                  ) : (
+                    <span className="text-[10px] font-black bg-[#FF5B00] text-slate-950 px-2 py-0.5 rounded-full uppercase">
+                      Prizes
+                    </span>
+                  )}
                 </div>
                 <p className="text-xs text-slate-300 mt-0.5">
                   3-Day Academic Championship: Smartphones, tablets & inter-school trophies!
@@ -1114,7 +1111,9 @@ export const StudentDashboard: React.FC = () => {
             <div>
               <div className="flex items-center gap-2 flex-wrap">
                 <h3 className="text-sm font-black text-white">Uniform AI Verification</h3>
-                {student.uniformVerified ? (
+                {!isFeatureEnabled('uniformVerification') ? (
+                  <PausedBadge />
+                ) : student.uniformVerified ? (
                   <span className="text-[9px] font-black text-slate-950 bg-[#84CC16] px-1.5 py-0.2 rounded-full uppercase">
                     Verified
                   </span>
@@ -1123,10 +1122,11 @@ export const StudentDashboard: React.FC = () => {
                     Pending
                   </span>
                 )}
-                {renderMaintenanceBadge('uniform_verification')}
               </div>
               <p className="text-xs text-slate-300 mt-0.5">
-                {student.uniformVerified
+                {!isFeatureEnabled('uniformVerification')
+                  ? 'Paused over-the-air · Tap to view status notice.'
+                  : student.uniformVerified
                   ? 'Your student uniform is verified with TRCN school credentials.'
                   : 'Snap your school uniform to earn the Verified Scholar badge and unlock bonuses.'}
               </p>
@@ -1135,9 +1135,9 @@ export const StudentDashboard: React.FC = () => {
 
           <button
             type="button"
-            className="py-1.5 px-3 rounded-xl bg-[#84CC16] text-slate-950 text-xs font-black shadow-sm shrink-0"
+            className="py-1.5 px-3 rounded-xl bg-[#84CC16] text-slate-950 text-xs font-black shadow-sm shrink-0 whitespace-nowrap"
           >
-            {student.uniformVerified ? 'View' : 'Verify'}
+            {!isFeatureEnabled('uniformVerification') ? 'Notice' : student.uniformVerified ? 'View' : 'Verify'}
           </button>
         </motion.div>
       </motion.div>

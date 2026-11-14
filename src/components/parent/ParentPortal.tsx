@@ -66,7 +66,9 @@ export const ParentPortal: React.FC = () => {
     unlinkWard,
     setActiveWard,
     securityStatus,
-    pinLockoutInfo
+    pinLockoutInfo,
+    pendingPortalTab,
+    clearPendingPortalTab
   } = useApp();
 
   const [enteredPin, setEnteredPin] = useState<string>('');
@@ -76,6 +78,16 @@ export const ParentPortal: React.FC = () => {
   const [paymentChannel, setPaymentChannel] = useState<'card' | 'transfer' | 'ussd'>('card');
   const [isProcessingPaystack, setIsProcessingPaystack] = useState<boolean>(false);
   const [parentTab, setParentTab] = useState<ParentTab>('overview');
+
+  useEffect(() => {
+    if (!pendingPortalTab) return;
+    if (pendingPortalTab.tab === 'parent_overview') setParentTab('overview');
+    else if (pendingPortalTab.tab === 'parent_approvals') setParentTab('approvals');
+    else if (pendingPortalTab.tab === 'parent_community') setParentTab('community');
+    if (pendingPortalTab.tab.startsWith('parent_')) {
+      clearPendingPortalTab();
+    }
+  }, [pendingPortalTab, clearPendingPortalTab]);
   const [activeDetailSheet, setActiveDetailSheet] = useState<DetailSheet>(null);
   const [isExamPrepModalOpen, setIsExamPrepModalOpen] = useState<boolean>(false);
   const [isMuted, setIsMuted] = useState<boolean>(getSoundMuted());

@@ -83,7 +83,7 @@ type PartnerTab = 'overview' | 'referrals' | 'transactions' | 'marketing';
 type PartnerSheet = 'referral-hub' | 'trigger-info' | null;
 
 export const GrowthPartnerPortal: React.FC = () => {
-  const { currentUserProfile, currentUser } = useApp();
+  const { currentUserProfile, currentUser, pendingPortalTab, clearPendingPortalTab } = useApp();
 
   const partnerId = currentUser?.uid || currentUserProfile?.id || 'demo-growth-partner-01';
   const partnerName = currentUserProfile?.fullName || currentUser?.displayName || 'Chidi Okafor (Education Consultant)';
@@ -101,6 +101,17 @@ export const GrowthPartnerPortal: React.FC = () => {
 
   // Tab & sheet navigation
   const [activeTab, setActiveTab] = useState<PartnerTab>('overview');
+
+  useEffect(() => {
+    if (!pendingPortalTab) return;
+    if (pendingPortalTab.tab === 'partner_overview') setActiveTab('overview');
+    else if (pendingPortalTab.tab === 'partner_referrals') setActiveTab('referrals');
+    else if (pendingPortalTab.tab === 'partner_transactions') setActiveTab('transactions');
+    else if (pendingPortalTab.tab === 'partner_marketing') setActiveTab('marketing');
+    if (pendingPortalTab.tab.startsWith('partner_')) {
+      clearPendingPortalTab();
+    }
+  }, [pendingPortalTab, clearPendingPortalTab]);
   const [activeSheet, setActiveSheet] = useState<PartnerSheet>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
 

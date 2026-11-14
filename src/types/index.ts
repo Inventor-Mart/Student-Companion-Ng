@@ -967,90 +967,124 @@ export interface OTASchoolLeagueConfig {
   updatedBy: string;
 }
 
-export type OTAUpgradeMode = 'mild_notice' | 'force_blocking';
+export type OTAUpgradeMode = 'mild' | 'recommended' | 'mandatory';
 
-export interface OTAAppRelease {
-  id: 'current_release';
-  latestVersion: string;
-  minimumSupportedVersion: string;
-  releaseTitle: string;
-  changelog: string;
-  featureHighlights: string[];
+export type OTAFeatureKey =
+  // Study & Assessments
+  | 'lessonNotes'
+  | 'termlyDrill'
+  | 'cbtExams'
+  | 'examPrep'
+  | 'scienceFormulas'
+  | 'uniformVerification'
+  // Enrichment, AI & Tutoring
+  | 'aiCoach'
+  | 'gamesHub'
+  | 'tutorMarketplace'
+  | 'virtualClassroom'
+  | 'competitions'
+  | 'aspirantHub'
+  | 'communityForum'
+  // Role Portals
+  | 'parentPortal'
+  | 'tutorPortal'
+  | 'schoolAdminPortal'
+  | 'growthPartnerPortal';
+
+export type OTAFeatureFlags = Record<OTAFeatureKey, boolean>;
+
+export interface OTAAppReleaseConfig {
+  id: string; // 'active_release'
+  latestVersion: string; // Semantic version e.g. '2.4.0'
+  minimumSupportedVersion: string; // Semantic version e.g. '2.2.0'
   upgradeMode: OTAUpgradeMode;
-  upgradeUrl?: string;
-  isActive: boolean;
+  releaseTitle: string;
+  releaseNotes: string;
+  featureHighlights: string[];
+  downloadUrl?: string; // Optional Play Store / APK download link
+  featureFlags: OTAFeatureFlags;
+  defaultPausedMessage: string;
+  pausedFeatureNotes: Partial<Record<OTAFeatureKey, string>>;
+  maintenanceMode: boolean;
+  maintenanceMessage: string;
   publishedAt: string;
   publishedBy: string;
 }
 
-export type OTAFeatureKey =
-  | 'lesson_notes'
-  | 'cbt_quizzes'
-  | 'ai_study_coach'
-  | 'competitions'
-  | 'tutor_marketplace'
-  | 'games_hub'
-  | 'science_formulas'
-  | 'community_forum'
-  | 'exam_prep'
-  | 'aspirant_hub'
-  | 'uniform_verification'
-  | 'parent_portal'
-  | 'tutor_portal'
-  | 'growth_partner_portal'
-  | 'school_admin_portal'
-  | 'virtual_classroom'
-  | 'wallet_payments';
+// ==========================================
+// CROSS-PERSONA NOTIFICATIONS & REMINDERS
+// ==========================================
 
-export interface OTAFeatureFlag {
-  featureKey: OTAFeatureKey;
-  label: string;
-  description: string;
-  category: 'Student Hub' | 'Persona Portal' | 'Core Service';
-  isPaused: boolean;
-  customBadge?: string;
-  customTitle?: string;
-  pauseReason?: string;
-  estimatedResume?: string;
-  updatedAt: string;
-  updatedBy: string;
+export type NotificationCategory = 'streak_risk' | 'inactivity_nudge' | 'ota_engagement';
+
+export type NotificationSource = 'automated_streak' | 'automated_inactivity' | 'ota_broadcast';
+
+export type NotificationDeepLinkTab =
+  | 'dashboard'
+  | 'syllabus'
+  | 'cbt'
+  | 'competitions'
+  | 'formulas'
+  | 'tutors'
+  | 'games'
+  | 'ai-coach'
+  | 'community'
+  | 'exam-prep'
+  | 'aspirant-cbt'
+  | 'admission-guide'
+  | 'mock-tournaments'
+  | 'parent_overview'
+  | 'parent_approvals'
+  | 'parent_community'
+  | 'tutor_overview'
+  | 'tutor_sessions'
+  | 'tutor_profile'
+  | 'tutor_chat'
+  | 'school_overview'
+  | 'school_publishing'
+  | 'school_materials'
+  | 'school_students'
+  | 'partner_overview'
+  | 'partner_referrals'
+  | 'partner_transactions'
+  | 'partner_marketing';
+
+export interface AppNotificationItem {
+  id: string;
+  source: NotificationSource;
+  category: NotificationCategory;
+  targetRoles: (UserRole | 'all')[];
+  title: string;
+  body: string;
+  deepLinkTab: NotificationDeepLinkTab;
+  actionLabel: string;
+  createdAt: string;
+  read: boolean;
+  priority?: 'standard' | 'high';
 }
 
-export type PersonaNotificationCategory =
-  | 'study_reminder'
-  | 'streak_alert'
-  | 'ota_update'
-  | 'tutor_activity'
-  | 'parent_alert'
-  | 'partner_earnings'
-  | 'school_notice'
-  | 'campaign';
-
-export interface PersonaNotificationItem {
+export interface OTANotificationBroadcast {
   id: string;
-  targetRole: UserRole | 'all';
-  targetUserId?: string;
   title: string;
-  message: string;
-  category: PersonaNotificationCategory;
-  actionLabel?: string;
-  actionTarget?: string; // e.g. 'cbt', 'syllabus', 'competitions', 'ai-coach', 'tutors', 'games', 'dashboard'
-  sendBrowserPush?: boolean;
-  sendEmailDigest?: boolean;
+  body: string;
+  category: NotificationCategory;
+  targetRoles: (UserRole | 'all')[];
+  deepLinkTab: NotificationDeepLinkTab;
+  actionLabel: string;
+  priority: 'standard' | 'high';
+  isActive: boolean;
   createdAt: string;
   createdBy: string;
 }
 
-export interface ReminderPreferences {
-  userId: string;
-  role: UserRole;
-  email?: string;
+export interface NotificationPreferences {
   browserPushEnabled: boolean;
-  emailDigestEnabled: boolean;
-  dailyReminderTime: string; // e.g. "17:00"
-  streakAlerts: boolean;
-  inactivityNudgeHours: number;
-  updatedAt: string;
+  streakReminders: boolean;
+  inactivityNudges: boolean;
+  otaBroadcasts: boolean;
+  quietHoursEnabled: boolean;
+  quietStartHour: number;
+  quietEndHour: number;
 }
 
 // ==========================================
