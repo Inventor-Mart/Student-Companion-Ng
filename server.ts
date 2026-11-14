@@ -1127,6 +1127,976 @@ app.post('/api/send-verification-code', async (req, res) => {
 });
 
 // ==========================================
+// LIVE STUDENT & SCHOOL LINKING CODE SERVICE
+// ==========================================
+
+const LINKING_STORE_PATH = '/tmp/sc-linking-store.json';
+const CODE_ALPHABET = '23456789ABCDEFGHJKMNPQRSTUVWXYZ'; // Excludes 0/O and 1/I/L for human readability
+
+interface StudentLinkRegistryRecord {
+  code: string;
+  studentId: string;
+  studentName: string;
+  classLevel: 'JSS 1' | 'JSS 2' | 'JSS 3' | 'SS 1' | 'SS 2' | 'SS 3' | 'University Aspirant';
+  stream: 'Junior' | 'Science' | 'Non-Science';
+  schoolName: string;
+  schoolCode?: string | null;
+  emailHash?: string | null;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface SchoolRegistryRecord {
+  schoolCode: string;
+  adminId: string;
+  schoolName: string;
+  schoolType: string;
+  state?: string | null;
+  lga?: string | null;
+  verificationStatus: 'verified' | 'pending_verification';
+  hasActiveDirectSubscription?: boolean;
+  directSubscriptionExpiresAt?: string | null;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface SchoolEnrollmentRecord {
+  id: string;
+  schoolCode: string;
+  studentId: string;
+  studentName: string;
+  classLevel: 'JSS 1' | 'JSS 2' | 'JSS 3' | 'SS 1' | 'SS 2' | 'SS 3' | 'University Aspirant';
+  stream: 'Junior' | 'Science' | 'Non-Science';
+  xp: number;
+  rank: string;
+  streakDays: number;
+  isSubscribed: boolean;
+  subscriptionTier: 'free' | 'basic' | 'standard' | 'elite';
+  subscribedUntil?: string | null;
+  uniformVerified?: boolean;
+  completedNotesCount?: number;
+  verifiedMinutes?: number;
+  joinedAt: string;
+  updatedAt: string;
+}
+
+interface LinkingStoreState {
+  studentLinks: Record<string, StudentLinkRegistryRecord>;
+  schools: Record<string, SchoolRegistryRecord>;
+  enrollments: Record<string, SchoolEnrollmentRecord>;
+}
+
+function loadLinkingStore(): LinkingStoreState {
+  try {
+    if (fs.existsSync(LINKING_STORE_PATH)) {
+      const raw = JSON.parse(fs.readFileSync(LINKING_STORE_PATH, 'utf8'));
+      return {
+        studentLinks: raw.studentLinks || {},
+        schools: raw.schools || {},
+        enrollments: raw.enrollments || {}
+      };
+    }
+  } catch {}
+  return { studentLinks: {}, schools: {}, enrollments: {} };
+}
+
+const linkingMemoryStore: LinkingStoreState = loadLinkingStore();
+
+function saveLinkingStore() {
+  try {
+    fs.writeFileSync(LINKING_STORE_PATH, JSON.stringify(linkingMemoryStore), 'utf8');
+  } catch {}
+}
+
+function normalizeRegistryCode(raw: unknown): string {
+  return String(raw || '')
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9_-]/g, '');
+}
+
+function sanitizeDocId(raw: unknown, fallbackPrefix = 'id'): string {
+  const cleaned = String(raw || '').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 120);
+  return cleaned || `${fallbackPrefix}_${Date.now()}`;
+}
+
+function hashEmailForLookup(email: unknown): string | null {
+  const clean = String(email || '').trim().toLowerCase();
+  if (!clean || !clean.includes('@')) return null;
+  return crypto.createHash('sha256').update(clean).digest('hex');
+}
+
+function normalizeClassLevel(
+  raw: unknown
+): 'JSS 1' | 'JSS 2' | 'JSS 3' | 'SS 1' | 'SS 2' | 'SS 3' | 'University Aspirant' {
+  const valid = ['JSS 1', 'JSS 2', 'JSS 3', 'SS 1', 'SS 2', 'SS 3', 'University Aspirant'] as const;
+  const val = String(raw || '').trim();
+  return (valid as readonly string[]).includes(val) ? (val as any) : 'SS 3';
+}
+
+function normalizeStream(raw: unknown, classLevel: string): 'Junior' | 'Science' | 'Non-Science' {
+  const val = String(raw || '').trim();
+  if (val === 'Junior' || val === 'Science' || val === 'Non-Science') return val;
+  return classLevel.startsWith('JSS') ? 'Junior' : 'Science';
+}
+
+function normalizeTier(raw: unknown): 'free' | 'basic' | 'standard' | 'elite' {
+  const val = String(raw || '').trim().toLowerCase();
+  if (val === 'basic' || val === 'standard' || val === 'elite') return val;
+  return 'free';
+}
+
+function generateRandomCodeSuffix(length: number): string {
+  let out = '';
+  for (let i = 0; i < length; i++) {
+    const idx = crypto.randomInt(0, CODE_ALPHABET.length);
+    out += CODE_ALPHABET[idx];
+  }
+  return out;
+}
+
+const PARTNER_LETTER_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ';
+const PARTNER_CODE_REGEX = /^GP-[A-Z]{4}[0-9]{4}$/;
+
+function generateRandomLetters(length: number): string {
+  let out = '';
+  for (let i = 0; i < length; i++) {
+    out += PARTNER_LETTER_ALPHABET[crypto.randomInt(0, PARTNER_LETTER_ALPHABET.length)];
+  }
+  return out;
+}
+
+function generateRandomDigits(length: number): string {
+  let out = '';
+  for (let i = 0; i < length; i++) {
+    out += String(crypto.randomInt(0, 10));
+  }
+  return out;
+}
+
+function buildPartnerCodeLetters(name?: string, forceRandomLetters = false): string {
+  if (!forceRandomLetters && name) {
+    const cleaned = String(name).replace(/[^a-zA-Z]/g, '').toUpperCase();
+    if (cleaned.length >= 4) {
+      return cleaned.slice(0, 4);
+    }
+    if (cleaned.length > 0) {
+      return cleaned + generateRandomLetters(4 - cleaned.length);
+    }
+  }
+  return generateRandomLetters(4);
+}
+
+async function isPartnerReferralCodeTaken(candidate: string, excludePartnerId?: string): Promise<boolean> {
+  const normalized = candidate.trim().toUpperCase();
+  for (const p of Object.values(referralMemoryStore.partners)) {
+    if (String(p.referralCode || '').toUpperCase() === normalized && (!excludePartnerId || p.id !== excludePartnerId)) {
+      return true;
+    }
+  }
+  try {
+    const snap = await getDocs(
+      query(collection(serverDb, 'growthPartners'), where('referralCode', '==', normalized), limit(1))
+    );
+    if (!snap.empty && (!excludePartnerId || snap.docs[0].id !== excludePartnerId)) {
+      return true;
+    }
+  } catch {}
+  return false;
+}
+
+async function generateUniquePartnerReferralCode(options?: {
+  name?: string;
+  excludePartnerId?: string;
+  preferredCode?: string;
+  forceRandomLetters?: boolean;
+}): Promise<string> {
+  const normalizedPref = String(options?.preferredCode || '').trim().toUpperCase();
+  if (PARTNER_CODE_REGEX.test(normalizedPref)) {
+    const taken = await isPartnerReferralCodeTaken(normalizedPref, options?.excludePartnerId);
+    if (!taken) return normalizedPref;
+  }
+
+  for (let attempt = 0; attempt < 25; attempt++) {
+    const useRandomLetters = Boolean(options?.forceRandomLetters) || attempt >= 2;
+    const letters = buildPartnerCodeLetters(options?.name, useRandomLetters);
+    const digits = generateRandomDigits(4);
+    const candidate = `GP-${letters}${digits}`;
+    if (!(await isPartnerReferralCodeTaken(candidate, options?.excludePartnerId))) {
+      return candidate;
+    }
+  }
+
+  const timeDigits = String(Date.now()).slice(-4);
+  return `GP-${generateRandomLetters(4)}${timeDigits}`;
+}
+
+async function isStudentCodeTaken(code: string, excludeStudentId?: string): Promise<boolean> {
+  const local = linkingMemoryStore.studentLinks[code];
+  if (local && local.studentId !== excludeStudentId) return true;
+  try {
+    const snap = await getDoc(doc(serverDb, 'studentLinkRegistry', code));
+    if (snap.exists()) {
+      const data = snap.data() as StudentLinkRegistryRecord;
+      if (data?.studentId && data.studentId !== excludeStudentId) return true;
+    }
+  } catch {}
+  return false;
+}
+
+async function generateUniqueStudentLinkCode(studentId: string, preferredCode?: string): Promise<string> {
+  const normalizedPref = normalizeRegistryCode(preferredCode);
+  if (normalizedPref.length >= 5 && normalizedPref.length <= 20) {
+    const taken = await isStudentCodeTaken(normalizedPref, studentId);
+    if (!taken) return normalizedPref;
+  }
+
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const candidate = `SC${generateRandomCodeSuffix(5)}`; // 7 chars e.g. SC7K9M4
+    const taken = await isStudentCodeTaken(candidate, studentId);
+    if (!taken) return candidate;
+  }
+  return `SC${Date.now().toString(36).toUpperCase().slice(-6)}`;
+}
+
+async function isSchoolCodeTaken(schoolCode: string, excludeAdminId?: string): Promise<boolean> {
+  const local = linkingMemoryStore.schools[schoolCode];
+  if (local && (!excludeAdminId || local.adminId !== excludeAdminId)) return true;
+  try {
+    const snap = await getDoc(doc(serverDb, 'schoolRegistry', schoolCode));
+    if (snap.exists()) {
+      const data = snap.data() as SchoolRegistryRecord;
+      if (!excludeAdminId || data?.adminId !== excludeAdminId) return true;
+    }
+  } catch {}
+  return false;
+}
+
+async function generateUniqueSchoolCode(adminId?: string, preferredCode?: string): Promise<string> {
+  const normalizedPref = normalizeRegistryCode(preferredCode);
+  if (normalizedPref.length >= 5 && normalizedPref.length <= 20) {
+    const taken = await isSchoolCodeTaken(normalizedPref, adminId);
+    if (!taken) return normalizedPref;
+  }
+
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const candidate = `SCH${generateRandomCodeSuffix(5)}`; // 8 chars e.g. SCH4P8W2
+    const taken = await isSchoolCodeTaken(candidate, adminId);
+    if (!taken) return candidate;
+  }
+  return `SCH${Date.now().toString(36).toUpperCase().slice(-5)}`;
+}
+
+async function resolveSchoolByCode(rawCode: string): Promise<SchoolRegistryRecord | null> {
+  const cleanCode = normalizeRegistryCode(rawCode);
+  if (!cleanCode) return null;
+
+  try {
+    const snap = await getDoc(doc(serverDb, 'schoolRegistry', cleanCode));
+    if (snap.exists()) {
+      const data = snap.data() as SchoolRegistryRecord;
+      if (data && data.active !== false) {
+        linkingMemoryStore.schools[cleanCode] = data;
+        saveLinkingStore();
+        return data;
+      }
+    }
+  } catch {}
+
+  const local = linkingMemoryStore.schools[cleanCode];
+  if (local && local.active !== false) return local;
+
+  // Fallback compact match (handles hyphens omitted by user)
+  const stripped = cleanCode.replace(/[^A-Z0-9]/g, '');
+  for (const s of Object.values(linkingMemoryStore.schools)) {
+    if (s.active !== false && s.schoolCode.replace(/[^A-Z0-9]/g, '') === stripped) {
+      return s;
+    }
+  }
+  return null;
+}
+
+async function upsertSchoolEnrollmentRecord(params: {
+  schoolCode: string;
+  studentId: string;
+  studentName: string;
+  classLevel: unknown;
+  stream: unknown;
+  xp?: number;
+  rank?: string;
+  streakDays?: number;
+  isSubscribed?: boolean;
+  subscriptionTier?: unknown;
+  subscribedUntil?: string | null;
+  uniformVerified?: boolean;
+  completedNotesCount?: number;
+  verifiedMinutes?: number;
+}): Promise<SchoolEnrollmentRecord> {
+  const cleanSchoolCode = normalizeRegistryCode(params.schoolCode);
+  const cleanStudentId = sanitizeDocId(params.studentId, 'stu');
+  const enrollmentId = `${cleanSchoolCode}_${cleanStudentId}`.slice(0, 128);
+  const nowIso = new Date().toISOString();
+
+  let existingJoinedAt: string | undefined = linkingMemoryStore.enrollments[enrollmentId]?.joinedAt;
+  if (!existingJoinedAt) {
+    try {
+      const existingSnap = await getDoc(doc(serverDb, 'schoolEnrollments', enrollmentId));
+      if (existingSnap.exists()) {
+        existingJoinedAt = (existingSnap.data() as SchoolEnrollmentRecord).joinedAt;
+      }
+    } catch {}
+  }
+
+  const classLevel = normalizeClassLevel(params.classLevel);
+  const stream = normalizeStream(params.stream, classLevel);
+  const subscriptionTier = normalizeTier(params.subscriptionTier);
+  const isSubscribed = Boolean(
+    params.isSubscribed ||
+      subscriptionTier !== 'free' ||
+      (params.subscribedUntil && new Date(params.subscribedUntil) > new Date())
+  );
+
+  const record: SchoolEnrollmentRecord = {
+    id: enrollmentId,
+    schoolCode: cleanSchoolCode,
+    studentId: cleanStudentId,
+    studentName: String(params.studentName || 'Student Scholar').trim().slice(0, 100) || 'Student Scholar',
+    classLevel,
+    stream,
+    xp: Math.max(0, Number(params.xp) || 0),
+    rank: String(params.rank || 'Fresher').trim().slice(0, 50) || 'Fresher',
+    streakDays: Math.max(0, Number(params.streakDays) || 1),
+    isSubscribed,
+    subscriptionTier,
+    ...(params.subscribedUntil ? { subscribedUntil: String(params.subscribedUntil).slice(0, 50) } : {}),
+    ...(typeof params.uniformVerified === 'boolean' ? { uniformVerified: params.uniformVerified } : {}),
+    ...(typeof params.completedNotesCount === 'number'
+      ? { completedNotesCount: Math.max(0, params.completedNotesCount) }
+      : {}),
+    ...(typeof params.verifiedMinutes === 'number'
+      ? { verifiedMinutes: Math.max(0, params.verifiedMinutes) }
+      : {}),
+    joinedAt: existingJoinedAt || nowIso,
+    updatedAt: nowIso
+  };
+
+  linkingMemoryStore.enrollments[enrollmentId] = record;
+  saveLinkingStore();
+
+  try {
+    await setDoc(doc(serverDb, 'schoolEnrollments', enrollmentId), record);
+  } catch (err) {
+    console.warn('Could not persist schoolEnrollment to Firestore:', err);
+  }
+
+  return record;
+}
+
+// 1. Issue or Retrieve Student Link Code (Collision-Checked)
+app.post('/api/students/link-code/issue', async (req, res) => {
+  try {
+    const {
+      studentId: rawStudentId,
+      studentName,
+      studentEmail,
+      classLevel: rawClassLevel,
+      stream: rawStream,
+      schoolName,
+      schoolCode: rawSchoolCode,
+      preferredCode
+    } = req.body || {};
+
+    if (!rawStudentId || !studentName) {
+      return res.status(400).json({ success: false, error: 'studentId and studentName are required' });
+    }
+
+    const studentId = sanitizeDocId(rawStudentId, 'stu');
+    const nowIso = new Date().toISOString();
+    const classLevel = normalizeClassLevel(rawClassLevel);
+    const stream = normalizeStream(rawStream, classLevel);
+    const emailHash = hashEmailForLookup(studentEmail);
+    const cleanSchoolCode = normalizeRegistryCode(rawSchoolCode);
+
+    // Check if student already has an active link code in Firestore or memory store
+    let existingRecord: StudentLinkRegistryRecord | null = null;
+    try {
+      const q = query(collection(serverDb, 'studentLinkRegistry'), where('studentId', '==', studentId), limit(1));
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        existingRecord = snap.docs[0].data() as StudentLinkRegistryRecord;
+      }
+    } catch {}
+
+    if (!existingRecord) {
+      for (const rec of Object.values(linkingMemoryStore.studentLinks)) {
+        if (rec.studentId === studentId && rec.active !== false) {
+          existingRecord = rec;
+          break;
+        }
+      }
+    }
+
+    const code = existingRecord?.code || (await generateUniqueStudentLinkCode(studentId, preferredCode));
+    const record: StudentLinkRegistryRecord = {
+      code,
+      studentId,
+      studentName: String(studentName).trim().slice(0, 100) || 'Student Scholar',
+      classLevel,
+      stream,
+      schoolName: String(schoolName || existingRecord?.schoolName || 'Secondary School').trim().slice(0, 150) || 'Secondary School',
+      ...(cleanSchoolCode ? { schoolCode: cleanSchoolCode } : existingRecord?.schoolCode ? { schoolCode: existingRecord.schoolCode } : {}),
+      ...(emailHash ? { emailHash } : existingRecord?.emailHash ? { emailHash: existingRecord.emailHash } : {}),
+      active: true,
+      createdAt: existingRecord?.createdAt || nowIso,
+      updatedAt: nowIso
+    };
+
+    linkingMemoryStore.studentLinks[code] = record;
+    saveLinkingStore();
+
+    try {
+      await setDoc(doc(serverDb, 'studentLinkRegistry', code), record);
+    } catch (err) {
+      console.warn('Could not persist studentLinkRegistry record to Firestore:', err);
+    }
+
+    return res.json({
+      success: true,
+      studentLinkCode: code,
+      record
+    });
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      error: error?.message || 'Failed to issue Student Link Code'
+    });
+  }
+});
+
+// 2. Sync Student Summary to Link Registry & School Enrollment
+app.post('/api/students/link-code/sync', async (req, res) => {
+  try {
+    const {
+      studentId: rawStudentId,
+      studentLinkCode: rawLinkCode,
+      studentName,
+      studentEmail,
+      classLevel: rawClassLevel,
+      stream: rawStream,
+      schoolName,
+      schoolCode: rawSchoolCode,
+      xp,
+      rank,
+      streakDays,
+      isSubscribed,
+      subscriptionTier,
+      subscribedUntil,
+      uniformVerified,
+      completedNotesCount,
+      verifiedMinutes
+    } = req.body || {};
+
+    if (!rawStudentId || !studentName) {
+      return res.status(400).json({ success: false, error: 'studentId and studentName are required' });
+    }
+
+    const studentId = sanitizeDocId(rawStudentId, 'stu');
+    const nowIso = new Date().toISOString();
+    const classLevel = normalizeClassLevel(rawClassLevel);
+    const stream = normalizeStream(rawStream, classLevel);
+    const emailHash = hashEmailForLookup(studentEmail);
+    const cleanSchoolCode = normalizeRegistryCode(rawSchoolCode);
+
+    // Resolve existing link record or issue new code
+    let existingRecord: StudentLinkRegistryRecord | null = null;
+    const requestedCode = normalizeRegistryCode(rawLinkCode);
+    if (requestedCode) {
+      try {
+        const docSnap = await getDoc(doc(serverDb, 'studentLinkRegistry', requestedCode));
+        if (docSnap.exists()) {
+          const data = docSnap.data() as StudentLinkRegistryRecord;
+          if (data.studentId === studentId) existingRecord = data;
+        }
+      } catch {}
+      if (!existingRecord && linkingMemoryStore.studentLinks[requestedCode]?.studentId === studentId) {
+        existingRecord = linkingMemoryStore.studentLinks[requestedCode];
+      }
+    }
+
+    if (!existingRecord) {
+      try {
+        const q = query(collection(serverDb, 'studentLinkRegistry'), where('studentId', '==', studentId), limit(1));
+        const snap = await getDocs(q);
+        if (!snap.empty) {
+          existingRecord = snap.docs[0].data() as StudentLinkRegistryRecord;
+        }
+      } catch {}
+    }
+
+    const code = existingRecord?.code || (await generateUniqueStudentLinkCode(studentId, requestedCode));
+    const linkRecord: StudentLinkRegistryRecord = {
+      code,
+      studentId,
+      studentName: String(studentName).trim().slice(0, 100) || 'Student Scholar',
+      classLevel,
+      stream,
+      schoolName: String(schoolName || existingRecord?.schoolName || 'Secondary School').trim().slice(0, 150) || 'Secondary School',
+      ...(cleanSchoolCode ? { schoolCode: cleanSchoolCode } : existingRecord?.schoolCode ? { schoolCode: existingRecord.schoolCode } : {}),
+      ...(emailHash ? { emailHash } : existingRecord?.emailHash ? { emailHash: existingRecord.emailHash } : {}),
+      active: true,
+      createdAt: existingRecord?.createdAt || nowIso,
+      updatedAt: nowIso
+    };
+
+    linkingMemoryStore.studentLinks[code] = linkRecord;
+    saveLinkingStore();
+
+    try {
+      await setDoc(doc(serverDb, 'studentLinkRegistry', code), linkRecord);
+    } catch (err) {
+      console.warn('Could not sync studentLinkRegistry to Firestore:', err);
+    }
+
+    if (cleanSchoolCode) {
+      const school = await resolveSchoolByCode(cleanSchoolCode);
+      if (school) {
+        await upsertSchoolEnrollmentRecord({
+          schoolCode: cleanSchoolCode,
+          studentId,
+          studentName: linkRecord.studentName,
+          classLevel,
+          stream,
+          xp,
+          rank,
+          streakDays,
+          isSubscribed,
+          subscriptionTier,
+          subscribedUntil,
+          uniformVerified,
+          completedNotesCount,
+          verifiedMinutes
+        });
+      }
+    }
+
+    return res.json({
+      success: true,
+      studentLinkCode: code,
+      record: linkRecord
+    });
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      error: error?.message || 'Failed to sync student link summary'
+    });
+  }
+});
+
+// 3. Live Cross-Device Parent Ward Lookup (by Student Link Code or Email Hash)
+app.get('/api/students/link-lookup', async (req, res) => {
+  try {
+    const rawQuery = String(req.query.query || req.query.code || '').trim();
+    if (!rawQuery) {
+      return res.status(400).json({ found: false, error: 'Please enter a Student Link Code or registered email.' });
+    }
+
+    const isEmail = rawQuery.includes('@');
+    let matched: StudentLinkRegistryRecord | null = null;
+
+    if (isEmail) {
+      const emailHash = hashEmailForLookup(rawQuery);
+      if (emailHash) {
+        try {
+          const q = query(collection(serverDb, 'studentLinkRegistry'), where('emailHash', '==', emailHash), limit(1));
+          const snap = await getDocs(q);
+          if (!snap.empty) {
+            matched = snap.docs[0].data() as StudentLinkRegistryRecord;
+          }
+        } catch {}
+
+        if (!matched) {
+          for (const rec of Object.values(linkingMemoryStore.studentLinks)) {
+            if (rec.emailHash === emailHash && rec.active !== false) {
+              matched = rec;
+              break;
+            }
+          }
+        }
+      }
+    } else {
+      const normalized = normalizeRegistryCode(rawQuery);
+      if (normalized) {
+        try {
+          const snap = await getDoc(doc(serverDb, 'studentLinkRegistry', normalized));
+          if (snap.exists()) {
+            matched = snap.data() as StudentLinkRegistryRecord;
+          }
+        } catch {}
+
+        if (!matched && linkingMemoryStore.studentLinks[normalized]) {
+          matched = linkingMemoryStore.studentLinks[normalized];
+        }
+
+        // Compact fallback (handles users omitting or adding hyphens)
+        if (!matched) {
+          const stripped = normalized.replace(/[^A-Z0-9]/g, '');
+          for (const rec of Object.values(linkingMemoryStore.studentLinks)) {
+            if (rec.code.replace(/[^A-Z0-9]/g, '') === stripped && rec.active !== false) {
+              matched = rec;
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    if (!matched || matched.active === false) {
+      return res.status(404).json({
+        found: false,
+        error: isEmail
+          ? `No active student found registered with email "${rawQuery}".`
+          : `No active student found matching Link Code "${rawQuery.toUpperCase()}". Ask your ward to check their Student Dashboard for their Link Code.`
+      });
+    }
+
+    linkingMemoryStore.studentLinks[matched.code] = matched;
+    saveLinkingStore();
+
+    return res.json({
+      found: true,
+      ward: {
+        studentId: matched.studentId,
+        studentName: matched.studentName,
+        classLevel: matched.classLevel,
+        stream: matched.stream,
+        schoolName: matched.schoolName,
+        studentLinkCode: matched.code
+      }
+    });
+  } catch (error: any) {
+    return res.status(500).json({
+      found: false,
+      error: error?.message || 'Unable to verify Student Link Code right now.'
+    });
+  }
+});
+
+// 4. Issue or Update Institutional School Code (Collision-Checked)
+app.post('/api/schools/code/issue', async (req, res) => {
+  try {
+    const {
+      adminId: rawAdminId,
+      schoolName,
+      schoolType,
+      state,
+      lga,
+      verificationStatus,
+      preferredCode,
+      forceNew,
+      reserveOnly
+    } = req.body || {};
+
+    const cleanAdminId = rawAdminId ? sanitizeDocId(rawAdminId, 'adm') : '';
+    const nowIso = new Date().toISOString();
+
+    let existingSchool: SchoolRegistryRecord | null = null;
+    if (cleanAdminId && !forceNew) {
+      try {
+        const q = query(collection(serverDb, 'schoolRegistry'), where('adminId', '==', cleanAdminId), limit(1));
+        const snap = await getDocs(q);
+        if (!snap.empty) {
+          existingSchool = snap.docs[0].data() as SchoolRegistryRecord;
+        }
+      } catch {}
+
+      if (!existingSchool) {
+        for (const s of Object.values(linkingMemoryStore.schools)) {
+          if (s.adminId === cleanAdminId && s.active !== false) {
+            existingSchool = s;
+            break;
+          }
+        }
+      }
+    }
+
+    const schoolCode =
+      existingSchool?.schoolCode ||
+      (await generateUniqueSchoolCode(
+        cleanAdminId || undefined,
+        forceNew ? undefined : preferredCode
+      ));
+
+    // Reserve-only mode is used by SignUpPage preview before account creation completes
+    if (reserveOnly || !cleanAdminId) {
+      return res.json({
+        success: true,
+        schoolCode,
+        reserved: true
+      });
+    }
+
+    const normalizedStatus: 'verified' | 'pending_verification' =
+      verificationStatus === 'verified'
+        ? 'verified'
+        : verificationStatus === 'pending_verification'
+          ? 'pending_verification'
+          : existingSchool?.verificationStatus === 'verified'
+            ? 'verified'
+            : 'pending_verification';
+
+    const record: SchoolRegistryRecord = {
+      schoolCode,
+      adminId: cleanAdminId,
+      schoolName: String(schoolName || existingSchool?.schoolName || 'Secondary School').trim().slice(0, 150) || 'Secondary School',
+      schoolType: String(schoolType || existingSchool?.schoolType || 'College').trim().slice(0, 100) || 'College',
+      ...(state ? { state: String(state).trim().slice(0, 60) } : existingSchool?.state ? { state: existingSchool.state } : {}),
+      ...(lga ? { lga: String(lga).trim().slice(0, 80) } : existingSchool?.lga ? { lga: existingSchool.lga } : {}),
+      verificationStatus: normalizedStatus,
+      ...(typeof existingSchool?.hasActiveDirectSubscription === 'boolean'
+        ? { hasActiveDirectSubscription: existingSchool.hasActiveDirectSubscription }
+        : {}),
+      ...(existingSchool?.directSubscriptionExpiresAt
+        ? { directSubscriptionExpiresAt: existingSchool.directSubscriptionExpiresAt }
+        : {}),
+      active: true,
+      createdAt: existingSchool?.createdAt || nowIso,
+      updatedAt: nowIso
+    };
+
+    linkingMemoryStore.schools[schoolCode] = record;
+    saveLinkingStore();
+
+    try {
+      await setDoc(doc(serverDb, 'schoolRegistry', schoolCode), record);
+    } catch (err) {
+      console.warn('Could not persist schoolRegistry record to Firestore:', err);
+    }
+
+    return res.json({
+      success: true,
+      schoolCode,
+      school: record
+    });
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      error: error?.message || 'Failed to issue institutional School Code'
+    });
+  }
+});
+
+// 5. Validate Institutional School Code Live
+app.get('/api/schools/validate-code', async (req, res) => {
+  try {
+    const rawCode = String(req.query.code || '').trim();
+    if (!rawCode) {
+      return res.status(400).json({ valid: false, error: 'Please enter a valid School Code.' });
+    }
+
+    const school = await resolveSchoolByCode(rawCode);
+    if (!school) {
+      return res.status(404).json({
+        valid: false,
+        error: `School Code "${rawCode.toUpperCase()}" was not found. Ask your School Administrator or Principal for your school's active code.`
+      });
+    }
+
+    return res.json({
+      valid: true,
+      schoolCode: school.schoolCode,
+      school: {
+        schoolCode: school.schoolCode,
+        schoolName: school.schoolName,
+        schoolType: school.schoolType,
+        state: school.state || '',
+        lga: school.lga || '',
+        verificationStatus: school.verificationStatus
+      }
+    });
+  } catch (error: any) {
+    return res.status(500).json({
+      valid: false,
+      error: error?.message || 'Unable to validate School Code right now.'
+    });
+  }
+});
+
+// 6. Validate & Enroll Student into a Registered School
+app.post('/api/schools/enroll-student', async (req, res) => {
+  try {
+    const {
+      schoolCode: rawSchoolCode,
+      studentId: rawStudentId,
+      studentName,
+      studentEmail,
+      studentLinkCode,
+      classLevel,
+      stream,
+      xp,
+      rank,
+      streakDays,
+      isSubscribed,
+      subscriptionTier,
+      subscribedUntil,
+      uniformVerified,
+      completedNotesCount,
+      verifiedMinutes
+    } = req.body || {};
+
+    if (!rawSchoolCode || !rawStudentId || !studentName) {
+      return res.status(400).json({
+        success: false,
+        error: 'schoolCode, studentId, and studentName are required.'
+      });
+    }
+
+    const school = await resolveSchoolByCode(String(rawSchoolCode));
+    if (!school) {
+      return res.status(404).json({
+        success: false,
+        error: `School Code "${String(rawSchoolCode).trim().toUpperCase()}" was not found or is inactive. Please verify the code with your School Administrator.`
+      });
+    }
+
+    const studentId = sanitizeDocId(rawStudentId, 'stu');
+    const enrollment = await upsertSchoolEnrollmentRecord({
+      schoolCode: school.schoolCode,
+      studentId,
+      studentName,
+      classLevel,
+      stream,
+      xp,
+      rank,
+      streakDays,
+      isSubscribed,
+      subscriptionTier,
+      subscribedUntil,
+      uniformVerified,
+      completedNotesCount,
+      verifiedMinutes
+    });
+
+    // Update studentLinkRegistry record's schoolName/schoolCode if present
+    const existingLink =
+      (studentLinkCode && linkingMemoryStore.studentLinks[normalizeRegistryCode(studentLinkCode)]) ||
+      Object.values(linkingMemoryStore.studentLinks).find(l => l.studentId === studentId);
+    if (existingLink) {
+      const updatedLink: StudentLinkRegistryRecord = {
+        ...existingLink,
+        schoolCode: school.schoolCode,
+        schoolName: school.schoolName,
+        ...(hashEmailForLookup(studentEmail) ? { emailHash: hashEmailForLookup(studentEmail) } : {}),
+        updatedAt: new Date().toISOString()
+      };
+      linkingMemoryStore.studentLinks[existingLink.code] = updatedLink;
+      saveLinkingStore();
+      try {
+        await setDoc(doc(serverDb, 'studentLinkRegistry', existingLink.code), updatedLink);
+      } catch {}
+    }
+
+    return res.json({
+      success: true,
+      schoolCode: school.schoolCode,
+      schoolName: school.schoolName,
+      enrollment
+    });
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      error: error?.message || 'Failed to enroll student into school.'
+    });
+  }
+});
+
+// 7. Live Cross-Device School Roster & Accreditation Metrics
+app.get('/api/schools/:schoolCode/roster', async (req, res) => {
+  try {
+    const cleanCode = normalizeRegistryCode(req.params.schoolCode);
+    if (!cleanCode) {
+      return res.status(400).json({ success: false, error: 'schoolCode is required' });
+    }
+
+    const school = await resolveSchoolByCode(cleanCode);
+    const byStudentId = new Map<string, SchoolEnrollmentRecord>();
+
+    for (const rec of Object.values(linkingMemoryStore.enrollments)) {
+      if (rec.schoolCode === cleanCode) {
+        byStudentId.set(rec.studentId, rec);
+      }
+    }
+
+    try {
+      const q = query(collection(serverDb, 'schoolEnrollments'), where('schoolCode', '==', cleanCode));
+      const snap = await getDocs(q);
+      snap.forEach(d => {
+        const rec = d.data() as SchoolEnrollmentRecord;
+        if (rec?.studentId) {
+          byStudentId.set(rec.studentId, rec);
+          linkingMemoryStore.enrollments[rec.id] = rec;
+        }
+      });
+      saveLinkingStore();
+    } catch {}
+
+    const students = Array.from(byStudentId.values()).sort((a, b) => (b.xp || 0) - (a.xp || 0));
+    const now = new Date();
+    let paidStudents = 0;
+    let totalVerifiedReads = 0;
+    let totalVerifiedMinutes = 0;
+
+    for (const s of students) {
+      const isPaid =
+        s.isSubscribed === true ||
+        (Boolean(s.subscriptionTier) && s.subscriptionTier !== 'free') ||
+        (Boolean(s.subscribedUntil) && new Date(s.subscribedUntil!) > now);
+      if (isPaid) paidStudents++;
+      totalVerifiedReads += Number(s.completedNotesCount || 0);
+      totalVerifiedMinutes += Number(s.verifiedMinutes || 0);
+    }
+
+    const totalStudents = students.length;
+    const freeStudents = Math.max(0, totalStudents - paidStudents);
+    const hasActiveDirectSubscription = Boolean(
+      school?.hasActiveDirectSubscription &&
+        (!school.directSubscriptionExpiresAt || new Date(school.directSubscriptionExpiresAt) > now)
+    );
+    const meetsThreshold = paidStudents >= 50;
+    const isQualifiedForReview = meetsThreshold || hasActiveDirectSubscription;
+    const qualificationReason = meetsThreshold
+      ? 'paid_students_threshold'
+      : hasActiveDirectSubscription
+      ? 'direct_subscription'
+      : undefined;
+
+    return res.json({
+      success: true,
+      schoolCode: cleanCode,
+      school,
+      students,
+      metrics: {
+        totalStudents,
+        paidStudents,
+        freeStudents,
+        hasActiveDirectSubscription,
+        directSubscriptionExpiresAt: school?.directSubscriptionExpiresAt,
+        isQualifiedForReview,
+        qualificationReason,
+        totalVerifiedReads,
+        totalVerifiedMinutes
+      }
+    });
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      error: error?.message || 'Failed to fetch live school roster'
+    });
+  }
+});
+
+// ==========================================
 // GROWTH PARTNER & LIFETIME REVENUE SHARE API
 // ==========================================
 
@@ -1959,6 +2929,28 @@ app.post('/api/admin/aspirant-rewards/fulfill', async (req, res) => {
   });
 });
 
+// 2b. Reserve / Issue Collision-Checked Growth Partner Referral Code (GP-XXXX0000)
+app.post('/api/partners/code/issue', async (req, res) => {
+  try {
+    const { name, preferredCode, forceNew } = req.body || {};
+    const referralCode = await generateUniquePartnerReferralCode({
+      name: typeof name === 'string' ? name : undefined,
+      preferredCode: forceNew ? undefined : preferredCode,
+      forceRandomLetters: Boolean(forceNew)
+    });
+    return res.json({
+      success: true,
+      referralCode,
+      reserved: true
+    });
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      error: error?.message || 'Failed to generate Growth Partner referral code'
+    });
+  }
+});
+
 // 3. Get or Onboard Growth Partner Profile
 app.post('/api/partners/onboard', async (req, res) => {
   try {
@@ -2010,12 +3002,11 @@ app.post('/api/partners/onboard', async (req, res) => {
       });
     }
 
-    const initials = String(name).replace(/[^a-zA-Z]/g, '').substring(0, 4).toUpperCase() || 'GP';
-    const randNum = Math.floor(1000 + Math.random() * 9000);
-    const referralCode =
-      requestedReferralCode && String(requestedReferralCode).trim()
-        ? String(requestedReferralCode).trim().toUpperCase()
-        : `GP-${initials}${randNum}`;
+    const referralCode = await generateUniquePartnerReferralCode({
+      name,
+      excludePartnerId: partnerId,
+      preferredCode: requestedReferralCode
+    });
 
     const newPartner = {
       id: partnerId,
@@ -2510,6 +3501,29 @@ app.post('/api/paystack/verify-payment', async (req, res) => {
           expiresAt,
           status: 'active'
         });
+
+        // Also update live schoolRegistry accreditation status if schoolCode is present
+        const cleanSubSchoolCode = normalizeRegistryCode(schoolCode);
+        if (cleanSubSchoolCode) {
+          const existingReg = await resolveSchoolByCode(cleanSubSchoolCode);
+          const updatedSchoolReg: SchoolRegistryRecord = {
+            schoolCode: cleanSubSchoolCode,
+            adminId: sanitizeDocId(cleanAdminId, 'adm'),
+            schoolName: String(schoolName || existingReg?.schoolName || 'Secondary School').slice(0, 150),
+            schoolType: existingReg?.schoolType || 'College',
+            ...(existingReg?.state ? { state: existingReg.state } : {}),
+            ...(existingReg?.lga ? { lga: existingReg.lga } : {}),
+            verificationStatus: existingReg?.verificationStatus || 'verified',
+            hasActiveDirectSubscription: true,
+            directSubscriptionExpiresAt: expiresAt,
+            active: true,
+            createdAt: existingReg?.createdAt || now.toISOString(),
+            updatedAt: now.toISOString()
+          };
+          linkingMemoryStore.schools[cleanSubSchoolCode] = updatedSchoolReg;
+          saveLinkingStore();
+          await setDoc(doc(serverDb, 'schoolRegistry', cleanSubSchoolCode), updatedSchoolReg);
+        }
       } catch (dbErr) {
         console.warn('Could not persist school subscription to Firestore:', dbErr);
       }

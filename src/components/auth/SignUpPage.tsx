@@ -79,6 +79,12 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
   const [targetExam, setTargetExam] = useState<'WAEC' | 'JAMB_UTME' | 'NECO' | 'BECE' | 'INTERNAL'>('WAEC');
   const [schoolName, setSchoolName] = useState('');
   const [studentSchoolCode, setStudentSchoolCode] = useState('');
+  const [schoolCheckFeedback, setSchoolCheckFeedback] = useState<{
+    valid: boolean;
+    schoolName?: string;
+    message: string;
+  } | null>(null);
+  const [isCheckingSchoolCode, setIsCheckingSchoolCode] = useState<boolean>(false);
   const [studentReferralCode, setStudentReferralCode] = useState<string>(appliedReferralCode || '');
   const [referralCheckFeedback, setReferralCheckFeedback] = useState<{
     valid: boolean;
@@ -87,6 +93,45 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
   } | null>(null);
   const [isCheckingReferral, setIsCheckingReferral] = useState<boolean>(false);
   const [state, setState] = useState('Lagos');
+
+  const handleVerifyStudentSchoolCode = async () => {
+    const clean = studentSchoolCode.trim().toUpperCase();
+    if (!clean) {
+      setSchoolCheckFeedback(null);
+      return;
+    }
+    setIsCheckingSchoolCode(true);
+    setSchoolCheckFeedback(null);
+    try {
+      const res = await fetch(`/api/schools/validate-code?code=${encodeURIComponent(clean)}`);
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data?.valid && data?.school) {
+        setStudentSchoolCode(data.schoolCode || clean);
+        setSchoolCheckFeedback({
+          valid: true,
+          schoolName: data.school.schoolName,
+          message: `Matched school: ${data.school.schoolName} (${data.schoolCode || clean}).`
+        });
+        if (!schoolName.trim() && data.school.schoolName) {
+          setSchoolName(data.school.schoolName);
+        }
+      } else {
+        setSchoolCheckFeedback({
+          valid: false,
+          message:
+            data?.error ||
+            `School Code "${clean}" was not found. Ask your Principal or School Admin for your official code.`
+        });
+      }
+    } catch {
+      setSchoolCheckFeedback({
+        valid: false,
+        message: 'Unable to validate School Code right now. Check your connection and try again.'
+      });
+    } finally {
+      setIsCheckingSchoolCode(false);
+    }
+  };
 
   const handleVerifyStudentReferral = async () => {
     const clean = studentReferralCode.trim().toUpperCase();
@@ -171,66 +216,85 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
     );
   };
 
-  // Live lookup helper for Student Link Code / Email
-  const handleLookupStudentWard = (codeOrEmail: string) => {
+  // Live lookup helper for Student Link Code / Email (cross-device Firestore API + local fallback)
+  const handleLookupStudentWard = async (codeOrEmail: string) => {
     const term = codeOrEmail.trim();
     if (!term) {
-      setLinkSearchError('Please enter a 6-character Student Link Code or registered email.');
+      setLinkSearchError('Please enter your ward’s Student Link Code or registered email.');
       return;
     }
     setLinkSearchError(null);
     setIsSearchingStudent(true);
 
-    const isEmail = term.includes('@');
-    const cleanTerm = term.toLowerCase();
+    try {
+      let matchedWard: LinkedWard | null = null;
+      let serverResponded404 = false;
 
-    // 1. Search in all registered users
-    const found = allRegisteredUsers?.find(u => {
-      if (u.role !== 'student') return false;
-      if (isEmail && u.email?.toLowerCase() === cleanTerm) return true;
-      const code = u.studentData?.studentLinkCode?.toLowerCase() || '';
-      return code === cleanTerm || code.replace(/[^a-z0-9]/gi, '') === cleanTerm.replace(/[^a-z0-9]/gi, '');
-    });
+      try {
+        const res = await fetch(`/api/students/link-lookup?query=${encodeURIComponent(term)}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.found && data.ward) {
+            matchedWard = {
+              studentId: data.ward.studentId,
+              studentName: data.ward.studentName,
+              classLevel: data.ward.classLevel || 'SS 3',
+              stream: data.ward.stream || 'Science',
+              schoolName: data.ward.schoolName || 'Secondary School',
+              studentLinkCode: data.ward.studentLinkCode,
+              linkedAt: new Date().toISOString(),
+              isPrimary: true
+            };
+          }
+        } else if (res.status === 404) {
+          serverResponded404 = true;
+        }
+      } catch {
+        // Network error — allow local fallback below
+      }
 
-    if (found && found.studentData) {
-      const ward: LinkedWard = {
-        studentId: found.id,
-        studentName: found.fullName || found.studentData.name,
-        classLevel: found.studentData.classLevel || 'SS 3',
-        stream: found.studentData.stream || 'Science',
-        schoolName: found.studentData.school || 'Secondary School',
-        studentLinkCode: found.studentData.studentLinkCode || codeOrEmail.toUpperCase(),
-        linkedAt: new Date().toISOString(),
-        isPrimary: true
-      };
-      setMatchedStudent(ward);
-      setWardName(ward.studentName);
-      setWardClassLevel(ward.classLevel);
-      setWardSchoolName(ward.schoolName);
-    } else {
-      // Recognized demo link code fallback (e.g. STU-8K2D)
-      if (cleanTerm === 'stu-8k2d' || cleanTerm.replace(/[^a-z0-9]/gi, '') === 'stu8k2d') {
-        const demoWard: LinkedWard = {
-          studentId: 'std-demo-amina',
-          studentName: 'Amina Okon',
-          classLevel: 'SS 3',
-          stream: 'Science',
-          schoolName: "King's College Lagos",
-          studentLinkCode: 'STU-8K2D',
-          linkedAt: new Date().toISOString(),
-          isPrimary: true
-        };
-        setMatchedStudent(demoWard);
-        setWardName(demoWard.studentName);
-        setWardClassLevel(demoWard.classLevel);
-        setWardSchoolName(demoWard.schoolName);
+      // Fallback to local browser directory only if not resolved remotely
+      if (!matchedWard) {
+        const isEmail = term.includes('@');
+        const cleanTerm = term.toLowerCase();
+        const found = allRegisteredUsers?.find(u => {
+          if (u.role !== 'student') return false;
+          if (isEmail && u.email?.toLowerCase() === cleanTerm) return true;
+          const code = u.studentData?.studentLinkCode?.toLowerCase() || '';
+          return Boolean(
+            code && (code === cleanTerm || code.replace(/[^a-z0-9]/gi, '') === cleanTerm.replace(/[^a-z0-9]/gi, ''))
+          );
+        });
+
+        if (found && found.studentData) {
+          matchedWard = {
+            studentId: found.id,
+            studentName: found.fullName || found.studentData.name,
+            classLevel: found.studentData.classLevel || 'SS 3',
+            stream: found.studentData.stream || 'Science',
+            schoolName: found.studentData.school || 'Secondary School',
+            studentLinkCode: found.studentData.studentLinkCode || term.toUpperCase(),
+            linkedAt: new Date().toISOString(),
+            isPrimary: true
+          };
+        }
+      }
+
+      if (matchedWard) {
+        setMatchedStudent(matchedWard);
+        setWardName(matchedWard.studentName);
+        setWardClassLevel(matchedWard.classLevel);
+        setWardSchoolName(matchedWard.schoolName);
       } else {
         setLinkSearchError(
-          `No active student account found for "${term}". You can type your ward's name manually below; you can also link their account later in the Parent Portal.`
+          serverResponded404
+            ? `No active student account found for "${term}". Check the Student Link Code on your ward's dashboard, or type their details manually below.`
+            : `No active student account found for "${term}". You can type your ward's name manually below; you can also link their account later in the Parent Portal.`
         );
       }
+    } finally {
+      setIsSearchingStudent(false);
     }
-    setIsSearchingStudent(false);
   };
 
   // Progressive Tutor Fields (Google Form Sections 1 to 5)
@@ -275,15 +339,84 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
   const [adminPhone, setAdminPhone] = useState('');
   const [adminState, setAdminState] = useState('Lagos');
   const [adminLga, setAdminLga] = useState('Lagos Island');
-  const [adminSchoolCode, setAdminSchoolCode] = useState(() => `SCHL${Math.floor(10 + Math.random() * 90)}`);
+  const [adminSchoolCode, setAdminSchoolCode] = useState('');
+  const [isGeneratingSchoolCode, setIsGeneratingSchoolCode] = useState(false);
   const [adminDocumentUrl, setAdminDocumentUrl] = useState('');
+
+  const requestServerSchoolCode = async (forceNew = false) => {
+    setIsGeneratingSchoolCode(true);
+    try {
+      const res = await fetch('/api/schools/code/issue', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          reserveOnly: true,
+          forceNew
+        })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data?.success && data?.schoolCode) {
+        setAdminSchoolCode(String(data.schoolCode).toUpperCase());
+      }
+    } catch {
+      // Leave blank if offline; registerNewUser will retry on server sync
+    } finally {
+      setIsGeneratingSchoolCode(false);
+    }
+  };
+
+  useEffect(() => {
+    if (selectedRole === 'admin' && !adminSchoolCode && !isGeneratingSchoolCode) {
+      void requestServerSchoolCode(false);
+    }
+  }, [selectedRole, adminSchoolCode, isGeneratingSchoolCode]);
 
   // Growth Partner Fields (Live Application & Settlement)
   const [partnerBankName, setPartnerBankName] = useState('Guaranty Trust Bank (GTBank)');
   const [partnerAccountNumber, setPartnerAccountNumber] = useState('');
   const [partnerAccountName, setPartnerAccountName] = useState('');
   const [partnerRegion, setPartnerRegion] = useState('Lagos State');
-  const [partnerReferralCode, setPartnerReferralCode] = useState(() => `GROW${Math.floor(10 + Math.random() * 90)}`);
+  const [partnerReferralCode, setPartnerReferralCode] = useState('');
+  const [isGeneratingPartnerCode, setIsGeneratingPartnerCode] = useState(false);
+
+  const requestServerPartnerCode = async (forceNew = false) => {
+    setIsGeneratingPartnerCode(true);
+    const candidateName = `${firstName} ${lastName}`.trim();
+    try {
+      const res = await fetch('/api/partners/code/issue', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: candidateName || undefined,
+          forceNew
+        })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data?.success && data?.referralCode) {
+        setPartnerReferralCode(String(data.referralCode).toUpperCase());
+        return;
+      }
+    } catch {
+      // Fallback handled below if offline
+    } finally {
+      setIsGeneratingPartnerCode(false);
+    }
+
+    const lettersPool = 'ABCDEFGHJKMNPQRSTUVWXYZ';
+    const baseLetters = forceNew ? '' : candidateName.replace(/[^a-zA-Z]/g, '').toUpperCase().slice(0, 4);
+    let letters = baseLetters;
+    while (letters.length < 4) {
+      letters += lettersPool[Math.floor(Math.random() * lettersPool.length)];
+    }
+    const digits = String(Math.floor(Math.random() * 10000)).padStart(4, '0');
+    setPartnerReferralCode(`GP-${letters}${digits}`);
+  };
+
+  useEffect(() => {
+    if (selectedRole === 'growth_partner' && !partnerReferralCode && !isGeneratingPartnerCode) {
+      void requestServerPartnerCode(false);
+    }
+  }, [selectedRole, partnerReferralCode, isGeneratingPartnerCode]);
 
   const roleCards: {
     role: UserRole;
@@ -459,7 +592,7 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
           classLevel: wardClassLevel,
           stream: wardClassLevel.startsWith('JSS') ? 'Junior' : 'Science',
           schoolName: wardSchoolName.trim() || 'Secondary School',
-          studentLinkCode: studentLinkCodeInput.trim().toUpperCase() || 'STU-8K2D',
+          studentLinkCode: studentLinkCodeInput.trim().toUpperCase(),
           linkedAt: new Date().toISOString(),
           isPrimary: true
         });
@@ -482,7 +615,7 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
         linkedWards: initialLinkedWards,
         classLevel: wardClassLevel,
         schoolName: wardSchoolName.trim() || 'Secondary School',
-        studentLinkCode: studentLinkCodeInput.trim().toUpperCase() || 'STU-8K2D'
+        studentLinkCode: studentLinkCodeInput.trim().toUpperCase()
       });
     } else if (selectedRole === 'tutor') {
       const fullLegalName = middleName.trim()
@@ -927,18 +1060,36 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
                           {classLevel === 'University Aspirant' ? 'Optional Link' : 'Link with your School'}
                         </span>
                       </div>
-                      <input
-                        type="text"
-                        maxLength={8}
-                        value={studentSchoolCode}
-                        onChange={(e) => setStudentSchoolCode(e.target.value.toUpperCase())}
-                        placeholder="e.g. SCHL88"
-                        className="w-full bg-[#081220] border border-[#1E304F] focus:border-[#84E000] rounded-xl py-2.5 px-3 text-xs font-mono font-bold tracking-wider text-white placeholder-slate-500 focus:outline-none uppercase transition-colors"
-                      />
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          maxLength={12}
+                          value={studentSchoolCode}
+                          onChange={(e) => {
+                            setStudentSchoolCode(e.target.value.toUpperCase());
+                            setSchoolCheckFeedback(null);
+                          }}
+                          placeholder="e.g. SCH4P8W2"
+                          className="flex-1 bg-[#081220] border border-[#1E304F] focus:border-[#84E000] rounded-xl py-2.5 px-3 text-xs font-mono font-bold tracking-wider text-white placeholder-slate-500 focus:outline-none uppercase transition-colors"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleVerifyStudentSchoolCode}
+                          disabled={isCheckingSchoolCode || !studentSchoolCode.trim()}
+                          className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-xs font-bold text-white transition-colors cursor-pointer shrink-0"
+                        >
+                          {isCheckingSchoolCode ? 'Checking...' : 'Verify'}
+                        </button>
+                      </div>
+                      {schoolCheckFeedback && (
+                        <p className={`text-[11px] leading-snug mt-1 ${schoolCheckFeedback.valid ? 'text-[#84E000]' : 'text-rose-400'}`}>
+                          {schoolCheckFeedback.message}
+                        </p>
+                      )}
                       <p className="text-[10px] text-slate-400 mt-1">
                         {classLevel === 'University Aspirant'
-                          ? 'Studying with a tutorial center or alma mater? Enter their 6-character code, or leave blank.'
-                          : 'Got a 6-character school code from your teacher or administrator? Enter it to sync lesson notes & assignments.'}
+                          ? 'Studying with a tutorial center or alma mater? Enter their official School Code, or leave blank.'
+                          : 'Got a School Code from your teacher or administrator? Enter it to sync lesson notes & assignments.'}
                       </p>
                     </div>
                   </div>
@@ -964,7 +1115,7 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
                           setStudentReferralCode(e.target.value.toUpperCase());
                           setReferralCheckFeedback(null);
                         }}
-                        placeholder="e.g. GROW84"
+                        placeholder="e.g. GP-ASKT6212"
                         className="flex-1 bg-[#060D17] border border-[#1E304F] focus:border-[#84E000] rounded-xl py-2 px-3 text-xs font-mono font-bold tracking-wider text-white placeholder-slate-500 focus:outline-none uppercase transition-colors"
                       />
                       <button
@@ -1163,7 +1314,7 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
                         </div>
 
                         <p className="text-[11px] text-slate-400 leading-snug">
-                          Enter your child's 6-character Student Link Code (found on their dashboard e.g., <span className="font-mono text-white font-bold">STU-8K2D</span>) or their registered email.
+                          Enter your child's Student Link Code (found on their dashboard e.g., <span className="font-mono text-white font-bold">SC7K9M4</span>) or their registered email.
                         </p>
 
                         <div className="flex gap-2">
@@ -1176,7 +1327,7 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
                                 setStudentLinkCodeInput(e.target.value);
                                 if (linkSearchError) setLinkSearchError(null);
                               }}
-                              placeholder="e.g. STU-8K2D or student@domain.ng"
+                              placeholder="e.g. SC7K9M4 or student@domain.ng"
                               className="w-full bg-[#091222] border border-[#1E304F] focus:border-[#FF5B00] rounded-xl py-2 pl-9 pr-3 text-xs font-mono font-bold tracking-wider text-white placeholder-slate-500 uppercase focus:outline-none transition-colors"
                             />
                           </div>
@@ -1960,28 +2111,29 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
                     </span>
                   </div>
 
-                  {/* Auto-Generated Unique 6-Character School Code */}
+                  {/* Auto-Generated Unique Collision-Checked School Code */}
                   <div className="bg-[#081220] p-3.5 rounded-2xl border border-purple-500/40 space-y-1.5">
                     <div className="flex items-center justify-between">
                       <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
                         <KeyRound className="w-3.5 h-3.5 text-purple-400" />
-                        <span>Assigned 6-Character School Code</span>
+                        <span>Assigned Unique School Code</span>
                       </label>
                       <button
                         type="button"
-                        onClick={() => setAdminSchoolCode(`SCHL${Math.floor(10 + Math.random() * 90)}`)}
-                        className="text-[10px] font-semibold text-purple-400 hover:underline flex items-center gap-1 cursor-pointer"
+                        onClick={() => void requestServerSchoolCode(true)}
+                        disabled={isGeneratingSchoolCode}
+                        className="text-[10px] font-semibold text-purple-400 hover:underline disabled:opacity-50 flex items-center gap-1 cursor-pointer"
                       >
-                        <RefreshCw className="w-3 h-3" />
-                        <span>Regenerate</span>
+                        <RefreshCw className={`w-3 h-3 ${isGeneratingSchoolCode ? 'animate-spin' : ''}`} />
+                        <span>{isGeneratingSchoolCode ? 'Generating...' : 'Regenerate'}</span>
                       </button>
                     </div>
                     <div className="flex items-center gap-2">
-                      <div className="w-32 bg-[#060D17] border border-purple-500/60 rounded-xl py-2 px-3 text-base font-mono font-black text-purple-300 tracking-widest text-center shadow-inner">
-                        {adminSchoolCode}
+                      <div className="min-w-[8.5rem] bg-[#060D17] border border-purple-500/60 rounded-xl py-2 px-3 text-base font-mono font-black text-purple-300 tracking-widest text-center shadow-inner">
+                        {isGeneratingSchoolCode && !adminSchoolCode ? '...' : adminSchoolCode || 'AUTO'}
                       </div>
                       <span className="text-[11px] text-slate-400 leading-snug">
-                        Students enter this code during signup or in their profile to link directly with your school notes, assignments &amp; exam drills.
+                        Collision-checked on the server. Students enter this code during signup or in their profile to link directly with your school notes, assignments &amp; exam drills.
                       </span>
                     </div>
                   </div>
@@ -2131,27 +2283,28 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
                     </span>
                   </div>
 
-                  {/* Auto-Generated Unique 6-Character Referral Code */}
+                  {/* Auto-Generated Unique Growth Partner Referral Code */}
                   <div className="bg-[#081220] p-3 rounded-2xl border border-emerald-500/40 space-y-1.5">
                     <div className="flex items-center justify-between">
                       <label className="text-xs font-semibold text-slate-300">
-                        Assigned 6-Character Referral Code
+                        Assigned Growth Partner Referral Code
                       </label>
                       <button
                         type="button"
-                        onClick={() => setPartnerReferralCode(`GROW${Math.floor(10 + Math.random() * 90)}`)}
-                        className="text-[10px] font-semibold text-emerald-400 hover:underline flex items-center gap-1 cursor-pointer"
+                        disabled={isGeneratingPartnerCode}
+                        onClick={() => void requestServerPartnerCode(true)}
+                        className="text-[10px] font-semibold text-emerald-400 hover:underline disabled:opacity-50 flex items-center gap-1 cursor-pointer"
                       >
-                        <RefreshCw className="w-3 h-3" />
-                        <span>Regenerate</span>
+                        <RefreshCw className={`w-3 h-3 ${isGeneratingPartnerCode ? 'animate-spin' : ''}`} />
+                        <span>{isGeneratingPartnerCode ? 'Generating...' : 'Regenerate'}</span>
                       </button>
                     </div>
                     <div className="flex items-center gap-2">
                       <div className="flex-1 bg-[#060D17] border border-emerald-500/60 rounded-xl py-2 px-3 text-sm font-mono font-black text-emerald-400 tracking-widest text-center shadow-inner">
-                        {partnerReferralCode}
+                        {partnerReferralCode || 'Generating...'}
                       </div>
                       <span className="text-[11px] text-slate-400">
-                        Shared via your personal referral link: <code className="text-white text-[10px]">?ref={partnerReferralCode}</code>
+                        Shared via your personal referral link: <code className="text-white text-[10px]">?ref={partnerReferralCode || 'GP-XXXX0000'}</code>
                       </span>
                     </div>
                   </div>

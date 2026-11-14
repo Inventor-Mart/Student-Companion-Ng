@@ -404,8 +404,22 @@ interface AppContextType {
   publishSchoolMaterial: (material: Omit<SchoolMaterial, 'id' | 'createdAt'>) => void;
   deleteSchoolMaterial: (id: string) => void;
   verifySchoolAdmin: (status: 'verified' | 'pending_verification') => void;
-  linkStudentToSchool: (schoolCode: string) => boolean;
+  linkStudentToSchool: (
+    schoolCode: string
+  ) => Promise<{ success: boolean; schoolName?: string; schoolCode?: string; error?: string }>;
   subscribeSchoolAdmin: (plan: 'monthly' | 'termly', paystackRef: string) => Promise<boolean>;
+  fetchSchoolLiveRoster: (schoolCode: string) => Promise<{
+    schoolCode: string;
+    school?: any;
+    students: any[];
+    metrics: any;
+  } | null>;
+  schoolLiveRostersByCode: Record<
+    string,
+    { schoolCode: string; school?: any; students: any[]; metrics: any; fetchedAt: string }
+  >;
+  ensureStudentLinkCode: () => Promise<string | null>;
+  ensureAdminSchoolCode: () => Promise<string | null>;
   getSchoolAccreditationMetrics: (schoolCode: string) => {
     totalStudents: number;
     paidStudents: number;
@@ -1406,6 +1420,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             if (docSnap.exists()) {
               const data = docSnap.data() as StudentProfile;
               setStudent(data);
+              if (!isAdminAccount && !data.studentLinkCode) {
+                fetch('/api/students/link-code/issue', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    studentId: user.uid,
+                    studentName: data.name || user.displayName || 'Registered Student',
+                    studentEmail: user.email,
+                    classLevel: data.classLevel,
+                    stream: data.stream,
+                    schoolName: data.school,
+                    schoolCode: data.schoolCode
+                  })
+                })
+                  .then(r => r.json())
+                  .then(resData => {
+                    if (resData?.success && resData?.studentLinkCode) {
+                      updateDoc(studentDocRef, { studentLinkCode: resData.studentLinkCode }).catch(() => {});
+                    }
+                  })
+                  .catch(() => {});
+              }
             } else if (!isAdminAccount) {
               const savedStudentStr = safeGetItem('sc_student');
               let initialClass: NigerianClassLevel = 'JSS 1';
@@ -1443,6 +1479,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 handleFirestoreError(err, OperationType.CREATE, path);
               });
               setStudent(newProfile);
+
+              fetch('/api/students/link-code/issue', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  studentId: user.uid,
+                  studentName: safeDisplayName,
+                  studentEmail: user.email,
+                  classLevel: initialClass,
+                  stream: newProfile.stream,
+                  schoolName: newProfile.school
+                })
+              })
+                .then(r => r.json())
+                .then(resData => {
+                  if (resData?.success && resData?.studentLinkCode) {
+                    updateDoc(studentDocRef, { studentLinkCode: resData.studentLinkCode }).catch(() => {});
+                  }
+                })
+                .catch(() => {});
             }
           },
           (error) => {
@@ -2649,7 +2705,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         classLevel: student.classLevel || 'SS 3',
         stream: student.stream || 'Science',
         schoolName: student.school || 'Secondary School',
-        studentLinkCode: student.studentLinkCode || 'STU-8K2D',
+        studentLinkCode: student.studentLinkCode || '',
         linkedAt: new Date().toISOString(),
         isPrimary: true
       }];
@@ -2671,55 +2727,95 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const isEmail = term.includes('@');
     const cleanTerm = term.toLowerCase();
+    let matchedWard: LinkedWard | null = null;
+    let serverResponded404 = false;
 
-    // 1. Search in allRegisteredUsers
-    const matchedUser = allRegisteredUsers.find(u => {
-      if (u.role !== 'student') return false;
-      if (isEmail && u.email?.toLowerCase() === cleanTerm) return true;
-      const code = u.studentData?.studentLinkCode?.toLowerCase() || '';
-      return code === cleanTerm || code.replace(/[^a-z0-9]/gi, '') === cleanTerm.replace(/[^a-z0-9]/gi, '');
-    });
+    // 1. Live cross-device lookup via backend API & Firestore studentLinkRegistry
+    try {
+      const res = await fetch(`/api/students/link-lookup?query=${encodeURIComponent(term)}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.found && data.ward) {
+          matchedWard = {
+            studentId: data.ward.studentId,
+            studentName: data.ward.studentName,
+            classLevel: data.ward.classLevel || 'SS 3',
+            stream: data.ward.stream || 'Science',
+            schoolName: data.ward.schoolName || 'Secondary School',
+            studentLinkCode: data.ward.studentLinkCode,
+            linkedAt: new Date().toISOString(),
+            isPrimary: linkedWards.length === 0
+          };
+        }
+      } else if (res.status === 404) {
+        serverResponded404 = true;
+      }
+    } catch {
+      // Network offline or server unavailable — allow local fallback below
+    }
 
-    let matchedStudent: StudentProfile | null = matchedUser?.studentData || null;
+    // 2. Fallback to local allRegisteredUsers / current student (e.g. created offline on this device)
+    if (!matchedWard) {
+      const matchedUser = allRegisteredUsers.find(u => {
+        if (u.role !== 'student') return false;
+        if (isEmail && u.email?.toLowerCase() === cleanTerm) return true;
+        const code = u.studentData?.studentLinkCode?.toLowerCase() || '';
+        return Boolean(
+          code && (code === cleanTerm || code.replace(/[^a-z0-9]/gi, '') === cleanTerm.replace(/[^a-z0-9]/gi, ''))
+        );
+      });
 
-    // 2. Fallback to current student state if match
-    if (!matchedStudent && student.name) {
-      const code = (student.studentLinkCode || '').toLowerCase();
-      if ((isEmail && currentUser?.email?.toLowerCase() === cleanTerm) ||
-          code === cleanTerm ||
-          code.replace(/[^a-z0-9]/gi, '') === cleanTerm.replace(/[^a-z0-9]/gi, '')) {
-        matchedStudent = student;
+      let matchedStudent: StudentProfile | null = matchedUser?.studentData || null;
+      if (!matchedStudent && student.name) {
+        const code = (student.studentLinkCode || '').toLowerCase();
+        if (
+          (isEmail && currentUser?.email?.toLowerCase() === cleanTerm) ||
+          (code && (code === cleanTerm || code.replace(/[^a-z0-9]/gi, '') === cleanTerm.replace(/[^a-z0-9]/gi, '')))
+        ) {
+          matchedStudent = student;
+        }
+      }
+
+      if (matchedStudent && matchedStudent.studentLinkCode) {
+        matchedWard = {
+          studentId: matchedStudent.id,
+          studentName: matchedStudent.name,
+          classLevel: matchedStudent.classLevel,
+          stream: matchedStudent.stream,
+          schoolName: matchedStudent.school,
+          studentLinkCode: matchedStudent.studentLinkCode,
+          linkedAt: new Date().toISOString(),
+          isPrimary: linkedWards.length === 0
+        };
       }
     }
 
-    if (!matchedStudent) {
+    if (!matchedWard) {
       return {
         success: false,
         message: isEmail
-          ? `No student found registered with email "${term}".`
-          : `No student found matching Link Code "${term}". Ask your ward to check their Student Dashboard for their 6-character code.`
+          ? `No active student found registered with email "${term}".`
+          : serverResponded404
+          ? `No active student found matching Link Code "${term.toUpperCase()}". Ask your ward to check their Student Dashboard for their Link Code.`
+          : `No student found matching Link Code "${term.toUpperCase()}". Please verify the code and try again.`
       };
     }
 
     // Check if already linked
-    if (linkedWards.some(w => w.studentId === matchedStudent!.id || w.studentLinkCode.toLowerCase() === (matchedStudent!.studentLinkCode || '').toLowerCase())) {
+    if (
+      linkedWards.some(
+        w =>
+          w.studentId === matchedWard!.studentId ||
+          w.studentLinkCode.toLowerCase() === matchedWard!.studentLinkCode.toLowerCase()
+      )
+    ) {
       return {
         success: false,
-        message: `${matchedStudent.name} is already linked to your parent account.`
+        message: `${matchedWard.studentName} is already linked to your parent account.`
       };
     }
 
-    const newWard: LinkedWard = {
-      studentId: matchedStudent.id || `std-${Date.now()}`,
-      studentName: matchedStudent.name,
-      classLevel: matchedStudent.classLevel,
-      stream: matchedStudent.stream,
-      schoolName: matchedStudent.school,
-      studentLinkCode: matchedStudent.studentLinkCode || `STU-${Math.floor(1000 + Math.random() * 9000)}`,
-      linkedAt: new Date().toISOString(),
-      isPrimary: linkedWards.length === 0
-    };
-
+    const newWard: LinkedWard = matchedWard;
     const updatedWards = [...linkedWards, newWard];
     setLinkedWards(updatedWards);
     setActiveWardId(newWard.studentId);
@@ -2899,8 +2995,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     // Require Parent 4-digit PIN when authorizing
     const expectedPin = parentWallet.pin || currentUserProfile?.parentData?.pin || '';
-    const targetPinOwnerId = currentUserProfile?.id || currentUser?.uid || 'parent_active';
-    if (expectedPin) {
+    const targetPinOwnerId = currentUserProfile?.id || currentUser?.uid || '';
+    if (expectedPin && targetPinOwnerId) {
       const lockCheck = checkPinBruteForce(targetPinOwnerId);
       if (lockCheck.isLocked) {
         setPinLockoutInfo(lockCheck);
@@ -3115,7 +3211,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     getStoredChampionshipRegistrations()
   );
 
-  const currentStudentId = currentUser?.uid || student.id || 'my-student-id';
+  const currentStudentId = currentUser?.uid || student.id || '';
   const currentStudentChampionship = championshipRegistrations.find(r => r.studentId === currentStudentId) || null;
 
   const requestChampionshipEntry = () => {
@@ -3905,7 +4001,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (currentUser && !isOffline) {
       const bookingDocRef = doc(db, 'tutorBookings', bookingId);
       const path = `tutorBookings/${bookingId}`;
-      setDoc(bookingDocRef, newBooking).catch(err => {
+      const firestorePayload = Object.fromEntries(
+        Object.entries(newBooking).filter(([, value]) => value !== undefined)
+      );
+      setDoc(bookingDocRef, firestorePayload).catch(err => {
         handleFirestoreError(err, OperationType.CREATE, path);
       });
     }
@@ -4291,6 +4390,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         completedQuizIds: [],
         completedReadNoteIds: [],
         verifiedReadingLogs: [],
+        studentLinkCode: profileData.studentLinkCode ? String(profileData.studentLinkCode).trim().toUpperCase() : undefined,
         referredByCode: candidateRefCode || undefined,
         referralAttributedAt: candidateRefCode ? new Date().toISOString() : undefined,
         aspirantRewardStatus: 'not_eligible'
@@ -4298,6 +4398,94 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       newProfile.studentData = freshStudent;
       setStudent(freshStudent);
       safeSetItem('sc_student', JSON.stringify(freshStudent));
+
+      // Issue live collision-checked Student Link Code on the server & persist to Firestore registry
+      fetch('/api/students/link-code/issue', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          studentId: newId,
+          studentName: fullName,
+          studentEmail: email,
+          classLevel: freshStudent.classLevel,
+          stream: freshStudent.stream,
+          schoolName: freshStudent.school,
+          schoolCode: freshStudent.schoolCode,
+          preferredCode: freshStudent.studentLinkCode
+        })
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data?.success && data?.studentLinkCode) {
+            const issuedCode = String(data.studentLinkCode).toUpperCase();
+            setStudent(prev => {
+              if (prev.id !== newId) return prev;
+              const nextStu: StudentProfile = { ...prev, studentLinkCode: issuedCode };
+              safeSetItem('sc_student', JSON.stringify(nextStu));
+              return nextStu;
+            });
+            setCurrentUserProfile(prev => {
+              if (!prev || prev.id !== newId || !prev.studentData) return prev;
+              const nextProf: RegisteredUserProfile = {
+                ...prev,
+                studentData: { ...prev.studentData, studentLinkCode: issuedCode }
+              };
+              safeSetItem('sc_user_profile', JSON.stringify(nextProf));
+              return nextProf;
+            });
+            setAllRegisteredUsers(prev => {
+              const nextList = prev.map(u =>
+                u.id === newId && u.studentData
+                  ? { ...u, studentData: { ...u.studentData, studentLinkCode: issuedCode } }
+                  : u
+              );
+              safeSetItem('sc_all_users', JSON.stringify(nextList));
+              return nextList;
+            });
+
+            if (freshStudent.schoolCode) {
+              fetch('/api/schools/enroll-student', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  schoolCode: freshStudent.schoolCode,
+                  studentId: newId,
+                  studentName: fullName,
+                  studentEmail: email,
+                  studentLinkCode: issuedCode,
+                  classLevel: freshStudent.classLevel,
+                  stream: freshStudent.stream,
+                  xp: 0,
+                  rank: 'Fresher',
+                  streakDays: 1,
+                  isSubscribed: false,
+                  subscriptionTier: 'free'
+                })
+              })
+                .then(r => r.json())
+                .then(enrollData => {
+                  if (enrollData?.success && enrollData?.schoolName) {
+                    setStudent(prev => {
+                      if (prev.id !== newId) return prev;
+                      const shouldReplaceSchool =
+                        !prev.school ||
+                        prev.school === 'Secondary School' ||
+                        prev.school === 'Federal Secondary School';
+                      const nextStu: StudentProfile = {
+                        ...prev,
+                        schoolCode: enrollData.schoolCode || prev.schoolCode,
+                        school: shouldReplaceSchool ? enrollData.schoolName : prev.school
+                      };
+                      safeSetItem('sc_student', JSON.stringify(nextStu));
+                      return nextStu;
+                    });
+                  }
+                })
+                .catch(() => {});
+            }
+          }
+        })
+        .catch(() => {});
 
       if (candidateRefCode) {
         setAppliedReferralCode(candidateRefCode);
@@ -4414,13 +4602,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         });
       }
     } else if (role === 'growth_partner') {
-      const generatedCode = profileData.referralCode || `GROW${Math.floor(10 + Math.random() * 90)}`;
+      const PARTNER_CODE_REGEX = /^GP-[A-Z]{4}[0-9]{4}$/;
+      const requestedCode = String(profileData.referralCode || '').trim().toUpperCase();
+      const buildFallbackPartnerCode = (partnerName: string) => {
+        const lettersPool = 'ABCDEFGHJKMNPQRSTUVWXYZ';
+        const nameLetters = partnerName.replace(/[^a-zA-Z]/g, '').toUpperCase().slice(0, 4);
+        let letters = nameLetters;
+        while (letters.length < 4) {
+          letters += lettersPool[Math.floor(Math.random() * lettersPool.length)];
+        }
+        const digits = String(Math.floor(Math.random() * 10000)).padStart(4, '0');
+        return `GP-${letters}${digits}`;
+      };
+      const initialReferralCode = PARTNER_CODE_REGEX.test(requestedCode)
+        ? requestedCode
+        : buildFallbackPartnerCode(fullName);
+
       const partnerObj: GrowthPartner = {
         id: newId,
         name: fullName,
         email,
         phone: profileData.phone || '',
-        referralCode: generatedCode,
+        referralCode: initialReferralCode,
         commissionRatePercent: 10,
         totalEarningsNaira: 0,
         totalPaidOutNaira: 0,
@@ -4433,7 +4636,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
       newProfile.growthPartnerData = partnerObj;
 
-      // Sync with server Firestore partner endpoint asynchronously
+      // Sync with server Firestore partner endpoint and reconcile collision-checked GP-XXXX0000 code
       fetch('/api/partners/onboard', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -4445,24 +4648,95 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           bankName: profileData.bankName || 'Guaranty Trust Bank (GTBank)',
           accountNumber: profileData.accountNumber || '',
           accountName: profileData.accountName || fullName,
-          referralCode: generatedCode
+          referralCode: initialReferralCode
         })
-      }).catch(err => console.warn('Could not sync partner with server:', err));
+      })
+        .then(res => res.json())
+        .then(data => {
+          const liveCode = String(data?.partner?.referralCode || '').trim().toUpperCase();
+          if (data?.success && liveCode) {
+            setCurrentUserProfile(prev => {
+              if (!prev || prev.id !== newId || !prev.growthPartnerData) return prev;
+              const nextProf: RegisteredUserProfile = {
+                ...prev,
+                growthPartnerData: { ...prev.growthPartnerData, referralCode: liveCode }
+              };
+              safeSetItem('sc_user_profile', JSON.stringify(nextProf));
+              return nextProf;
+            });
+            setAllRegisteredUsers(prev => {
+              const nextList = prev.map(u =>
+                u.id === newId && u.growthPartnerData
+                  ? { ...u, growthPartnerData: { ...u.growthPartnerData, referralCode: liveCode } }
+                  : u
+              );
+              safeSetItem('sc_all_users', JSON.stringify(nextList));
+              return nextList;
+            });
+          }
+        })
+        .catch(err => console.warn('Could not sync partner with server:', err));
     } else if (role === 'admin') {
       const isPrivilegedAdmin = isSuperAdminEmail(email);
-      const generatedSchoolCode = profileData.schoolCode || `SCHL${Math.floor(10 + Math.random() * 90)}`;
+      const initialSchoolCode = profileData.schoolCode
+        ? String(profileData.schoolCode).trim().toUpperCase()
+        : '';
+      const adminVerifStatus: 'verified' | 'pending_verification' = isPrivilegedAdmin
+        ? 'verified'
+        : profileData.verificationStatus || 'pending_verification';
+
       newProfile.adminData = {
         schoolName: profileData.schoolName || 'Secondary School',
         schoolType: profileData.schoolType || 'College',
-        schoolCode: generatedSchoolCode,
+        schoolCode: initialSchoolCode,
         designation: profileData.designation || 'School Administrator',
         phone: profileData.phone || '',
         state: profileData.state || 'Lagos',
         lga: profileData.lga || 'Lagos Island',
         documentUrl: profileData.documentUrl || '',
-        verificationStatus: isPrivilegedAdmin ? 'verified' : (profileData.verificationStatus || 'pending_verification'),
+        verificationStatus: adminVerifStatus,
         verifiedAt: isPrivilegedAdmin ? new Date().toISOString() : undefined
       };
+
+      // Register & persist collision-checked School Code into live Firestore schoolRegistry
+      fetch('/api/schools/code/issue', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          adminId: newId,
+          schoolName: newProfile.adminData.schoolName,
+          schoolType: newProfile.adminData.schoolType,
+          state: newProfile.adminData.state,
+          lga: newProfile.adminData.lga,
+          verificationStatus: adminVerifStatus,
+          preferredCode: initialSchoolCode || undefined
+        })
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data?.success && data?.schoolCode) {
+            const liveCode = String(data.schoolCode).toUpperCase();
+            setCurrentUserProfile(prev => {
+              if (!prev || prev.id !== newId || !prev.adminData) return prev;
+              const nextProf: RegisteredUserProfile = {
+                ...prev,
+                adminData: { ...prev.adminData, schoolCode: liveCode }
+              };
+              safeSetItem('sc_user_profile', JSON.stringify(nextProf));
+              return nextProf;
+            });
+            setAllRegisteredUsers(prev => {
+              const nextList = prev.map(u =>
+                u.id === newId && u.adminData
+                  ? { ...u, adminData: { ...u.adminData, schoolCode: liveCode } }
+                  : u
+              );
+              safeSetItem('sc_all_users', JSON.stringify(nextList));
+              return nextList;
+            });
+          }
+        })
+        .catch(() => {});
     }
 
     setAllRegisteredUsers(prev => {
@@ -4501,6 +4775,217 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  const [schoolLiveRostersByCode, setSchoolLiveRostersByCode] = useState<
+    Record<string, { schoolCode: string; school?: any; students: any[]; metrics: any; fetchedAt: string }>
+  >({});
+
+  const fetchSchoolLiveRoster = useCallback(async (schoolCode: string) => {
+    const cleanCode = (schoolCode || '').trim().toUpperCase();
+    if (!cleanCode) return null;
+    try {
+      const res = await fetch(`/api/schools/${encodeURIComponent(cleanCode)}/roster`);
+      if (!res.ok) return null;
+      const data = await res.json();
+      if (!data?.success) return null;
+      const entry = {
+        schoolCode: data.schoolCode || cleanCode,
+        school: data.school,
+        students: Array.isArray(data.students) ? data.students : [],
+        metrics: data.metrics || {},
+        fetchedAt: new Date().toISOString()
+      };
+      setSchoolLiveRostersByCode(prev => ({ ...prev, [cleanCode]: entry }));
+      return entry;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const ensureStudentLinkCode = useCallback(async (): Promise<string | null> => {
+    const sid = student.id || currentUser?.uid || currentUserProfile?.id;
+    const sname = student.name || currentUserProfile?.fullName;
+    if (!sid || !sname) return null;
+    if (student.studentLinkCode) {
+      // Ensure it is registered in Firestore studentLinkRegistry
+      fetch('/api/students/link-code/issue', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          studentId: sid,
+          studentName: sname,
+          studentEmail: currentUser?.email || currentUserProfile?.email,
+          classLevel: student.classLevel,
+          stream: student.stream,
+          schoolName: student.school,
+          schoolCode: student.schoolCode,
+          preferredCode: student.studentLinkCode
+        })
+      }).catch(() => {});
+      return student.studentLinkCode;
+    }
+
+    try {
+      const res = await fetch('/api/students/link-code/issue', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          studentId: sid,
+          studentName: sname,
+          studentEmail: currentUser?.email || currentUserProfile?.email,
+          classLevel: student.classLevel,
+          stream: student.stream,
+          schoolName: student.school,
+          schoolCode: student.schoolCode
+        })
+      });
+      const data = await res.json();
+      if (res.ok && data?.success && data?.studentLinkCode) {
+        const issued = String(data.studentLinkCode).toUpperCase();
+        setStudent(prev => {
+          const next = { ...prev, studentLinkCode: issued };
+          safeSetItem('sc_student', JSON.stringify(next));
+          return next;
+        });
+        if (currentUser && !isOffline && !isSuperAdminEmail(currentUser.email)) {
+          updateDoc(doc(db, 'students', currentUser.uid), { studentLinkCode: issued }).catch(() => {});
+        }
+        return issued;
+      }
+    } catch {}
+    return null;
+  }, [
+    student.id,
+    student.name,
+    student.studentLinkCode,
+    student.classLevel,
+    student.stream,
+    student.school,
+    student.schoolCode,
+    currentUser,
+    currentUserProfile?.id,
+    currentUserProfile?.fullName,
+    currentUserProfile?.email,
+    isOffline
+  ]);
+
+  const ensureAdminSchoolCode = useCallback(async (): Promise<string | null> => {
+    if (!currentUserProfile || currentUserProfile.role !== 'admin') return null;
+    const existingCode = currentUserProfile.adminData?.schoolCode;
+    try {
+      const res = await fetch('/api/schools/code/issue', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          adminId: currentUserProfile.id,
+          schoolName: currentUserProfile.adminData?.schoolName || 'Secondary School',
+          schoolType: currentUserProfile.adminData?.schoolType || 'College',
+          state: currentUserProfile.adminData?.state,
+          lga: currentUserProfile.adminData?.lga,
+          verificationStatus: currentUserProfile.adminData?.verificationStatus || 'pending_verification',
+          preferredCode: existingCode || undefined
+        })
+      });
+      const data = await res.json();
+      if (res.ok && data?.success && data?.schoolCode) {
+        const issued = String(data.schoolCode).toUpperCase();
+        if (issued !== existingCode) {
+          const updated: RegisteredUserProfile = {
+            ...currentUserProfile,
+            adminData: {
+              ...(currentUserProfile.adminData || { schoolName: 'Secondary School', schoolType: 'College' }),
+              schoolCode: issued
+            }
+          };
+          setCurrentUserProfile(updated);
+          safeSetItem('sc_user_profile', JSON.stringify(updated));
+          setAllRegisteredUsers(prev => {
+            const nextList = prev.map(u => (u.id === currentUserProfile.id ? updated : u));
+            safeSetItem('sc_all_users', JSON.stringify(nextList));
+            return nextList;
+          });
+        }
+        return issued;
+      }
+    } catch {}
+    return existingCode || null;
+  }, [currentUserProfile]);
+
+  // Keep live Firestore studentLinkRegistry & schoolEnrollments synced whenever student academic/subscription state updates
+  useEffect(() => {
+    if (!student.id || !student.name || student.id === 'std-tunde-001') return;
+    if (isSuperAdminEmail(currentUser?.email)) return;
+
+    const timer = setTimeout(() => {
+      const verifiedMinutes = Math.round(
+        (student.verifiedReadingLogs || []).reduce((sum, l) => sum + (l.activeSeconds || 0), 0) / 60
+      );
+      const completedNotesCount =
+        (student.completedReadNoteIds || []).length || (student.verifiedReadingLogs || []).length;
+
+      fetch('/api/students/link-code/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          studentId: student.id,
+          studentLinkCode: student.studentLinkCode,
+          studentName: student.name,
+          studentEmail: currentUser?.email || currentUserProfile?.email,
+          classLevel: student.classLevel,
+          stream: student.stream,
+          schoolName: student.school,
+          schoolCode: student.schoolCode,
+          xp: student.xp,
+          rank: student.rank,
+          streakDays: student.streakDays,
+          isSubscribed: student.isSubscribed,
+          subscriptionTier: student.subscriptionTier || 'free',
+          subscribedUntil: student.subscribedUntil,
+          uniformVerified: student.uniformVerified,
+          completedNotesCount,
+          verifiedMinutes
+        })
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data?.success && data?.studentLinkCode && !student.studentLinkCode) {
+            const issued = String(data.studentLinkCode).toUpperCase();
+            setStudent(prev => {
+              if (prev.id !== student.id || prev.studentLinkCode) return prev;
+              const next = { ...prev, studentLinkCode: issued };
+              safeSetItem('sc_student', JSON.stringify(next));
+              return next;
+            });
+            if (currentUser && !isOffline) {
+              updateDoc(doc(db, 'students', currentUser.uid), { studentLinkCode: issued }).catch(() => {});
+            }
+          }
+        })
+        .catch(() => {});
+    }, 600);
+
+    return () => clearTimeout(timer);
+  }, [
+    student.id,
+    student.name,
+    student.studentLinkCode,
+    student.classLevel,
+    student.stream,
+    student.school,
+    student.schoolCode,
+    student.xp,
+    student.rank,
+    student.streakDays,
+    student.isSubscribed,
+    student.subscriptionTier,
+    student.subscribedUntil,
+    student.uniformVerified,
+    student.completedReadNoteIds?.length,
+    currentUser?.uid,
+    currentUser?.email,
+    currentUserProfile?.email,
+    isOffline
+  ]);
+
   const verifySchoolAdmin = (status: 'verified' | 'pending_verification') => {
     if (!currentUserProfile) return;
     const currentAdminData = currentUserProfile.adminData || {
@@ -4530,15 +5015,92 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         console.warn('Could not sync admin verification to Firestore:', err);
       });
     }
+
+    fetch('/api/schools/code/issue', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        adminId: currentUserProfile.id,
+        schoolName: updated.adminData?.schoolName,
+        schoolType: updated.adminData?.schoolType,
+        state: updated.adminData?.state,
+        lga: updated.adminData?.lga,
+        verificationStatus: status,
+        preferredCode: updated.adminData?.schoolCode
+      })
+    }).catch(() => {});
   };
 
-  const linkStudentToSchool = (code: string): boolean => {
+  const linkStudentToSchool = async (
+    code: string
+  ): Promise<{ success: boolean; schoolName?: string; schoolCode?: string; error?: string }> => {
     const cleanCode = code.trim().toUpperCase();
-    if (!cleanCode) return false;
+    if (!cleanCode) {
+      return { success: false, error: 'Please enter a valid School Code.' };
+    }
+
+    const sid = student.id || currentUser?.uid || currentUserProfile?.id || `std_${Date.now()}`;
+    const sname = student.name || currentUserProfile?.fullName || 'Student Scholar';
+    const verifiedMinutes = Math.round(
+      (student.verifiedReadingLogs || []).reduce((sum, l) => sum + (l.activeSeconds || 0), 0) / 60
+    );
+    const completedNotesCount =
+      (student.completedReadNoteIds || []).length || (student.verifiedReadingLogs || []).length;
+
+    let resolvedCode = cleanCode;
+    let resolvedSchoolName = '';
+
+    try {
+      const res = await fetch('/api/schools/enroll-student', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          schoolCode: cleanCode,
+          studentId: sid,
+          studentName: sname,
+          studentEmail: currentUser?.email || currentUserProfile?.email,
+          studentLinkCode: student.studentLinkCode,
+          classLevel: student.classLevel,
+          stream: student.stream,
+          xp: student.xp,
+          rank: student.rank,
+          streakDays: student.streakDays,
+          isSubscribed: student.isSubscribed,
+          subscriptionTier: student.subscriptionTier || 'free',
+          subscribedUntil: student.subscribedUntil,
+          uniformVerified: student.uniformVerified,
+          completedNotesCount,
+          verifiedMinutes
+        })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) {
+        return {
+          success: false,
+          error:
+            data?.error ||
+            `School Code "${cleanCode}" was not found. Ask your School Administrator for their official code.`
+        };
+      }
+      resolvedCode = String(data.schoolCode || cleanCode).toUpperCase();
+      resolvedSchoolName = String(data.schoolName || '');
+    } catch {
+      return {
+        success: false,
+        error: 'Network error verifying School Code. Please check your connection and try again.'
+      };
+    }
+
+    const shouldReplaceSchool =
+      Boolean(resolvedSchoolName) &&
+      (!student.school ||
+        student.school === 'Secondary School' ||
+        student.school === 'Federal Secondary School');
 
     const updatedStudent: StudentProfile = {
       ...student,
-      schoolCode: cleanCode
+      schoolCode: resolvedCode,
+      school: shouldReplaceSchool ? resolvedSchoolName : student.school
     };
     setStudent(updatedStudent);
     safeSetItem('sc_student', JSON.stringify(updatedStudent));
@@ -4557,14 +5119,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         safeSetItem('sc_all_users', JSON.stringify(updatedList));
         return updatedList;
       });
-
-      if (!isOffline && isFirebaseConnected && currentUser?.uid && !isSuperAdminEmail(currentUser.email)) {
-        updateDoc(doc(db, 'students', currentUser.uid), { schoolCode: cleanCode }).catch(err => {
-          console.warn('Could not sync student school code to Firestore:', err);
-        });
-      }
     }
-    return true;
+
+    if (!isOffline && isFirebaseConnected && currentUser?.uid && !isSuperAdminEmail(currentUser.email)) {
+      updateDoc(doc(db, 'students', currentUser.uid), {
+        schoolCode: resolvedCode,
+        ...(shouldReplaceSchool ? { school: resolvedSchoolName } : {})
+      }).catch(err => {
+        console.warn('Could not sync student school code to Firestore:', err);
+      });
+    }
+
+    return {
+      success: true,
+      schoolCode: resolvedCode,
+      schoolName: resolvedSchoolName || updatedStudent.school
+    };
   };
 
   const subscribeSchoolAdmin = async (plan: 'monthly' | 'termly', paystackRef: string): Promise<boolean> => {
@@ -4616,6 +5186,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
     }
 
+    if (currentAdminData.schoolCode) {
+      void fetchSchoolLiveRoster(currentAdminData.schoolCode);
+    }
+
     return true;
   };
 
@@ -4631,27 +5205,57 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
     }
 
-    const matchingStudents: StudentProfile[] = [];
-    const seenIds = new Set<string>();
+    const byId = new Map<
+      string,
+      {
+        isSubscribed?: boolean;
+        subscriptionTier?: string;
+        subscribedUntil?: string | null;
+      }
+    >();
 
+    // 1. Live cross-device Firestore enrollments cached for this schoolCode
+    const liveEntry = schoolLiveRostersByCode[cleanCode];
+    if (liveEntry?.students) {
+      liveEntry.students.forEach((s: any) => {
+        const sid = s.studentId || s.id;
+        if (sid) {
+          byId.set(sid, {
+            isSubscribed: s.isSubscribed,
+            subscriptionTier: s.subscriptionTier,
+            subscribedUntil: s.subscribedUntil
+          });
+        }
+      });
+    }
+
+    // 2. Merge current student & local allRegisteredUsers
     if (student?.name && student.schoolCode?.toUpperCase() === cleanCode) {
-      matchingStudents.push(student);
-      seenIds.add(student.id || 'current_student');
+      const sid = student.id || 'current_student';
+      byId.set(sid, {
+        isSubscribed: student.isSubscribed,
+        subscriptionTier: student.subscriptionTier,
+        subscribedUntil: student.subscribedUntil
+      });
     }
 
     allRegisteredUsers.forEach(u => {
       if (u.role === 'student' && u.studentData && u.studentData.schoolCode?.toUpperCase() === cleanCode) {
         const sid = u.studentData.id || u.id;
-        if (!seenIds.has(sid)) {
-          seenIds.add(sid);
-          matchingStudents.push(u.studentData);
+        if (!byId.has(sid)) {
+          byId.set(sid, {
+            isSubscribed: u.studentData.isSubscribed,
+            subscriptionTier: u.studentData.subscriptionTier,
+            subscribedUntil: u.studentData.subscribedUntil
+          });
         }
       }
     });
 
     let paidCount = 0;
-    matchingStudents.forEach(s => {
-      const isPaid = s.isSubscribed === true ||
+    byId.forEach(s => {
+      const isPaid =
+        s.isSubscribed === true ||
         (Boolean(s.subscriptionTier) && s.subscriptionTier !== 'free') ||
         (Boolean(s.subscribedUntil) && new Date(s.subscribedUntil!) > new Date());
       if (isPaid) {
@@ -4659,17 +5263,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     });
 
-    const totalStudents = matchingStudents.length;
+    const totalStudents = byId.size;
     const freeStudents = Math.max(0, totalStudents - paidCount);
 
     const adminUser = allRegisteredUsers.find(
-      u => (u.role === 'school_admin' || u.role === 'admin') &&
-           u.adminData?.schoolCode?.toUpperCase() === cleanCode
+      u =>
+        (u.role === 'school_admin' || u.role === 'admin') &&
+        u.adminData?.schoolCode?.toUpperCase() === cleanCode
     );
 
-    const directSub = adminUser?.adminData?.directSubscription || currentUserProfile?.adminData?.directSubscription;
+    const directSub =
+      (adminUser?.adminData?.directSubscription) ||
+      (currentUserProfile?.adminData?.schoolCode?.toUpperCase() === cleanCode
+        ? currentUserProfile.adminData.directSubscription
+        : undefined);
     const hasActiveDirectSubscription = Boolean(
-      directSub && directSub.status === 'active' && new Date(directSub.expiresAt) > new Date()
+      (directSub && directSub.status === 'active' && new Date(directSub.expiresAt) > new Date()) ||
+        liveEntry?.metrics?.hasActiveDirectSubscription
     );
 
     const meetsThreshold = paidCount >= 50;
@@ -4685,7 +5295,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       paidStudents: paidCount,
       freeStudents,
       hasActiveDirectSubscription,
-      directSubscriptionExpiresAt: directSub?.expiresAt,
+      directSubscriptionExpiresAt:
+        directSub?.expiresAt || liveEntry?.metrics?.directSubscriptionExpiresAt,
       isQualifiedForReview,
       qualificationReason
     };
@@ -4829,7 +5440,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     const termExpiresAt = getAcademicTermEndDate();
-    const effectiveStudentId = student.id || currentUser?.uid || (currentUserProfile?.id ? currentUserProfile.id : 'student_active');
+    const effectiveStudentId = student.id || currentUser?.uid || currentUserProfile?.id || '';
 
     // Sync 10% Growth Partner commission on discounted net fee when paying via Wallet (Paystack syncs in verify-payment)
     if (!skipPartnerSync && feeNaira > 0 && activeRefCode) {
@@ -6315,6 +6926,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         verifySchoolAdmin,
         linkStudentToSchool,
         subscribeSchoolAdmin,
+        fetchSchoolLiveRoster,
+        schoolLiveRostersByCode,
+        ensureStudentLinkCode,
+        ensureAdminSchoolCode,
         getSchoolAccreditationMetrics,
         setStudentSubscriptionStatus,
         subscribeStudentTier,

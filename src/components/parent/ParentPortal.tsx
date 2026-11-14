@@ -2153,12 +2153,12 @@ export const ParentPortal: React.FC = () => {
                       setLinkWardInput(e.target.value);
                       if (linkWardFeedback) setLinkWardFeedback(null);
                     }}
-                    placeholder="e.g. STU-8K2D or student@domain.ng"
+                    placeholder="e.g. SC7K9M4 or student@domain.ng"
                     className="w-full bg-[#14203D] border-2 border-slate-700 focus:border-[#84CC16] rounded-xl py-2.5 pl-10 pr-4 text-xs font-mono font-black tracking-wider text-white placeholder-slate-500 uppercase focus:outline-none transition-colors"
                   />
                 </div>
                 <p className="text-[10px] text-slate-400 mt-1">
-                  Students can find their 6-character Link Code directly at the top of their Student Companion dashboard.
+                  Students can find their unique Link Code directly at the top of their Student Companion dashboard.
                 </p>
               </div>
 

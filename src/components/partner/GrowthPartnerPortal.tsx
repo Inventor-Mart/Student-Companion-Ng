@@ -85,9 +85,9 @@ type PartnerSheet = 'referral-hub' | 'trigger-info' | null;
 export const GrowthPartnerPortal: React.FC = () => {
   const { currentUserProfile, currentUser, pendingPortalTab, clearPendingPortalTab } = useApp();
 
-  const partnerId = currentUser?.uid || currentUserProfile?.id || 'demo-growth-partner-01';
-  const partnerName = currentUserProfile?.fullName || currentUser?.displayName || 'Chidi Okafor (Education Consultant)';
-  const partnerEmail = currentUserProfile?.email || currentUser?.email || 'partner@studentcompanion.ng';
+  const partnerId = currentUser?.uid || currentUserProfile?.id || '';
+  const partnerName = currentUserProfile?.fullName || currentUser?.displayName || '';
+  const partnerEmail = currentUserProfile?.email || currentUser?.email || '';
 
   const [loading, setLoading] = useState<boolean>(true);
   const [refreshing, setRefreshing] = useState<boolean>(false);
@@ -124,6 +124,14 @@ export const GrowthPartnerPortal: React.FC = () => {
 
   // Fetch or onboard partner
   const fetchPartnerData = async (isSilent = false) => {
+    if (!partnerId) {
+      setData(null);
+      setError('Please sign in with a registered Growth Partner account to view referral analytics.');
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
+
     if (!isSilent) setLoading(true);
     else setRefreshing(true);
     setError(null);
@@ -134,12 +142,10 @@ export const GrowthPartnerPortal: React.FC = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           partnerId,
-          name: partnerName,
+          name: partnerName || 'Growth Partner',
           email: partnerEmail,
-          phone: '+234 803 123 4567',
-          bankName: 'Access Bank Nigeria',
-          accountNumber: '0712345678',
-          accountName: partnerName
+          phone: '',
+          accountName: partnerName || 'Growth Partner'
         })
       });
 
@@ -839,14 +845,14 @@ export const GrowthPartnerPortal: React.FC = () => {
                 <div className="space-y-3 bg-[#0D1527] p-4 rounded-2xl border border-slate-800">
                   <span className="text-xs font-black text-white block">Your Live Referral Link</span>
                   <p className="text-[11px] text-slate-300 leading-relaxed">
-                    Students and parents who click your link automatically have your 6-character partner code pre-applied at registration.
+                    Students and parents who click your link automatically have your unique Growth Partner code pre-applied at registration.
                   </p>
 
                   <div className="flex items-center gap-2">
                     <input
                       type="text"
                       readOnly
-                      value={`https://studentcompanion.ng/signup?ref=${partner?.referralCode || 'GROW82'}`}
+                      value={`https://studentcompanion.ng/signup?ref=${partner?.referralCode || 'GP-PENDING'}`}
                       className="flex-1 px-3 py-2 text-xs rounded-xl bg-[#14203D] border border-slate-700 text-white font-mono focus:outline-none select-all"
                     />
                     <button
@@ -866,7 +872,7 @@ export const GrowthPartnerPortal: React.FC = () => {
                       onClick={handleCopyCode}
                       className="font-mono font-black text-[#84CC16] tracking-wider hover:underline cursor-pointer"
                     >
-                      {partner?.referralCode || 'GROW82'}
+                      {partner?.referralCode || 'GP-PENDING'}
                     </button>
                   </div>
                 </div>
@@ -882,7 +888,7 @@ export const GrowthPartnerPortal: React.FC = () => {
                       Instantly broadcast this approved promotional copy to your PTA groups, schools, and tutoring hubs.
                     </p>
                     <div className="mt-2.5 p-2.5 rounded-xl bg-[#14203D] border border-slate-700/80 text-[11px] text-slate-200 leading-relaxed">
-                      &quot;Master WAEC, JAMB &amp; Junior BECE exams with Nigeria&apos;s #1 Student Companion! Register with my official partner code *{partner?.referralCode || 'GROW82'}* for instant access: https://studentcompanion.ng/signup?ref={partner?.referralCode || 'GROW82'}&quot;
+                      &quot;Master WAEC, JAMB &amp; Junior BECE exams with Nigeria&apos;s #1 Student Companion! Register with my official partner code *{partner?.referralCode || 'GP-PENDING'}* for instant access: https://studentcompanion.ng/signup?ref={partner?.referralCode || 'GP-PENDING'}&quot;
                     </div>
                   </div>
 

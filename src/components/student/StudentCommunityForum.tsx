@@ -84,8 +84,8 @@ export const StudentCommunityForum: React.FC = () => {
     if (!inputText.trim()) return;
 
     // Run safety, anti-spam burst, phishing link & profanity screening
-    const senderId = currentUser?.uid || student.id || 'my-student-id';
-    const filterResult = analyzeMessageSecurity(inputText, senderId, {
+    const senderId = currentUser?.uid || student.id || '';
+    const filterResult = analyzeMessageSecurity(inputText, senderId || 'anonymous', {
       userId: senderId,
       userEmail: currentUser?.email || undefined,
       userRole: 'student',
@@ -101,7 +101,7 @@ export const StudentCommunityForum: React.FC = () => {
     const newMsg: ForumMessage = {
       id: `msg-${Date.now()}`,
       channelId: activeChannelId,
-      senderId: currentUser?.uid || student.id || 'my-student-id',
+      senderId,
       senderName: student.name || 'Scholar Student',
       senderRole: 'student',
       senderClassLevel: student.classLevel,

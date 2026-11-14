@@ -50,6 +50,9 @@ export const SchoolAdminPortal: React.FC = () => {
     deleteSchoolMaterial,
     allRegisteredUsers,
     getSchoolAccreditationMetrics,
+    fetchSchoolLiveRoster,
+    schoolLiveRostersByCode,
+    ensureAdminSchoolCode,
     subscribeSchoolAdmin,
     pendingPortalTab,
     clearPendingPortalTab
@@ -98,7 +101,40 @@ export const SchoolAdminPortal: React.FC = () => {
 
   // Multi-school administration selector
   const availableSchools = SCHOOL_LEADERBOARD_DATA.map(s => s.schoolName);
-  const adminSchoolCode = currentUserProfile?.adminData?.schoolCode || 'SCHL88';
+  const [resolvedAdminCode, setResolvedAdminCode] = useState<string>(
+    currentUserProfile?.adminData?.schoolCode || ''
+  );
+  const adminSchoolCode = (currentUserProfile?.adminData?.schoolCode || resolvedAdminCode || '').toUpperCase();
+  const [isRefreshingRoster, setIsRefreshingRoster] = useState(false);
+
+  useEffect(() => {
+    if (currentUserProfile?.adminData?.schoolCode) {
+      setResolvedAdminCode(currentUserProfile.adminData.schoolCode.toUpperCase());
+      return;
+    }
+    if (currentUserProfile?.role === 'admin') {
+      ensureAdminSchoolCode().then(code => {
+        if (code) setResolvedAdminCode(code.toUpperCase());
+      });
+    }
+  }, [currentUserProfile?.role, currentUserProfile?.adminData?.schoolCode, ensureAdminSchoolCode]);
+
+  useEffect(() => {
+    if (!adminSchoolCode) return;
+    void fetchSchoolLiveRoster(adminSchoolCode);
+  }, [adminSchoolCode, activeTab, fetchSchoolLiveRoster]);
+
+  const handleRefreshRoster = async () => {
+    if (!adminSchoolCode || isRefreshingRoster) return;
+    playSound.tileTap();
+    setIsRefreshingRoster(true);
+    try {
+      await fetchSchoolLiveRoster(adminSchoolCode);
+    } finally {
+      setIsRefreshingRoster(false);
+    }
+  };
+
   const defaultSchool =
     currentUserProfile?.adminData?.schoolName ||
     (student?.school && student.school !== 'Secondary School' ? student.school : "King's College Lagos");
@@ -343,28 +379,69 @@ export const SchoolAdminPortal: React.FC = () => {
     return m.type === materialFilter;
   });
 
-  // Collect ONLY live registered students who entered this school code
+  // Collect live enrolled students across devices (Firestore schoolEnrollments + local registered students)
+  const liveRosterEntry = adminSchoolCode ? schoolLiveRostersByCode[adminSchoolCode] : undefined;
   const registeredStudents = allRegisteredUsers
     .filter(u => u.role === 'student' && u.studentData)
     .map(u => u.studentData!);
 
-  const combinedStudents = [
-    ...(student?.name && student.schoolCode === adminSchoolCode ? [{ ...student, isCurrentAccount: true }] : []),
-    ...registeredStudents
-      .filter(s => s.id !== student?.id && s.schoolCode === adminSchoolCode)
-      .map(s => ({ ...s, isCurrentAccount: false }))
-  ];
+  const studentMap = new Map<string, any>();
+
+  if (liveRosterEntry?.students) {
+    liveRosterEntry.students.forEach((rec: any) => {
+      const sid = rec.studentId || rec.id;
+      if (!sid) return;
+      studentMap.set(sid, {
+        id: sid,
+        name: rec.studentName || 'Student Scholar',
+        classLevel: rec.classLevel || 'SS 3',
+        stream: rec.stream || 'Science',
+        school: selectedSchool,
+        schoolCode: rec.schoolCode || adminSchoolCode,
+        xp: Number(rec.xp || 0),
+        rank: rec.rank || 'Fresher',
+        streakDays: Number(rec.streakDays || 1),
+        isSubscribed: Boolean(rec.isSubscribed),
+        subscriptionTier: rec.subscriptionTier || 'free',
+        subscribedUntil: rec.subscribedUntil,
+        uniformVerified: Boolean(rec.uniformVerified),
+        completedNotesCount: Number(rec.completedNotesCount || 0),
+        verifiedMinutes: Number(rec.verifiedMinutes || 0),
+        completedReadNoteIds: [],
+        verifiedReadingLogs: [],
+        isCurrentAccount: sid === student?.id
+      });
+    });
+  }
+
+  if (student?.name && student.schoolCode?.toUpperCase() === adminSchoolCode && adminSchoolCode) {
+    const sid = student.id || 'current_student';
+    studentMap.set(sid, { ...student, isCurrentAccount: true });
+  }
+
+  registeredStudents
+    .filter(s => s.schoolCode?.toUpperCase() === adminSchoolCode && adminSchoolCode)
+    .forEach(s => {
+      if (!studentMap.has(s.id)) {
+        studentMap.set(s.id, { ...s, isCurrentAccount: s.id === student?.id });
+      }
+    });
+
+  const combinedStudents = Array.from(studentMap.values());
 
   const totalSchoolVerifiedReads = combinedStudents.reduce(
-    (acc, std) => acc + ((std.completedReadNoteIds || []).length || (std.verifiedReadingLogs || []).length),
+    (acc, std) =>
+      acc +
+      ((std.completedReadNoteIds || []).length ||
+        (std.verifiedReadingLogs || []).length ||
+        Number(std.completedNotesCount || 0)),
     0
   );
-  const totalSchoolVerifiedMinutes = Math.round(
-    combinedStudents.reduce(
-      (acc, std) => acc + (std.verifiedReadingLogs || []).reduce((sum, l) => sum + (l.activeSeconds || 0), 0),
-      0
-    ) / 60
-  );
+  const totalSchoolVerifiedMinutes = combinedStudents.reduce((acc, std) => {
+    const logSecs = (std.verifiedReadingLogs || []).reduce((sum: number, l: any) => sum + (l.activeSeconds || 0), 0);
+    if (logSecs > 0) return acc + Math.round(logSecs / 60);
+    return acc + Number(std.verifiedMinutes || 0);
+  }, 0);
 
   const filteredStudents = combinedStudents.filter(std => {
     if (studentClassFilter === 'junior' && !std.classLevel.startsWith('JSS')) return false;
@@ -1215,14 +1292,24 @@ export const SchoolAdminPortal: React.FC = () => {
           >
             <div className="bg-[#14203D] rounded-3xl p-4 border border-slate-800 space-y-3">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div>
-                  <h3 className="text-sm font-black text-white">
-                    Scholars Linked to {selectedSchool} ({filteredStudents.length})
-                  </h3>
-                  <p className="text-[11px] text-slate-300">
-                    Secondary students who entered code{' '}
-                    <span className="font-mono font-black text-[#84CC16]">{adminSchoolCode}</span> to sync assignments &amp; uniform verifications.
-                  </p>
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <h3 className="text-sm font-black text-white">
+                      Scholars Linked to {selectedSchool} ({filteredStudents.length})
+                    </h3>
+                    <p className="text-[11px] text-slate-300">
+                      Secondary students who entered code{' '}
+                      <span className="font-mono font-black text-[#84CC16]">{adminSchoolCode || 'Pending'}</span> to sync assignments &amp; uniform verifications.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void handleRefreshRoster()}
+                    disabled={isRefreshingRoster || !adminSchoolCode}
+                    className="px-2.5 py-1.5 rounded-xl bg-[#0D1527] hover:bg-[#18294A] border border-slate-700 text-[10px] font-black text-[#84CC16] disabled:opacity-50 cursor-pointer shrink-0"
+                  >
+                    {isRefreshingRoster ? 'Syncing...' : 'Refresh Live Roster'}
+                  </button>
                 </div>
 
                 <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
@@ -1299,10 +1386,16 @@ export const SchoolAdminPortal: React.FC = () => {
                   (Boolean(std.subscriptionTier) && std.subscriptionTier !== 'free') ||
                   (Boolean(std.subscribedUntil) && new Date(std.subscribedUntil!) > new Date());
                 const stdReadCount =
-                  (std.completedReadNoteIds || []).length || (std.verifiedReadingLogs || []).length;
-                const stdStudyMinutes = Math.round(
-                  (std.verifiedReadingLogs || []).reduce((acc, log) => acc + (log.activeSeconds || 0), 0) / 60
-                );
+                  (std.completedReadNoteIds || []).length ||
+                  (std.verifiedReadingLogs || []).length ||
+                  Number(std.completedNotesCount || 0);
+                const stdStudyMinutes =
+                  (std.verifiedReadingLogs || []).length > 0
+                    ? Math.round(
+                        (std.verifiedReadingLogs || []).reduce((acc: number, log: any) => acc + (log.activeSeconds || 0), 0) /
+                          60
+                      )
+                    : Number(std.verifiedMinutes || 0);
 
                 return (
                   <div

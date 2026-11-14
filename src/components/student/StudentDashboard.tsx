@@ -66,6 +66,7 @@ export const StudentDashboard: React.FC = () => {
     examPrepState,
     schoolMaterials,
     linkStudentToSchool,
+    ensureStudentLinkCode,
     openStudentSubscriptionModal,
     checkStudentFeatureAccess,
     isFeatureEnabled,
@@ -75,6 +76,7 @@ export const StudentDashboard: React.FC = () => {
   const [isLinkSchoolModalOpen, setIsLinkSchoolModalOpen] = useState(false);
   const [inputSchoolCode, setInputSchoolCode] = useState('');
   const [linkFeedback, setLinkFeedback] = useState<string | null>(null);
+  const [isVerifyingSchoolCode, setIsVerifyingSchoolCode] = useState(false);
   const [isExamPrepModalOpen, setIsExamPrepModalOpen] = useState(false);
   const [isCopiedLinkCode, setIsCopiedLinkCode] = useState(false);
   const [isParentLinkInfoOpen, setIsParentLinkInfoOpen] = useState(false);
@@ -111,13 +113,20 @@ export const StudentDashboard: React.FC = () => {
     return () => soundTimers.forEach(clearTimeout);
   }, []);
 
+  useEffect(() => {
+    if (student.id && student.name && !student.studentLinkCode) {
+      void ensureStudentLinkCode();
+    }
+  }, [student.id, student.name, student.studentLinkCode, ensureStudentLinkCode]);
+
   const avatarFileInputRef = useRef<HTMLInputElement>(null);
-  const studentLinkCode = student.studentLinkCode || 'STU-8K2D';
+  const studentLinkCode = student.studentLinkCode || 'Generating...';
 
   const handleCopyLinkCode = () => {
+    if (!student.studentLinkCode) return;
     playSound.tileTap();
     try {
-      navigator.clipboard.writeText(studentLinkCode);
+      navigator.clipboard.writeText(student.studentLinkCode);
       setIsCopiedLinkCode(true);
       setTimeout(() => setIsCopiedLinkCode(false), 2500);
     } catch {
@@ -126,21 +135,33 @@ export const StudentDashboard: React.FC = () => {
     }
   };
 
-  const handleLinkSchoolSubmit = (e: React.FormEvent) => {
+  const handleLinkSchoolSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     playSound.tileTap();
-    if (!inputSchoolCode.trim()) return;
+    if (!inputSchoolCode.trim() || isVerifyingSchoolCode) return;
 
-    const success = linkStudentToSchool(inputSchoolCode.trim());
-    if (success) {
-      setLinkFeedback(`✓ Linked to school code ${inputSchoolCode.trim().toUpperCase()}!`);
-      setTimeout(() => {
-        setIsLinkSchoolModalOpen(false);
-        setLinkFeedback(null);
-        setInputSchoolCode('');
-      }, 1500);
-    } else {
-      setLinkFeedback('✗ Could not link to school code. Please check and try again.');
+    setIsVerifyingSchoolCode(true);
+    setLinkFeedback(null);
+    try {
+      const result = await linkStudentToSchool(inputSchoolCode.trim());
+      if (result.success) {
+        playSound.correct();
+        setLinkFeedback(
+          `✓ Linked to ${result.schoolName || 'school'} (${result.schoolCode || inputSchoolCode.trim().toUpperCase()})!`
+        );
+        setTimeout(() => {
+          setIsLinkSchoolModalOpen(false);
+          setLinkFeedback(null);
+          setInputSchoolCode('');
+        }, 1600);
+      } else {
+        playSound.buzz();
+        setLinkFeedback(
+          `✗ ${result.error || 'Could not verify school code. Please check with your administrator.'}`
+        );
+      }
+    } finally {
+      setIsVerifyingSchoolCode(false);
     }
   };
 
@@ -1254,16 +1275,19 @@ export const StudentDashboard: React.FC = () => {
             </div>
 
             <p className="text-xs text-slate-300 leading-relaxed">
-              Enter your school’s unique 6-character code (e.g. <strong>KNGS-LA</strong> or <strong>QC-YABA</strong>) provided by your school administrator to unlock official school curriculum notes and homework.
+              Enter your school’s official 6–8 character School Code (e.g. <strong>SCH4P8W2</strong>) provided by your school administrator to verify enrollment and unlock official school curriculum notes and homework.
             </p>
 
             <form onSubmit={handleLinkSchoolSubmit} className="space-y-3">
               <input
                 type="text"
                 value={inputSchoolCode}
-                onChange={(e) => setInputSchoolCode(e.target.value.toUpperCase())}
-                placeholder="e.g. KNGS-LA"
-                maxLength={10}
+                onChange={(e) => {
+                  setInputSchoolCode(e.target.value.toUpperCase());
+                  if (linkFeedback) setLinkFeedback(null);
+                }}
+                placeholder="e.g. SCH4P8W2"
+                maxLength={12}
                 className="w-full bg-[#14203D] border-2 border-slate-700 focus:border-[#84CC16] rounded-xl px-3 py-2.5 text-center font-mono font-black text-sm text-[#84CC16] uppercase tracking-widest placeholder-slate-500 focus:outline-none"
               />
 
@@ -1283,9 +1307,10 @@ export const StudentDashboard: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 py-2 px-3 rounded-xl bg-[#84CC16] text-slate-950 text-xs font-black cursor-pointer hover:bg-[#A3E635] shadow-md shadow-[#84CC16]/20"
+                  disabled={isVerifyingSchoolCode || !inputSchoolCode.trim()}
+                  className="flex-1 py-2 px-3 rounded-xl bg-[#84CC16] disabled:opacity-50 text-slate-950 text-xs font-black cursor-pointer hover:bg-[#A3E635] shadow-md shadow-[#84CC16]/20"
                 >
-                  Link School
+                  {isVerifyingSchoolCode ? 'Verifying...' : 'Link School'}
                 </button>
               </div>
             </form>

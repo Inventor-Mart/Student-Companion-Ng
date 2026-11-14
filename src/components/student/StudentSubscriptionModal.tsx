@@ -529,7 +529,7 @@ export const StudentSubscriptionModal: React.FC<StudentSubscriptionModalProps> =
                         setReferralInput(e.target.value.toUpperCase());
                         setRefFeedback(null);
                       }}
-                      placeholder="Enter code (e.g. GROW84)"
+                      placeholder="Enter code (e.g. GP-ASKT6212)"
                       className="bg-slate-900 border border-slate-700 focus:border-emerald-500 rounded-xl px-3 py-1.5 text-xs font-mono font-bold text-white placeholder-slate-500 uppercase focus:outline-none w-44"
                     />
                     <button

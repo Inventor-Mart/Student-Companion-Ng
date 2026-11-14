@@ -311,16 +311,60 @@
         },
         "status": {
           "type": "string",
-          "enum": ["pending_parent", "confirmed", "completed", "cancelled"],
+          "enum": ["pending_payment", "pending_parent", "pending_tutor", "confirmed", "completed", "cancelled"],
           "description": "Lifecycle state of the booking"
         },
         "amountNaira": {
           "type": "number",
           "description": "Session fee in Naira"
         },
+        "scheduledStartIso": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "Scheduled start ISO timestamp"
+        },
+        "scheduledEndIso": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "Scheduled end ISO timestamp"
+        },
         "isParentApproved": {
           "type": "boolean",
           "description": "Whether parent approved escrow payment"
+        },
+        "parentApprovalDate": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "Timestamp/label of parent approval"
+        },
+        "isTutorApproved": {
+          "type": "boolean",
+          "description": "Whether assigned tutor confirmed acceptance"
+        },
+        "tutorApprovalDate": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "Timestamp/label of tutor acceptance"
+        },
+        "tutorRejectionReason": {
+          "type": "string",
+          "maxLength": 300,
+          "description": "Optional reason when tutor declines a booking"
+        },
+        "paymentReference": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "Paystack or escrow payment reference"
+        },
+        "paymentGateway": {
+          "type": "string",
+          "enum": ["paystack_live", "parent_escrow_wallet", "tutor_credit"],
+          "description": "Payment channel used for escrow hold"
+        },
+        "escrowStatus": {
+          "type": "string",
+          "enum": ["unpaid", "held_in_escrow", "released", "refunded"],
+          "description": "Current escrow settlement status"
         },
         "createdAt": {
           "type": "string",
@@ -996,6 +1040,228 @@
         "createdBy": { "type": "string", "maxLength": 150 }
       },
       "required": ["id", "title", "body", "category", "targetRoles", "deepLinkTab", "actionLabel", "priority", "isActive", "createdAt", "createdBy"]
+    },
+    "StudentLinkRegistry": {
+      "title": "StudentLinkRegistry",
+      "description": "PII-isolated live lookup record mapping a server-generated collision-checked Student Link Code to non-sensitive ward summary metadata for cross-device parent linking",
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "maxLength": 20,
+          "pattern": "^[A-Z0-9_-]+$",
+          "description": "Unique uppercase Student Link Code (e.g. SC7K9M4)"
+        },
+        "studentId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_-]+$",
+          "description": "Linked student UID"
+        },
+        "studentName": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "Student display name"
+        },
+        "classLevel": {
+          "type": "string",
+          "enum": ["JSS 1", "JSS 2", "JSS 3", "SS 1", "SS 2", "SS 3", "University Aspirant"],
+          "description": "Student class level"
+        },
+        "stream": {
+          "type": "string",
+          "enum": ["Junior", "Science", "Non-Science"],
+          "description": "Academic stream"
+        },
+        "schoolName": {
+          "type": "string",
+          "maxLength": 150,
+          "description": "Student school display name"
+        },
+        "schoolCode": {
+          "type": "string",
+          "maxLength": 40,
+          "description": "Optional linked school code"
+        },
+        "emailHash": {
+          "type": "string",
+          "maxLength": 80,
+          "description": "SHA-256 hash of normalized lowercase student email for non-PII email lookup"
+        },
+        "active": {
+          "type": "boolean",
+          "description": "Whether this link code is active"
+        },
+        "createdAt": {
+          "type": "string",
+          "maxLength": 50,
+          "description": "Creation ISO timestamp"
+        },
+        "updatedAt": {
+          "type": "string",
+          "maxLength": 50,
+          "description": "Last update ISO timestamp"
+        }
+      },
+      "required": ["code", "studentId", "studentName", "classLevel", "stream", "schoolName", "active", "createdAt", "updatedAt"]
+    },
+    "SchoolRegistry": {
+      "title": "SchoolRegistry",
+      "description": "Live institutional school directory mapping collision-checked School Codes to registered school administrator metadata",
+      "type": "object",
+      "properties": {
+        "schoolCode": {
+          "type": "string",
+          "maxLength": 40,
+          "pattern": "^[A-Z0-9_-]+$",
+          "description": "Unique uppercase 6-8 character School Code (e.g. SCH4P8W2)"
+        },
+        "adminId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_-]+$",
+          "description": "School Administrator UID"
+        },
+        "schoolName": {
+          "type": "string",
+          "maxLength": 150,
+          "description": "Official school name"
+        },
+        "schoolType": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "Institution classification"
+        },
+        "state": {
+          "type": "string",
+          "maxLength": 60,
+          "description": "Nigerian state"
+        },
+        "lga": {
+          "type": "string",
+          "maxLength": 80,
+          "description": "Local Government Area"
+        },
+        "verificationStatus": {
+          "type": "string",
+          "enum": ["verified", "pending_verification"],
+          "description": "School accreditation verification status"
+        },
+        "hasActiveDirectSubscription": {
+          "type": "boolean",
+          "description": "Whether school holds an active direct institutional subscription"
+        },
+        "directSubscriptionExpiresAt": {
+          "type": "string",
+          "maxLength": 50,
+          "description": "ISO expiry date of direct institutional subscription"
+        },
+        "active": {
+          "type": "boolean",
+          "description": "Whether the school code is active for student enrollment"
+        },
+        "createdAt": {
+          "type": "string",
+          "maxLength": 50,
+          "description": "Creation ISO timestamp"
+        },
+        "updatedAt": {
+          "type": "string",
+          "maxLength": 50,
+          "description": "Last update ISO timestamp"
+        }
+      },
+      "required": ["schoolCode", "adminId", "schoolName", "schoolType", "verificationStatus", "active", "createdAt", "updatedAt"]
+    },
+    "SchoolEnrollment": {
+      "title": "SchoolEnrollment",
+      "description": "Non-PII live student enrollment summary keyed by schoolCode and studentId for cross-device school rosters and accreditation metrics",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_-]+$",
+          "description": "Composite identifier {schoolCode}_{studentId}"
+        },
+        "schoolCode": {
+          "type": "string",
+          "maxLength": 40,
+          "pattern": "^[A-Z0-9_-]+$",
+          "description": "Enrolled School Code"
+        },
+        "studentId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_-]+$",
+          "description": "Enrolled student UID"
+        },
+        "studentName": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "Student display name"
+        },
+        "classLevel": {
+          "type": "string",
+          "enum": ["JSS 1", "JSS 2", "JSS 3", "SS 1", "SS 2", "SS 3", "University Aspirant"],
+          "description": "Student class level"
+        },
+        "stream": {
+          "type": "string",
+          "enum": ["Junior", "Science", "Non-Science"],
+          "description": "Academic stream"
+        },
+        "xp": {
+          "type": "number",
+          "description": "Current experience points"
+        },
+        "rank": {
+          "type": "string",
+          "maxLength": 50,
+          "description": "Current academic rank"
+        },
+        "streakDays": {
+          "type": "number",
+          "description": "Consecutive study days"
+        },
+        "isSubscribed": {
+          "type": "boolean",
+          "description": "Whether student has an active paid subscription"
+        },
+        "subscriptionTier": {
+          "type": "string",
+          "enum": ["free", "basic", "standard", "elite"],
+          "description": "Student subscription tier"
+        },
+        "subscribedUntil": {
+          "type": "string",
+          "maxLength": 50,
+          "description": "Subscription expiry ISO timestamp"
+        },
+        "uniformVerified": {
+          "type": "boolean",
+          "description": "Whether school uniform is verified"
+        },
+        "completedNotesCount": {
+          "type": "number",
+          "description": "Total verified lesson notes completed"
+        },
+        "verifiedMinutes": {
+          "type": "number",
+          "description": "Verified study minutes"
+        },
+        "joinedAt": {
+          "type": "string",
+          "maxLength": 50,
+          "description": "Enrollment ISO timestamp"
+        },
+        "updatedAt": {
+          "type": "string",
+          "maxLength": 50,
+          "description": "Last sync ISO timestamp"
+        }
+      },
+      "required": ["id", "schoolCode", "studentId", "studentName", "classLevel", "stream", "xp", "rank", "streakDays", "isSubscribed", "subscriptionTier", "joinedAt", "updatedAt"]
     }
   },
   "firestore": {
@@ -1166,6 +1432,24 @@
         "$ref": "#/entities/OTANotificationBroadcast"
       },
       "description": "Super Admin published Over-The-Air notifications and re-engagement reminder broadcasts"
+    },
+    "/studentLinkRegistry/{code}": {
+      "schema": {
+        "$ref": "#/entities/StudentLinkRegistry"
+      },
+      "description": "Non-PII live lookup registry mapping Student Link Codes to ward display summaries"
+    },
+    "/schoolRegistry/{schoolCode}": {
+      "schema": {
+        "$ref": "#/entities/SchoolRegistry"
+      },
+      "description": "Live institutional school registry mapping School Codes to school metadata"
+    },
+    "/schoolEnrollments/{enrollmentId}": {
+      "schema": {
+        "$ref": "#/entities/SchoolEnrollment"
+      },
+      "description": "Live cross-device student-to-school enrollment summaries for rosters and accreditation"
     }
   }
 }

@@ -195,7 +195,7 @@ export async function warmOfflineAppCache(): Promise<OfflineCacheSummary> {
     return getOfflineCacheSummary();
   }
 
-  // Gather currently loaded scripts/stylesheets + core shell URLs
+  // Gather currently loaded scripts/stylesheets/images + core shell URLs
   const assetUrls = new Set<string>([
     '/',
     '/index.html',
@@ -205,14 +205,13 @@ export async function warmOfflineAppCache(): Promise<OfflineCacheSummary> {
     '/pwa-maskable-512x512.png',
     '/apple-touch-icon.png',
     '/icon.svg',
-    '/assets/aistudio/hero_illustration_d825bf85.jpeg',
     '/api/ota/state'
   ]);
 
   try {
     document
-      .querySelectorAll<HTMLScriptElement | HTMLLinkElement>(
-        'script[src], link[rel="stylesheet"]'
+      .querySelectorAll<HTMLScriptElement | HTMLLinkElement | HTMLImageElement>(
+        'script[src], link[rel="stylesheet"], img[src]'
       )
       .forEach((el) => {
         const src = 'src' in el ? el.src : el.href;

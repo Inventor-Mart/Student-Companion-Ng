@@ -115,7 +115,14 @@ service cloud.firestore {
 
     function isValidTutorBooking(data) {
       return data.keys().hasAll(['id', 'tutorId', 'tutorName', 'studentId', 'studentName', 'subject', 'topic', 'bookingType', 'date', 'timeSlot', 'status', 'amountNaira', 'isParentApproved']) &&
-             data.keys().hasOnly(['id', 'tutorId', 'tutorName', 'tutorPhoto', 'studentId', 'studentName', 'subject', 'topic', 'bookingType', 'date', 'timeSlot', 'status', 'amountNaira', 'isParentApproved', 'parentApprovalDate', 'createdAt']) &&
+             data.keys().hasOnly([
+               'id', 'tutorId', 'tutorName', 'tutorPhoto', 'studentId', 'studentName',
+               'subject', 'topic', 'bookingType', 'date', 'timeSlot',
+               'scheduledStartIso', 'scheduledEndIso', 'status', 'amountNaira',
+               'isParentApproved', 'parentApprovalDate',
+               'isTutorApproved', 'tutorApprovalDate', 'tutorRejectionReason',
+               'paymentReference', 'paymentGateway', 'escrowStatus', 'createdAt'
+             ]) &&
              data.id is string && isValidId(data.id) &&
              data.tutorId is string && data.tutorId.size() <= 128 &&
              data.tutorName is string && data.tutorName.size() <= 100 &&
@@ -127,10 +134,18 @@ service cloud.firestore {
              data.bookingType in ['online', 'physical'] &&
              data.date is string && data.date.size() <= 100 &&
              data.timeSlot is string && data.timeSlot.size() <= 100 &&
-             data.status in ['pending_parent', 'confirmed', 'completed', 'cancelled'] &&
+             (!('scheduledStartIso' in data) || (data.scheduledStartIso is string && data.scheduledStartIso.size() <= 100)) &&
+             (!('scheduledEndIso' in data) || (data.scheduledEndIso is string && data.scheduledEndIso.size() <= 100)) &&
+             data.status in ['pending_payment', 'pending_parent', 'pending_tutor', 'confirmed', 'completed', 'cancelled'] &&
              data.amountNaira is number && data.amountNaira >= 0 &&
              data.isParentApproved is bool &&
              (!('parentApprovalDate' in data) || (data.parentApprovalDate is string && data.parentApprovalDate.size() <= 100)) &&
+             (!('isTutorApproved' in data) || data.isTutorApproved is bool) &&
+             (!('tutorApprovalDate' in data) || (data.tutorApprovalDate is string && data.tutorApprovalDate.size() <= 100)) &&
+             (!('tutorRejectionReason' in data) || (data.tutorRejectionReason is string && data.tutorRejectionReason.size() <= 300)) &&
+             (!('paymentReference' in data) || (data.paymentReference is string && data.paymentReference.size() <= 128)) &&
+             (!('paymentGateway' in data) || data.paymentGateway in ['paystack_live', 'parent_escrow_wallet', 'tutor_credit']) &&
+             (!('escrowStatus' in data) || data.escrowStatus in ['unpaid', 'held_in_escrow', 'released', 'refunded']) &&
              (!('createdAt' in data) || (data.createdAt is string && data.createdAt.size() <= 100));
     }
 
@@ -458,9 +473,11 @@ service cloud.firestore {
       allow create: if isVerified() && isValidId(bookingId) && incoming().id == bookingId && incoming().studentId == request.auth.uid && isValidTutorBooking(incoming());
       allow update: if isValidId(bookingId) && isValidTutorBooking(incoming()) && incoming().id == existing().id && incoming().studentId == existing().studentId && (
         isAdmin() ||
-        (isVerified() && (
-          incoming().diff(existing()).affectedKeys().hasOnly(['status', 'isParentApproved', 'parentApprovalDate']) ||
-          (existing().status != 'completed' && incoming().diff(existing()).affectedKeys().hasOnly(['status']))
+        (isVerified() && existing().status != 'completed' && (
+          incoming().diff(existing()).affectedKeys().hasOnly(['status', 'isParentApproved', 'parentApprovalDate', 'escrowStatus']) ||
+          incoming().diff(existing()).affectedKeys().hasOnly(['status', 'isTutorApproved', 'tutorApprovalDate', 'tutorRejectionReason', 'escrowStatus']) ||
+          incoming().diff(existing()).affectedKeys().hasOnly(['status', 'escrowStatus']) ||
+          incoming().diff(existing()).affectedKeys().hasOnly(['status'])
         ))
       );
       allow delete: if isAdmin();
@@ -733,6 +750,96 @@ service cloud.firestore {
       allow create: if isAdmin() && isValidId(notificationId) && incoming().id == notificationId && isValidOtaNotificationBroadcast(incoming());
       allow update: if isAdmin() && isValidId(notificationId) && incoming().id == existing().id && isValidOtaNotificationBroadcast(incoming());
       allow delete: if isAdmin() && isValidId(notificationId);
+    }
+
+    function isValidStudentLinkRegistry(data) {
+      return data.keys().hasAll(['code', 'studentId', 'studentName', 'classLevel', 'stream', 'schoolName', 'active', 'createdAt', 'updatedAt']) &&
+             data.keys().hasOnly([
+               'code', 'studentId', 'studentName', 'classLevel', 'stream', 'schoolName',
+               'schoolCode', 'emailHash', 'active', 'createdAt', 'updatedAt'
+             ]) &&
+             data.code is string && data.code.size() >= 4 && data.code.size() <= 20 && data.code.matches('^[A-Z0-9_\\-]+$') &&
+             data.studentId is string && isValidId(data.studentId) &&
+             data.studentName is string && data.studentName.size() >= 1 && data.studentName.size() <= 100 &&
+             data.classLevel in ['JSS 1', 'JSS 2', 'JSS 3', 'SS 1', 'SS 2', 'SS 3', 'University Aspirant'] &&
+             data.stream in ['Junior', 'Science', 'Non-Science'] &&
+             data.schoolName is string && data.schoolName.size() <= 150 &&
+             (!('schoolCode' in data) || data.schoolCode == null || (data.schoolCode is string && data.schoolCode.size() <= 40)) &&
+             (!('emailHash' in data) || data.emailHash == null || (data.emailHash is string && data.emailHash.size() <= 80)) &&
+             data.active is bool &&
+             data.createdAt is string && data.createdAt.size() <= 50 &&
+             data.updatedAt is string && data.updatedAt.size() <= 50;
+    }
+
+    function isValidSchoolRegistry(data) {
+      return data.keys().hasAll(['schoolCode', 'adminId', 'schoolName', 'schoolType', 'verificationStatus', 'active', 'createdAt', 'updatedAt']) &&
+             data.keys().hasOnly([
+               'schoolCode', 'adminId', 'schoolName', 'schoolType', 'state', 'lga',
+               'verificationStatus', 'hasActiveDirectSubscription', 'directSubscriptionExpiresAt',
+               'active', 'createdAt', 'updatedAt'
+             ]) &&
+             data.schoolCode is string && data.schoolCode.size() >= 4 && data.schoolCode.size() <= 40 && data.schoolCode.matches('^[A-Z0-9_\\-]+$') &&
+             data.adminId is string && isValidId(data.adminId) &&
+             data.schoolName is string && data.schoolName.size() >= 1 && data.schoolName.size() <= 150 &&
+             data.schoolType is string && data.schoolType.size() >= 1 && data.schoolType.size() <= 100 &&
+             (!('state' in data) || data.state == null || (data.state is string && data.state.size() <= 60)) &&
+             (!('lga' in data) || data.lga == null || (data.lga is string && data.lga.size() <= 80)) &&
+             data.verificationStatus in ['verified', 'pending_verification'] &&
+             (!('hasActiveDirectSubscription' in data) || data.hasActiveDirectSubscription is bool) &&
+             (!('directSubscriptionExpiresAt' in data) || data.directSubscriptionExpiresAt == null || (data.directSubscriptionExpiresAt is string && data.directSubscriptionExpiresAt.size() <= 50)) &&
+             data.active is bool &&
+             data.createdAt is string && data.createdAt.size() <= 50 &&
+             data.updatedAt is string && data.updatedAt.size() <= 50;
+    }
+
+    function isValidSchoolEnrollment(data) {
+      return data.keys().hasAll(['id', 'schoolCode', 'studentId', 'studentName', 'classLevel', 'stream', 'xp', 'rank', 'streakDays', 'isSubscribed', 'subscriptionTier', 'joinedAt', 'updatedAt']) &&
+             data.keys().hasOnly([
+               'id', 'schoolCode', 'studentId', 'studentName', 'classLevel', 'stream',
+               'xp', 'rank', 'streakDays', 'isSubscribed', 'subscriptionTier', 'subscribedUntil',
+               'uniformVerified', 'completedNotesCount', 'verifiedMinutes', 'joinedAt', 'updatedAt'
+             ]) &&
+             data.id is string && isValidId(data.id) &&
+             data.schoolCode is string && data.schoolCode.size() >= 4 && data.schoolCode.size() <= 40 && data.schoolCode.matches('^[A-Z0-9_\\-]+$') &&
+             data.studentId is string && isValidId(data.studentId) &&
+             data.studentName is string && data.studentName.size() >= 1 && data.studentName.size() <= 100 &&
+             data.classLevel in ['JSS 1', 'JSS 2', 'JSS 3', 'SS 1', 'SS 2', 'SS 3', 'University Aspirant'] &&
+             data.stream in ['Junior', 'Science', 'Non-Science'] &&
+             data.xp is number && data.xp >= 0 &&
+             data.rank is string && data.rank.size() >= 1 && data.rank.size() <= 50 &&
+             data.streakDays is number && data.streakDays >= 0 &&
+             data.isSubscribed is bool &&
+             data.subscriptionTier in ['free', 'basic', 'standard', 'elite'] &&
+             (!('subscribedUntil' in data) || data.subscribedUntil == null || (data.subscribedUntil is string && data.subscribedUntil.size() <= 50)) &&
+             (!('uniformVerified' in data) || data.uniformVerified is bool) &&
+             (!('completedNotesCount' in data) || (data.completedNotesCount is number && data.completedNotesCount >= 0)) &&
+             (!('verifiedMinutes' in data) || (data.verifiedMinutes is number && data.verifiedMinutes >= 0)) &&
+             data.joinedAt is string && data.joinedAt.size() <= 50 &&
+             data.updatedAt is string && data.updatedAt.size() <= 50;
+    }
+
+    // 30. Student Link Code Lookup Registry (PII-isolated: no raw email/phone/photos)
+    match /studentLinkRegistry/{code} {
+      allow get, list: if true;
+      allow create: if isValidId(code) && incoming().code == code && isValidStudentLinkRegistry(incoming());
+      allow update: if isValidId(code) && incoming().code == existing().code && incoming().studentId == existing().studentId && isValidStudentLinkRegistry(incoming());
+      allow delete: if isAdmin();
+    }
+
+    // 31. Institutional School Registry (Live unique school codes)
+    match /schoolRegistry/{schoolCode} {
+      allow get, list: if true;
+      allow create: if isValidId(schoolCode) && incoming().schoolCode == schoolCode && isValidSchoolRegistry(incoming());
+      allow update: if isValidId(schoolCode) && incoming().schoolCode == existing().schoolCode && isValidSchoolRegistry(incoming());
+      allow delete: if isAdmin();
+    }
+
+    // 32. Live School Student Enrollments (Cross-device roster & accreditation counts)
+    match /schoolEnrollments/{enrollmentId} {
+      allow get, list: if true;
+      allow create: if isValidId(enrollmentId) && incoming().id == enrollmentId && isValidSchoolEnrollment(incoming());
+      allow update: if isValidId(enrollmentId) && incoming().id == existing().id && incoming().schoolCode == existing().schoolCode && incoming().studentId == existing().studentId && isValidSchoolEnrollment(incoming());
+      allow delete: if isAdmin();
     }
   }
 }

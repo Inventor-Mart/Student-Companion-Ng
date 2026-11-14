@@ -312,7 +312,7 @@ export const AspirantSubscriptionModal: React.FC<AspirantSubscriptionModalProps>
                         setReferralInput(e.target.value.toUpperCase());
                         setRefFeedback(null);
                       }}
-                      placeholder="Referral code (e.g. GROW84)"
+                      placeholder="Referral code (e.g. GP-ASKT6212)"
                       className="bg-slate-900 border border-slate-700 focus:border-emerald-500 rounded-xl px-2.5 py-1.5 text-xs font-mono font-bold text-white placeholder-slate-500 uppercase focus:outline-none w-40"
                     />
                     <button

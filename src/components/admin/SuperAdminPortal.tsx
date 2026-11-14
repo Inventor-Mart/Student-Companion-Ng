@@ -71,6 +71,7 @@ export const SuperAdminPortal: React.FC = () => {
     isSuperAdmin,
     currentUserProfile,
     getSchoolAccreditationMetrics,
+    fetchSchoolLiveRoster,
     adminLessonNotes
   } = useApp();
 
@@ -141,6 +142,22 @@ export const SuperAdminPortal: React.FC = () => {
       setIsLoadingAspirantRewards(false);
     }
   }, [authorizedAdminEmail]);
+
+  const hydratedSchoolCodesRef = React.useRef<Set<string>>(new Set());
+  React.useEffect(() => {
+    if (portalView !== 'directory') return;
+    const codesToLoad = allRegisteredUsers
+      .filter((u): u is RegisteredUserProfile & { adminData: NonNullable<RegisteredUserProfile['adminData']> } =>
+        u.role === 'admin' && Boolean(u.adminData?.schoolCode)
+      )
+      .map(u => (u.adminData.schoolCode || '').trim().toUpperCase())
+      .filter(code => code.length >= 4 && !hydratedSchoolCodesRef.current.has(code));
+
+    codesToLoad.slice(0, 12).forEach(code => {
+      hydratedSchoolCodesRef.current.add(code);
+      void fetchSchoolLiveRoster(code);
+    });
+  }, [portalView, allRegisteredUsers, fetchSchoolLiveRoster]);
 
   React.useEffect(() => {
     void fetchAspirantRewards();
@@ -413,7 +430,7 @@ export const SuperAdminPortal: React.FC = () => {
   const [editHourlyRate, setEditHourlyRate] = useState<number>(3000);
   const [editTutorVerified, setEditTutorVerified] = useState<boolean>(true);
   const [editAdminSchoolName, setEditAdminSchoolName] = useState<string>('');
-  const [editAdminSchoolCode, setEditAdminSchoolCode] = useState<string>('SCHL88');
+  const [editAdminSchoolCode, setEditAdminSchoolCode] = useState<string>('');
   const [editAdminVerified, setEditAdminVerified] = useState<boolean>(true);
   const [editAccountStatus, setEditAccountStatus] = useState<'active' | 'locked' | 'suspended' | 'deleted'>('active');
   const [editLockDurationMinutes, setEditLockDurationMinutes] = useState<number>(60);
@@ -475,8 +492,11 @@ export const SuperAdminPortal: React.FC = () => {
     setEditHourlyRate(u.tutorData?.hourlyRate || 3000);
     setEditTutorVerified(u.tutorData?.verification?.isVerified || false);
     setEditAdminSchoolName(u.adminData?.schoolName || 'Secondary School');
-    setEditAdminSchoolCode(u.adminData?.schoolCode || 'SCHL88');
+    setEditAdminSchoolCode(u.adminData?.schoolCode || '');
     setEditAdminVerified(u.adminData?.verificationStatus === 'verified');
+    if (u.role === 'admin' && u.adminData?.schoolCode) {
+      void fetchSchoolLiveRoster(u.adminData.schoolCode);
+    }
     const eff = getEffectiveStatus(u);
     setEditAccountStatus(eff);
     setEditLockDurationMinutes(60);
@@ -590,6 +610,25 @@ export const SuperAdminPortal: React.FC = () => {
     await updateUserRecord(user.id, {
       adminData: updatedAdminData
     });
+    if (user.adminData.schoolCode) {
+      try {
+        await fetch('/api/schools/code/issue', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            adminId: user.id,
+            schoolName: user.adminData.schoolName,
+            schoolType: user.adminData.schoolType,
+            state: user.adminData.state,
+            lga: user.adminData.lga,
+            preferredCode: user.adminData.schoolCode,
+            verificationStatus: newStatus
+          })
+        });
+      } catch {
+        // non-blocking registry sync
+      }
+    }
     setModerationNotice(`${user.adminData.schoolName} accreditation ${newStatus === 'verified' ? 'approved ✓' : 'set to pending'}.`);
     setTimeout(() => setModerationNotice(null), 3500);
   };
@@ -692,7 +731,42 @@ export const SuperAdminPortal: React.FC = () => {
       }
     }
 
+    if (selectedUserForEdit.role === 'admin' && updates.adminData) {
+      try {
+        const prevCode = (selectedUserForEdit.adminData?.schoolCode || '').trim().toUpperCase();
+        const nextCode = (updates.adminData.schoolCode || '').trim().toUpperCase();
+        const res = await fetch('/api/schools/code/issue', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            adminId: selectedUserForEdit.id,
+            schoolName: updates.adminData.schoolName,
+            schoolType: updates.adminData.schoolType,
+            state: updates.adminData.state,
+            lga: updates.adminData.lga,
+            preferredCode: nextCode || undefined,
+            forceNew: Boolean(nextCode && prevCode && nextCode !== prevCode),
+            verificationStatus: updates.adminData.verificationStatus
+          })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.schoolCode) {
+            updates.adminData = {
+              ...updates.adminData,
+              schoolCode: data.schoolCode
+            };
+          }
+        }
+      } catch {
+        // non-blocking registry sync
+      }
+    }
+
     await updateUserRecord(selectedUserForEdit.id, updates);
+    if (updates.adminData?.schoolCode) {
+      void fetchSchoolLiveRoster(updates.adminData.schoolCode);
+    }
     setSaveSuccessMsg(`Updated profile for ${editFullName} successfully.`);
     setTimeout(() => {
       setSaveSuccessMsg(null);
@@ -1937,7 +2011,7 @@ export const SuperAdminPortal: React.FC = () => {
                       </div>
                       <div className="flex items-center justify-between">
                         <span className="text-slate-400">School Code:</span>
-                        <span className="font-mono font-bold text-purple-300">{u.adminData.schoolCode || 'SCHL88'}</span>
+                        <span className="font-mono font-bold text-purple-300">{u.adminData.schoolCode || 'Pending'}</span>
                       </div>
                       {u.adminData.phone && (
                         <div className="flex items-center justify-between">
@@ -2286,10 +2360,10 @@ export const SuperAdminPortal: React.FC = () => {
                       />
                     </div>
                     <div>
-                      <label className="text-slate-400 font-semibold block mb-1">School Code (6-char)</label>
+                      <label className="text-slate-400 font-semibold block mb-1">School Code (6–8 char)</label>
                       <input
                         type="text"
-                        maxLength={8}
+                        maxLength={12}
                         value={editAdminSchoolCode}
                         onChange={e => setEditAdminSchoolCode(e.target.value.toUpperCase())}
                         className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white font-mono font-bold uppercase focus:outline-none focus:border-purple-500"
