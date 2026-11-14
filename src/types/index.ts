@@ -246,7 +246,13 @@ export interface Tutor {
 }
 
 export type BookingType = 'online' | 'physical';
-export type BookingStatus = 'pending_parent' | 'confirmed' | 'completed' | 'cancelled';
+export type BookingStatus =
+  | 'pending_payment'
+  | 'pending_parent'
+  | 'pending_tutor'
+  | 'confirmed'
+  | 'completed'
+  | 'cancelled';
 
 export interface TutorBooking {
   id: string;
@@ -260,10 +266,18 @@ export interface TutorBooking {
   bookingType: BookingType;
   date: string;
   timeSlot: string;
+  scheduledStartIso?: string;
+  scheduledEndIso?: string;
   status: BookingStatus;
   amountNaira: number;
   isParentApproved: boolean;
   parentApprovalDate?: string;
+  isTutorApproved: boolean;
+  tutorApprovalDate?: string;
+  tutorRejectionReason?: string;
+  paymentReference?: string;
+  paymentGateway?: 'paystack_live' | 'parent_escrow_wallet' | 'tutor_credit';
+  escrowStatus?: 'unpaid' | 'held_in_escrow' | 'released' | 'refunded';
   createdAt: string;
 }
 

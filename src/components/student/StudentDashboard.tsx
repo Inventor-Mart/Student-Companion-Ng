@@ -60,6 +60,8 @@ export const StudentDashboard: React.FC = () => {
     updateStudentAvatar,
     updateStudentClass,
     tutorBookings,
+    registeredTutors,
+    getStudentClassroomEligibility,
     launchVirtualClassroom,
     examPrepState,
     schoolMaterials,
@@ -78,6 +80,24 @@ export const StudentDashboard: React.FC = () => {
   const [isParentLinkInfoOpen, setIsParentLinkInfoOpen] = useState(false);
   const [audioScrubProgress, setAudioScrubProgress] = useState(42);
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
+  const [boardClockMs, setBoardClockMs] = useState<number>(() => Date.now());
+  const [whiteboardGateNotice, setWhiteboardGateNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    const id = window.setInterval(() => setBoardClockMs(Date.now()), 15000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  const classroomEligibility = getStudentClassroomEligibility(boardClockMs);
+
+  const formatWaitLabel = (ms: number): string => {
+    if (ms <= 0) return 'Opening soon';
+    const totalMins = Math.ceil(ms / 60000);
+    if (totalMins < 60) return `Opens in ${totalMins}m`;
+    const hrs = Math.floor(totalMins / 60);
+    const mins = totalMins % 60;
+    return `Opens in ${hrs}h ${mins}m`;
+  };
 
   // Staggered pop sound trigger on initial mount
   useEffect(() => {
@@ -800,44 +820,87 @@ export const StudentDashboard: React.FC = () => {
                 Tutor Marketplace
               </h3>
               <div className="flex items-center gap-1 text-amber-400 text-xs mt-1">
-                {'★★★★☆'}
-                <span className="text-[10px] text-slate-400 ml-1">4.8 (120)</span>
+                <span className="text-[10px] text-slate-300 font-medium">
+                  {registeredTutors.length > 0
+                    ? `${registeredTutors.length} active tutor${registeredTutors.length === 1 ? '' : 's'}`
+                    : 'Verified Educators'}
+                </span>
               </div>
             </div>
 
             <div className="mt-3 pt-2.5 border-t border-slate-800 flex items-center justify-between">
               <div className="flex -space-x-2 overflow-hidden">
-                <div className="inline-block h-6 w-6 rounded-full ring-2 ring-[#14203D] bg-emerald-600 text-[9px] font-bold flex items-center justify-center text-white">
-                  AO
-                </div>
-                <div className="inline-block h-6 w-6 rounded-full ring-2 ring-[#14203D] bg-purple-600 text-[9px] font-bold flex items-center justify-center text-white">
-                  EM
-                </div>
-                <div className="inline-block h-6 w-6 rounded-full ring-2 ring-[#14203D] bg-amber-600 text-[9px] font-bold flex items-center justify-center text-white">
-                  BK
-                </div>
+                {registeredTutors.slice(0, 3).map((t) => {
+                  const initials = t.name
+                    .split(' ')
+                    .map(p => p[0])
+                    .join('')
+                    .slice(0, 2)
+                    .toUpperCase();
+                  return (
+                    <div
+                      key={t.id}
+                      className="inline-block h-6 w-6 rounded-full ring-2 ring-[#14203D] bg-emerald-600 text-[9px] font-bold flex items-center justify-center text-white"
+                    >
+                      {initials}
+                    </div>
+                  );
+                })}
+                {registeredTutors.length === 0 && (
+                  <div className="inline-block h-6 w-6 rounded-full ring-2 ring-[#14203D] bg-slate-700 text-[9px] font-bold flex items-center justify-center text-slate-300">
+                    0
+                  </div>
+                )}
               </div>
               <span className="text-[10px] font-bold text-[#84CC16]">
-                {!isFeatureEnabled('tutorMarketplace') ? 'Tap for notice' : '+10 Verified'}
+                {!isFeatureEnabled('tutorMarketplace')
+                  ? 'Tap for notice'
+                  : registeredTutors.length > 0
+                  ? `${registeredTutors.length} Registered`
+                  : 'Browse Tutors'}
               </span>
             </div>
           </motion.div>
 
-          {/* TILE: INTERACTIVE WHITEBOARD */}
+          {/* TILE: INTERACTIVE WHITEBOARD (Strictly Gated on Live Confirmed Booking Window) */}
           <motion.div
             variants={tileVariants}
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
             onClick={() => {
               playSound.tileTap();
-              launchVirtualClassroom(`live-${student.id || Date.now()}`, 'student');
+              if (!isFeatureEnabled('virtualClassroom')) {
+                launchVirtualClassroom('disabled', 'student');
+                return;
+              }
+              if (classroomEligibility.eligible && classroomEligibility.activeBooking) {
+                setWhiteboardGateNotice(null);
+                launchVirtualClassroom(classroomEligibility.activeBooking.id, 'student');
+                return;
+              }
+              if (classroomEligibility.status === 'no_booking' || classroomEligibility.status === 'ended') {
+                setWhiteboardGateNotice(classroomEligibility.reason);
+                setActiveStudentTab('tutors');
+                return;
+              }
+              setWhiteboardGateNotice(classroomEligibility.reason);
             }}
-            className="rounded-3xl p-4 bg-gradient-to-br from-[#101C34] to-[#1C2C4E] border-2 border-[#84CC16]/30 hover:border-[#84CC16] shadow-xl cursor-pointer select-none group flex flex-col justify-between"
+            className={`rounded-3xl p-4 border-2 shadow-xl cursor-pointer select-none group flex flex-col justify-between ${
+              classroomEligibility.eligible
+                ? 'bg-gradient-to-br from-[#101C34] to-[#1C2C4E] border-[#84CC16]/60 hover:border-[#84CC16]'
+                : 'bg-[#101C34] border-slate-700/80 hover:border-amber-500/50'
+            }`}
           >
             <div>
               <div className="flex items-start justify-between gap-2 mb-2">
-                <div className="w-10 h-10 rounded-2xl bg-[#84CC16]/20 border border-[#84CC16]/40 flex items-center justify-center text-[#84CC16]">
-                  <Radio className="w-5 h-5" />
+                <div
+                  className={`w-10 h-10 rounded-2xl border flex items-center justify-center ${
+                    classroomEligibility.eligible
+                      ? 'bg-[#84CC16]/20 border-[#84CC16]/40 text-[#84CC16]'
+                      : 'bg-slate-800/80 border-slate-700 text-slate-400'
+                  }`}
+                >
+                  {classroomEligibility.eligible ? <Radio className="w-5 h-5" /> : <Lock className="w-4 h-4" />}
                 </div>
                 {!isFeatureEnabled('virtualClassroom') && <PausedBadge />}
               </div>
@@ -845,12 +908,37 @@ export const StudentDashboard: React.FC = () => {
                 Live Whiteboard
               </h3>
               <p className="text-[11px] text-slate-300 mt-1 line-clamp-2">
-                Digital canvas for math & science tutoring
+                {whiteboardGateNotice ||
+                  (classroomEligibility.eligible && classroomEligibility.activeBooking
+                    ? `Live with ${classroomEligibility.activeBooking.tutorName}`
+                    : classroomEligibility.status === 'too_early'
+                    ? `Opens 10 mins before class (${formatWaitLabel(classroomEligibility.msUntilOpen)})`
+                    : classroomEligibility.status === 'pending_parent'
+                    ? 'Awaiting Parent PIN authorization'
+                    : classroomEligibility.status === 'pending_tutor'
+                    ? 'Awaiting Tutor acceptance'
+                    : 'Locked until confirmed live booking starts')}
               </p>
             </div>
 
-            <div className="mt-3 pt-2.5 border-t border-slate-800 flex items-center justify-between text-[10px] font-bold text-[#84CC16]">
-              <span>{!isFeatureEnabled('virtualClassroom') ? 'Paused · Tap for notice' : 'Enter Classroom'}</span>
+            <div
+              className={`mt-3 pt-2.5 border-t border-slate-800 flex items-center justify-between text-[10px] font-bold ${
+                classroomEligibility.eligible ? 'text-[#84CC16]' : 'text-amber-300'
+              }`}
+            >
+              <span>
+                {!isFeatureEnabled('virtualClassroom')
+                  ? 'Paused · Tap for notice'
+                  : classroomEligibility.eligible
+                  ? 'Join Live Class'
+                  : classroomEligibility.status === 'too_early'
+                  ? formatWaitLabel(classroomEligibility.msUntilOpen)
+                  : classroomEligibility.status === 'pending_parent'
+                  ? 'Pending Parent PIN'
+                  : classroomEligibility.status === 'pending_tutor'
+                  ? 'Pending Tutor Approval'
+                  : 'Book Live Class'}
+              </span>
               <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
             </div>
           </motion.div>

@@ -57,7 +57,9 @@ export default defineConfig(() => {
           importScripts: ['/sw-notifications.js'],
         },
         devOptions: {
-          enabled: true,
+          // Dev SW & manifest are served directly by server.ts/public/sw.js without HMR WebSockets
+          // (vite-plugin-pwa dev mode calls import.meta.hot.send which fails when hmr: false).
+          enabled: false,
           type: 'module',
         },
       }),

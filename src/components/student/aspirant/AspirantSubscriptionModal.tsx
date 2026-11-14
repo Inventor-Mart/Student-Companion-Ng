@@ -44,7 +44,7 @@ export const AspirantSubscriptionModal: React.FC<AspirantSubscriptionModalProps>
     aspirantRewardStatus
   } = useApp();
   const [selectedTier, setSelectedTier] = useState<AspirantTier>(defaultTier);
-  const [selectedMethod, setSelectedMethod] = useState<'wallet' | 'paystack' | 'bank_transfer'>('wallet');
+  const [selectedMethod, setSelectedMethod] = useState<'wallet' | 'paystack'>('paystack');
   const [isProcessing, setIsProcessing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [showRewardStep, setShowRewardStep] = useState<boolean>(false);
@@ -122,26 +122,39 @@ export const AspirantSubscriptionModal: React.FC<AspirantSubscriptionModalProps>
 
     setIsProcessing(true);
     try {
-      if (selectedMethod === 'paystack' && typeof (window as any).PaystackPop !== 'undefined') {
-        let activeKey = import.meta.env.VITE_PAYSTACK_PUBLIC_KEY || '';
+      if (selectedMethod === 'paystack') {
+        if (typeof (window as any).PaystackPop === 'undefined') {
+          setIsProcessing(false);
+          setErrorMessage('Paystack Live SDK is loading. Verify internet connectivity and retry.');
+          return;
+        }
+
+        let activeKey = '';
+        let liveConfigured = false;
         try {
           const cfgRes = await fetch('/api/paystack/config');
           if (cfgRes.ok) {
             const cfg = await cfgRes.json();
-            if (cfg.publicKey) activeKey = cfg.publicKey;
+            activeKey = typeof cfg.publicKey === 'string' ? cfg.publicKey.trim() : '';
+            liveConfigured = Boolean(cfg.liveConfigured && cfg.isLive);
           }
         } catch {
-          // ignore
+          // handled below
         }
-        if (!activeKey) {
+        if (!activeKey || !activeKey.startsWith('pk_live_') || !liveConfigured) {
           setIsProcessing(false);
-          setErrorMessage('Paystack live payment gateway is not yet configured. Please choose Parent Escrow Wallet.');
+          setErrorMessage('Live Paystack keys (pk_live_ & sk_live_) are required. Test mode is disabled.');
+          return;
+        }
+
+        const payerEmail = currentUserProfile?.email || '';
+        if (!payerEmail || !payerEmail.includes('@')) {
+          setIsProcessing(false);
+          setErrorMessage('A signed-in account with a valid email is required for Live Paystack payment.');
           return;
         }
 
         const txRef = `PSTK_ASP_${Date.now()}_${Math.floor(Math.random() * 100000)}`;
-        const payerEmail = currentUserProfile?.email || 'parent@studentcompanion.ng';
-
         const handler = (window as any).PaystackPop.setup({
           key: activeKey,
           email: payerEmail,
@@ -154,7 +167,7 @@ export const AspirantSubscriptionModal: React.FC<AspirantSubscriptionModalProps>
               { display_name: 'Tier', variable_name: 'aspirant_tier', value: selectedTier }
             ]
           },
-          callback: function(response: { reference: string }) {
+          callback: function (response: { reference: string }) {
             (async () => {
               let serverEligible = willBeFirstPaidReward;
               try {
@@ -182,19 +195,28 @@ export const AspirantSubscriptionModal: React.FC<AspirantSubscriptionModalProps>
                 if (typeof verifyData.aspirantRewardEligible === 'boolean') {
                   serverEligible = verifyData.aspirantRewardEligible;
                 }
-              } catch (e) {
-                console.warn('Backend payment verification logged:', e);
+              } catch (e: any) {
+                setErrorMessage(e?.message || 'Network error verifying Paystack transaction.');
+                setIsProcessing(false);
+                return;
               }
 
-              const ok = subscribeAspirantTier(selectedTier, 'paystack', activeReferral || undefined, true);
+              const ok = subscribeAspirantTier(
+                selectedTier,
+                'paystack',
+                activeReferral || undefined,
+                true,
+                response.reference
+              );
               if (ok) {
                 finishActivation(activeReferral, serverEligible);
               } else {
+                setErrorMessage('Failed to activate tier after payment verification.');
                 setIsProcessing(false);
               }
             })();
           },
-          onClose: function() {
+          onClose: function () {
             setIsProcessing(false);
           }
         });
@@ -203,11 +225,19 @@ export const AspirantSubscriptionModal: React.FC<AspirantSubscriptionModalProps>
         return;
       }
 
-      // Wallet / Transfer flow
-      const ok = subscribeAspirantTier(selectedTier, selectedMethod, activeReferral || undefined, false);
+      // Funded Parent Escrow Wallet flow
+      if (currentBalance < tierCost) {
+        setErrorMessage(
+          `Insufficient Parent Escrow Wallet balance (₦${currentBalance.toLocaleString()} available, ₦${tierCost.toLocaleString()} required). Please pay via Paystack Live.`
+        );
+        setIsProcessing(false);
+        return;
+      }
+      const ok = subscribeAspirantTier(selectedTier, 'wallet', activeReferral || undefined, false);
       if (ok) {
         finishActivation(activeReferral, willBeFirstPaidReward);
       } else {
+        setErrorMessage('Could not debit Parent Escrow Wallet.');
         setIsProcessing(false);
       }
     } catch {
@@ -473,7 +503,7 @@ export const AspirantSubscriptionModal: React.FC<AspirantSubscriptionModalProps>
                 Choose Payment Method for {selectedTier === 'elite' ? '₦10,000' : '₦5,000'}:
               </span>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <button
                   type="button"
                   onClick={() => setSelectedMethod('wallet')}
@@ -503,25 +533,9 @@ export const AspirantSubscriptionModal: React.FC<AspirantSubscriptionModalProps>
                 >
                   <div className="flex items-center gap-1.5 font-bold">
                     <CreditCard className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>Paystack Gateway</span>
+                    <span>Paystack Live Gateway</span>
                   </div>
-                  <div className="text-[10px] text-slate-400 mt-1">Debit Card · Bank App · USSD</div>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setSelectedMethod('bank_transfer')}
-                  className={`p-2.5 rounded-xl border text-left text-xs transition-all cursor-pointer ${
-                    selectedMethod === 'bank_transfer'
-                      ? 'bg-amber-950/40 border-amber-500/70 text-slate-100 ring-1 ring-amber-500/30'
-                      : 'bg-slate-950 border-slate-800 text-slate-300 hover:bg-slate-800'
-                  }`}
-                >
-                  <div className="flex items-center gap-1.5 font-bold">
-                    <Building2 className="w-3.5 h-3.5 text-cyan-400" />
-                    <span>Direct Bank Transfer</span>
-                  </div>
-                  <div className="text-[10px] text-slate-400 mt-1">Virtual Wema Account</div>
+                  <div className="text-[10px] text-slate-400 mt-1">Debit Card · Bank Transfer · USSD</div>
                 </button>
               </div>
             </div>

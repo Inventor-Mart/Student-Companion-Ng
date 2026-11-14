@@ -158,27 +158,33 @@ export const SchoolAdminPortal: React.FC = () => {
     }
 
     const amountNaira = plan === 'termly' ? 42000 : 15000;
-    const payerEmail = currentUserProfile?.email || 'admin@school.edu.ng';
+    const payerEmail = currentUserProfile?.email || '';
+    if (!payerEmail || !payerEmail.includes('@')) {
+      playSound.buzz();
+      setIsProcessingPaystack(false);
+      setPaystackError('A valid signed-in administrator email is required for Live Paystack payment.');
+      return;
+    }
     const txRef = `SCHL_${plan.toUpperCase()}_${Date.now()}_${Math.floor(Math.random() * 100000)}`;
 
-    let activeKey = import.meta.env.VITE_PAYSTACK_PUBLIC_KEY || '';
+    let activeKey = '';
+    let liveConfigured = false;
     try {
       const configRes = await fetch('/api/paystack/config');
       if (configRes.ok) {
         const configData = await configRes.json();
-        if (configData.publicKey) {
-          activeKey = configData.publicKey;
-        }
+        activeKey = typeof configData.publicKey === 'string' ? configData.publicKey.trim() : '';
+        liveConfigured = Boolean(configData.liveConfigured && configData.isLive);
       }
     } catch {
-      // ignore
+      // handled below
     }
 
-    if (!activeKey) {
+    if (!activeKey || !activeKey.startsWith('pk_live_') || !liveConfigured) {
       playSound.buzz();
       setIsProcessingPaystack(false);
       setPaystackError(
-        'Paystack live payment gateway is not yet configured. Please configure your Paystack Public Key in Admin settings.'
+        'Live Paystack keys (pk_live_ & sk_live_) are required. Test mode is disabled.'
       );
       return;
     }
@@ -219,7 +225,7 @@ export const SchoolAdminPortal: React.FC = () => {
               });
 
               const verifyData = await verifyRes.json();
-              if (verifyData.success) {
+              if (verifyRes.ok && verifyData.success) {
                 playSound.levelUp();
                 await subscribeSchoolAdmin(plan, response.reference);
                 setPaymentSuccessReceipt({

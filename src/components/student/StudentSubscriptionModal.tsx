@@ -163,26 +163,31 @@ export const StudentSubscriptionModal: React.FC<StudentSubscriptionModalProps> =
       return;
     }
 
-    let activeKey = import.meta.env.VITE_PAYSTACK_PUBLIC_KEY || '';
+    let activeKey = '';
+    let liveConfigured = false;
     try {
       const configRes = await fetch('/api/paystack/config');
       if (configRes.ok) {
         const configData = await configRes.json();
-        if (configData.publicKey) {
-          activeKey = configData.publicKey;
-        }
+        activeKey = typeof configData.publicKey === 'string' ? configData.publicKey.trim() : '';
+        liveConfigured = Boolean(configData.liveConfigured && configData.isLive);
       }
     } catch {
-      // ignore
+      // handled below
     }
 
-    if (!activeKey) {
-      setErrorMessage('Paystack live payment gateway is currently awaiting configuration. Please ensure your Paystack Public Key is set in Settings or contact support.');
+    if (!activeKey || !activeKey.startsWith('pk_live_') || !liveConfigured) {
+      setErrorMessage('Live Paystack keys (pk_live_ & sk_live_) must be configured by Admin before live checkout. Test keys are blocked.');
       setIsProcessing(false);
       return;
     }
 
-    const payerEmail = currentUserProfile?.email || 'student@companion.ng';
+    const payerEmail = currentUserProfile?.email || '';
+    if (!payerEmail || !payerEmail.includes('@')) {
+      setErrorMessage('A valid signed-in user email is required for Live Paystack checkout.');
+      setIsProcessing(false);
+      return;
+    }
     const txRef = `SUB_${selectedPlan.toUpperCase()}_${Date.now()}_${Math.floor(Math.random() * 100000)}`;
 
     try {
@@ -223,7 +228,7 @@ export const StudentSubscriptionModal: React.FC<StudentSubscriptionModalProps> =
               });
 
               const verifyData = await verifyRes.json();
-              if (verifyData.success) {
+              if (verifyRes.ok && verifyData.success) {
                 await subscribeStudentTier(selectedPlan, 'paystack', response.reference, activeReferral || undefined, true);
                 setSuccessReceipt({
                   plan: selectedPlan.toUpperCase(),
@@ -268,11 +273,11 @@ export const StudentSubscriptionModal: React.FC<StudentSubscriptionModalProps> =
     };
     const price = prices[addon];
 
-    // Check if user chose wallet or has sufficient wallet balance
-    if (paymentMethod === 'wallet' || parentWallet.balanceNaira >= price) {
+    // Only use Escrow Wallet when expressly selected
+    if (paymentMethod === 'wallet') {
       if (parentWallet.balanceNaira < price) {
         setErrorMessage(
-          `Insufficient Parent Escrow Wallet balance (₦${parentWallet.balanceNaira.toLocaleString()} available, ₦${price.toLocaleString()} required). Please switch to Paystack card payment.`
+          `Insufficient Parent Escrow Wallet balance (₦${parentWallet.balanceNaira.toLocaleString()} available, ₦${price.toLocaleString()} required). Please switch to Paystack Live.`
         );
         setIsProcessing(false);
         return;
@@ -298,26 +303,31 @@ export const StudentSubscriptionModal: React.FC<StudentSubscriptionModalProps> =
       return;
     }
 
-    let activeKey = import.meta.env.VITE_PAYSTACK_PUBLIC_KEY || '';
+    let activeKey = '';
+    let liveConfigured = false;
     try {
       const configRes = await fetch('/api/paystack/config');
       if (configRes.ok) {
         const configData = await configRes.json();
-        if (configData.publicKey) {
-          activeKey = configData.publicKey;
-        }
+        activeKey = typeof configData.publicKey === 'string' ? configData.publicKey.trim() : '';
+        liveConfigured = Boolean(configData.liveConfigured && configData.isLive);
       }
     } catch {
-      // ignore
+      // handled below
     }
 
-    if (!activeKey) {
-      setErrorMessage('Paystack live payment gateway is awaiting configuration. Please configure your Paystack Public Key in Admin settings.');
+    if (!activeKey || !activeKey.startsWith('pk_live_') || !liveConfigured) {
+      setErrorMessage('Live Paystack keys (pk_live_ & sk_live_) are required. Test mode is disabled.');
       setIsProcessing(false);
       return;
     }
 
-    const payerEmail = currentUserProfile?.email || 'student@companion.ng';
+    const payerEmail = currentUserProfile?.email || '';
+    if (!payerEmail || !payerEmail.includes('@')) {
+      setErrorMessage('A valid signed-in user email is required for Live Paystack checkout.');
+      setIsProcessing(false);
+      return;
+    }
     const txRef = `ADDON_${addon.toUpperCase()}_${Date.now()}_${Math.floor(Math.random() * 100000)}`;
     const purposeMap: Record<string, string> = {
       ai_coach: 'ai_coach_unlock',
@@ -362,7 +372,7 @@ export const StudentSubscriptionModal: React.FC<StudentSubscriptionModalProps> =
               });
 
               const verifyData = await verifyRes.json();
-              if (verifyData.success) {
+              if (verifyRes.ok && verifyData.success) {
                 await unlockStudentAddOn(addon, targetSubject, 'paystack', response.reference);
                 setSuccessReceipt({
                   plan: addon === 'termly_drill_single' ? `DRILL (${targetSubject})` : addon.replace(/_/g, ' ').toUpperCase(),

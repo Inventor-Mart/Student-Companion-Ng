@@ -51,32 +51,23 @@ export const ExamPrepUnlockModal: React.FC<ExamPrepUnlockModalProps> = ({
   });
 
   const [isProcessing, setIsProcessing] = useState(false);
-  const [selectedMethod, setSelectedMethod] = useState<'wallet' | 'paystack' | 'bank_transfer'>('wallet');
-  const [hasCopiedAccount, setHasCopiedAccount] = useState(false);
-  const [transferTimer, setTransferTimer] = useState(1795); // 29m 55s countdown
+  const [selectedMethod, setSelectedMethod] = useState<'wallet' | 'paystack'>('paystack');
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
 
   // Sync initial props when opened
   useEffect(() => {
     if (isOpen) {
       if (initialPlanType) setPlanType(initialPlanType);
       if (initialSubject) setSelectedSubject(initialSubject);
+      setCheckoutError(null);
     }
   }, [isOpen, initialPlanType, initialSubject]);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    const interval = setInterval(() => {
-      setTransferTimer(prev => (prev > 0 ? prev - 1 : 1800));
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [isOpen]);
 
   if (!isOpen) return null;
 
   const activeFee = planType === 'full' ? UNLOCK_FEE_NAIRA : SINGLE_SUBJECT_EXAM_FEE_NAIRA;
   const currentBalance = parentWallet.balanceNaira;
   const hasSufficientWalletBalance = currentBalance >= activeFee;
-  const deficit = Math.max(0, activeFee - currentBalance);
   const wardDisplayName = targetStudentName || student.name || 'Your Ward';
 
   // Gather secondary subjects list for student stream
@@ -85,47 +76,44 @@ export const ExamPrepUnlockModal: React.FC<ExamPrepUnlockModalProps> = ({
     ? SECONDARY_SUBJECT_CATALOG['Junior']
     : Array.from(new Set([...SECONDARY_SUBJECT_CATALOG['Science'], ...SECONDARY_SUBJECT_CATALOG['Non-Science']]));
 
-  const formatTimer = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  };
-
-  const handleCopyAccountNumber = () => {
-    try {
-      navigator.clipboard.writeText('0238472910');
-      setHasCopiedAccount(true);
-      playSound.correct();
-      setTimeout(() => setHasCopiedAccount(false), 2000);
-    } catch {
-      setHasCopiedAccount(true);
-      setTimeout(() => setHasCopiedAccount(false), 2000);
-    }
-  };
-
   const handleConfirmUnlock = async () => {
+    setCheckoutError(null);
     setIsProcessing(true);
     try {
-      if (selectedMethod === 'paystack' && typeof (window as any).PaystackPop !== 'undefined') {
-        let activeKey = import.meta.env.VITE_PAYSTACK_PUBLIC_KEY || '';
+      if (selectedMethod === 'paystack') {
+        if (typeof (window as any).PaystackPop === 'undefined') {
+          setIsProcessing(false);
+          setCheckoutError('Paystack Live SDK is loading. Verify internet connectivity and retry.');
+          return;
+        }
+
+        let activeKey = '';
+        let liveConfigured = false;
         try {
           const cfgRes = await fetch('/api/paystack/config');
           if (cfgRes.ok) {
             const cfg = await cfgRes.json();
-            if (cfg.publicKey) activeKey = cfg.publicKey;
+            activeKey = typeof cfg.publicKey === 'string' ? cfg.publicKey.trim() : '';
+            liveConfigured = Boolean(cfg.liveConfigured && cfg.isLive);
           }
         } catch {
-          // ignore
+          // handled below
         }
-        if (!activeKey) {
+
+        if (!activeKey || !activeKey.startsWith('pk_live_') || !liveConfigured) {
           setIsProcessing(false);
-          alert('Paystack live payment gateway is not yet configured. Please contact the administrator or pay via Parent Escrow Wallet.');
+          setCheckoutError('Live Paystack keys (pk_live_ & sk_live_) are required. Test mode is disabled.');
+          return;
+        }
+
+        const payerEmail = currentUserProfile?.email || '';
+        if (!payerEmail || !payerEmail.includes('@')) {
+          setIsProcessing(false);
+          setCheckoutError('A signed-in account with a valid email is required for Live Paystack payment.');
           return;
         }
 
         const txRef = `PSTK_EXAM_${Date.now()}_${Math.floor(Math.random() * 100000)}`;
-        const payerEmail = currentUserProfile?.email || 'parent@studentcompanion.ng';
-
         const handler = (window as any).PaystackPop.setup({
           key: activeKey,
           email: payerEmail,
@@ -138,10 +126,10 @@ export const ExamPrepUnlockModal: React.FC<ExamPrepUnlockModalProps> = ({
               { display_name: 'Plan', variable_name: 'plan', value: planType === 'full' ? 'Full Exam Prep Pass' : `Single Subject: ${selectedSubject}` }
             ]
           },
-          callback: function(response: { reference: string }) {
+          callback: function (response: { reference: string }) {
             (async () => {
               try {
-                await fetch('/api/paystack/verify-payment', {
+                const verifyRes = await fetch('/api/paystack/verify-payment', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({
@@ -153,26 +141,36 @@ export const ExamPrepUnlockModal: React.FC<ExamPrepUnlockModalProps> = ({
                     plan: planType === 'full' ? 'Full Exam Prep' : `Single Subject: ${selectedSubject}`
                   })
                 });
-              } catch (e) {
-                console.warn('Backend payment verification logged:', e);
-              }
+                const verifyData = await verifyRes.json();
+                if (!verifyRes.ok || !verifyData.success) {
+                  setCheckoutError(verifyData.error || 'Paystack Live verification failed at server.');
+                  setIsProcessing(false);
+                  return;
+                }
 
-              let success = false;
-              if (planType === 'full') {
-                success = unlockExamPrep('paystack');
-              } else {
-                success = unlockSingleSubjectExam(selectedSubject, 'paystack');
-              }
+                let success = false;
+                if (planType === 'full') {
+                  success = unlockExamPrep('paystack', response.reference);
+                } else {
+                  success = unlockSingleSubjectExam(selectedSubject, 'paystack', response.reference);
+                }
 
-              if (success) {
-                playSound.levelUp();
+                if (success) {
+                  playSound.levelUp();
+                  setIsProcessing(false);
+                  if (onSuccess) onSuccess();
+                  onClose();
+                } else {
+                  setCheckoutError('Failed to unlock plan after payment verification.');
+                  setIsProcessing(false);
+                }
+              } catch (e: any) {
+                setCheckoutError(e?.message || 'Network error verifying Paystack transaction.');
                 setIsProcessing(false);
-                if (onSuccess) onSuccess();
-                onClose();
               }
             })();
           },
-          onClose: function() {
+          onClose: function () {
             setIsProcessing(false);
           }
         });
@@ -181,12 +179,20 @@ export const ExamPrepUnlockModal: React.FC<ExamPrepUnlockModalProps> = ({
         return;
       }
 
-      // Wallet or bank transfer flow
+      // Funded Parent Escrow Wallet flow
+      if (!hasSufficientWalletBalance) {
+        setCheckoutError(
+          `Insufficient Parent Escrow Wallet balance (₦${currentBalance.toLocaleString()} available, ₦${activeFee.toLocaleString()} required). Please pay via Paystack Live.`
+        );
+        setIsProcessing(false);
+        return;
+      }
+
       let success = false;
       if (planType === 'full') {
-        success = unlockExamPrep(selectedMethod);
+        success = unlockExamPrep('wallet');
       } else {
-        success = unlockSingleSubjectExam(selectedSubject, selectedMethod);
+        success = unlockSingleSubjectExam(selectedSubject, 'wallet');
       }
 
       if (success) {
@@ -195,10 +201,11 @@ export const ExamPrepUnlockModal: React.FC<ExamPrepUnlockModalProps> = ({
         if (onSuccess) onSuccess();
         onClose();
       } else {
+        setCheckoutError('Could not deduct Parent Escrow Wallet balance.');
         setIsProcessing(false);
       }
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
+      setCheckoutError(err?.message || 'Payment initiation failed.');
       setIsProcessing(false);
     }
   };
@@ -438,13 +445,13 @@ export const ExamPrepUnlockModal: React.FC<ExamPrepUnlockModalProps> = ({
                   Instant Debit
                 </span>
               ) : (
-                <span className="text-[10px] text-amber-400 font-bold bg-amber-950/70 px-2 py-0.5 rounded border border-amber-800">
-                  Auto Top-up Deficit
+                <span className="text-[10px] text-rose-300 font-bold bg-rose-950/70 px-2 py-0.5 rounded border border-rose-800">
+                  Insufficient Balance
                 </span>
               )}
             </button>
 
-            {/* Option 2: Direct Paystack Checkout */}
+            {/* Option 2: Direct Live Paystack Checkout */}
             <button
               type="button"
               onClick={() => setSelectedMethod('paystack')}
@@ -459,80 +466,20 @@ export const ExamPrepUnlockModal: React.FC<ExamPrepUnlockModalProps> = ({
                   <CreditCard className="w-4 h-4" />
                 </div>
                 <div>
-                  <div className="text-xs font-bold text-slate-100">Paystack Checkout</div>
-                  <div className="text-[11px] text-slate-400">Debit Card · Bank App · USSD (*737#, *919#)</div>
+                  <div className="text-xs font-bold text-slate-100">Paystack Live Checkout</div>
+                  <div className="text-[11px] text-slate-400">Debit Card · Bank Transfer · USSD (*737#, *919#)</div>
                 </div>
               </div>
               <span className="text-[10px] text-emerald-400 font-bold bg-emerald-950/70 px-2 py-0.5 rounded border border-emerald-800">
-                Instant Gateway
-              </span>
-            </button>
-
-            {/* Option 3: Nigerian Direct Bank Transfer */}
-            <button
-              type="button"
-              onClick={() => setSelectedMethod('bank_transfer')}
-              className={`w-full p-3 rounded-2xl border transition-all text-left flex items-center justify-between cursor-pointer ${
-                selectedMethod === 'bank_transfer'
-                  ? 'bg-emerald-950/50 border-emerald-500/70 ring-1 ring-emerald-500/40'
-                  : 'bg-slate-800/50 border-slate-700/60 hover:bg-slate-800/80'
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${selectedMethod === 'bank_transfer' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-700 text-slate-300'}`}>
-                  <Building2 className="w-4 h-4" />
-                </div>
-                <div>
-                  <div className="text-xs font-bold text-slate-100">Direct Bank Transfer</div>
-                  <div className="text-[11px] text-slate-400">Virtual Wema/Providus account · instant receipt</div>
-                </div>
-              </div>
-              <span className="text-[10px] text-cyan-400 font-bold bg-cyan-950/70 px-2 py-0.5 rounded border border-cyan-800">
-                Any Bank App
+                Verified Live
               </span>
             </button>
           </div>
 
-          {/* Conditional Method Details */}
-          {selectedMethod === 'bank_transfer' && (
-            <div className="p-3.5 rounded-2xl bg-slate-950 border border-cyan-800/50 space-y-2.5 animate-in fade-in duration-150">
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-slate-400 font-medium">Virtual Dedicated Account:</span>
-                <span className="text-amber-400 font-mono text-[11px] flex items-center gap-1">
-                  <Clock className="w-3 h-3" /> Expires in {formatTimer(transferTimer)}
-                </span>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2 p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-xs">
-                <div>
-                  <span className="text-[10px] text-slate-400 uppercase font-semibold block">Bank</span>
-                  <span className="font-bold text-slate-100">Wema Bank / Providus</span>
-                </div>
-                <div>
-                  <span className="text-[10px] text-slate-400 uppercase font-semibold block">Beneficiary</span>
-                  <span className="font-bold text-slate-100 truncate block">Student Companion Escrow</span>
-                </div>
-                <div className="col-span-2 pt-1 border-t border-slate-800 flex items-center justify-between">
-                  <div>
-                    <span className="text-[10px] text-slate-400 uppercase font-semibold block">Account Number</span>
-                    <span className="font-mono font-black text-emerald-400 text-base tracking-widest">
-                      0238472910
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleCopyAccountNumber}
-                    className="py-1 px-3 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
-                  >
-                    {hasCopiedAccount ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                    <span>{hasCopiedAccount ? 'Copied' : 'Copy'}</span>
-                  </button>
-                </div>
-              </div>
-
-              <p className="text-[11px] text-slate-400">
-                Transfer exactly <strong className="text-slate-100 font-mono">₦{activeFee.toLocaleString()}</strong> to the account above. Verification is automatic.
-              </p>
+          {checkoutError && (
+            <div className="p-3 rounded-xl bg-rose-950/80 border border-rose-700 text-xs text-rose-200 flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+              <span>{checkoutError}</span>
             </div>
           )}
 
@@ -541,10 +488,10 @@ export const ExamPrepUnlockModal: React.FC<ExamPrepUnlockModalProps> = ({
             <div className="p-3 rounded-xl bg-amber-950/40 border border-amber-800/50 text-[11px] text-amber-200 space-y-1">
               <div className="flex items-center gap-1.5 font-semibold">
                 <AlertCircle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                <span>Wallet Balance Shortfall</span>
+                <span>Wallet Balance Insufficient</span>
               </div>
               <p>
-                Your balance is <strong className="font-mono text-slate-100"><NairaText amount={currentBalance} /></strong>. Unlocking will automatically top up the remaining <strong className="font-mono text-amber-300"><NairaText amount={deficit} /></strong> via Paystack.
+                Your balance is <strong className="font-mono text-slate-100"><NairaText amount={currentBalance} /></strong>. Top up in Parent Portal or select <strong>Paystack Live Checkout</strong> above.
               </p>
             </div>
           )}
@@ -569,12 +516,7 @@ export const ExamPrepUnlockModal: React.FC<ExamPrepUnlockModalProps> = ({
             {isProcessing ? (
               <>
                 <div className="w-4 h-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
-                <span>Confirming Payment...</span>
-              </>
-            ) : selectedMethod === 'bank_transfer' ? (
-              <>
-                <span>I Have Sent ₦{activeFee.toLocaleString()}</span>
-                <ArrowRight className="w-3.5 h-3.5" />
+                <span>Verifying Live Payment...</span>
               </>
             ) : (
               <>

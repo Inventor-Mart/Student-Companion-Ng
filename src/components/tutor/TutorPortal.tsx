@@ -46,10 +46,18 @@ export const TutorPortal: React.FC = () => {
     currentUserProfile,
     tutorVerification,
     launchVirtualClassroom,
+    tutorRespondToBooking,
+    getBookingJoinStatus,
     updateTutorProfile,
     pendingPortalTab,
     clearPendingPortalTab
   } = useApp();
+
+  const [sessionClockMs, setSessionClockMs] = useState<number>(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setSessionClockMs(Date.now()), 15000);
+    return () => clearInterval(timer);
+  }, []);
 
   const tutorName = currentUserProfile?.fullName || 'Registered Educator';
   const tutorData = currentUserProfile?.tutorData;
@@ -197,7 +205,7 @@ export const TutorPortal: React.FC = () => {
   // Filter bookings strictly for this registered tutor
   const myBookings = tutorBookings.filter(b => b.tutorId === tutorId);
   const confirmedCount = myBookings.filter(b => b.status === 'confirmed').length;
-  const pendingCount = myBookings.filter(b => b.status === 'pending_parent').length;
+  const pendingCount = myBookings.filter(b => b.status === 'pending_parent' || b.status === 'pending_tutor').length;
   const availableSlotsCount = editTimetable.filter(s => s.isAvailable).length;
 
   const currentChatId = activeTutorChatId || tutorId;
@@ -210,7 +218,7 @@ export const TutorPortal: React.FC = () => {
     .reduce((sum, b) => sum + b.amountNaira, 0);
 
   const heldInEscrow = myBookings
-    .filter(b => b.status === 'confirmed' || b.status === 'pending_parent')
+    .filter(b => b.status === 'confirmed' || b.status === 'pending_parent' || b.status === 'pending_tutor')
     .reduce((sum, b) => sum + b.amountNaira, 0);
 
   const handleSendMessage = (e: React.FormEvent) => {
@@ -489,7 +497,7 @@ export const TutorPortal: React.FC = () => {
                   <p className="text-[11px] text-slate-300 mt-1 line-clamp-2">
                     {myBookings.length === 0
                       ? 'No session requests yet. Bookings appear here.'
-                      : `${confirmedCount} confirmed · ${pendingCount} awaiting Parent PIN`}
+                      : `${confirmedCount} confirmed · ${pendingCount} awaiting approval`}
                   </p>
                 </div>
 
@@ -706,90 +714,143 @@ export const TutorPortal: React.FC = () => {
               </motion.div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-                {myBookings.map(b => (
-                  <motion.div
-                    key={b.id}
-                    variants={tileVariants}
-                    className={`rounded-3xl p-4 border-2 space-y-3 shadow-xl ${
-                      b.status === 'confirmed'
-                        ? 'bg-[#14203D] border-[#84CC16]/60'
-                        : b.status === 'pending_parent'
-                        ? 'bg-gradient-to-br from-[#261812] to-[#140E0B] border-[#FF5B00]/60'
-                        : 'bg-[#14203D] border-slate-700'
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-sm font-black text-white">{b.studentName}</span>
-                          <span
-                            className={`text-[10px] font-black px-2 py-0.5 rounded-lg border ${
-                              b.status === 'confirmed'
-                                ? 'bg-[#84CC16]/20 text-[#84CC16] border-[#84CC16]/50'
+                {myBookings.map(b => {
+                  const needsTutorDecision = !b.isTutorApproved && b.status !== 'cancelled' && b.status !== 'completed';
+                  const joinCheck = getBookingJoinStatus(b, sessionClockMs);
+
+                  return (
+                    <motion.div
+                      key={b.id}
+                      variants={tileVariants}
+                      className={`rounded-3xl p-4 border-2 space-y-3 shadow-xl ${
+                        b.status === 'confirmed'
+                          ? 'bg-[#14203D] border-[#84CC16]/60'
+                          : b.status === 'pending_tutor' || b.status === 'pending_parent'
+                          ? 'bg-gradient-to-br from-[#261812] to-[#140E0B] border-[#FF5B00]/60'
+                          : 'bg-[#14203D] border-slate-700'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-sm font-black text-white">{b.studentName}</span>
+                            <span
+                              className={`text-[10px] font-black px-2 py-0.5 rounded-lg border ${
+                                b.status === 'confirmed'
+                                  ? 'bg-[#84CC16]/20 text-[#84CC16] border-[#84CC16]/50'
+                                  : b.status === 'pending_tutor' || b.status === 'pending_parent'
+                                  ? 'bg-[#FF5B00]/20 text-orange-200 border-[#FF5B00]/50'
+                                  : 'bg-[#0D1527] text-slate-300 border-slate-700'
+                              }`}
+                            >
+                              {b.status === 'confirmed'
+                                ? 'Confirmed (Dual Approved)'
+                                : b.status === 'pending_tutor'
+                                ? 'Action Needed: Tutor Accept'
                                 : b.status === 'pending_parent'
-                                ? 'bg-[#FF5B00]/20 text-orange-200 border-[#FF5B00]/50'
-                                : 'bg-[#0D1527] text-slate-300 border-slate-700'
-                            }`}
-                          >
-                            {b.status === 'confirmed'
-                              ? 'Confirmed & Escrow Funded'
-                              : b.status === 'pending_parent'
-                              ? 'Awaiting Parent PIN Approval'
-                              : 'Completed'}
+                                ? 'Awaiting Parent PIN'
+                                : b.status === 'cancelled'
+                                ? 'Cancelled / Refunded'
+                                : 'Completed'}
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-300 mt-1">
+                            {b.subject} · {b.topic}
+                          </p>
+                          <div className="flex items-center gap-2 mt-1 text-[10px]">
+                            <span className={b.isParentApproved ? 'text-[#84CC16] font-bold' : 'text-amber-300'}>
+                              Parent PIN: {b.isParentApproved ? '✓' : 'Pending'}
+                            </span>
+                            <span className="text-slate-600">·</span>
+                            <span className={b.isTutorApproved ? 'text-[#84CC16] font-bold' : 'text-amber-300'}>
+                              Tutor: {b.isTutorApproved ? '✓ Accepted' : 'Pending'}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="text-right shrink-0">
+                          <span className="text-sm font-black font-mono text-[#84CC16]">
+                            <NairaText amount={b.amountNaira} />
+                          </span>
+                          <span className="text-[10px] text-[#FF5B00] font-black block uppercase">
+                            {b.bookingType}
                           </span>
                         </div>
-                        <p className="text-xs text-slate-300 mt-1">
-                          {b.subject} · {b.topic}
-                        </p>
                       </div>
 
-                      <div className="text-right shrink-0">
-                        <span className="text-sm font-black font-mono text-[#84CC16]">
-                          <NairaText amount={b.amountNaira} />
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-300 pt-2.5 border-t border-slate-800">
+                        <span className="flex items-center gap-1.5 text-[11px]">
+                          <Clock className="w-3.5 h-3.5 text-[#84CC16]" />
+                          <span>
+                            {b.date} ({b.timeSlot})
+                          </span>
                         </span>
-                        <span className="text-[10px] text-[#FF5B00] font-black block uppercase">
-                          {b.bookingType}
-                        </span>
-                      </div>
-                    </div>
 
-                    <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-300 pt-2.5 border-t border-slate-800">
-                      <span className="flex items-center gap-1.5 text-[11px]">
-                        <Clock className="w-3.5 h-3.5 text-[#84CC16]" />
-                        <span>
-                          {b.date} ({b.timeSlot})
-                        </span>
-                      </span>
+                        <div className="flex items-center flex-wrap gap-2">
+                          {needsTutorDecision && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  playSound.tileTap();
+                                  tutorRespondToBooking(b.id, 'decline', 'Declined by Tutor');
+                                }}
+                                className="px-3 py-1.5 rounded-xl bg-rose-950/70 hover:bg-rose-900 text-rose-200 border border-rose-700 font-black text-[11px] cursor-pointer active:scale-95"
+                              >
+                                Decline &amp; Refund
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  playSound.levelUp();
+                                  tutorRespondToBooking(b.id, 'accept');
+                                }}
+                                className="px-3 py-1.5 rounded-xl bg-[#84CC16] hover:bg-[#A3E635] text-slate-950 font-black text-[11px] cursor-pointer active:scale-95 shadow-md"
+                              >
+                                Accept Session
+                              </button>
+                            </>
+                          )}
 
-                      <div className="flex items-center gap-2">
-                        {b.status === 'confirmed' && b.bookingType === 'online' && (
+                          {b.status === 'confirmed' && b.bookingType === 'online' && (
+                            <button
+                              type="button"
+                              disabled={!joinCheck.allowed}
+                              onClick={() => {
+                                if (!joinCheck.allowed) return;
+                                playSound.levelUp();
+                                launchVirtualClassroom(b.id, 'tutor');
+                              }}
+                              title={joinCheck.reason}
+                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#FF5B00] hover:bg-[#e05000] disabled:bg-slate-800 disabled:text-slate-400 disabled:cursor-not-allowed text-white font-black text-[11px] transition-all cursor-pointer shadow-md shadow-[#FF5B00]/25 active:scale-95"
+                            >
+                              <Video className="w-3.5 h-3.5" />
+                              <span>
+                                {joinCheck.allowed
+                                  ? 'Launch Virtual Classroom'
+                                  : joinCheck.status === 'too_early'
+                                  ? `Opens in ${Math.max(1, Math.ceil(joinCheck.msUntilOpen / 60000))}m`
+                                  : 'Window Ended'}
+                              </span>
+                            </button>
+                          )}
+
                           <button
                             type="button"
                             onClick={() => {
-                              playSound.levelUp();
-                              launchVirtualClassroom(b.id, 'tutor');
+                              playSound.tileTap();
+                              setActiveTutorChatId(b.studentId);
+                              setActiveTab('chat');
                             }}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#FF5B00] hover:bg-[#e05000] text-white font-black text-[11px] transition-all cursor-pointer shadow-md shadow-[#FF5B00]/25 active:scale-95"
+                            className="px-3 py-1.5 rounded-xl bg-[#0D1527] hover:bg-[#18294A] text-[#84CC16] border border-[#84CC16]/40 font-black text-[11px] cursor-pointer active:scale-95"
                           >
-                            <Video className="w-3.5 h-3.5" />
-                            <span>Launch Virtual Classroom</span>
+                            Open Masked Chat
                           </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            playSound.tileTap();
-                            setActiveTutorChatId(b.studentId);
-                            setActiveTab('chat');
-                          }}
-                          className="px-3 py-1.5 rounded-xl bg-[#0D1527] hover:bg-[#18294A] text-[#84CC16] border border-[#84CC16]/40 font-black text-[11px] cursor-pointer active:scale-95"
-                        >
-                          Open Masked Chat
-                        </button>
+                        </div>
                       </div>
-                    </div>
-                  </motion.div>
-                ))}
+                    </motion.div>
+                  );
+                })}
               </div>
             )}
           </motion.div>

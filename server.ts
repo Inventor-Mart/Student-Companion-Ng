@@ -25,7 +25,8 @@ import {
   getDocs,
   orderBy,
   limit,
-  increment
+  increment,
+  deleteDoc
 } from 'firebase/firestore/lite';
 import firebaseConfig from './firebase-applet-config.json';
 import {
@@ -2127,23 +2128,26 @@ app.post('/api/partners/withdraw', async (req, res) => {
 let runtimePaystackPublicKey = process.env.VITE_PAYSTACK_PUBLIC_KEY || process.env.PAYSTACK_PUBLIC_KEY || '';
 let runtimePaystackSecretKey = process.env.PAYSTACK_SECRET_KEY || '';
 
-// 1. Get Paystack Public Config
+// 1. Get Paystack Public Config (Live Keys Only)
 app.get('/api/paystack/config', (_req, res) => {
-  const pubKey = runtimePaystackPublicKey || process.env.VITE_PAYSTACK_PUBLIC_KEY || '';
+  const pubKey = (runtimePaystackPublicKey || process.env.VITE_PAYSTACK_PUBLIC_KEY || process.env.PAYSTACK_PUBLIC_KEY || '').trim();
+  const secretKey = (runtimePaystackSecretKey || process.env.PAYSTACK_SECRET_KEY || '').trim();
   const isLive = pubKey.startsWith('pk_live_');
   const isTest = pubKey.startsWith('pk_test_');
-  const hasSecret = Boolean(runtimePaystackSecretKey || process.env.PAYSTACK_SECRET_KEY);
+  const hasLiveSecret = secretKey.startsWith('sk_live_');
+  const liveConfigured = isLive && hasLiveSecret;
 
   res.json({
-    publicKey: pubKey,
+    publicKey: isLive ? pubKey : '',
     isLive,
     isTest,
-    hasSecretKey: hasSecret,
-    mode: isLive ? 'live' : isTest ? 'test' : 'unconfigured',
+    hasSecretKey: hasLiveSecret,
+    liveConfigured,
+    mode: liveConfigured ? 'live' : isTest || secretKey.startsWith('sk_test_') ? 'test_blocked' : 'unconfigured',
   });
 });
 
-// 2. Save / Update Paystack Keys (Admin Only: wowrealities@gmail.com, martorefe@gmail.com)
+// 2. Save / Update Paystack Live Keys (Admin Only: wowrealities@gmail.com, martorefe@gmail.com)
 app.post('/api/paystack/save-keys', async (req, res) => {
   const { publicKey, secretKey, adminEmail } = req.body;
   const authorizedAdmins = ['martorefe@gmail.com', 'wowrealities@gmail.com'];
@@ -2153,19 +2157,42 @@ app.post('/api/paystack/save-keys', async (req, res) => {
     return res.status(403).json({ success: false, error: 'Unauthorized: Admin privileges required to update payment gateway keys.' });
   }
 
+  const nextPub = publicKey !== undefined ? String(publicKey).trim() : runtimePaystackPublicKey;
+  const nextSec = secretKey !== undefined ? String(secretKey).trim() : runtimePaystackSecretKey;
+
+  if (nextPub && !nextPub.startsWith('pk_live_')) {
+    return res.status(400).json({
+      success: false,
+      error: 'Test or invalid public key rejected. Only live Paystack public keys (pk_live_...) are allowed.'
+    });
+  }
+
+  if (nextSec && !nextSec.startsWith('sk_live_')) {
+    return res.status(400).json({
+      success: false,
+      error: 'Test or invalid secret key rejected. Only live Paystack secret keys (sk_live_...) are allowed.'
+    });
+  }
+
   if (publicKey !== undefined) {
-    runtimePaystackPublicKey = String(publicKey).trim();
+    runtimePaystackPublicKey = nextPub;
   }
   if (secretKey !== undefined) {
-    runtimePaystackSecretKey = String(secretKey).trim();
+    runtimePaystackSecretKey = nextSec;
   }
+
+  const liveConfigured =
+    runtimePaystackPublicKey.startsWith('pk_live_') && runtimePaystackSecretKey.startsWith('sk_live_');
 
   return res.json({
     success: true,
-    message: 'Paystack gateway configuration updated successfully.',
-    publicKey: runtimePaystackPublicKey,
-    hasSecretKey: Boolean(runtimePaystackSecretKey),
-    mode: runtimePaystackPublicKey.startsWith('pk_live_') ? 'live' : runtimePaystackPublicKey.startsWith('pk_test_') ? 'test' : 'unconfigured',
+    message: liveConfigured
+      ? 'Paystack Live gateway keys verified and active.'
+      : 'Paystack live key saved. Both pk_live_ and sk_live_ must be configured to process live payments.',
+    publicKey: runtimePaystackPublicKey.startsWith('pk_live_') ? runtimePaystackPublicKey : '',
+    hasSecretKey: runtimePaystackSecretKey.startsWith('sk_live_'),
+    liveConfigured,
+    mode: liveConfigured ? 'live' : 'unconfigured',
   });
 });
 
@@ -2249,62 +2276,74 @@ app.post('/api/paystack/verify-payment', async (req, res) => {
 
     await securityService.checkPaymentVelocity(req, String(parentId || studentId || ''), email, amountNaira);
 
-    const secretKey = runtimePaystackSecretKey || process.env.PAYSTACK_SECRET_KEY || '';
+    const secretKey = (runtimePaystackSecretKey || process.env.PAYSTACK_SECRET_KEY || '').trim();
+    if (!secretKey || !secretKey.startsWith('sk_live_')) {
+      return res.status(400).json({
+        success: false,
+        liveRequired: true,
+        error: 'Live Paystack verification is required (sk_live_... secret key is missing or configured in test mode). Sandbox and simulated payments are disabled.'
+      });
+    }
+
     let paystackResponseData: any = null;
     let paymentChannel = 'card';
 
-    // If secret key is provided, perform live server-side verification with Paystack
-    if (secretKey) {
-      const verifyRes = await fetch(`https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`, {
-        method: 'GET',
-        headers: {
-          Authorization: `Bearer ${secretKey}`,
-          'Content-Type': 'application/json',
-        },
+    // Perform strict live server-side verification with Paystack REST API
+    const verifyRes = await fetch(`https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${secretKey}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    const verifyJson = await verifyRes.json();
+
+    if (!verifyRes.ok || !verifyJson.status) {
+      const errorMsg = verifyJson.message === 'Invalid key'
+        ? 'Paystack Live Secret Key is invalid. Please configure an active sk_live_ key in Gateway Keys.'
+        : (verifyJson.message || 'Payment reference verification failed at Paystack');
+      return res.status(400).json({
+        success: false,
+        error: errorMsg,
       });
-
-      const verifyJson = await verifyRes.json();
-
-      if (!verifyRes.ok || !verifyJson.status) {
-        const errorMsg = verifyJson.message === 'Invalid key'
-          ? 'Paystack Secret Key is invalid or not registered in your Paystack Dashboard. Please input your active secret key from https://dashboard.paystack.com/#/settings/developer in Gateway Keys.'
-          : (verifyJson.message || 'Payment reference verification failed at Paystack');
-        return res.status(400).json({
-          success: false,
-          error: errorMsg,
-        });
-      }
-
-      paystackResponseData = verifyJson.data;
-
-      // Validate currency and status
-      if (paystackResponseData.status !== 'success') {
-        return res.status(400).json({
-          success: false,
-          error: `Paystack transaction status is '${paystackResponseData.status}'. Payment not settled.`,
-        });
-      }
-
-      if (paystackResponseData.currency !== 'NGN') {
-        return res.status(400).json({
-          success: false,
-          error: `Invalid currency: expected NGN, got ${paystackResponseData.currency}`,
-        });
-      }
-
-      // Paystack returns amount in Kobo (amountNaira * 100)
-      const expectedKobo = Math.round(amountNaira * 100);
-      if (paystackResponseData.amount < expectedKobo) {
-        return res.status(400).json({
-          success: false,
-          error: `Amount mismatch: expected ₦${amountNaira} (${expectedKobo} kobo), but Paystack settled ${paystackResponseData.amount} kobo`,
-        });
-      }
-
-      paymentChannel = paystackResponseData.channel || 'card';
-    } else {
-      console.warn(`[Paystack Notice] PAYSTACK_SECRET_KEY not set. Recording reference ${reference} in verified sandbox mode.`);
     }
+
+    paystackResponseData = verifyJson.data;
+
+    // Reject any non-live / sandbox / test domain settlement
+    if (paystackResponseData.domain && paystackResponseData.domain !== 'live') {
+      return res.status(400).json({
+        success: false,
+        error: `Paystack transaction domain is '${paystackResponseData.domain}'. Only verified live payments are accepted.`
+      });
+    }
+
+    // Validate currency and status
+    if (paystackResponseData.status !== 'success') {
+      return res.status(400).json({
+        success: false,
+        error: `Paystack transaction status is '${paystackResponseData.status}'. Payment not settled.`,
+      });
+    }
+
+    if (paystackResponseData.currency !== 'NGN') {
+      return res.status(400).json({
+        success: false,
+        error: `Invalid currency: expected NGN, got ${paystackResponseData.currency}`,
+      });
+    }
+
+    // Paystack returns amount in Kobo (amountNaira * 100)
+    const expectedKobo = Math.round(amountNaira * 100);
+    if (paystackResponseData.amount < expectedKobo) {
+      return res.status(400).json({
+        success: false,
+        error: `Amount mismatch: expected ₦${amountNaira} (${expectedKobo} kobo), but Paystack settled ${paystackResponseData.amount} kobo`,
+      });
+    }
+
+    paymentChannel = paystackResponseData.channel || 'card';
 
     // Lock reference in idempotency registry before crediting balances or entitlements
     await securityService.markPaystackRefProcessed({
@@ -2560,6 +2599,25 @@ app.post('/api/paystack/verify-payment', async (req, res) => {
       });
     }
 
+    if (purpose === 'tutor_booking_payment' || purpose === 'exam_prep_unlock') {
+      const { tutorId, bookingId, subject } = req.body;
+      return res.json({
+        success: true,
+        reference,
+        amountNaira,
+        purpose,
+        tutorId: tutorId || null,
+        bookingId: bookingId || null,
+        subject: subject || null,
+        channel: paymentChannel,
+        verifiedLive: true,
+        message:
+          purpose === 'tutor_booking_payment'
+            ? `₦${amountNaira.toLocaleString()} live Paystack tutor escrow payment verified.`
+            : `₦${amountNaira.toLocaleString()} live Paystack Exam Prep payment verified.`
+      });
+    }
+
     if (purpose === 'drill_regeneration' || purpose === 'certificate_drill_regeneration') {
       const { studentId, subject, board } = req.body;
       return res.json({
@@ -2665,6 +2723,128 @@ app.post('/api/paystack/verify-payment', async (req, res) => {
       error: error?.message || 'Internal error verifying payment',
     });
   }
+});
+
+// =========================================================================
+// SUPER ADMIN PURGE TEST PERSONAS, WALLETS & ESCROW CREDITS ENDPOINT
+// =========================================================================
+const SAMPLE_PURGE_NEEDLES = [
+  'chidinma',
+  'ibrahim danjuma',
+  'ngozi okoli',
+  'folashade balogun',
+  'emeka nwosu',
+  'adewale adeyemi',
+  'adewale bakare',
+  'zainab al-hassan',
+  'victoria okonkwo',
+  'tunde balogun',
+  '@students.ng',
+  '@tutoreng.com',
+  '@educators.ng',
+  '@barewa.edu.ng',
+  '@fgc.edu.ng',
+  '@transport.ng',
+  '@fgcikotekpene.edu.ng',
+  'usr-std-',
+  'usr-parent-',
+  'usr-tutor-',
+  'usr-admin-',
+  'std-tunde',
+  'tutor-adewale',
+  'book-001',
+  'demo-session'
+];
+
+function isSamplePurgeTarget(docId: string, data: any): boolean {
+  const email = String(data?.email || data?.studentEmail || data?.actorEmail || '').toLowerCase().trim();
+  if (AUTHORIZED_SUPER_ADMINS.includes(email)) return false;
+  if (data?.isSuperAdmin === true || data?.role === 'superadmin') return false;
+
+  const haystack = `${docId} ${email} ${data?.fullName || ''} ${data?.name || ''} ${data?.studentName || ''} ${data?.tutorName || ''} ${data?.tutorId || ''} ${data?.studentId || ''}`.toLowerCase();
+  if (SAMPLE_PURGE_NEEDLES.some(needle => haystack.includes(needle))) return true;
+  if (data?.balanceNaira === 35000 && data?.pin === '1234') return true;
+  return false;
+}
+
+app.post('/api/admin/purge-test-accounts', async (req, res) => {
+  const adminEmail = String(req.body?.adminEmail || '').toLowerCase().trim();
+  if (!adminEmail || !AUTHORIZED_SUPER_ADMINS.includes(adminEmail)) {
+    await securityService.logUnauthorizedProbe(req, '/api/admin/purge-test-accounts', adminEmail);
+    return res.status(403).json({
+      success: false,
+      error: 'Unauthorized: Super Admin privileges required to purge test accounts and credits.'
+    });
+  }
+
+  let purgedStoreEntries = 0;
+  let deletedFirestoreDocs = 0;
+
+  // 1. Purge test/sample records from referralMemoryStore
+  for (const [partnerId, p] of Object.entries(referralMemoryStore.partners)) {
+    if (isSamplePurgeTarget(partnerId, p)) {
+      delete referralMemoryStore.partners[partnerId];
+      purgedStoreEntries++;
+    }
+  }
+  for (const [studentId, b] of Object.entries(referralMemoryStore.bindings)) {
+    if (isSamplePurgeTarget(studentId, b)) {
+      delete referralMemoryStore.bindings[studentId];
+      purgedStoreEntries++;
+    }
+  }
+  for (const studentId of Object.keys(referralMemoryStore.aspirantPaidHistory)) {
+    if (isSamplePurgeTarget(studentId, { studentId })) {
+      delete referralMemoryStore.aspirantPaidHistory[studentId];
+      purgedStoreEntries++;
+    }
+  }
+  const prevRewardsLen = referralMemoryStore.rewards.length;
+  referralMemoryStore.rewards = referralMemoryStore.rewards.filter(r => !isSamplePurgeTarget(r.id, r));
+  purgedStoreEntries += prevRewardsLen - referralMemoryStore.rewards.length;
+
+  const prevTxLen = referralMemoryStore.transactions.length;
+  referralMemoryStore.transactions = referralMemoryStore.transactions.filter(t => !isSamplePurgeTarget(t.id, t));
+  purgedStoreEntries += prevTxLen - referralMemoryStore.transactions.length;
+
+  saveReferralStore();
+
+  // 2. Purge test/sample personas, synthetic wallets, and test bookings from Firestore (preserving Super Admins)
+  const collectionsToScan = [
+    'users',
+    'students',
+    'wallets',
+    'parentWallets',
+    'tutorBookings',
+    'growthPartners',
+    'referrals',
+    'aspirantRewards'
+  ];
+
+  for (const colName of collectionsToScan) {
+    try {
+      const snap = await getDocs(collection(serverDb, colName));
+      for (const d of snap.docs) {
+        const data = d.data();
+        if (isSamplePurgeTarget(d.id, data)) {
+          try {
+            await deleteDoc(doc(serverDb, colName, d.id));
+            deletedFirestoreDocs++;
+          } catch {}
+        }
+      }
+    } catch {
+      // Ignore collection read failures when running without full Firebase permissions
+    }
+  }
+
+  return res.json({
+    success: true,
+    purgedStoreEntries,
+    deletedFirestoreDocs,
+    preservedSuperAdmins: AUTHORIZED_SUPER_ADMINS,
+    message: `Purged ${deletedFirestoreDocs} Firestore test record(s) and ${purgedStoreEntries} in-memory sample record(s). Super Admin accounts preserved.`
+  });
 });
 
 // =========================================================================
@@ -4302,6 +4482,41 @@ app.post('/api/auth/login', async (req, res) => {
 async function startServer() {
   const isProduction = process.env.NODE_ENV === 'production';
   if (!isProduction) {
+    app.get('/manifest.webmanifest', (_req, res) => {
+      res.setHeader('Content-Type', 'application/manifest+json');
+      res.json({
+        id: '/',
+        name: 'Student Companion',
+        short_name: 'StudentComp',
+        description: 'Comprehensive academic companion, scheme of work, CBT practice, and student portal.',
+        theme_color: '#0B1526',
+        background_color: '#0B1526',
+        display: 'standalone',
+        start_url: '/',
+        scope: '/',
+        icons: [
+          {
+            src: '/pwa-192x192.png',
+            sizes: '192x192',
+            type: 'image/png',
+            purpose: 'any',
+          },
+          {
+            src: '/pwa-512x512.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'any',
+          },
+          {
+            src: '/pwa-maskable-512x512.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'maskable',
+          },
+        ],
+      });
+    });
+
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: {
@@ -4322,11 +4537,21 @@ async function startServer() {
                     /transport\.connect\([^;]*\);/,
                     '/* HMR WebSocket disabled */ Promise.resolve();'
                   )
+                  .replace(
+                    /else throw new SendBeforeConnectError\("send was called before connect"\);/g,
+                    'else return;'
+                  )
                   .replace(/ws\.send\(/g, 'ws?.send(')
                   .replace(/new WebSocket\([^)]*\)/g, 'null'),
                 map: null,
               };
             }
+          },
+          transformIndexHtml(html) {
+            if (!html.includes('rel="manifest"')) {
+              return html.replace('</head>', '  <link rel="manifest" href="/manifest.webmanifest" />\n  </head>');
+            }
+            return html;
           },
         },
       ],

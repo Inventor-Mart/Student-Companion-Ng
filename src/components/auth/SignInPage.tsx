@@ -22,7 +22,6 @@ export const SignInPage: React.FC<SignInPageProps> = ({
   const {
     loginWithGoogle,
     authenticateUser,
-    activateQuickStudentSession,
     authLoading
   } = useApp();
   const [emailOrUsername, setEmailOrUsername] = useState('');
@@ -116,19 +115,6 @@ export const SignInPage: React.FC<SignInPageProps> = ({
       setAuthStatus('error');
       setErrorMsg(result.error || 'Google sign in was cancelled. Please try again.');
     }
-  };
-
-  const handleQuickStudentSignIn = () => {
-    if (isSubmitting) return;
-    primeLoginAudio();
-    setErrorMsg(null);
-    setAuthStatus('loading');
-
-    window.setTimeout(() => {
-      const profile = activateQuickStudentSession();
-      setAuthenticatedName(profile.fullName || null);
-      setAuthStatus('success');
-    }, 320);
   };
 
   return (
@@ -289,11 +275,11 @@ export const SignInPage: React.FC<SignInPageProps> = ({
             <button
               onClick={handleGoogleSignIn}
               disabled={authLoading || isSubmitting}
-              className="w-13 h-13 rounded-full bg-[#0C172B] border-2 border-[#84E000] shadow-[0_0_14px_rgba(132,224,0,0.25)] hover:scale-105 active:scale-95 disabled:opacity-60 flex items-center justify-center transition-all cursor-pointer group"
+              className="w-full max-w-[240px] h-12 rounded-full bg-[#0C172B] border-2 border-[#84E000] shadow-[0_0_14px_rgba(132,224,0,0.22)] hover:scale-[1.02] active:scale-95 disabled:opacity-60 flex items-center justify-center gap-2.5 transition-all cursor-pointer group px-5"
               title="Sign in with Google"
               type="button"
             >
-              <svg className="w-6 h-6" viewBox="0 0 24 24">
+              <svg className="w-5 h-5" viewBox="0 0 24 24">
                 <path
                   fill="#4285F4"
                   d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
@@ -311,25 +297,7 @@ export const SignInPage: React.FC<SignInPageProps> = ({
                   d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
                 />
               </svg>
-            </button>
-
-            {/* Quick Student Sign-In with Electric Orange Ring */}
-            <button
-              onClick={handleQuickStudentSignIn}
-              disabled={isSubmitting}
-              className="w-13 h-13 rounded-full bg-[#0C172B] border-2 border-[#FF5B00] shadow-[0_0_14px_rgba(255,91,0,0.25)] hover:scale-105 active:scale-95 disabled:opacity-60 flex items-center justify-center transition-all cursor-pointer group"
-              title="Quick Guest / Student Sign In"
-              type="button"
-            >
-              <svg className="w-7 h-7" viewBox="0 0 24 24" fill="none">
-                <path
-                  d="M12 3C8 3 5 6 5 10C5 13.5 7.5 16.5 11 17V20C8.5 20 6.5 19 5 18M12 3C16 3 19 6 19 10C19 13.5 16.5 16.5 13 17V20C15.5 20 17.5 19 19 18"
-                  stroke="#84E000"
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                />
-                <circle cx="12" cy="11" r="3" fill="#84E000" />
-              </svg>
+              <span className="text-xs font-bold text-white">Continue with Google</span>
             </button>
           </div>
 
@@ -342,7 +310,7 @@ export const SignInPage: React.FC<SignInPageProps> = ({
                 if (onNavigateToSignUp) {
                   onNavigateToSignUp();
                 } else {
-                  handleQuickStudentSignIn();
+                  onBackToLanding();
                 }
               }}
               className="text-[#FF5B00] font-bold hover:underline cursor-pointer"

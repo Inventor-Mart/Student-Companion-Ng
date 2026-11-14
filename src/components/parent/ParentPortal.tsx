@@ -175,12 +175,14 @@ export const ParentPortal: React.FC = () => {
     publicKey: string;
     isLive: boolean;
     isTest: boolean;
+    liveConfigured: boolean;
     hasSecretKey: boolean;
-    mode: 'live' | 'test' | 'unconfigured';
+    mode: 'live' | 'test_blocked' | 'unconfigured';
   }>({
     publicKey: '',
     isLive: false,
     isTest: false,
+    liveConfigured: false,
     hasSecretKey: false,
     mode: 'unconfigured'
   });
@@ -190,6 +192,8 @@ export const ParentPortal: React.FC = () => {
   const [keySaveMsg, setKeySaveMsg] = useState<string>('');
   const [isSavingKeys, setIsSavingKeys] = useState<boolean>(false);
   const [paystackError, setPaystackError] = useState<string | null>(null);
+  const [bookingApprovalPins, setBookingApprovalPins] = useState<Record<string, string>>({});
+  const [bookingApprovalError, setBookingApprovalError] = useState<string | null>(null);
   const [verifiedReceipt, setVerifiedReceipt] = useState<{
     reference: string;
     amount: number;
@@ -205,8 +209,15 @@ export const ParentPortal: React.FC = () => {
     try {
       const res = await fetch('/api/paystack/config');
       const data = await res.json();
-      setPaystackConfig(data);
-      if (data.publicKey) {
+      setPaystackConfig({
+        publicKey: data.publicKey || '',
+        isLive: Boolean(data.isLive),
+        isTest: Boolean(data.isTest),
+        liveConfigured: Boolean(data.liveConfigured),
+        hasSecretKey: Boolean(data.hasSecretKey),
+        mode: data.mode || 'unconfigured'
+      });
+      if (data.publicKey && String(data.publicKey).startsWith('pk_live_')) {
         setInputPublicKey(data.publicKey);
       }
     } catch (err) {
@@ -221,22 +232,34 @@ export const ParentPortal: React.FC = () => {
   const handleSavePaystackKeys = async (e: React.FormEvent) => {
     e.preventDefault();
     playSound.tileTap();
-    setIsSavingKeys(true);
     setKeySaveMsg('');
+    const cleanPub = inputPublicKey.trim();
+    const cleanSec = inputSecretKey.trim();
+    if (cleanPub && !cleanPub.startsWith('pk_live_')) {
+      playSound.buzz();
+      setKeySaveMsg('Only Live Paystack Public Keys (pk_live_...) are permitted. Test keys are blocked.');
+      return;
+    }
+    if (cleanSec && !cleanSec.startsWith('sk_live_')) {
+      playSound.buzz();
+      setKeySaveMsg('Only Live Paystack Secret Keys (sk_live_...) are permitted. Test keys are blocked.');
+      return;
+    }
+    setIsSavingKeys(true);
     try {
       const res = await fetch('/api/paystack/save-keys', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          publicKey: inputPublicKey,
-          secretKey: inputSecretKey,
+          publicKey: cleanPub,
+          secretKey: cleanSec,
           adminEmail: currentUserProfile?.email || 'wowrealities@gmail.com'
         })
       });
       const data = await res.json();
       if (data.success) {
         playSound.correct();
-        setKeySaveMsg('Paystack gateway configuration updated successfully!');
+        setKeySaveMsg('Paystack Live gateway configuration updated successfully!');
         await fetchPaystackConfig();
         setTimeout(() => {
           setIsKeySettingsOpen(false);
@@ -370,8 +393,10 @@ export const ParentPortal: React.FC = () => {
     );
   }
 
-  // Pending approvals
-  const pendingTutorApprovals = tutorBookings.filter(b => b.status === 'pending_parent');
+  // Pending approvals (both online and physical bookings awaiting Parent PIN)
+  const pendingTutorApprovals = tutorBookings.filter(
+    b => !b.isParentApproved && b.status !== 'cancelled' && b.status !== 'completed'
+  );
   const pendingChampApprovals = championshipRegistrations.filter(r => r.status === 'pending_parent');
   const totalPendingCount = pendingTutorApprovals.length + pendingChampApprovals.length;
   const activeChampionship = championshipRegistrations.some(r => r.status === 'paid' || r.status === 'completed');
@@ -403,19 +428,25 @@ export const ParentPortal: React.FC = () => {
     }
 
     const activeKey = paystackConfig.publicKey;
-    if (!activeKey) {
+    if (!activeKey || !activeKey.startsWith('pk_live_') || !paystackConfig.liveConfigured) {
       playSound.buzz();
       if (isAdmin) {
         setIsKeySettingsOpen(true);
-        setPaystackError('Paystack Public Key not configured yet. Please configure your key below.');
+        setPaystackError('Live Paystack keys (pk_live_ & sk_live_) are required. Please configure your live keys below.');
       } else {
-        setPaystackError('Paystack live payment gateway is not yet configured. Please notify the school administrator or support.');
+        setPaystackError('Live Paystack payment gateway is not yet configured. Please notify the administrator.');
       }
       setIsProcessingPaystack(false);
       return;
     }
 
-    const payerEmail = currentUserProfile?.email || 'wowrealities@gmail.com';
+    const payerEmail = currentUserProfile?.email || '';
+    if (!payerEmail || !payerEmail.includes('@')) {
+      playSound.buzz();
+      setPaystackError('A valid account email address is required for Live Paystack verification.');
+      setIsProcessingPaystack(false);
+      return;
+    }
     const txRef = `PSTK_${Date.now()}_${Math.floor(Math.random() * 1000000)}`;
 
     try {
@@ -458,7 +489,7 @@ export const ParentPortal: React.FC = () => {
               });
 
               const verifyData = await verifyRes.json();
-              if (verifyData.success) {
+              if (verifyRes.ok && verifyData.success) {
                 playSound.levelUp();
                 fundParentWallet(topUpAmount);
                 setVerifiedReceipt({
@@ -535,14 +566,12 @@ export const ParentPortal: React.FC = () => {
                 </span>
                 <span
                   className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-xl border ${
-                    paystackConfig.isLive
+                    paystackConfig.isLive && paystackConfig.liveConfigured
                       ? 'bg-[#84CC16]/20 text-[#84CC16] border-[#84CC16]/50'
-                      : paystackConfig.isTest
-                      ? 'bg-[#FF5B00]/20 text-orange-300 border-[#FF5B00]/50'
-                      : 'bg-[#0D1527] text-slate-300 border-slate-700'
+                      : 'bg-[#FF5B00]/20 text-orange-300 border-[#FF5B00]/50'
                   }`}
                 >
-                  {paystackConfig.isLive ? 'Paystack Live' : paystackConfig.isTest ? 'Paystack Test' : 'Paystack Ready'}
+                  {paystackConfig.isLive && paystackConfig.liveConfigured ? 'Paystack Live' : 'Live Keys Required'}
                 </span>
               </div>
               <p className="text-xs text-slate-300 mt-1">
@@ -1065,24 +1094,30 @@ export const ParentPortal: React.FC = () => {
                   </div>
                   <div>
                     <h3 className="text-sm font-black text-white tracking-tight flex items-center gap-2">
-                      <span>Physical Tutoring Approvals</span>
+                      <span>Tutoring Booking Approvals</span>
                       {pendingTutorApprovals.length > 0 && (
                         <span className="px-2 py-0.5 rounded-full bg-[#FF5B00] text-white text-[10px] font-black">
                           {pendingTutorApprovals.length}
                         </span>
                       )}
                     </h3>
-                    <span className="text-[11px] text-slate-400">Child Safety Protocol</span>
+                    <span className="text-[11px] text-slate-400">Dual Approval Protocol (Parent PIN + Tutor Acceptance)</span>
                   </div>
                 </div>
               </div>
 
+              {bookingApprovalError && (
+                <div className="p-2.5 rounded-xl bg-rose-950/80 border border-rose-700 text-rose-200 text-xs font-medium">
+                  {bookingApprovalError}
+                </div>
+              )}
+
               {pendingTutorApprovals.length === 0 ? (
                 <div className="bg-[#0D1527] rounded-2xl p-5 text-center border border-slate-800">
                   <CheckCircle2 className="w-7 h-7 text-[#84CC16] mx-auto mb-1.5" />
-                  <span className="text-xs font-black text-white block">All Tutor Requests Approved</span>
+                  <span className="text-xs font-black text-white block">All Tutor Requests Reviewed</span>
                   <p className="text-[11px] text-slate-400 mt-0.5">
-                    No pending physical home visits awaiting your authorization.
+                    No pending tutoring bookings awaiting your Parent PIN authorization.
                   </p>
                 </div>
               ) : (
@@ -1105,7 +1140,7 @@ export const ParentPortal: React.FC = () => {
                             <div className="flex items-center gap-1.5 flex-wrap">
                               <h4 className="text-xs font-black text-white">{req.tutorName}</h4>
                               <span className="text-[#84CC16] bg-[#84CC16]/15 px-1.5 py-0.5 rounded-lg border border-[#84CC16]/40 text-[10px] font-bold flex items-center gap-0.5">
-                                <ShieldCheck className="w-3 h-3" /> NIN Verified
+                                <ShieldCheck className="w-3 h-3" /> Registered
                               </span>
                             </div>
                             <p className="text-[11px] text-slate-300 mt-0.5">
@@ -1123,13 +1158,34 @@ export const ParentPortal: React.FC = () => {
                         <div className="flex items-center gap-2">
                           <Calendar className="w-3.5 h-3.5 text-[#84CC16]" />
                           <span>
-                            Scheduled for: <strong>{req.date}</strong>
+                            Scheduled for: <strong>{req.date} ({req.timeSlot})</strong>
                           </span>
                         </div>
                         <div className="flex items-center gap-2 text-slate-400 text-[11px]">
                           <Clock className="w-3.5 h-3.5 text-[#FF5B00]" />
-                          <span>Type: Physical Home Tutoring at registered residence</span>
+                          <span>
+                            {req.bookingType === 'online'
+                              ? 'Type: Online Interactive Whiteboard · Tutor status: '
+                              : 'Type: Physical Home Tutoring · Tutor status: '}
+                            <strong className={req.isTutorApproved ? 'text-[#84CC16]' : 'text-amber-300'}>
+                              {req.isTutorApproved ? 'Accepted' : 'Awaiting Tutor'}
+                            </strong>
+                          </span>
                         </div>
+                      </div>
+
+                      <div>
+                        <input
+                          type="password"
+                          maxLength={4}
+                          value={bookingApprovalPins[req.id] || ''}
+                          onChange={e => {
+                            setBookingApprovalPins(prev => ({ ...prev, [req.id]: e.target.value }));
+                            setBookingApprovalError(null);
+                          }}
+                          placeholder="Confirm 4-digit Parent PIN"
+                          className="w-full px-3 py-1.5 rounded-xl bg-[#14203D] border border-slate-700 text-xs text-white font-mono tracking-widest focus:outline-none focus:border-[#84CC16]"
+                        />
                       </div>
 
                       <div className="flex items-center gap-2 pt-1">
@@ -1137,23 +1193,30 @@ export const ParentPortal: React.FC = () => {
                           type="button"
                           onClick={() => {
                             playSound.tileTap();
-                            rejectTutorBooking(req.id);
+                            rejectTutorBooking(req.id, 'Declined by Parent');
                           }}
                           className="flex-1 py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold border border-slate-700 transition-colors cursor-pointer"
                         >
-                          Decline
+                          Decline &amp; Refund
                         </button>
 
                         <button
                           type="button"
                           onClick={() => {
-                            playSound.correct();
-                            approveTutorBooking(req.id);
+                            setBookingApprovalError(null);
+                            const pinVal = (bookingApprovalPins[req.id] || '').trim();
+                            const ok = approveTutorBooking(req.id, pinVal || undefined);
+                            if (ok) {
+                              playSound.correct();
+                            } else {
+                              playSound.buzz();
+                              setBookingApprovalError('Enter valid 4-digit Parent PIN (and verify escrow funds) to approve.');
+                            }
                           }}
                           className="flex-1 py-2 px-3 rounded-xl bg-[#84CC16] hover:bg-[#A3E635] text-slate-950 text-xs font-black transition-all shadow-md shadow-[#84CC16]/25 flex items-center justify-center gap-1.5 cursor-pointer"
                         >
                           <ShieldCheck className="w-3.5 h-3.5" />
-                          <span>Authorize &amp; Escrow</span>
+                          <span>Authorize PIN</span>
                         </button>
                       </div>
                     </div>
@@ -2013,7 +2076,7 @@ export const ParentPortal: React.FC = () => {
                   type="password"
                   value={inputSecretKey}
                   onChange={e => setInputSecretKey(e.target.value)}
-                  placeholder="sk_live_... or sk_test_..."
+                  placeholder="sk_live_..."
                   className="w-full px-3 py-2 rounded-xl bg-[#14203D] border border-slate-700 text-white font-mono text-xs focus:outline-none focus:border-[#84CC16]"
                 />
               </div>

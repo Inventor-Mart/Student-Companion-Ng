@@ -377,7 +377,7 @@ export const TermlyDrillHub: React.FC<TermlyDrillHubProps> = ({ onStartExam, onO
       return;
     }
 
-    // Paystack popup flow
+    // Paystack Live Checkout Flow
     if (typeof (window as any).PaystackPop === 'undefined') {
       setPaymentError('Paystack checkout script is not loaded yet. Please refresh or pay with Parent Wallet.');
       setIsProcessingPayment(false);
@@ -385,21 +385,24 @@ export const TermlyDrillHub: React.FC<TermlyDrillHubProps> = ({ onStartExam, onO
     }
 
     let activeKey = import.meta.env.VITE_PAYSTACK_PUBLIC_KEY || '';
-    if (!activeKey) {
-      try {
-        const saved = localStorage.getItem('sc_gateway_keys');
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          if (parsed.paystackPublicKey) activeKey = parsed.paystackPublicKey;
-        }
-      } catch (e) {}
-    }
-    if (!activeKey) {
-      activeKey = 'pk_test_placeholder_key';
+    let liveConfigured = false;
+    try {
+      const cfgRes = await fetch('/api/paystack/config');
+      if (cfgRes.ok) {
+        const cfg = await cfgRes.json();
+        if (cfg.publicKey) activeKey = cfg.publicKey;
+        liveConfigured = Boolean(cfg.liveConfigured && cfg.isLive);
+      }
+    } catch {}
+
+    if (!activeKey || !activeKey.startsWith('pk_live_') || !liveConfigured) {
+      setPaymentError('Live Paystack gateway (pk_live_ / sk_live_) is not yet active. Please configure live keys in Super Admin settings or pay with your Parent Escrow Wallet.');
+      setIsProcessingPayment(false);
+      return;
     }
 
     const txRef = `PSTK_DRILL_${Date.now()}_${Math.floor(Math.random() * 100000)}`;
-    const payerEmail = currentUserProfile?.email || currentUser?.email || 'parent@studentcompanion.ng';
+    const payerEmail = currentUserProfile?.email || currentUser?.email || 'student@studentcompanion.ng';
 
     const handler = (window as any).PaystackPop.setup({
       key: activeKey,
@@ -416,7 +419,7 @@ export const TermlyDrillHub: React.FC<TermlyDrillHubProps> = ({ onStartExam, onO
       callback: function(response: { reference: string }) {
         (async () => {
           try {
-            await fetch('/api/paystack/verify-payment', {
+            const verifyRes = await fetch('/api/paystack/verify-payment', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
@@ -429,8 +432,16 @@ export const TermlyDrillHub: React.FC<TermlyDrillHubProps> = ({ onStartExam, onO
                 subject: selectedSubject
               })
             });
-          } catch (e) {
-            console.warn('Backend payment verification logged:', e);
+            const verifyData = await verifyRes.json();
+            if (!verifyRes.ok || !verifyData.success) {
+              setPaymentError(verifyData.error || 'Live Paystack verification failed.');
+              setIsProcessingPayment(false);
+              return;
+            }
+          } catch (e: any) {
+            setPaymentError(e?.message || 'Network error verifying Paystack payment.');
+            setIsProcessingPayment(false);
+            return;
           }
           setIsProcessingPayment(false);
           setIsFreshModalOpen(false);

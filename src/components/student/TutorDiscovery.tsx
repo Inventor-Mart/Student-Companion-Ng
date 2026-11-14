@@ -1,16 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
-import { VETTED_NIGERIAN_TUTORS } from '../../data/tutorsData';
-import { Tutor, BookingType, TimetableSlot } from '../../types';
+import { Tutor, BookingType } from '../../types';
 import {
   Search,
   ShieldCheck,
   Star,
   MapPin,
-  Calendar,
   MessageSquare,
-  Clock,
-  ArrowRight,
   X,
   CheckCircle2,
   AlertTriangle,
@@ -18,25 +14,91 @@ import {
   List,
   Video,
   Radio,
-  Sparkles
+  CreditCard,
+  Wallet,
+  Lock,
+  Users
 } from 'lucide-react';
 
 import { ParentAddressVerificationModal } from '../auth/VerificationModals';
 import { TutorMapLocator } from '../tutors/TutorMapLocator';
 import { PersonaAvatar } from '../common/PersonaAvatar';
 import { TutorProfileView } from './TutorProfileView';
-import { NairaText, NairaSign } from '../../utils/currency';
+import { NairaText } from '../../utils/currency';
 import { playSound } from '../../utils/audioSynthesis';
 import { motion } from 'motion/react';
 
+interface ScheduledSlotOption {
+  id: string;
+  label: string;
+  dateLabel: string;
+  timeSlot: string;
+  computeWindow: () => { startIso: string; endIso: string };
+}
+
+const BOOKING_SLOT_OPTIONS: ScheduledSlotOption[] = [
+  {
+    id: 'live-5m',
+    label: 'Starting in 5 minutes (Live Window Open)',
+    dateLabel: 'Today',
+    timeSlot: 'Starts in 5 mins (2 Hours)',
+    computeWindow: () => {
+      const start = new Date(Date.now() + 5 * 60 * 1000);
+      const end = new Date(start.getTime() + 120 * 60 * 1000);
+      return { startIso: start.toISOString(), endIso: end.toISOString() };
+    }
+  },
+  {
+    id: 'today-1h',
+    label: 'Today (+1 Hour, 2 Hours Intensive)',
+    dateLabel: 'Today',
+    timeSlot: 'In 1 Hour (2 Hours Intensive)',
+    computeWindow: () => {
+      const start = new Date(Date.now() + 60 * 60 * 1000);
+      const end = new Date(start.getTime() + 120 * 60 * 1000);
+      return { startIso: start.toISOString(), endIso: end.toISOString() };
+    }
+  },
+  {
+    id: 'tomorrow-10am',
+    label: 'Tomorrow (10:00 AM - 12:00 PM)',
+    dateLabel: 'Tomorrow',
+    timeSlot: '10:00 AM - 12:00 PM',
+    computeWindow: () => {
+      const d = new Date();
+      d.setDate(d.getDate() + 1);
+      d.setHours(10, 0, 0, 0);
+      const end = new Date(d.getTime() + 120 * 60 * 1000);
+      return { startIso: d.toISOString(), endIso: end.toISOString() };
+    }
+  },
+  {
+    id: 'tomorrow-4pm',
+    label: 'Tomorrow (04:00 PM - 06:00 PM)',
+    dateLabel: 'Tomorrow',
+    timeSlot: '04:00 PM - 06:00 PM',
+    computeWindow: () => {
+      const d = new Date();
+      d.setDate(d.getDate() + 1);
+      d.setHours(16, 0, 0, 0);
+      const end = new Date(d.getTime() + 120 * 60 * 1000);
+      return { startIso: d.toISOString(), endIso: end.toISOString() };
+    }
+  }
+];
+
 export const TutorDiscovery: React.FC = () => {
   const {
+    registeredTutors,
     createTutorBooking,
     setActiveTutorChatId,
     setCurrentRole,
     student,
     verifiedAddress,
     launchVirtualClassroom,
+    getStudentClassroomEligibility,
+    getBookingJoinStatus,
+    parentWallet,
     currentUserProfile
   } = useApp();
 
@@ -49,49 +111,64 @@ export const TutorDiscovery: React.FC = () => {
   const [selectedTutorForProfile, setSelectedTutorForProfile] = useState<Tutor | null>(null);
 
   // Booking Form State
-  const [bookingType, setBookingType] = useState<BookingType>('physical');
-  const [selectedDate, setSelectedDate] = useState<string>('Upcoming Saturday (10:00 AM - 12:00 PM)');
+  const [bookingType, setBookingType] = useState<BookingType>('online');
+  const [selectedSlotId, setSelectedSlotId] = useState<string>(BOOKING_SLOT_OPTIONS[0].id);
   const [topicFocus, setTopicFocus] = useState<string>('WAEC & JAMB Problem Solving Drill');
+  const [bookingPaymentMethod, setBookingPaymentMethod] = useState<'paystack' | 'wallet'>('paystack');
+  const [parentPinInput, setParentPinInput] = useState<string>('');
+  const [bookingError, setBookingError] = useState<string | null>(null);
+  const [isProcessingBooking, setIsProcessingBooking] = useState<boolean>(false);
   const [bookingConfirmed, setBookingConfirmed] = useState<boolean>(false);
   const [confirmedBookingId, setConfirmedBookingId] = useState<string>('');
+  const [boardClockMs, setBoardClockMs] = useState<number>(() => Date.now());
+
+  useEffect(() => {
+    const timer = setInterval(() => setBoardClockMs(Date.now()), 15000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const classroomEligibility = getStudentClassroomEligibility(boardClockMs);
 
   const subjects = ['All', 'Mathematics', 'Physics', 'Biology', 'Chemistry', 'Economics', 'English Language', 'Further Mathematics'];
 
-  // Combine default verified tutors with registered user profile if role is tutor
+  // Strictly real registered tutors from AppContext (zero hardcoded/sample tutors)
   const allTutors: Tutor[] = React.useMemo(() => {
-    if (currentUserProfile?.role === 'tutor' && currentUserProfile.tutorData) {
+    const list = [...registeredTutors];
+    if (
+      currentUserProfile?.role === 'tutor' &&
+      currentUserProfile.tutorData &&
+      !list.some(t => t.id === currentUserProfile.id)
+    ) {
       const td = currentUserProfile.tutorData;
-      const registeredTutorEntry: Tutor = {
+      list.unshift({
         id: currentUserProfile.id,
         name: currentUserProfile.fullName,
         tagline: td.tagline || `${td.subjectSpecialization} Specialist`,
         subjects: td.proficientSubjects && td.proficientSubjects.length > 0 ? td.proficientSubjects : [td.subjectSpecialization],
         rating: 5.0,
-        reviewCount: 1,
+        reviewCount: 0,
         hourlyRateNaira: td.hourlyRate || 3500,
-        location: `${td.city || 'Ikeja'}, ${td.state || 'Lagos'}`,
+        location: `${td.city || 'Lagos'}, ${td.state || 'Nigeria'}`,
         state: td.state || 'Lagos',
         isNinVerified: Boolean(td.nin || td.verification?.isVerified),
-        education: td.qualification || `${td.highestEducation || 'B.Sc.'} (${td.institution || 'Unilag'})`,
+        education: td.qualification || `${td.highestEducation || 'B.Sc.'} (${td.institution || 'Registered Educator'})`,
         avatarUrl: currentUserProfile.avatarUrl || '',
-        bio: td.bio || 'Verified Nigerian educator dedicated to secondary school excellence.',
+        bio: td.bio || 'Registered educator available for 1-on-1 tutoring.',
         availableDays: ['Mondays', 'Wednesdays', 'Saturdays'],
         lat: 6.6018,
         lng: 3.3515,
         experienceYears: td.experienceYearsRange === '5+ years' ? 6 : td.experienceYearsRange === '3-5 years' ? 4 : 2,
         degrees: td.degrees || [`${td.highestEducation || 'B.Sc.'} in ${td.courseOfStudy || 'Education'}`],
-        certifications: td.certifications || ['TRCN Certified Secondary Educator'],
+        certifications: td.certifications || ['Registered Educator'],
         examSpecializations: td.examSpecializations || ['WAEC Prep', 'JAMB Prep'],
         curriculumHighlights: td.curriculumHighlights || ['Interactive Whiteboard Drills'],
-        totalLessonsDelivered: 12,
+        totalLessonsDelivered: 0,
         completionRate: 100,
         timetable: td.timetable || []
-      };
-      const withoutDup = VETTED_NIGERIAN_TUTORS.filter(t => t.id !== registeredTutorEntry.id);
-      return [registeredTutorEntry, ...withoutDup];
+      });
     }
-    return VETTED_NIGERIAN_TUTORS;
-  }, [currentUserProfile]);
+    return list;
+  }, [registeredTutors, currentUserProfile]);
 
   const filteredTutors = allTutors.filter(tutor => {
     const matchesSearch =
@@ -104,8 +181,9 @@ export const TutorDiscovery: React.FC = () => {
     return matchesSearch && matchesSubject;
   });
 
-  const handleConfirmBooking = () => {
+  const handleConfirmBooking = async () => {
     playSound.tileTap();
+    setBookingError(null);
     if (!selectedTutorForBooking) return;
 
     if (bookingType === 'physical' && !verifiedAddress) {
@@ -113,24 +191,178 @@ export const TutorDiscovery: React.FC = () => {
       return;
     }
 
-    const newBooking = createTutorBooking({
-      tutorId: selectedTutorForBooking.id,
-      tutorName: selectedTutorForBooking.name,
-      tutorPhoto: selectedTutorForBooking.avatarUrl,
-      studentId: student.id,
-      studentName: student.name,
-      subject: selectedTutorForBooking.subjects[0],
-      topic: topicFocus,
-      bookingType,
-      date: selectedDate,
-      timeSlot: '2 Hours Intensive',
-      amountNaira: selectedTutorForBooking.hourlyRateNaira * 2
-    });
+    const slotMeta = BOOKING_SLOT_OPTIONS.find(s => s.id === selectedSlotId) || BOOKING_SLOT_OPTIONS[0];
+    const windowIso = slotMeta.computeWindow();
+    const totalAmount = selectedTutorForBooking.hourlyRateNaira * 2;
+    const expectedParentPin = parentWallet.pin || currentUserProfile?.parentData?.pin || '';
 
-    if (newBooking?.id) {
+    if (bookingPaymentMethod === 'wallet') {
+      if (expectedParentPin && parentPinInput.trim() !== expectedParentPin) {
+        playSound.buzz();
+        setBookingError('Enter the valid 4-digit Parent PIN to authorize Parent Escrow Wallet payment.');
+        return;
+      }
+      if (parentWallet.balanceNaira < totalAmount) {
+        playSound.buzz();
+        setBookingError(
+          `Insufficient Parent Escrow Wallet balance (₦${parentWallet.balanceNaira.toLocaleString()} available, ₦${totalAmount.toLocaleString()} required). Switch to Paystack Live.`
+        );
+        return;
+      }
+
+      const newBooking = createTutorBooking({
+        tutorId: selectedTutorForBooking.id,
+        tutorName: selectedTutorForBooking.name,
+        tutorPhoto: selectedTutorForBooking.avatarUrl,
+        studentId: student.id || currentUserProfile?.id || 'student',
+        studentName: student.name || currentUserProfile?.fullName || 'Student',
+        subject: selectedTutorForBooking.subjects[0] || 'Mathematics',
+        topic: topicFocus,
+        bookingType,
+        date: slotMeta.dateLabel,
+        timeSlot: slotMeta.timeSlot,
+        scheduledStartIso: windowIso.startIso,
+        scheduledEndIso: windowIso.endIso,
+        amountNaira: totalAmount,
+        paymentGateway: 'parent_escrow_wallet',
+        parentPin: parentPinInput.trim() || undefined
+      });
+
+      if (!newBooking) {
+        playSound.buzz();
+        setBookingError('Booking authorization failed. Verify wallet balance and Parent PIN.');
+        return;
+      }
       setConfirmedBookingId(newBooking.id);
+      setBookingConfirmed(true);
+      return;
     }
-    setBookingConfirmed(true);
+
+    // Strict Live Paystack Checkout
+    setIsProcessingBooking(true);
+    if (typeof (window as any).PaystackPop === 'undefined') {
+      playSound.buzz();
+      setBookingError('Paystack Live SDK is still loading. Check your internet connection and retry.');
+      setIsProcessingBooking(false);
+      return;
+    }
+
+    let activeKey = '';
+    let liveConfigured = false;
+    try {
+      const cfgRes = await fetch('/api/paystack/config');
+      if (cfgRes.ok) {
+        const cfg = await cfgRes.json();
+        activeKey = typeof cfg.publicKey === 'string' ? cfg.publicKey.trim() : '';
+        liveConfigured = Boolean(cfg.liveConfigured && cfg.isLive);
+      }
+    } catch {
+      // handled below
+    }
+
+    if (!activeKey || !activeKey.startsWith('pk_live_') || !liveConfigured) {
+      playSound.buzz();
+      setBookingError(
+        'Live Paystack checkout is required (pk_live_ & sk_live_ keys not configured on server). No test payments allowed.'
+      );
+      setIsProcessingBooking(false);
+      return;
+    }
+
+    const payerEmail = currentUserProfile?.email || '';
+    if (!payerEmail || !payerEmail.includes('@')) {
+      playSound.buzz();
+      setBookingError('A valid signed-in user email is required for Live Paystack verification.');
+      setIsProcessingBooking(false);
+      return;
+    }
+
+    const txRef = `PSTK_TUTOR_${Date.now()}_${Math.floor(Math.random() * 100000)}`;
+    try {
+      const handler = (window as any).PaystackPop.setup({
+        key: activeKey,
+        email: payerEmail,
+        amount: Math.round(totalAmount * 100),
+        currency: 'NGN',
+        ref: txRef,
+        channels: ['card', 'bank', 'ussd', 'bank_transfer'],
+        metadata: {
+          custom_fields: [
+            { display_name: 'Student Name', variable_name: 'student_name', value: student.name || currentUserProfile?.fullName || 'Student' },
+            { display_name: 'Tutor Name', variable_name: 'tutor_name', value: selectedTutorForBooking.name },
+            { display_name: 'Purpose', variable_name: 'purpose', value: 'tutor_booking_payment' }
+          ]
+        },
+        callback: function (response: { reference: string }) {
+          (async () => {
+            try {
+              const verifyRes = await fetch('/api/paystack/verify-payment', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  reference: response.reference,
+                  amountNaira: totalAmount,
+                  email: payerEmail,
+                  studentId: student.id || currentUserProfile?.id,
+                  studentName: student.name || currentUserProfile?.fullName,
+                  tutorId: selectedTutorForBooking.id,
+                  tutorName: selectedTutorForBooking.name,
+                  purpose: 'tutor_booking_payment'
+                })
+              });
+              const verifyData = await verifyRes.json();
+              if (!verifyRes.ok || !verifyData.success) {
+                playSound.buzz();
+                setBookingError(verifyData.error || 'Live Paystack verification failed on server.');
+                setIsProcessingBooking(false);
+                return;
+              }
+
+              const newBooking = createTutorBooking({
+                tutorId: selectedTutorForBooking.id,
+                tutorName: selectedTutorForBooking.name,
+                tutorPhoto: selectedTutorForBooking.avatarUrl,
+                studentId: student.id || currentUserProfile?.id || 'student',
+                studentName: student.name || currentUserProfile?.fullName || 'Student',
+                subject: selectedTutorForBooking.subjects[0] || 'Mathematics',
+                topic: topicFocus,
+                bookingType,
+                date: slotMeta.dateLabel,
+                timeSlot: slotMeta.timeSlot,
+                scheduledStartIso: windowIso.startIso,
+                scheduledEndIso: windowIso.endIso,
+                amountNaira: totalAmount,
+                paymentGateway: 'paystack_live',
+                paymentReference: response.reference,
+                parentPin: parentPinInput.trim() || undefined
+              });
+
+              if (!newBooking) {
+                playSound.buzz();
+                setBookingError('Could not register verified booking.');
+              } else {
+                playSound.levelUp();
+                setConfirmedBookingId(newBooking.id);
+                setBookingConfirmed(true);
+              }
+            } catch (err: any) {
+              playSound.buzz();
+              setBookingError(err?.message || 'Network error verifying Paystack transaction.');
+            } finally {
+              setIsProcessingBooking(false);
+            }
+          })();
+        },
+        onClose: function () {
+          setIsProcessingBooking(false);
+        }
+      });
+      handler.openIframe();
+    } catch (err: any) {
+      playSound.buzz();
+      setBookingError(err?.message || 'Unable to launch Paystack Live checkout.');
+      setIsProcessingBooking(false);
+    }
   };
 
   const containerVariants = {
@@ -171,9 +403,10 @@ export const TutorDiscovery: React.FC = () => {
             playSound.tileTap();
             setSelectedTutorForBooking(tutor);
             setBookingType('online');
+            setSelectedSlotId(BOOKING_SLOT_OPTIONS[0].id);
+            setBookingError(null);
             if (selectedSlot) {
-              setSelectedDate(`${selectedSlot.day} (${selectedSlot.time})`);
-              setTopicFocus(`${tutor.subjects[0]} 1-on-1 Virtual Whiteboard Intensive`);
+              setTopicFocus(`${tutor.subjects[0]} 1-on-1 Virtual Whiteboard Intensive (${selectedSlot.day} ${selectedSlot.time})`);
             }
             setBookingConfirmed(false);
           }}
@@ -232,34 +465,67 @@ export const TutorDiscovery: React.FC = () => {
           </div>
 
           {/* =========================================================================
-              INTERACTIVE WHITEBOARD HERO CALLOUT (Electric Orange & Lime Gradient)
+              INTERACTIVE WHITEBOARD HERO CALLOUT (Time-Gated & Dual-Approved)
              ========================================================================= */}
           <div className="bg-gradient-to-r from-[#FF5B00] via-[#E04800] to-[#1E1238] border-2 border-white/20 rounded-3xl p-4 flex items-center justify-between gap-3 shadow-[0_8px_25px_rgba(255,91,0,0.3)] select-none">
             <div className="flex items-center gap-3">
               <div className="w-11 h-11 rounded-2xl bg-white text-[#FF5B00] flex items-center justify-center shrink-0 shadow-lg">
-                <Video className="w-5 h-5 fill-[#FF5B00]" />
+                {classroomEligibility.eligible ? (
+                  <Video className="w-5 h-5 fill-[#FF5B00]" />
+                ) : (
+                  <Lock className="w-5 h-5" />
+                )}
               </div>
               <div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-sm font-black text-white tracking-tight">Interactive Whiteboard & Audio Classroom</span>
-                  <span className="text-[9px] font-extrabold text-slate-950 bg-[#84CC16] px-2 py-0.5 rounded-full uppercase shadow-xs">
-                    Live Board
+                  <span
+                    className={`text-[9px] font-extrabold px-2 py-0.5 rounded-full uppercase shadow-xs ${
+                      classroomEligibility.eligible
+                        ? 'text-slate-950 bg-[#84CC16]'
+                        : 'text-white bg-black/40 border border-white/30'
+                    }`}
+                  >
+                    {classroomEligibility.eligible
+                      ? 'Live Window Open'
+                      : classroomEligibility.status === 'too_early'
+                      ? `Opens in ${Math.max(1, Math.ceil(classroomEligibility.msUntilOpen / 60000))}m`
+                      : classroomEligibility.status === 'pending_parent'
+                      ? 'Awaiting Parent PIN'
+                      : classroomEligibility.status === 'pending_tutor'
+                      ? 'Awaiting Tutor Acceptance'
+                      : 'Confirmed Booking Required'}
                   </span>
                 </div>
                 <p className="text-xs text-white/90 mt-0.5">
-                  Instant 1-on-1 digital canvas with WAEC/JAMB formula stampers & audio.
+                  {classroomEligibility.eligible
+                    ? `Live class active with ${classroomEligibility.activeBooking?.tutorName}.`
+                    : classroomEligibility.reason}
                 </p>
               </div>
             </div>
             <button
+              type="button"
               onClick={() => {
                 playSound.tileTap();
-                launchVirtualClassroom(`classroom-${Date.now()}`, 'student');
+                if (classroomEligibility.eligible && classroomEligibility.activeBooking) {
+                  launchVirtualClassroom(classroomEligibility.activeBooking.id, 'student');
+                }
               }}
-              className="px-4 py-2 bg-white hover:bg-slate-100 text-[#FF5B00] font-black text-xs rounded-xl transition-all shadow-md flex items-center gap-1.5 shrink-0 cursor-pointer active:scale-95"
+              disabled={!classroomEligibility.eligible}
+              className="px-4 py-2 bg-white hover:bg-slate-100 disabled:bg-white/25 disabled:text-white/75 disabled:cursor-not-allowed text-[#FF5B00] font-black text-xs rounded-xl transition-all shadow-md flex items-center gap-1.5 shrink-0 cursor-pointer active:scale-95"
             >
-              <Radio className="w-3.5 h-3.5 animate-pulse text-[#FF5B00]" />
-              <span>Launch Board</span>
+              {classroomEligibility.eligible ? (
+                <>
+                  <Radio className="w-3.5 h-3.5 animate-pulse text-[#FF5B00]" />
+                  <span>Join Live Board</span>
+                </>
+              ) : (
+                <>
+                  <Lock className="w-3.5 h-3.5" />
+                  <span>Locked</span>
+                </>
+              )}
             </button>
           </div>
 
@@ -322,6 +588,16 @@ export const TutorDiscovery: React.FC = () => {
                 setSelectedTutorForProfile(tutor);
               }}
             />
+          ) : filteredTutors.length === 0 ? (
+            <div className="bg-[#14203D] border-2 border-slate-800 rounded-3xl p-8 text-center space-y-2.5">
+              <div className="w-12 h-12 rounded-2xl bg-[#0D1527] border border-slate-700 mx-auto flex items-center justify-center text-slate-400">
+                <Users className="w-6 h-6" />
+              </div>
+              <h3 className="text-sm font-black text-white">No Registered Tutors Available Yet</h3>
+              <p className="text-xs text-slate-400 max-w-sm mx-auto leading-relaxed">
+                All sample tutors have been purged. Only real educators who sign up as a Tutor appear in this live marketplace.
+              </p>
+            </div>
           ) : (
             <motion.div
               variants={containerVariants}
@@ -492,43 +768,46 @@ export const TutorDiscovery: React.FC = () => {
                     <CheckCircle2 className="w-8 h-8 stroke-[2.5]" />
                   </div>
                   <h4 className="text-base font-black text-white">
-                    {bookingType === 'physical'
-                      ? 'Request Sent to Parent Portal!'
-                      : 'Live Online Classroom Scheduled!'}
+                    Booking Submitted &amp; Paid!
                   </h4>
                   <p className="text-xs text-slate-300 leading-relaxed max-w-xs mx-auto">
-                    {bookingType === 'physical'
-                      ? 'Because this is a home session, your parent must authorize the booking & escrow payment via their Parent PIN.'
-                      : 'Your interactive digital classroom with live whiteboard, audio, and chat is ready.'}
+                    Your booking requires <strong>both Parent PIN authorization</strong> and{' '}
+                    <strong>{selectedTutorForBooking.name}&apos;s approval</strong> before the live class can unlock (10 minutes before start time).
                   </p>
 
+                  <div className="p-3 rounded-2xl bg-[#14203D] border border-slate-700/80 text-[11px] text-left space-y-1.5">
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Booking Ref:</span>
+                      <span className="font-mono font-bold text-white">{confirmedBookingId}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Parent PIN Approval:</span>
+                      <span className="font-bold text-[#84CC16]">
+                        {parentPinInput.trim() && (!parentWallet.pin || parentPinInput.trim() === parentWallet.pin)
+                          ? 'Authorized ✓'
+                          : 'Pending in Parent Portal'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Tutor Acceptance:</span>
+                      <span className="font-bold text-amber-300">Pending Tutor Approval</span>
+                    </div>
+                  </div>
+
                   <div className="pt-2 flex flex-col gap-2">
-                    {bookingType === 'online' && confirmedBookingId && (
-                      <button
-                        onClick={() => {
-                          playSound.tileTap();
-                          setSelectedTutorForBooking(null);
-                          launchVirtualClassroom(confirmedBookingId, 'student');
-                        }}
-                        className="py-2.5 px-4 rounded-xl bg-gradient-to-r from-[#FF5B00] to-[#FF7A18] text-white font-black transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer active:scale-95"
-                      >
-                        <Video className="w-4 h-4" />
-                        <span>Launch Virtual Classroom Now</span>
-                      </button>
-                    )}
-                    {bookingType === 'physical' && (
-                      <button
-                        onClick={() => {
-                          playSound.tileTap();
-                          setSelectedTutorForBooking(null);
-                          setCurrentRole('parent');
-                        }}
-                        className="py-2.5 px-4 rounded-xl bg-[#84CC16] text-slate-950 font-black transition-all shadow-md cursor-pointer active:scale-95"
-                      >
-                        Switch to Parent Portal to Authorize
-                      </button>
-                    )}
                     <button
+                      type="button"
+                      onClick={() => {
+                        playSound.tileTap();
+                        setSelectedTutorForBooking(null);
+                        setCurrentRole('parent');
+                      }}
+                      className="py-2.5 px-4 rounded-xl bg-[#84CC16] text-slate-950 font-black transition-all shadow-md cursor-pointer active:scale-95"
+                    >
+                      Open Parent Portal to Authorize PIN
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => {
                         playSound.tileTap();
                         setSelectedTutorForBooking(null);
@@ -642,16 +921,18 @@ export const TutorDiscovery: React.FC = () => {
                   {/* Date & Time */}
                   <div className="space-y-1">
                     <label className="text-[11px] font-bold text-slate-300 uppercase tracking-wider block">
-                      Select Date & Time:
+                      Select Scheduled Time Slot:
                     </label>
                     <select
-                      value={selectedDate}
-                      onChange={e => setSelectedDate(e.target.value)}
+                      value={selectedSlotId}
+                      onChange={e => setSelectedSlotId(e.target.value)}
                       className="w-full bg-[#14203D] border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-[#84CC16]"
                     >
-                      <option>Saturday, Nov 1st (10:00 AM - 12:00 PM)</option>
-                      <option>Sunday, Nov 2nd (02:00 PM - 04:00 PM)</option>
-                      <option>Tuesday, Nov 4th (04:30 PM - 06:30 PM)</option>
+                      {BOOKING_SLOT_OPTIONS.map(slot => (
+                        <option key={slot.id} value={slot.id}>
+                          {slot.label}
+                        </option>
+                      ))}
                     </select>
                   </div>
 
@@ -668,9 +949,81 @@ export const TutorDiscovery: React.FC = () => {
                     />
                   </div>
 
+                  {/* Live Payment Gateway Selector */}
+                  <div className="space-y-2">
+                    <label className="text-[11px] font-bold text-slate-300 uppercase tracking-wider block">
+                      Live Payment Method:
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setBookingPaymentMethod('paystack');
+                          setBookingError(null);
+                        }}
+                        className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                          bookingPaymentMethod === 'paystack'
+                            ? 'bg-[#18264A] border-[#84CC16] text-white'
+                            : 'bg-[#14203D] border-slate-800 text-slate-400'
+                        }`}
+                      >
+                        <div className="flex items-center gap-1.5 font-bold text-xs">
+                          <CreditCard className="w-3.5 h-3.5 text-[#84CC16]" />
+                          <span>Paystack Live</span>
+                        </div>
+                        <span className="text-[10px] text-slate-400 block mt-0.5">Card · Transfer · USSD</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setBookingPaymentMethod('wallet');
+                          setBookingError(null);
+                        }}
+                        className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                          bookingPaymentMethod === 'wallet'
+                            ? 'bg-[#18264A] border-[#84CC16] text-white'
+                            : 'bg-[#14203D] border-slate-800 text-slate-400'
+                        }`}
+                      >
+                        <div className="flex items-center gap-1.5 font-bold text-xs">
+                          <Wallet className="w-3.5 h-3.5 text-[#FF5B00]" />
+                          <span>Escrow Wallet</span>
+                        </div>
+                        <span className="text-[10px] text-slate-400 block mt-0.5 font-mono">
+                          Bal: <NairaText amount={parentWallet.balanceNaira} />
+                        </span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Parent PIN field */}
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-bold text-slate-300 uppercase tracking-wider block">
+                      Parent 4-Digit Approval PIN {bookingPaymentMethod === 'paystack' ? '(Optional now, or approve later in Parent Portal)' : '(Required for Escrow)'}:
+                    </label>
+                    <input
+                      type="password"
+                      maxLength={4}
+                      value={parentPinInput}
+                      onChange={e => {
+                        setParentPinInput(e.target.value);
+                        setBookingError(null);
+                      }}
+                      placeholder="••••"
+                      className="w-full bg-[#14203D] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono tracking-widest focus:outline-none focus:border-[#84CC16]"
+                    />
+                  </div>
+
+                  {bookingError && (
+                    <div className="p-2.5 rounded-xl bg-rose-950/80 border border-rose-700 text-rose-200 text-[11px] font-medium">
+                      {bookingError}
+                    </div>
+                  )}
+
                   {/* Cost Summary */}
                   <div className="bg-[#0D1527] p-3.5 rounded-2xl border border-slate-800 flex items-center justify-between text-xs">
-                    <span className="text-slate-300 font-medium">Estimated Total (2 hrs):</span>
+                    <span className="text-slate-300 font-medium">Escrow Total (2 hrs):</span>
                     <span className="font-extrabold text-[#84CC16] text-sm font-mono">
                       <NairaText amount={selectedTutorForBooking.hourlyRateNaira * 2} />
                     </span>
@@ -679,19 +1032,24 @@ export const TutorDiscovery: React.FC = () => {
                   {/* Action Buttons */}
                   <div className="pt-2 flex items-center gap-2">
                     <button
+                      type="button"
+                      disabled={isProcessingBooking}
                       onClick={() => {
                         playSound.tileTap();
                         setSelectedTutorForBooking(null);
+                        setBookingError(null);
                       }}
                       className="flex-1 py-2.5 px-3 rounded-xl bg-[#14203D] hover:bg-slate-800 text-slate-300 font-bold transition-colors cursor-pointer"
                     >
                       Cancel
                     </button>
                     <button
+                      type="button"
+                      disabled={isProcessingBooking}
                       onClick={handleConfirmBooking}
-                      className="flex-1 py-2.5 px-3 rounded-xl bg-gradient-to-r from-[#FF5B00] to-[#FF7A18] hover:from-[#E04800] hover:to-[#FF5B00] text-white font-black transition-all shadow-md cursor-pointer active:scale-95"
+                      className="flex-1 py-2.5 px-3 rounded-xl bg-gradient-to-r from-[#FF5B00] to-[#FF7A18] hover:from-[#E04800] hover:to-[#FF5B00] text-white font-black transition-all shadow-md cursor-pointer active:scale-95 disabled:opacity-60"
                     >
-                      Submit Booking
+                      {isProcessingBooking ? 'Processing Live Payment...' : 'Pay & Submit Booking'}
                     </button>
                   </div>
                 </>

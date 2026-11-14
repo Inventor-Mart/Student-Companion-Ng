@@ -17,6 +17,7 @@ import {
   CurriculumTopic,
   CBTExam,
   CBTExamResult,
+  Tutor,
   TutorBooking,
   ParentWallet,
   StudentRank,
@@ -171,7 +172,6 @@ interface AppContextType {
   authLoading: boolean;
   loginWithGoogle: (options?: { skipNavigate?: boolean } | unknown) => Promise<{ success: boolean; profile?: RegisteredUserProfile; error?: string }>;
   authenticateUser: (identifier: string, password: string) => Promise<{ success: boolean; profile?: RegisteredUserProfile; error?: string }>;
-  activateQuickStudentSession: () => RegisteredUserProfile;
   logoutUser: () => Promise<void>;
   isFirebaseConnected: boolean;
 
@@ -203,8 +203,8 @@ interface AppContextType {
 
   // Prepare For Exam (AI Daily Study Calendar & Tutor Credits)
   examPrepState: ExamPrepState;
-  unlockExamPrep: (method?: 'wallet' | 'paystack' | 'bank_transfer') => boolean;
-  unlockSingleSubjectExam: (subject: string, method?: 'wallet' | 'paystack' | 'bank_transfer') => boolean;
+  unlockExamPrep: (method?: 'wallet' | 'paystack', paymentReference?: string) => boolean;
+  unlockSingleSubjectExam: (subject: string, method?: 'wallet' | 'paystack', paymentReference?: string) => boolean;
   isSubjectExamUnlocked: (subject: string) => boolean;
   useTutorCredit: (amountNaira: number) => number;
   generateExamPrepCalendar: (profile: DiagnosticProfile) => Promise<void>;
@@ -216,9 +216,10 @@ interface AppContextType {
   updateAspirantGoal: (goal: Partial<AspirantGoal>) => void;
   subscribeAspirantTier: (
     tier: AspirantTier,
-    method?: 'wallet' | 'paystack' | 'bank_transfer',
+    method?: 'wallet' | 'paystack',
     referralCodeOverride?: string,
-    skipPartnerSync?: boolean
+    skipPartnerSync?: boolean,
+    paymentReference?: string
   ) => boolean;
   completedAspirantDrillIds: string[];
   toggleAspirantDrillCompleted: (drillId: string) => void;
@@ -264,20 +265,51 @@ interface AppContextType {
   unlockParentPin: (pin: string) => boolean;
   lockParentPin: () => void;
   fundParentWallet: (amountNaira: number) => void;
-  approveTutorBooking: (bookingId: string) => boolean;
-  rejectTutorBooking: (bookingId: string) => void;
+  approveTutorBooking: (bookingId: string, enteredPin?: string) => boolean;
+  rejectTutorBooking: (bookingId: string, reason?: string) => void;
+  tutorRespondToBooking: (bookingId: string, decision: 'accept' | 'decline', reason?: string) => boolean;
 
   // Tutoring & Bookings
+  registeredTutors: Tutor[];
   tutorBookings: TutorBooking[];
-  createTutorBooking: (params: Omit<TutorBooking, 'id' | 'createdAt' | 'status' | 'isParentApproved'>) => TutorBooking;
+  createTutorBooking: (
+    params: Omit<
+      TutorBooking,
+      'id' | 'createdAt' | 'status' | 'isParentApproved' | 'isTutorApproved'
+    > & {
+      parentPin?: string;
+      scheduledStartIso?: string;
+      scheduledEndIso?: string;
+      paymentGateway?: 'paystack_live' | 'parent_escrow_wallet' | 'tutor_credit';
+      paymentReference?: string;
+    }
+  ) => TutorBooking | null;
   activeTutorChatId: string | null;
   setActiveTutorChatId: (tutorId: string | null) => void;
   chatMessages: Record<string, ChatMessage[]>;
   sendChatMessage: (tutorId: string, text: string, sender: 'student' | 'tutor') => void;
 
-  // Virtual Classroom & Online Teaching
+  // Virtual Classroom & Online Teaching (Time-Gated & Dual-Approved)
   activeClassroomSession: VirtualClassroomSession | null;
-  launchVirtualClassroom: (bookingId: string, role?: 'student' | 'tutor') => void;
+  getBookingJoinStatus: (
+    booking: TutorBooking,
+    nowMs?: number
+  ) => {
+    allowed: boolean;
+    status: 'open' | 'too_early' | 'ended' | 'pending_parent' | 'pending_tutor' | 'not_online' | 'cancelled';
+    reason: string;
+    msUntilOpen: number;
+    startTimeLabel?: string;
+  };
+  getStudentClassroomEligibility: (nowMs?: number) => {
+    eligible: boolean;
+    activeBooking: TutorBooking | null;
+    nextBooking: TutorBooking | null;
+    status: 'open' | 'too_early' | 'pending_parent' | 'pending_tutor' | 'no_booking' | 'ended';
+    reason: string;
+    msUntilOpen: number;
+  };
+  launchVirtualClassroom: (bookingId: string, role?: 'student' | 'tutor') => boolean;
   closeVirtualClassroom: () => void;
   completeVirtualSessionAndReleaseEscrow: (bookingId: string, rating?: number, feedback?: string) => void;
   toggleVirtualClassroomMic: () => void;
@@ -308,6 +340,16 @@ interface AppContextType {
     reason: string,
     adminEmailOverride?: string
   ) => Promise<{ success: boolean; error?: string }>;
+  purgeAllTestAccountsAndCredits: (
+    adminEmailOverride?: string
+  ) => Promise<{
+    success: boolean;
+    purgedLocalCount: number;
+    deletedFirestoreDocs: number;
+    purgedStoreEntries: number;
+    message: string;
+    error?: string;
+  }>;
   switchRole: (role: UserRole) => void;
   loginAsDeveloper: (email?: string, options?: { skipNavigate?: boolean }) => RegisteredUserProfile;
 
@@ -460,88 +502,50 @@ export const isSuperAdminEmail = (email?: string | null) => {
   return SUPER_ADMIN_EMAILS.includes(email.toLowerCase().trim());
 };
 
-const PURGED_PATTERNS = ['tunde balogun', 'std-tunde-001'];
+const PURGED_PATTERNS = [
+  'tunde balogun',
+  'std-tunde-001',
+  'chidinma adeleke',
+  'chidinma',
+  'ibrahim danjuma',
+  'ngozi okoli',
+  'folashade balogun',
+  'emeka nwosu',
+  'adewale adeyemi',
+  'adewale bakare',
+  'zainab al-hassan',
+  'victoria okonkwo',
+  '@students.ng',
+  '@tutoreng.com',
+  '@educators.ng',
+  '@barewa.edu.ng',
+  '@fgc.edu.ng',
+  '@transport.ng',
+  '@fgcikotekpene.edu.ng',
+  'usr-std-',
+  'usr-parent-',
+  'usr-tutor-',
+  'usr-admin-',
+  'tutor-adewale-math',
+  'book-001',
+  'demo-session'
+];
 
-const isPurgedRecord = (data: any) => {
+const isPurgedRecord = (data: any): boolean => {
   if (!data) return false;
-  const email = (data.email || '').toLowerCase().trim();
-  if (SUPER_ADMIN_EMAILS.includes(email)) return false; // Developer / Super Admin is never purged
-  const str = `${data.fullName || ''} ${data.name || ''} ${data.id || ''}`.toLowerCase();
+  const email = String(data.email || '').toLowerCase().trim();
+  if (SUPER_ADMIN_EMAILS.includes(email)) return false; // Super Admins are never purged
+  if (data.isSuperAdmin === true) return false;
+  const str = `${data.fullName || ''} ${data.name || ''} ${data.studentName || ''} ${data.tutorName || ''} ${data.tutorId || ''} ${data.studentId || ''} ${data.id || ''} ${email}`.toLowerCase();
   return PURGED_PATTERNS.some(p => str.includes(p));
 };
 
-const DEFAULT_INITIAL_MATERIALS: SchoolMaterial[] = [
-  {
-    id: 'mat_1',
-    schoolCode: 'SCHL88',
-    schoolName: "King's College Lagos",
-    type: 'lesson_note',
-    title: 'WAEC Special Review: Differential Calculus & Rates of Change',
-    subject: 'Mathematics',
-    classLevel: 'SS 3',
-    term: 'Second Term',
-    week: 'Week 4',
-    content: 'Comprehensive summary of differentiation from first principles, power rule, product rule, quotient rule, and applications to velocity, acceleration, and maximum/minimum turning points.',
-    attachmentName: 'Calculus_First_Principles_Notes.pdf',
-    createdAt: '2026-11-05T09:30:00Z',
-    authorName: 'Dr. Joseph Adeleke'
-  },
-  {
-    id: 'mat_2',
-    schoolCode: 'SCHL88',
-    schoolName: "King's College Lagos",
-    type: 'assignment',
-    title: 'Mid-Term Assignment: Gravitational & Electric Fields Problem Set',
-    subject: 'Physics',
-    classLevel: 'SS 3',
-    term: 'Second Term',
-    week: 'Week 5',
-    content: 'Complete the 10 calculation problems on inverse square laws, Coulomb force, and orbital satellite velocity in your Physics notebook. Show all standard SI units.',
-    dueDate: '2026-11-20',
-    maxScore: 20,
-    attachmentName: 'Physics_Field_Theory_Worksheet.pdf',
-    createdAt: '2026-11-08T11:00:00Z',
-    authorName: 'Engr. Benson Okon'
-  },
-  {
-    id: 'mat_3',
-    schoolCode: 'SCHL88',
-    schoolName: "King's College Lagos",
-    type: 'project',
-    title: 'Termly Science Exhibition Project: Renewable Solar-Wind Microgrid Model',
-    subject: 'Physics',
-    classLevel: 'SS 2',
-    term: 'Second Term',
-    week: 'Week 8',
-    content: 'Form groups of 4 to design and fabricate a miniature working model demonstrating solar-photovoltaic and miniature wind-turbine energy conversion with circuit schematics.',
-    dueDate: '2026-12-05',
-    maxScore: 30,
-    attachmentName: 'KC_Science_Exhibition_Rubric.pdf',
-    createdAt: '2026-11-02T14:15:00Z',
-    authorName: 'Science Faculty Board'
-  },
-  {
-    id: 'mat_4',
-    schoolCode: 'SCHL88',
-    schoolName: "King's College Lagos",
-    type: 'past_question',
-    title: 'BECE 2024 Model Questions Drill with Examiner Marking Guide',
-    subject: 'Basic Science',
-    classLevel: 'JSS 3',
-    term: 'Second Term',
-    week: 'Week 6',
-    content: '25-question standard BECE drill covering energy transformations, digestive systems, and ecology with step-by-step WAEC/NECO marking scheme explanations.',
-    examBoard: 'BECE',
-    maxScore: 25,
-    createdAt: '2026-11-09T08:00:00Z',
-    authorName: 'Chief Examiner Council'
-  }
-];
+const DEFAULT_INITIAL_MATERIALS: SchoolMaterial[] = [];
 
 const AppContext = createContext<AppContextType | null>(null);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Registered User & Auth State
+  // Registered User & Auth State (Strict opt-in signup/signin — zero hardcoded auto-login)
   const [currentUserProfile, setCurrentUserProfile] = useState<RegisteredUserProfile | null>(() => {
     const saved = safeGetItem('sc_user_profile');
     if (saved) {
@@ -551,10 +555,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           safeRemoveItem('sc_user_profile');
           return null;
         }
-        if (parsed.id && !parsed.id.includes('tunde')) return parsed;
+        if (parsed?.id && parsed?.role) return parsed;
       } catch {}
     }
-    return INITIAL_USER_DIRECTORY[1];
+    return null;
   });
 
   // Navigation & Presentation (bound to registered role)
@@ -644,13 +648,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [authLoading, setAuthLoading] = useState<boolean>(true);
   const [isFirebaseConnected, setIsFirebaseConnected] = useState<boolean>(false);
 
-  // User Directory State (for Super Admin & Inspection)
+  // User Directory State (Super Admins & genuine signed-up users only; purged of test personas)
   const [allRegisteredUsers, setAllRegisteredUsers] = useState<RegisteredUserProfile[]>(() => {
     const saved = safeGetItem('sc_all_users');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const cleaned = parsed.filter((u: RegisteredUserProfile) => !isPurgedRecord(u));
+          if (cleaned.length > 0) return cleaned;
+        }
       } catch {}
     }
     return INITIAL_USER_DIRECTORY;
@@ -1070,13 +1077,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return saved ? JSON.parse(saved) : [];
   });
 
-  // Parent State (Pristine - 0 balance, no mock data)
+  // Parent State (Pristine - 0 balance, no synthetic/mock credits)
   const [parentWallet, setParentWallet] = useState<ParentWallet>(() => {
     const saved = safeGetItem('sc_wallet');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (parsed.pin && parsed.balanceNaira !== 35000) {
+        if (parsed && parsed.balanceNaira === 35000 && (parsed.pin === '1234' || !parsed.transactions?.length)) {
+          safeRemoveItem('sc_wallet');
+          return INITIAL_EMPTY_WALLET;
+        }
+        if (parsed && typeof parsed.balanceNaira === 'number') {
           return parsed;
         }
       } catch {}
@@ -1085,14 +1096,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
   const [isParentPinUnlocked, setIsParentPinUnlocked] = useState<boolean>(false);
 
-  // Tutor Bookings & Chats (Pristine - empty)
+  // Tutor Bookings & Chats (Pristine - purged of sample data)
   const [tutorBookings, setTutorBookings] = useState<TutorBooking[]>(() => {
     const saved = safeGetItem('sc_bookings');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && !parsed.some((b: any) => b.id === 'book-001')) {
-          return parsed;
+        if (Array.isArray(parsed)) {
+          return parsed.filter((b: TutorBooking) => !isPurgedRecord(b));
         }
       } catch {}
     }
@@ -1104,9 +1115,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (!parsed['tutor-adewale-math']) {
-          return parsed;
-        }
+        const filtered: Record<string, ChatMessage[]> = {};
+        Object.entries(parsed || {}).forEach(([k, v]) => {
+          if (!PURGED_PATTERNS.some(p => k.toLowerCase().includes(p)) && Array.isArray(v)) {
+            filtered[k] = v as ChatMessage[];
+          }
+        });
+        return filtered;
       } catch {}
     }
     return {};
@@ -1118,7 +1133,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed)) {
+          const seededIds = new Set(['mat_1', 'mat_2', 'mat_3', 'mat_4']);
+          return parsed.filter((m: SchoolMaterial) => !seededIds.has(m.id));
+        }
       } catch {}
     }
     return DEFAULT_INITIAL_MATERIALS;
@@ -1374,7 +1392,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           }
         );
 
-        // Sync parent wallet
+        // Sync parent wallet (zero balance by default — never seed synthetic ₦35,000)
         const walletDocRef = doc(db, 'wallets', user.uid);
         const walletPath = `wallets/${user.uid}`;
         const unsubWallet = onSnapshot(
@@ -1386,8 +1404,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             } else {
               setDoc(walletDocRef, {
                 userId: user.uid,
-                balanceNaira: 35000,
-                pin: '1234',
+                balanceNaira: 0,
+                pin: '',
                 updatedAt: new Date().toISOString()
               }).catch((err) => {
                 handleFirestoreError(err, OperationType.CREATE, walletPath);
@@ -1673,17 +1691,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return { success: true, profile: matched };
   };
 
-  const activateQuickStudentSession = (): RegisteredUserProfile => {
-    const profile = currentUserProfile || INITIAL_USER_DIRECTORY[1];
-    setCurrentUserProfile(profile);
-    safeSetItem('sc_user_profile', JSON.stringify(profile));
-    setCurrentRole(profile.role);
-    if (profile.studentData) {
-      setStudent(profile.studentData);
-      safeSetItem('sc_student', JSON.stringify(profile.studentData));
+  // One-time startup purge of legacy sample/test personas, wallets & bookings (retaining Super Admins)
+  useEffect(() => {
+    if (safeGetItem('sc_purge_v2_clean') === 'done') return;
+    setAllRegisteredUsers(prev => {
+      const cleaned = prev.filter(u => !isPurgedRecord(u));
+      const merged = cleaned.length > 0 ? cleaned : INITIAL_USER_DIRECTORY;
+      safeSetItem('sc_all_users', JSON.stringify(merged));
+      return merged;
+    });
+    if (currentUserProfile && isPurgedRecord(currentUserProfile)) {
+      safeRemoveItem('sc_user_profile');
+      safeRemoveItem('sc_student');
+      safeRemoveItem('sc_wallet');
+      safeRemoveItem('sc_bookings');
+      safeRemoveItem('sc_chats');
+      setCurrentUserProfile(null);
+      setStudent(INITIAL_EMPTY_STUDENT);
+      setParentWallet(INITIAL_EMPTY_WALLET);
+      setTutorBookings([]);
+      setChatMessages({});
+    } else if (parentWallet.balanceNaira === 35000 && (!parentWallet.transactions || parentWallet.transactions.length === 0)) {
+      safeRemoveItem('sc_wallet');
+      setParentWallet(INITIAL_EMPTY_WALLET);
     }
-    return profile;
-  };
+    safeSetItem('sc_purge_v2_clean', 'done');
+  }, []);
 
   const logoutUser = async () => {
     try {
@@ -2525,7 +2558,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } catch {}
   };
 
-  const approveTutorBooking = (bookingId: string): boolean => {
+  const approveTutorBooking = (bookingId: string, enteredPin?: string): boolean => {
     if (securityStatus.walletFrozen || currentUserProfile?.walletFrozen) {
       setLastSecurityAlert(
         securityStatus.walletFrozenReason ||
@@ -2534,62 +2567,108 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       );
       return false;
     }
+
     const targetBooking = tutorBookings.find(b => b.id === bookingId);
     if (!targetBooking) return false;
 
-    if (parentWallet.balanceNaira < targetBooking.amountNaira) {
-      return false; // Insufficient funds
+    // Require Parent 4-digit PIN when authorizing
+    const expectedPin = parentWallet.pin || currentUserProfile?.parentData?.pin || '';
+    const targetPinOwnerId = currentUserProfile?.id || currentUser?.uid || 'parent_active';
+    if (expectedPin) {
+      const lockCheck = checkPinBruteForce(targetPinOwnerId);
+      if (lockCheck.isLocked) {
+        setPinLockoutInfo(lockCheck);
+        setLastSecurityAlert(`PIN locked after failed attempts. Retry in ${Math.max(1, Math.ceil(lockCheck.remainingSeconds / 60))} minute(s).`);
+        return false;
+      }
+      if (enteredPin !== undefined) {
+        if (enteredPin !== expectedPin) {
+          const nextLock = recordPinFailure(targetPinOwnerId, currentUserProfile?.email || undefined);
+          setPinLockoutInfo(nextLock);
+          setLastSecurityAlert('Incorrect 4-digit Parent PIN. Approval denied.');
+          return false;
+        }
+        resetPinFailures(targetPinOwnerId);
+        setPinLockoutInfo({ isLocked: false, remainingSeconds: 0, attemptsUsed: 0 });
+      } else if (!isParentPinUnlocked) {
+        setLastSecurityAlert('Enter your 4-digit Parent PIN to authorize this booking.');
+        return false;
+      }
     }
 
-    const debitTx: any = {
-      id: `tx-escrow-${Date.now().toString().slice(-6)}`,
-      type: 'debit',
-      amountNaira: targetBooking.amountNaira,
-      description: `Escrow Hold: ${targetBooking.tutorName} (${targetBooking.subject})`,
-      timestamp: 'Just now',
-      status: 'successful',
-      reference: `ESCROW_${bookingId}`
-    };
-
-    setParentWallet(prev => {
-      const updatedBalance = prev.balanceNaira - targetBooking.amountNaira;
-      const updated = {
-        ...prev,
-        balanceNaira: updatedBalance,
-        transactions: [debitTx, ...prev.transactions]
-      };
-
-      if (currentUser && !isOffline) {
-        const walletDocRef = doc(db, 'wallets', currentUser.uid);
-        const path = `wallets/${currentUser.uid}`;
-        updateDoc(walletDocRef, {
-          balanceNaira: updatedBalance,
-          updatedAt: new Date().toISOString()
-        }).catch(err => {
-          handleFirestoreError(err, OperationType.UPDATE, path);
-        });
+    // Only deduct escrow if not already funded/held via verified Paystack or prior hold
+    const needsEscrowHold = targetBooking.escrowStatus !== 'held_in_escrow' && targetBooking.amountNaira > 0;
+    if (needsEscrowHold) {
+      if (parentWallet.balanceNaira < targetBooking.amountNaira) {
+        setLastSecurityAlert(
+          `Insufficient Parent Escrow Wallet balance (₦${parentWallet.balanceNaira.toLocaleString()} available, ₦${targetBooking.amountNaira.toLocaleString()} required).`
+        );
+        return false;
       }
 
-      return updated;
+      const debitTx: any = {
+        id: `tx-escrow-${Date.now().toString().slice(-6)}`,
+        type: 'debit',
+        amountNaira: targetBooking.amountNaira,
+        description: `Escrow Hold: ${targetBooking.tutorName} (${targetBooking.subject})`,
+        timestamp: 'Just now',
+        status: 'successful',
+        reference: `ESCROW_${bookingId}`
+      };
+
+      setParentWallet(prev => {
+        const updatedBalance = prev.balanceNaira - targetBooking.amountNaira;
+        const updated = {
+          ...prev,
+          balanceNaira: updatedBalance,
+          transactions: [debitTx, ...prev.transactions]
+        };
+
+        if (currentUser && !isOffline) {
+          const walletDocRef = doc(db, 'wallets', currentUser.uid);
+          const path = `wallets/${currentUser.uid}`;
+          updateDoc(walletDocRef, {
+            balanceNaira: updatedBalance,
+            updatedAt: new Date().toISOString()
+          }).catch(err => {
+            handleFirestoreError(err, OperationType.UPDATE, path);
+          });
+        }
+
+        return updated;
+      });
+    }
+
+    const parentDateStr = new Date().toLocaleDateString('en-NG', {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
     });
+    const nextStatus: TutorBooking['status'] = targetBooking.isTutorApproved ? 'confirmed' : 'pending_tutor';
 
     setTutorBookings(prev =>
       prev.map(b =>
         b.id === bookingId
           ? {
               ...b,
-              status: 'confirmed',
+              status: nextStatus,
               isParentApproved: true,
-              parentApprovalDate: new Date().toLocaleDateString('en-NG', {
-                month: 'short',
-                day: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit'
-              })
+              parentApprovalDate: parentDateStr,
+              escrowStatus: targetBooking.amountNaira > 0 ? 'held_in_escrow' : b.escrowStatus
             }
           : b
       )
     );
+
+    if (currentUser && !isOffline) {
+      updateDoc(doc(db, 'tutorBookings', bookingId), {
+        status: nextStatus,
+        isParentApproved: true,
+        parentApprovalDate: parentDateStr,
+        escrowStatus: targetBooking.amountNaira > 0 ? 'held_in_escrow' : 'unpaid'
+      }).catch(() => {});
+    }
 
     try {
       confetti({
@@ -2602,14 +2681,107 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return true;
   };
 
-  const rejectTutorBooking = (bookingId: string) => {
+  const refundEscrowForBooking = (booking: TutorBooking, reasonText: string) => {
+    if (booking.escrowStatus === 'held_in_escrow' && booking.amountNaira > 0 && booking.paymentGateway === 'parent_escrow_wallet') {
+      const refundTx: any = {
+        id: `tx-ref-${Date.now().toString().slice(-6)}`,
+        type: 'credit',
+        amountNaira: booking.amountNaira,
+        description: `Escrow Refund: ${booking.tutorName} (${reasonText})`,
+        timestamp: 'Just now',
+        status: 'successful',
+        reference: `REFUND_${booking.id}`
+      };
+      setParentWallet(prev => ({
+        ...prev,
+        balanceNaira: prev.balanceNaira + booking.amountNaira,
+        transactions: [refundTx, ...prev.transactions]
+      }));
+    }
+  };
+
+  const rejectTutorBooking = (bookingId: string, reason = 'Declined by Parent') => {
+    const target = tutorBookings.find(b => b.id === bookingId);
+    if (target) {
+      refundEscrowForBooking(target, reason);
+    }
     setTutorBookings(prev =>
       prev.map(b =>
         b.id === bookingId
-          ? { ...b, status: 'cancelled' }
+          ? {
+              ...b,
+              status: 'cancelled',
+              escrowStatus: b.escrowStatus === 'held_in_escrow' ? 'refunded' : b.escrowStatus
+            }
           : b
       )
     );
+    if (currentUser && !isOffline) {
+      updateDoc(doc(db, 'tutorBookings', bookingId), {
+        status: 'cancelled',
+        escrowStatus: target?.escrowStatus === 'held_in_escrow' ? 'refunded' : target?.escrowStatus || 'unpaid'
+      }).catch(() => {});
+    }
+  };
+
+  const tutorRespondToBooking = (bookingId: string, decision: 'accept' | 'decline', reason?: string): boolean => {
+    const target = tutorBookings.find(b => b.id === bookingId);
+    if (!target) return false;
+
+    if (decision === 'accept') {
+      const approvalDate = new Date().toLocaleDateString('en-NG', {
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+      const nextStatus: TutorBooking['status'] = target.isParentApproved ? 'confirmed' : 'pending_parent';
+      setTutorBookings(prev =>
+        prev.map(b =>
+          b.id === bookingId
+            ? {
+                ...b,
+                isTutorApproved: true,
+                tutorApprovalDate: approvalDate,
+                status: nextStatus
+              }
+            : b
+        )
+      );
+      if (currentUser && !isOffline) {
+        updateDoc(doc(db, 'tutorBookings', bookingId), {
+          isTutorApproved: true,
+          tutorApprovalDate: approvalDate,
+          status: nextStatus
+        }).catch(() => {});
+      }
+      return true;
+    }
+
+    const rejectReason = reason?.trim() || 'Declined by Tutor';
+    refundEscrowForBooking(target, rejectReason);
+    setTutorBookings(prev =>
+      prev.map(b =>
+        b.id === bookingId
+          ? {
+              ...b,
+              isTutorApproved: false,
+              tutorRejectionReason: rejectReason,
+              status: 'cancelled',
+              escrowStatus: b.escrowStatus === 'held_in_escrow' ? 'refunded' : b.escrowStatus
+            }
+          : b
+      )
+    );
+    if (currentUser && !isOffline) {
+      updateDoc(doc(db, 'tutorBookings', bookingId), {
+        isTutorApproved: false,
+        tutorRejectionReason: rejectReason,
+        status: 'cancelled',
+        escrowStatus: target.escrowStatus === 'held_in_escrow' ? 'refunded' : target.escrowStatus || 'unpaid'
+      }).catch(() => {});
+    }
+    return true;
   };
 
   // Termly Championship & Prizes State & Handlers
@@ -2709,46 +2881,65 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // ==========================================
   // PREPARE FOR EXAM METHODS
   // ==========================================
-  const unlockExamPrep = (method: 'wallet' | 'paystack' | 'bank_transfer' = 'wallet'): boolean => {
+  const unlockExamPrep = (
+    method: 'wallet' | 'paystack' = 'wallet',
+    paymentReference?: string
+  ): boolean => {
     const currentBalance = parentWallet.balanceNaira;
     const requiredAmount = UNLOCK_FEE_NAIRA;
 
-    if (method === 'paystack' || method === 'bank_transfer' || currentBalance < requiredAmount) {
-      const topUpDeficit = Math.max(requiredAmount - currentBalance, requiredAmount);
-      fundParentWallet(topUpDeficit);
+    if (method === 'wallet') {
+      if (currentBalance < requiredAmount) {
+        setLastSecurityAlert(
+          `Insufficient Parent Escrow Wallet balance (₦${currentBalance.toLocaleString()} available, ₦${requiredAmount.toLocaleString()} required). Please fund wallet or pay via Live Paystack.`
+        );
+        return false;
+      }
+    } else if (method === 'paystack') {
+      if (!paymentReference || !paymentReference.trim()) {
+        setLastSecurityAlert('Verified Paystack transaction reference is required to unlock Exam Prep.');
+        return false;
+      }
     }
 
     const debitTx: any = {
       id: `tx-exam-${Date.now().toString().slice(-6)}`,
       type: 'debit',
       amountNaira: UNLOCK_FEE_NAIRA,
-      description: `Unlocked 'Prepare For Exam' + ₦4,000 Tutor Credits (${method === 'bank_transfer' ? 'Bank Transfer' : method === 'paystack' ? 'Paystack' : 'Escrow Wallet'})`,
+      description: `Unlocked 'Prepare For Exam' + ₦4,000 Tutor Credits (${method === 'paystack' ? 'Live Paystack' : 'Escrow Wallet'})`,
       timestamp: 'Just now',
       status: 'successful',
-      reference: `${method === 'bank_transfer' ? 'WEMA_TRF_' : 'PSTK_EXAM_'}${Math.floor(Math.random() * 900000 + 100000)}`
+      reference: paymentReference || `WALLET_EXAM_${Date.now().toString().slice(-6)}`
     };
 
-    setParentWallet(prev => {
-      const updatedBalance = Math.max(0, prev.balanceNaira - UNLOCK_FEE_NAIRA);
-      const updated = {
-        ...prev,
-        balanceNaira: updatedBalance,
-        transactions: [debitTx, ...prev.transactions]
-      };
-
-      if (currentUser && !isOffline) {
-        const walletDocRef = doc(db, 'wallets', currentUser.uid);
-        const path = `wallets/${currentUser.uid}`;
-        updateDoc(walletDocRef, {
+    if (method === 'wallet') {
+      setParentWallet(prev => {
+        const updatedBalance = Math.max(0, prev.balanceNaira - UNLOCK_FEE_NAIRA);
+        const updated = {
+          ...prev,
           balanceNaira: updatedBalance,
-          updatedAt: new Date().toISOString()
-        }).catch(err => {
-          handleFirestoreError(err, OperationType.UPDATE, path);
-        });
-      }
+          transactions: [debitTx, ...prev.transactions]
+        };
 
-      return updated;
-    });
+        if (currentUser && !isOffline) {
+          const walletDocRef = doc(db, 'wallets', currentUser.uid);
+          const path = `wallets/${currentUser.uid}`;
+          updateDoc(walletDocRef, {
+            balanceNaira: updatedBalance,
+            updatedAt: new Date().toISOString()
+          }).catch(err => {
+            handleFirestoreError(err, OperationType.UPDATE, path);
+          });
+        }
+
+        return updated;
+      });
+    } else {
+      setParentWallet(prev => ({
+        ...prev,
+        transactions: [debitTx, ...prev.transactions]
+      }));
+    }
 
     setExamPrepState(prev => ({
       ...prev,
@@ -2775,46 +2966,66 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return true;
   };
 
-  const unlockSingleSubjectExam = (subject: string, method: 'wallet' | 'paystack' | 'bank_transfer' = 'wallet'): boolean => {
+  const unlockSingleSubjectExam = (
+    subject: string,
+    method: 'wallet' | 'paystack' = 'wallet',
+    paymentReference?: string
+  ): boolean => {
     const currentBalance = parentWallet.balanceNaira;
     const requiredAmount = SINGLE_SUBJECT_EXAM_FEE_NAIRA;
 
-    if (method === 'paystack' || method === 'bank_transfer' || currentBalance < requiredAmount) {
-      const topUpDeficit = Math.max(requiredAmount - currentBalance, requiredAmount);
-      fundParentWallet(topUpDeficit);
+    if (method === 'wallet') {
+      if (currentBalance < requiredAmount) {
+        setLastSecurityAlert(
+          `Insufficient Parent Escrow Wallet balance (₦${currentBalance.toLocaleString()} available, ₦${requiredAmount.toLocaleString()} required). Please pay via Live Paystack or top up wallet.`
+        );
+        return false;
+      }
+    } else if (method === 'paystack') {
+      if (!paymentReference || !paymentReference.trim()) {
+        setLastSecurityAlert('Verified Paystack transaction reference is required.');
+        return false;
+      }
     }
 
     const debitTx: any = {
       id: `tx-subj-${Date.now().toString().slice(-6)}`,
       type: 'debit',
       amountNaira: SINGLE_SUBJECT_EXAM_FEE_NAIRA,
-      description: `Unlocked '${subject}' CBT Exam Pass (Full Term Access) via ${method === 'bank_transfer' ? 'Bank Transfer' : method === 'paystack' ? 'Paystack' : 'Escrow Wallet'}`,
+      description: `Unlocked '${subject}' CBT Exam Pass (Full Term Access) via ${method === 'paystack' ? 'Live Paystack' : 'Escrow Wallet'}`,
       timestamp: 'Just now',
       status: 'successful',
-      reference: `${method === 'bank_transfer' ? 'WEMA_SUBJ_' : 'PSTK_SUBJ_'}${Math.floor(Math.random() * 900000 + 100000)}`
+      reference: paymentReference || `WALLET_SUBJ_${Date.now().toString().slice(-6)}`
     };
 
-    setParentWallet(prev => {
-      const updatedBalance = Math.max(0, prev.balanceNaira - SINGLE_SUBJECT_EXAM_FEE_NAIRA);
-      const updated = {
-        ...prev,
-        balanceNaira: updatedBalance,
-        transactions: [debitTx, ...prev.transactions]
-      };
-
-      if (currentUser && !isOffline) {
-        const walletDocRef = doc(db, 'wallets', currentUser.uid);
-        const path = `wallets/${currentUser.uid}`;
-        updateDoc(walletDocRef, {
+    if (method === 'wallet') {
+      setParentWallet(prev => {
+        const updatedBalance = Math.max(0, prev.balanceNaira - SINGLE_SUBJECT_EXAM_FEE_NAIRA);
+        const updated = {
+          ...prev,
           balanceNaira: updatedBalance,
-          updatedAt: new Date().toISOString()
-        }).catch(err => {
-          handleFirestoreError(err, OperationType.UPDATE, path);
-        });
-      }
+          transactions: [debitTx, ...prev.transactions]
+        };
 
-      return updated;
-    });
+        if (currentUser && !isOffline) {
+          const walletDocRef = doc(db, 'wallets', currentUser.uid);
+          const path = `wallets/${currentUser.uid}`;
+          updateDoc(walletDocRef, {
+            balanceNaira: updatedBalance,
+            updatedAt: new Date().toISOString()
+          }).catch(err => {
+            handleFirestoreError(err, OperationType.UPDATE, path);
+          });
+        }
+
+        return updated;
+      });
+    } else {
+      setParentWallet(prev => ({
+        ...prev,
+        transactions: [debitTx, ...prev.transactions]
+      }));
+    }
 
     setExamPrepState(prev => {
       const existing = prev.unlockedSubjectExams || [];
@@ -2960,28 +3171,40 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const subscribeAspirantTier = (
     tier: AspirantTier,
-    method: 'wallet' | 'paystack' | 'bank_transfer' = 'wallet',
+    method: 'wallet' | 'paystack' = 'wallet',
     referralCodeOverride?: string,
-    skipPartnerSync = false
+    skipPartnerSync = false,
+    paymentReference?: string
   ): boolean => {
     const activeRefCode = (referralCodeOverride || student.referredByCode || appliedReferralCode || '').trim().toUpperCase();
     const quote = getAspirantTierPricing(tier, Boolean(activeRefCode));
     const feeNaira = quote.finalPriceNaira;
     const isFirstPaidSub = feeNaira > 0 && !student.aspirantFirstPaidAt;
-    const txReference = `ASP_${tier.toUpperCase()}_${Date.now().toString().slice(-6)}_${Math.floor(Math.random() * 900 + 100)}`;
+    const txReference =
+      paymentReference ||
+      `ASP_${tier.toUpperCase()}_${Date.now().toString().slice(-6)}_${Math.floor(Math.random() * 900 + 100)}`;
 
     if (feeNaira > 0) {
       const currentBalance = parentWallet.balanceNaira;
-      if (method === 'paystack' || method === 'bank_transfer' || currentBalance < feeNaira) {
-        const topUpDeficit = Math.max(feeNaira - currentBalance, feeNaira);
-        fundParentWallet(topUpDeficit);
+      if (method === 'wallet') {
+        if (currentBalance < feeNaira) {
+          setLastSecurityAlert(
+            `Insufficient Parent Escrow Wallet balance (₦${currentBalance.toLocaleString()} available, ₦${feeNaira.toLocaleString()} required). Please pay with Live Paystack or top up wallet.`
+          );
+          return false;
+        }
+      } else if (method === 'paystack') {
+        if (!paymentReference || !paymentReference.trim()) {
+          setLastSecurityAlert('Verified live Paystack reference is required for Aspirant tier activation.');
+          return false;
+        }
       }
 
       const debitTx: any = {
         id: `tx-asp-${Date.now().toString().slice(-6)}`,
         type: 'debit',
         amountNaira: feeNaira,
-        description: `Subscribed to Aspirant ${tier.toUpperCase()} Monthly Pass (${method === 'bank_transfer' ? 'Bank Transfer' : method === 'paystack' ? 'Paystack' : 'Escrow Wallet'})`,
+        description: `Subscribed to Aspirant ${tier.toUpperCase()} Monthly Pass (${method === 'paystack' ? 'Live Paystack' : 'Escrow Wallet'})`,
         timestamp: 'Just now',
         status: 'successful',
         reference: txReference
@@ -2989,7 +3212,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       setParentWallet(prev => ({
         ...prev,
-        balanceNaira: Math.max(0, prev.balanceNaira - feeNaira),
+        balanceNaira: method === 'wallet' ? Math.max(0, prev.balanceNaira - feeNaira) : prev.balanceNaira,
         transactions: [debitTx, ...prev.transactions]
       }));
     }
@@ -3177,16 +3400,165 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     submitChampionshipStageResult(1, Math.round((score / 100) * totalQuestions), totalQuestions, timeSpentSeconds);
   };
 
+  const registeredTutors: Tutor[] = React.useMemo(() => {
+    return allRegisteredUsers
+      .filter(
+        u =>
+          u.role === 'tutor' &&
+          !isPurgedRecord(u) &&
+          u.accountStatus !== 'deleted' &&
+          u.accountStatus !== 'suspended'
+      )
+      .map(u => {
+        const td = u.tutorData;
+        return {
+          id: u.id,
+          name: u.fullName,
+          tagline: td?.tagline || `${td?.subjectSpecialization || 'Secondary'} Specialist`,
+          subjects:
+            td?.proficientSubjects && td.proficientSubjects.length > 0
+              ? td.proficientSubjects
+              : [td?.subjectSpecialization || 'Mathematics'],
+          rating: 5.0,
+          reviewCount: 0,
+          hourlyRateNaira: td?.hourlyRate || 3500,
+          location: `${td?.city || 'Lagos'}, ${td?.state || 'Nigeria'}`,
+          state: td?.state || 'Lagos',
+          isNinVerified: Boolean(td?.nin || td?.verification?.isVerified),
+          education:
+            td?.qualification ||
+            `${td?.highestEducation || 'B.Sc.'} (${td?.institution || 'Nigerian University'})`,
+          avatarUrl: u.avatarUrl || '',
+          bio:
+            td?.bio ||
+            'Registered Nigerian educator offering verified online whiteboard and home lessons.',
+          availableDays: ['Mondays', 'Wednesdays', 'Saturdays'],
+          lat: 6.5244,
+          lng: 3.3792,
+          experienceYears:
+            td?.experienceYearsRange === '5+ years'
+              ? 6
+              : td?.experienceYearsRange === '3-5 years'
+              ? 4
+              : 2,
+          degrees: td?.degrees || [],
+          certifications: td?.certifications || [],
+          examSpecializations: td?.examSpecializations || [],
+          curriculumHighlights: td?.curriculumHighlights || [],
+          totalLessonsDelivered: tutorBookings.filter(b => b.tutorId === u.id && b.status === 'completed').length,
+          completionRate: 100,
+          timetable: td?.timetable || []
+        };
+      });
+  }, [allRegisteredUsers, tutorBookings]);
+
   const createTutorBooking = (
-    params: Omit<TutorBooking, 'id' | 'createdAt' | 'status' | 'isParentApproved'>
-  ): TutorBooking => {
+    params: Omit<
+      TutorBooking,
+      'id' | 'createdAt' | 'status' | 'isParentApproved' | 'isTutorApproved'
+    > & {
+      parentPin?: string;
+      scheduledStartIso?: string;
+      scheduledEndIso?: string;
+      paymentGateway?: 'paystack_live' | 'parent_escrow_wallet' | 'tutor_credit';
+      paymentReference?: string;
+    }
+  ): TutorBooking | null => {
+    const gateway = params.paymentGateway || (params.amountNaira > 0 ? 'parent_escrow_wallet' : 'tutor_credit');
+
+    if (params.amountNaira > 0) {
+      if (gateway === 'paystack_live') {
+        if (!params.paymentReference || !params.paymentReference.trim()) {
+          setLastSecurityAlert('Live Paystack verification reference is required before creating a paid tutor booking.');
+          return null;
+        }
+      } else if (gateway === 'parent_escrow_wallet') {
+        if (securityStatus.walletFrozen || currentUserProfile?.walletFrozen) {
+          setLastSecurityAlert('Parent Escrow Wallet is currently frozen for security review.');
+          return null;
+        }
+        const expectedPin = parentWallet.pin || currentUserProfile?.parentData?.pin || '';
+        if (expectedPin && params.parentPin !== expectedPin) {
+          setLastSecurityAlert('Valid 4-digit Parent PIN is required to authorize Escrow Wallet payment.');
+          return null;
+        }
+        if (parentWallet.balanceNaira < params.amountNaira) {
+          setLastSecurityAlert(
+            `Insufficient Parent Escrow Wallet balance (₦${parentWallet.balanceNaira.toLocaleString()} available, ₦${params.amountNaira.toLocaleString()} required).`
+          );
+          return null;
+        }
+      }
+    }
+
     const bookingId = `book-${Date.now().toString().slice(-6)}`;
+    const expectedPin = parentWallet.pin || currentUserProfile?.parentData?.pin || '';
+    const pinVerifiedNow =
+      gateway === 'parent_escrow_wallet'
+        ? !expectedPin || params.parentPin === expectedPin
+        : Boolean(params.parentPin && expectedPin && params.parentPin === expectedPin);
+
+    // Deduct Parent Escrow Wallet when funded from Escrow Wallet
+    if (params.amountNaira > 0 && gateway === 'parent_escrow_wallet') {
+      const debitTx: any = {
+        id: `tx-book-${Date.now().toString().slice(-6)}`,
+        type: 'debit',
+        amountNaira: params.amountNaira,
+        description: `Tutor Escrow Hold: ${params.tutorName} (${params.subject})`,
+        timestamp: 'Just now',
+        status: 'successful',
+        reference: `ESCROW_${bookingId}`
+      };
+      setParentWallet(prev => {
+        const updatedBalance = Math.max(0, prev.balanceNaira - params.amountNaira);
+        const updated = {
+          ...prev,
+          balanceNaira: updatedBalance,
+          transactions: [debitTx, ...prev.transactions]
+        };
+        if (currentUser && !isOffline) {
+          updateDoc(doc(db, 'wallets', currentUser.uid), {
+            balanceNaira: updatedBalance,
+            updatedAt: new Date().toISOString()
+          }).catch(() => {});
+        }
+        return updated;
+      });
+    } else if (params.amountNaira > 0 && gateway === 'paystack_live' && params.paymentReference) {
+      const liveTx: any = {
+        id: `tx-book-live-${Date.now().toString().slice(-6)}`,
+        type: 'debit',
+        amountNaira: params.amountNaira,
+        description: `Live Paystack Escrow Hold: ${params.tutorName} (${params.subject})`,
+        timestamp: 'Just now',
+        status: 'successful',
+        reference: params.paymentReference
+      };
+      setParentWallet(prev => ({
+        ...prev,
+        transactions: [liveTx, ...prev.transactions]
+      }));
+    }
+
+    const isParentApprovedNow = pinVerifiedNow;
     const newBooking: TutorBooking = {
       ...params,
       id: bookingId,
       createdAt: new Date().toISOString(),
-      status: params.bookingType === 'physical' ? 'pending_parent' : 'confirmed',
-      isParentApproved: params.bookingType === 'online'
+      status: isParentApprovedNow ? 'pending_tutor' : 'pending_parent',
+      isParentApproved: isParentApprovedNow,
+      parentApprovalDate: isParentApprovedNow
+        ? new Date().toLocaleDateString('en-NG', {
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+          })
+        : undefined,
+      isTutorApproved: false,
+      paymentGateway: gateway,
+      paymentReference: params.paymentReference || `ESCROW_${bookingId}`,
+      escrowStatus: params.amountNaira > 0 || gateway === 'tutor_credit' ? 'held_in_escrow' : 'unpaid'
     };
 
     setTutorBookings(prev => [newBooking, ...prev]);
@@ -3194,33 +3566,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (currentUser && !isOffline) {
       const bookingDocRef = doc(db, 'tutorBookings', bookingId);
       const path = `tutorBookings/${bookingId}`;
-      setDoc(bookingDocRef, {
-        id: bookingId,
-        tutorId: newBooking.tutorId,
-        tutorName: newBooking.tutorName,
-        tutorPhoto: newBooking.tutorPhoto,
-        studentId: currentUser.uid,
-        studentName: newBooking.studentName,
-        subject: newBooking.subject,
-        topic: newBooking.topic,
-        bookingType: newBooking.bookingType,
-        date: newBooking.date,
-        timeSlot: newBooking.timeSlot,
-        status: newBooking.status,
-        amountNaira: newBooking.amountNaira,
-        isParentApproved: newBooking.isParentApproved,
-        createdAt: newBooking.createdAt
-      }).catch(err => {
+      setDoc(bookingDocRef, newBooking).catch(err => {
         handleFirestoreError(err, OperationType.CREATE, path);
       });
     }
 
     addStudentXP({
       feature: 'tutors',
-      baseXP: 250,
+      baseXP: 100,
       paidAmountNgn: newBooking.amountNaira,
-      difficulty: 'hard',
-      reason: `Booked 1-on-1 Tutoring with ${newBooking.tutorName} (${newBooking.subject})`
+      difficulty: 'medium',
+      reason: `Submitted Tutor Booking Request with ${newBooking.tutorName} (${newBooking.subject})`
     });
 
     return newBooking;
@@ -3268,56 +3624,199 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  // Virtual Classroom State & Handlers
+  // Virtual Classroom State & Strict Time-Gated Dual-Approval Access
   const [activeClassroomSession, setActiveClassroomSession] = useState<VirtualClassroomSession | null>(null);
+  const WHITEBOARD_EARLY_OPEN_MS = 10 * 60 * 1000; // 10 minutes before scheduled start
 
-  const launchVirtualClassroom = (bookingId: string, role?: 'student' | 'tutor') => {
+  const getBookingJoinStatus = useCallback((booking: TutorBooking, nowMs: number = Date.now()) => {
+    if (booking.bookingType !== 'online') {
+      return {
+        allowed: false,
+        status: 'not_online' as const,
+        msUntilOpen: 0,
+        reason: 'Live Whiteboard is only available for online tutoring sessions.'
+      };
+    }
+    if (booking.status === 'cancelled' || booking.status === 'completed') {
+      return {
+        allowed: false,
+        status: 'cancelled' as const,
+        msUntilOpen: 0,
+        reason: `This booking is ${booking.status} and cannot open the Live Whiteboard.`
+      };
+    }
+    if (!booking.isParentApproved || booking.status === 'pending_parent') {
+      return {
+        allowed: false,
+        status: 'pending_parent' as const,
+        msUntilOpen: 0,
+        reason: 'Awaiting Parent PIN authorization before the classroom can unlock.'
+      };
+    }
+    if (!booking.isTutorApproved || booking.status === 'pending_tutor') {
+      return {
+        allowed: false,
+        status: 'pending_tutor' as const,
+        msUntilOpen: 0,
+        reason: `Awaiting acceptance from ${booking.tutorName} in the Tutor Portal.`
+      };
+    }
+    if (booking.status !== 'confirmed') {
+      return {
+        allowed: false,
+        status: 'pending_tutor' as const,
+        msUntilOpen: 0,
+        reason: 'Booking must be confirmed by both Parent PIN and Tutor approval.'
+      };
+    }
+
+    const startMs = booking.scheduledStartIso ? new Date(booking.scheduledStartIso).getTime() : NaN;
+    const endMs = booking.scheduledEndIso ? new Date(booking.scheduledEndIso).getTime() : NaN;
+    if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) {
+      return {
+        allowed: false,
+        status: 'too_early' as const,
+        msUntilOpen: 0,
+        reason: 'This session does not have a valid scheduled start/end timestamp.'
+      };
+    }
+
+    const openMs = startMs - WHITEBOARD_EARLY_OPEN_MS;
+    const startLabel = new Date(startMs).toLocaleString([], {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+
+    if (nowMs < openMs) {
+      return {
+        allowed: false,
+        status: 'too_early' as const,
+        msUntilOpen: openMs - nowMs,
+        startTimeLabel: startLabel,
+        reason: `Classroom opens 10 minutes before your scheduled class (${startLabel}).`
+      };
+    }
+
+    if (nowMs > endMs) {
+      return {
+        allowed: false,
+        status: 'ended' as const,
+        msUntilOpen: 0,
+        startTimeLabel: startLabel,
+        reason: 'Your scheduled session window has ended.'
+      };
+    }
+
+    return {
+      allowed: true,
+      status: 'open' as const,
+      msUntilOpen: 0,
+      startTimeLabel: startLabel,
+      reason: 'Live classroom window is active.'
+    };
+  }, []);
+
+  const getStudentClassroomEligibility = useCallback(
+    (nowMs: number = Date.now()) => {
+      const onlineBookings = tutorBookings.filter(
+        b => b.bookingType === 'online' && b.status !== 'cancelled' && b.status !== 'completed'
+      );
+
+      if (onlineBookings.length === 0) {
+        return {
+          eligible: false,
+          activeBooking: null,
+          nextBooking: null,
+          status: 'no_booking' as const,
+          msUntilOpen: 0,
+          reason: 'Live booking required: Pay for an online tutor session and get Parent PIN + Tutor approval.'
+        };
+      }
+
+      for (const b of onlineBookings) {
+        const check = getBookingJoinStatus(b, nowMs);
+        if (check.allowed) {
+          return {
+            eligible: true,
+            activeBooking: b,
+            nextBooking: b,
+            status: 'open' as const,
+            msUntilOpen: 0,
+            reason: check.reason
+          };
+        }
+      }
+
+      // Otherwise surface the earliest upcoming/pending booking status
+      const primary = onlineBookings[0];
+      const check = getBookingJoinStatus(primary, nowMs);
+      return {
+        eligible: false,
+        activeBooking: null,
+        nextBooking: primary,
+        status:
+          check.status === 'not_online' || check.status === 'cancelled'
+            ? ('no_booking' as const)
+            : check.status,
+        msUntilOpen: check.msUntilOpen,
+        reason: check.reason
+      };
+    },
+    [tutorBookings, getBookingJoinStatus]
+  );
+
+  const launchVirtualClassroom = (bookingId: string, role?: 'student' | 'tutor'): boolean => {
     if (!isFeatureEnabled('virtualClassroom')) {
       openPausedFeatureNotice('virtualClassroom', 'Live Virtual Classroom');
-      return;
+      return false;
     }
-    let booking = tutorBookings.find(b => b.id === bookingId);
-    if (!booking) {
-      booking = tutorBookings.find(b => b.bookingType === 'online') || tutorBookings[0];
-    }
-
-    const resolvedBooking: TutorBooking = booking || {
-      id: bookingId || 'demo-session-live',
-      tutorId: 'tutor-adewale-math',
-      tutorName: 'Engr. Adewale Bakare',
-      tutorPhoto: '',
-      studentId: student.id,
-      studentName: student.name || 'Registered Student',
-      subject: 'Mathematics',
-      topic: 'Calculus & Circle Geometry Proofs Drill',
-      bookingType: 'online',
-      date: 'Today (Live Session)',
-      timeSlot: '2 Hours Intensive',
-      status: 'confirmed',
-      amountNaira: 9000,
-      isParentApproved: true,
-      createdAt: new Date().toISOString()
-    };
 
     const resolvedRole: 'student' | 'tutor' = role || (currentRole === 'tutor' ? 'tutor' : 'student');
+    let booking = tutorBookings.find(b => b.id === bookingId);
+    if (!booking && resolvedRole === 'student') {
+      const eligibility = getStudentClassroomEligibility();
+      if (eligibility.activeBooking) {
+        booking = eligibility.activeBooking;
+      }
+    }
+
+    if (!booking) {
+      setLastSecurityAlert(
+        'Live Whiteboard requires a paid, confirmed online tutor booking (approved by both Parent PIN and Tutor).'
+      );
+      return false;
+    }
+
+    const joinCheck = getBookingJoinStatus(booking);
+    if (!joinCheck.allowed) {
+      setLastSecurityAlert(joinCheck.reason);
+      return false;
+    }
+
+    const endMs = booking.scheduledEndIso ? new Date(booking.scheduledEndIso).getTime() : Date.now() + 7200 * 1000;
+    const remainingSec = Math.max(60, Math.min(10800, Math.floor((endMs - Date.now()) / 1000)));
 
     setActiveClassroomSession({
-      bookingId: resolvedBooking.id,
-      tutorId: resolvedBooking.tutorId,
-      tutorName: resolvedBooking.tutorName,
-      tutorPhoto: resolvedBooking.tutorPhoto,
-      studentId: resolvedBooking.studentId,
-      studentName: resolvedBooking.studentName,
-      subject: resolvedBooking.subject,
-      topic: resolvedBooking.topic,
-      amountNaira: resolvedBooking.amountNaira,
-      durationMinutes: 120,
-      remainingSeconds: 7200,
+      bookingId: booking.id,
+      tutorId: booking.tutorId,
+      tutorName: booking.tutorName,
+      tutorPhoto: booking.tutorPhoto,
+      studentId: booking.studentId,
+      studentName: booking.studentName,
+      subject: booking.subject,
+      topic: booking.topic,
+      amountNaira: booking.amountNaira,
+      durationMinutes: Math.max(30, Math.round(remainingSec / 60)),
+      remainingSeconds: remainingSec,
       status: 'active',
       isTutorMicActive: true,
       isStudentMicActive: true,
       activeRole: resolvedRole
     });
+    return true;
   };
 
   const closeVirtualClassroom = () => {
@@ -3627,6 +4126,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
     }
 
+    setAllRegisteredUsers(prev => {
+      const next = [newProfile, ...prev.filter(u => u.id !== newProfile.id && !isPurgedRecord(u))];
+      safeSetItem('sc_all_users', JSON.stringify(next));
+      return next;
+    });
     setCurrentUserProfile(newProfile);
     safeSetItem('sc_user_profile', JSON.stringify(newProfile));
     setTargetSignUpRole(null);
@@ -4511,6 +5015,74 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     signOutApp();
   };
 
+  const purgeAllTestAccountsAndCredits = async (adminEmailOverride?: string) => {
+    const actorEmail = (adminEmailOverride || currentUserProfile?.email || currentUser?.email || '').toLowerCase().trim();
+    let purgedLocalCount = 0;
+
+    setAllRegisteredUsers(prev => {
+      const filtered = prev.filter(u => {
+        if (isSuperAdminEmail(u.email) || u.isSuperAdmin) return true;
+        if (isPurgedRecord(u)) {
+          purgedLocalCount++;
+          return false;
+        }
+        return true;
+      });
+      const finalUsers = filtered.length > 0 ? filtered : INITIAL_USER_DIRECTORY;
+      safeSetItem('sc_all_users', JSON.stringify(finalUsers));
+      return finalUsers;
+    });
+
+    setTutorBookings(prev => prev.filter(b => !isPurgedRecord(b)));
+    setChatMessages(prev => {
+      const next: Record<string, ChatMessage[]> = {};
+      Object.entries(prev).forEach(([k, v]) => {
+        if (!PURGED_PATTERNS.some(p => k.toLowerCase().includes(p))) next[k] = v;
+      });
+      return next;
+    });
+
+    if (parentWallet.balanceNaira === 35000 && (!parentWallet.transactions || parentWallet.transactions.length === 0)) {
+      setParentWallet(INITIAL_EMPTY_WALLET);
+      safeRemoveItem('sc_wallet');
+    }
+
+    try {
+      const res = await fetch('/api/admin/purge-test-accounts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ adminEmail: actorEmail })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        return {
+          success: false,
+          purgedLocalCount,
+          deletedFirestoreDocs: 0,
+          purgedStoreEntries: 0,
+          message: data.error || 'Server purge rejected.',
+          error: data.error || 'Server purge rejected.'
+        };
+      }
+      return {
+        success: true,
+        purgedLocalCount,
+        deletedFirestoreDocs: Number(data.deletedFirestoreDocs) || 0,
+        purgedStoreEntries: Number(data.purgedStoreEntries) || 0,
+        message: data.message || 'Purged all test personas and synthetic wallet credits.'
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        purgedLocalCount,
+        deletedFirestoreDocs: 0,
+        purgedStoreEntries: 0,
+        message: err?.message || 'Network error calling server purge.',
+        error: err?.message || 'Network error calling server purge.'
+      };
+    }
+  };
+
   const startImpersonation = (user: RegisteredUserProfile) => {
     if (user.accountStatus === 'deleted') {
       setLastSecurityAlert('Cannot impersonate a soft-deleted and scrubbed account.');
@@ -4525,8 +5097,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setIsParentPinUnlocked(true);
       setParentWallet(prev => ({
         ...prev,
-        pin: user.parentData?.pin || '1234',
-        balanceNaira: prev.balanceNaira || 35000
+        pin: user.parentData?.pin || '',
+        balanceNaira: prev.balanceNaira || 0
       }));
     }
     setCurrentScreen('app');
@@ -5139,7 +5711,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         authLoading,
         loginWithGoogle,
         authenticateUser,
-        activateQuickStudentSession,
         logoutUser,
         isFirebaseConnected,
         activeStudentTab,
@@ -5194,6 +5765,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         fundParentWallet,
         approveTutorBooking,
         rejectTutorBooking,
+        tutorRespondToBooking,
+        registeredTutors,
         tutorBookings,
         createTutorBooking,
         activeTutorChatId,
@@ -5201,6 +5774,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         chatMessages,
         sendChatMessage,
         activeClassroomSession,
+        getBookingJoinStatus,
+        getStudentClassroomEligibility,
         launchVirtualClassroom,
         closeVirtualClassroom,
         completeVirtualSessionAndReleaseEscrow,
@@ -5222,6 +5797,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         stopImpersonation,
         updateUserRecord,
         softDeleteUserRecord,
+        purgeAllTestAccountsAndCredits,
         switchRole,
         loginAsDeveloper,
         schoolMaterials,

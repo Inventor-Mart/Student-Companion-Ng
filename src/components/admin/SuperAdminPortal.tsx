@@ -66,6 +66,7 @@ export const SuperAdminPortal: React.FC = () => {
     startImpersonation,
     updateUserRecord,
     softDeleteUserRecord,
+    purgeAllTestAccountsAndCredits,
     isSuperAdmin,
     currentUserProfile,
     getSchoolAccreditationMetrics,
@@ -80,6 +81,7 @@ export const SuperAdminPortal: React.FC = () => {
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
   const [directoryNotice, setDirectoryNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [actingUserId, setActingUserId] = useState<string | null>(null);
+  const [isPurgingTestAccounts, setIsPurgingTestAccounts] = useState<boolean>(false);
   const [deleteModalTarget, setDeleteModalTarget] = useState<{ user: RegisteredUserProfile; reason: string } | null>(null);
 
   // Aspirant Referral Rewards Queue State
@@ -1623,26 +1625,52 @@ export const SuperAdminPortal: React.FC = () => {
       {/* User Directory Section */}
       <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 space-y-3.5">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <Users className="w-4 h-4 text-emerald-400" />
             <h2 className="text-sm font-bold text-white tracking-tight">
-              User Directory & Account Inspector
+              User Directory &amp; Account Inspector
             </h2>
             <span className="text-[10px] font-bold text-slate-400 bg-slate-800 px-2 py-0.5 rounded-full">
               {filteredUsers.length} Accounts
             </span>
           </div>
 
-          {/* Search Input */}
-          <div className="relative w-full sm:w-64">
-            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              placeholder="Search user, email, school..."
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-8 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
-            />
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              disabled={isPurgingTestAccounts}
+              onClick={async () => {
+                setIsPurgingTestAccounts(true);
+                setDirectoryNotice(null);
+                const res = await purgeAllTestAccountsAndCredits(authorizedAdminEmail);
+                setDirectoryNotice({
+                  type: res.success ? 'success' : 'error',
+                  text: res.message
+                });
+                setIsPurgingTestAccounts(false);
+              }}
+              className="px-3 py-1.5 rounded-xl bg-rose-950/80 hover:bg-rose-900 border border-rose-700/70 text-rose-200 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50 whitespace-nowrap"
+              title="Purge all sample/test personas, wallets & escrow credits from local & server stores while preserving Super Admins"
+            >
+              {isPurgingTestAccounts ? (
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+              )}
+              <span>{isPurgingTestAccounts ? 'Purging...' : 'Purge Test Personas & Credits'}</span>
+            </button>
+
+            {/* Search Input */}
+            <div className="relative w-full sm:w-56">
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                placeholder="Search user, email, school..."
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-8 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+              />
+            </div>
           </div>
         </div>
 
