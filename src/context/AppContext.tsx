@@ -142,6 +142,17 @@ import {
   safeRemoveItem,
   cleanupBloatedStorage
 } from '../lib/storage';
+import {
+  getOfflineSyncQueue,
+  saveOfflineSyncQueue,
+  enqueueOfflineSyncItem,
+  getLastOfflineSyncedAt,
+  markOfflineSyncedNow,
+  createLessonReadQueuePayload,
+  createExamResultQueuePayload,
+  warmOfflineAppCache,
+  OfflineSyncQueueItem
+} from '../services/offlineSyncService';
 
 // Run cleanup immediately on load to recover quota from any oversized blobs
 cleanupBloatedStorage();
@@ -156,6 +167,13 @@ interface AppContextType {
   setIsDeviceFrame: (val: boolean | ((prev: boolean) => boolean)) => void;
   isOffline: boolean;
   setIsOffline: (val: boolean | ((prev: boolean) => boolean)) => void;
+  browserOnline: boolean;
+  pendingSyncCount: number;
+  isSyncingOfflineQueue: boolean;
+  lastOfflineSyncedAt: string | null;
+  offlineSyncNotice: string | null;
+  dismissOfflineSyncNotice: () => void;
+  syncOfflineQueue: () => Promise<{ synced: number; remaining: number }>;
   isLandingView: boolean;
   setIsLandingView: (val: boolean | ((prev: boolean) => boolean)) => void;
   currentScreen: 'splash' | 'landing' | 'signin' | 'signup' | 'know_more' | 'app';
@@ -605,7 +623,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
   const [targetSignUpRole, setTargetSignUpRole] = useState<UserRole | null>(null);
   const [isDeviceFrame, setIsDeviceFrame] = useState<boolean>(false);
-  const [isOffline, setIsOffline] = useState<boolean>(false);
+  const [browserOnline, setBrowserOnline] = useState<boolean>(() =>
+    typeof navigator !== 'undefined' ? navigator.onLine : true
+  );
+  const [manualOffline, setManualOffline] = useState<boolean>(false);
+  const isOffline = !browserOnline || manualOffline;
+  const setIsOffline = useCallback((val: boolean | ((prev: boolean) => boolean)) => {
+    setManualOffline((prevManual) => {
+      const currentEffective = (typeof navigator !== 'undefined' ? !navigator.onLine : false) || prevManual;
+      return typeof val === 'function' ? val(currentEffective) : val;
+    });
+  }, []);
+  const [pendingSyncCount, setPendingSyncCount] = useState<number>(0);
+  const [isSyncingOfflineQueue, setIsSyncingOfflineQueue] = useState<boolean>(false);
+  const [lastOfflineSyncedAt, setLastOfflineSyncedAt] = useState<string | null>(null);
+  const [offlineSyncNotice, setOfflineSyncNotice] = useState<string | null>(null);
+  const dismissOfflineSyncNotice = useCallback(() => setOfflineSyncNotice(null), []);
   const [isLandingView, setIsLandingView] = useState<boolean>(false);
   const [currentScreen, setCurrentScreen] = useState<'splash' | 'landing' | 'signin' | 'signup' | 'know_more' | 'app'>(() => {
     const returnTarget = peekGoogleAuthReturnTarget();
@@ -1964,6 +1997,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         dailyExploration: updatedExploration,
       };
 
+      const studyDate = new Date().toISOString().split('T')[0];
+
       if (currentUser && !isOffline) {
         const docRef = doc(db, 'students', currentUser.uid);
         const path = `students/${currentUser.uid}`;
@@ -1971,11 +2006,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           xp: newXP,
           rank: newRank,
           streakDays: prev.streakDays,
-          lastStudyDate: new Date().toISOString().split('T')[0],
+          lastStudyDate: studyDate,
           dailyExploration: updatedExploration,
         }).catch(err => {
-          handleFirestoreError(err, OperationType.UPDATE, path);
+          const scopeId = currentUser.uid || currentUserProfile?.id || 'guest';
+          const updatedQueue = enqueueOfflineSyncItem(scopeId, {
+            operationKey: 'student_xp_snapshot',
+            type: 'xp_award',
+            label: opts.reason || 'XP progress snapshot',
+            payload: {
+              xp: newXP,
+              rank: newRank,
+              streakDays: prev.streakDays,
+              lastStudyDate: studyDate
+            }
+          });
+          setPendingSyncCount(updatedQueue.length);
+          const msg = String(err?.message || '').toLowerCase();
+          if (!msg.includes('offline') && !msg.includes('network')) {
+            handleFirestoreError(err, OperationType.UPDATE, path);
+          }
         });
+      } else {
+        const scopeId = currentUser?.uid || currentUserProfile?.id || 'guest';
+        const updatedQueue = enqueueOfflineSyncItem(scopeId, {
+          operationKey: 'student_xp_snapshot',
+          type: 'xp_award',
+          label: opts.reason || 'Offline XP award',
+          payload: {
+            xp: newXP,
+            rank: newRank,
+            streakDays: prev.streakDays,
+            lastStudyDate: studyDate
+          }
+        });
+        setPendingSyncCount(updatedQueue.length);
       }
 
       setLastXPAward(result);
@@ -1995,7 +2060,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
 
     return computedResult;
-  }, [currentUser, isOffline]);
+  }, [currentUser, currentUserProfile?.id, isOffline]);
 
   const recordVerifiedLessonRead = useCallback((params: {
     topic: CurriculumTopic;
@@ -2085,8 +2150,42 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           completedReadNoteIds: nextCompletedIds,
           verifiedReadingLogs: nextLogs
         }).catch(err => {
-          handleFirestoreError(err, OperationType.UPDATE, path);
+          const scopeId = currentUser.uid || currentUserProfile?.id || 'guest';
+          const updatedQueue = enqueueOfflineSyncItem(
+            scopeId,
+            createLessonReadQueuePayload({
+              noteId: topic.id,
+              topicTitle: topic.topicTitle,
+              xp: newXP,
+              rank: newRank,
+              streakDays: prev.streakDays,
+              lastStudyDate: studyDate,
+              completedReadNoteIds: nextCompletedIds,
+              verifiedReadingLogs: nextLogs
+            })
+          );
+          setPendingSyncCount(updatedQueue.length);
+          const msg = String(err?.message || '').toLowerCase();
+          if (!msg.includes('offline') && !msg.includes('network')) {
+            handleFirestoreError(err, OperationType.UPDATE, path);
+          }
         });
+      } else {
+        const scopeId = currentUser?.uid || currentUserProfile?.id || 'guest';
+        const updatedQueue = enqueueOfflineSyncItem(
+          scopeId,
+          createLessonReadQueuePayload({
+            noteId: topic.id,
+            topicTitle: topic.topicTitle,
+            xp: newXP,
+            rank: newRank,
+            streakDays: prev.streakDays,
+            lastStudyDate: studyDate,
+            completedReadNoteIds: nextCompletedIds,
+            verifiedReadingLogs: nextLogs
+          })
+        );
+        setPendingSyncCount(updatedQueue.length);
       }
 
       setLastXPAward(result);
@@ -2504,8 +2603,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         xpAwarded: finalXP,
         date: finalResult.date
       }).catch(err => {
-        handleFirestoreError(err, OperationType.CREATE, path);
+        const scopeId = currentUser.uid || currentUserProfile?.id || 'guest';
+        const updatedQueue = enqueueOfflineSyncItem(
+          scopeId,
+          createExamResultQueuePayload(finalResult, finalXP)
+        );
+        setPendingSyncCount(updatedQueue.length);
+        const msg = String(err?.message || '').toLowerCase();
+        if (!msg.includes('offline') && !msg.includes('network')) {
+          handleFirestoreError(err, OperationType.CREATE, path);
+        }
       });
+    } else {
+      const scopeId = currentUser?.uid || currentUserProfile?.id || 'guest';
+      const updatedQueue = enqueueOfflineSyncItem(
+        scopeId,
+        createExamResultQueuePayload(finalResult, finalXP)
+      );
+      setPendingSyncCount(updatedQueue.length);
     }
   };
 
@@ -3334,6 +3449,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           difficulty: 'medium',
           reason: 'Completed Intensive Study Block'
         });
+      }
+      if (isOffline) {
+        const scopeId = currentUser?.uid || currentUserProfile?.id || 'guest';
+        const updatedQueue = enqueueOfflineSyncItem(scopeId, {
+          operationKey: `study_block:${blockId}`,
+          type: 'study_block',
+          label: `Study block: ${blockId}`,
+          payload: {
+            completedBlockIds: next,
+            updatedAt: new Date().toISOString()
+          }
+        });
+        setPendingSyncCount(updatedQueue.length);
       }
       return { ...prev, completedBlockIds: next };
     });
@@ -5885,6 +6013,163 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return sample;
   }, [currentRole, handleNotificationAction, notifUserScope, notificationPreferences, student]);
 
+  const offlineQueueScopeId = currentUser?.uid || currentUserProfile?.id || 'guest';
+
+  const syncOfflineQueue = useCallback(async (): Promise<{ synced: number; remaining: number }> => {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      return { synced: 0, remaining: pendingSyncCount };
+    }
+    if (manualOffline) {
+      return { synced: 0, remaining: pendingSyncCount };
+    }
+
+    const scopesToCheck = Array.from(
+      new Set([currentUser?.uid, currentUserProfile?.id, 'guest'].filter(Boolean) as string[])
+    );
+
+    const allQueued: Array<{ scope: string; item: OfflineSyncQueueItem }> = [];
+    for (const sc of scopesToCheck) {
+      const items = getOfflineSyncQueue(sc);
+      items.forEach((item) => allQueued.push({ scope: sc, item }));
+    }
+
+    if (allQueued.length === 0) {
+      setPendingSyncCount(0);
+      return { synced: 0, remaining: 0 };
+    }
+
+    setIsSyncingOfflineQueue(true);
+    let syncedCount = 0;
+    const failedByScope = new Map<string, OfflineSyncQueueItem[]>();
+
+    for (const { scope, item } of allQueued) {
+      try {
+        if (currentUser) {
+          if (item.type === 'xp_award') {
+            await setDoc(
+              doc(db, 'students', currentUser.uid),
+              {
+                xp: item.payload.xp,
+                rank: item.payload.rank,
+                streakDays: item.payload.streakDays,
+                lastStudyDate: item.payload.lastStudyDate
+              },
+              { merge: true }
+            );
+          } else if (item.type === 'lesson_read') {
+            await setDoc(
+              doc(db, 'students', currentUser.uid),
+              {
+                xp: item.payload.xp,
+                rank: item.payload.rank,
+                streakDays: item.payload.streakDays,
+                lastStudyDate: item.payload.lastStudyDate,
+                completedReadNoteIds: item.payload.completedReadNoteIds,
+                verifiedReadingLogs: item.payload.verifiedReadingLogs
+              },
+              { merge: true }
+            );
+          } else if (item.type === 'exam_result' && item.payload?.result) {
+            const r = item.payload.result as CBTExamResult;
+            await setDoc(doc(db, 'students', currentUser.uid, 'examResults', r.id), {
+              id: r.id,
+              studentId: currentUser.uid,
+              examId: r.examId,
+              examTitle: r.examTitle,
+              subject: r.subject,
+              score: r.score,
+              totalQuestions: r.totalQuestions,
+              percentage: r.percentage,
+              timeSpentSeconds: r.timeSpentSeconds,
+              xpAwarded: r.xpAwarded,
+              date: r.date
+            });
+          } else if (item.type === 'study_block') {
+            // Study block state is preserved locally in sc_exam_prep; mark synced cleanly
+          }
+          syncedCount += 1;
+        } else {
+          // Local profile synced cleanly; retain Firebase items until cloud session connects if needed
+          if (item.type === 'study_block') {
+            syncedCount += 1;
+          } else {
+            const arr = failedByScope.get(scope) || [];
+            arr.push(item);
+            failedByScope.set(scope, arr);
+          }
+        }
+      } catch {
+        const arr = failedByScope.get(scope) || [];
+        arr.push({ ...item, retryCount: (item.retryCount || 0) + 1 });
+        failedByScope.set(scope, arr);
+      }
+    }
+
+    let remainingCount = 0;
+    for (const sc of scopesToCheck) {
+      const rem = failedByScope.get(sc) || [];
+      saveOfflineSyncQueue(sc, rem);
+      remainingCount += rem.length;
+    }
+
+    setPendingSyncCount(remainingCount);
+    if (syncedCount > 0) {
+      const syncedIso = markOfflineSyncedNow(offlineQueueScopeId);
+      setLastOfflineSyncedAt(syncedIso);
+      setOfflineSyncNotice(`Synced ${syncedCount} offline progress item${syncedCount === 1 ? '' : 's'} to cloud.`);
+      window.setTimeout(() => {
+        setOfflineSyncNotice((prev) =>
+          prev && prev.startsWith('Synced ') ? null : prev
+        );
+      }, 4500);
+    }
+
+    setIsSyncingOfflineQueue(false);
+    return { synced: syncedCount, remaining: remainingCount };
+  }, [currentUser, currentUserProfile?.id, manualOffline, offlineQueueScopeId, pendingSyncCount]);
+
+  // Monitor real browser connectivity, hydrate queue count, and warm offline cache on startup
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handleOnline = () => {
+      setBrowserOnline(true);
+    };
+    const handleOffline = () => {
+      setBrowserOnline(false);
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    const warmupTimer = window.setTimeout(() => {
+      if (navigator.onLine) {
+        warmOfflineAppCache().catch(() => {});
+      }
+    }, 2200);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+      window.clearTimeout(warmupTimer);
+    };
+  }, []);
+
+  useEffect(() => {
+    const scopes = Array.from(
+      new Set([currentUser?.uid, currentUserProfile?.id, 'guest'].filter(Boolean) as string[])
+    );
+    const total = scopes.reduce((sum, sc) => sum + getOfflineSyncQueue(sc).length, 0);
+    setPendingSyncCount(total);
+    setLastOfflineSyncedAt(getLastOfflineSyncedAt(offlineQueueScopeId));
+  }, [currentUser?.uid, currentUserProfile?.id, offlineQueueScopeId]);
+
+  useEffect(() => {
+    if (browserOnline && !manualOffline && currentUser && pendingSyncCount > 0) {
+      void syncOfflineQueue();
+    }
+  }, [browserOnline, manualOffline, currentUser, pendingSyncCount, syncOfflineQueue]);
+
   return (
     <AppContext.Provider
       value={{
@@ -5896,6 +6181,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setIsDeviceFrame,
         isOffline,
         setIsOffline,
+        browserOnline,
+        pendingSyncCount,
+        isSyncingOfflineQueue,
+        lastOfflineSyncedAt,
+        offlineSyncNotice,
+        dismissOfflineSyncNotice,
+        syncOfflineQueue,
         isLandingView,
         setIsLandingView,
         currentScreen,

@@ -7,6 +7,7 @@ import {
   FileCheck2,
   Users
 } from 'lucide-react';
+import { PWAInstallButton } from '../common/PWAInstallButton';
 
 interface LandingPageProps {
   onOpenKnowMore: () => void;
@@ -32,9 +33,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({
       <div className="w-full max-w-[450px] sm:max-w-[490px] min-h-screen flex flex-col justify-between px-5 sm:px-6 pt-3 sm:pt-4 pb-6 mx-auto relative z-10">
         
         {/* --- Top Bar: Logo & Hamburger Menu --- */}
-        <header className="w-full flex items-center justify-between mb-1 sm:mb-2">
+        <header className="w-full flex items-center justify-between gap-3 mb-1 sm:mb-2">
           {/* Logo with Cap and Wordmark */}
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
             {/* Custom SVG Graduation Cap Icon matching design */}
             <div className="w-9 h-9 relative flex items-center justify-center shrink-0">
               <svg viewBox="0 0 40 40" className="w-full h-full" fill="none">
@@ -62,26 +63,29 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             </div>
 
             {/* Typography */}
-            <div className="flex flex-col justify-center">
-              <div className="flex items-center gap-1.5 leading-none">
-                <span className="text-[16px] sm:text-[17px] font-extrabold text-white tracking-tight">Student</span>
-                <span className="text-[16px] sm:text-[17px] font-extrabold text-[#84E000] tracking-tight">Companion</span>
+            <div className="flex flex-col justify-center min-w-0">
+              <div className="flex items-center gap-1 leading-none whitespace-nowrap truncate">
+                <span className="text-[15px] sm:text-[17px] font-extrabold text-white tracking-tight">Student</span>
+                <span className="text-[15px] sm:text-[17px] font-extrabold text-[#84E000] tracking-tight">Companion</span>
               </div>
-              <span className="text-xs font-medium text-slate-400 tracking-wide mt-0.5">
+              <span className="text-[11px] font-medium text-slate-400 tracking-wide mt-0.5 truncate">
                 Powered by WoW Tech
               </span>
             </div>
           </div>
 
-          {/* Hamburger Menu Icon (Navigates to "Know More" Page) */}
-          <button
-            onClick={onOpenKnowMore}
-            className="w-10 h-10 rounded-xl bg-[#162746] hover:bg-[#1E335A] active:scale-95 border border-[#233C68] flex items-center justify-center text-white transition-all shadow-md group cursor-pointer"
-            title="Know More - Platform Overview"
-            aria-label="Open Know More menu"
-          >
-            <Menu className="w-5 h-5 text-slate-200 group-hover:text-[#84E000] transition-colors" />
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            <PWAInstallButton variant="landing" />
+            {/* Hamburger Menu Icon (Navigates to "Know More" Page) */}
+            <button
+              onClick={onOpenKnowMore}
+              className="w-11 h-11 rounded-xl bg-[#162746] hover:bg-[#1E335A] active:scale-95 border border-[#233C68] flex items-center justify-center text-white transition-all shadow-md group cursor-pointer"
+              title="Know More - Platform Overview"
+              aria-label="Open Know More menu"
+            >
+              <Menu className="w-5 h-5 text-slate-200 group-hover:text-[#84E000] transition-colors" />
+            </button>
+          </div>
         </header>
 
         {/* --- Hero Artwork Section (Full Width, Scaled, Seamless Integration) --- */}

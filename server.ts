@@ -3302,7 +3302,33 @@ async function inspectGithubApkWorkflow(): Promise<{
   return { workflowOnRemote, latestRun };
 }
 
-app.get('/api/android/apk-status', async (_req, res) => {
+function resolveStandalonePwaUrl(req?: express.Request): string {
+  const explicitShared = (process.env.SHARED_APP_URL || '').trim();
+  if (explicitShared) {
+    return explicitShared.replace(/\/+$/, '');
+  }
+  const appUrl = (process.env.APP_URL || '').trim();
+  if (appUrl && /^https?:\/\//i.test(appUrl)) {
+    return appUrl.replace('://ais-dev-', '://ais-pre-').replace(/\/+$/, '');
+  }
+  const reqHost = String(req?.get('host') || '').trim();
+  if (reqHost.startsWith('ais-dev-')) {
+    return `https://${reqHost.replace(/^ais-dev-/, 'ais-pre-')}`;
+  }
+  if (reqHost.startsWith('ais-pre-')) {
+    return `https://${reqHost}`;
+  }
+  return 'https://ais-pre-2gu2b762mx2v4rebuyqej3-245109150484.europe-west2.run.app';
+}
+
+app.get('/api/pwa/config', (req, res) => {
+  return res.json({
+    success: true,
+    standaloneUrl: resolveStandalonePwaUrl(req),
+  });
+});
+
+app.get('/api/android/apk-status', async (req, res) => {
   const [resolved, workflowInfo] = await Promise.all([
     resolveCompiledAndroidApk(),
     inspectGithubApkWorkflow(),
@@ -3316,7 +3342,7 @@ app.get('/api/android/apk-status', async (_req, res) => {
     packageName: 'com.studentcompanion.app',
     minSdkVersion: 23,
     androidMinLabel: 'Android 6.0 Marshmallow+',
-    standalonePwaUrl: 'https://ais-pre-2gu2b762mx2v4rebuyqej3-245109150484.europe-west2.run.app',
+    standalonePwaUrl: resolveStandalonePwaUrl(req),
     studioKitUrl: '/api/download/android-studio-kit',
     offlinePwaUrl: '/api/download/offline-pwa-bundle',
     workflowOnRemote: workflowInfo.workflowOnRemote,
@@ -3398,7 +3424,7 @@ app.post('/api/android/trigger-github-apk-build', async (req, res) => {
   }
 });
 
-app.get('/api/download/android-apk', async (_req, res) => {
+app.get('/api/download/android-apk', async (req, res) => {
   const resolved = await resolveCompiledAndroidApk();
   if (resolved.apkReady && resolved.source === 'local' && resolved.localPath) {
     return res.download(resolved.localPath, 'StudentCompanion-v1.0.0-android6plus.apk');
@@ -3413,7 +3439,7 @@ app.get('/api/download/android-apk', async (_req, res) => {
     error:
       'No compiled binary .apk release has been built yet because this cloud server has no Java/Android SDK. Install the online PWA directly or download the ready Android 6+ Studio Project (.zip) to compile a signed .apk.',
     studioKitUrl: '/api/download/android-studio-kit',
-    standalonePwaUrl: 'https://ais-pre-2gu2b762mx2v4rebuyqej3-245109150484.europe-west2.run.app',
+    standalonePwaUrl: resolveStandalonePwaUrl(req),
   });
 });
 

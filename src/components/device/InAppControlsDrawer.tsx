@@ -18,9 +18,17 @@ import {
   TrendingUp,
   Sparkles,
   CheckCircle2,
-  ShieldAlert
+  ShieldAlert,
+  RefreshCw,
+  HardDriveDownload
 } from 'lucide-react';
 import { ReportSecurityModal } from '../security/ReportSecurityModal';
+import { PWAInstallButton } from '../common/PWAInstallButton';
+import {
+  getOfflineCacheSummary,
+  warmOfflineAppCache,
+  OfflineCacheSummary
+} from '../../services/offlineSyncService';
 
 interface InAppControlsDrawerProps {
   isOpen: boolean;
@@ -49,16 +57,41 @@ export const InAppControlsDrawer: React.FC<InAppControlsDrawerProps> = ({
     impersonatedUser,
     stopImpersonation,
     switchRole,
-    updateStudentClass
+    updateStudentClass,
+    browserOnline,
+    pendingSyncCount,
+    isSyncingOfflineQueue,
+    lastOfflineSyncedAt,
+    syncOfflineQueue
   } = useApp();
 
   const [isReportModalOpen, setIsReportModalOpen] = React.useState(false);
+  const [cacheSummary, setCacheSummary] = React.useState<OfflineCacheSummary | null>(null);
+  const [isWarmingCache, setIsWarmingCache] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!isOpen) return;
+    getOfflineCacheSummary()
+      .then(setCacheSummary)
+      .catch(() => {});
+  }, [isOpen]);
+
+  const handleWarmOfflineCache = async () => {
+    if (isWarmingCache) return;
+    setIsWarmingCache(true);
+    try {
+      const next = await warmOfflineAppCache();
+      setCacheSummary(next);
+    } finally {
+      setIsWarmingCache(false);
+    }
+  };
 
   if (!isOpen && !isReportModalOpen) return null;
 
   const showOfflineToggle = currentRole === 'student' || isSuperAdmin;
   const showDeviceFrameToggle = isSuperAdmin;
-  const showDeviceSection = showOfflineToggle || showDeviceFrameToggle;
+  const showDeviceSection = true;
   const showSyllabusLink =
     isSuperAdmin ||
     currentRole === 'student' ||
@@ -279,13 +312,65 @@ export const InAppControlsDrawer: React.FC<InAppControlsDrawerProps> = ({
             </div>
           )}
 
-          {/* Section 2: Device & Network Settings (Student Offline Mode & Super Admin Controls) */}
+          {/* Section 2: Install, Offline Cache & Network Settings */}
           {showDeviceSection && (
             <div>
               <span className="text-[10px] font-bold tracking-wider text-slate-400 block mb-2 px-1">
-                Device & Network Settings
+                App Install, Offline &amp; Sync
               </span>
               <div className="space-y-2">
+                <PWAInstallButton variant="drawer" />
+
+                {/* Offline Cache & Queued Progress Sync Card */}
+                <div className="p-3 rounded-xl border border-[#1C2F4D] bg-[#101C31] space-y-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <span className="font-semibold text-white block">
+                        Offline Study Cache
+                      </span>
+                      <span className="text-[11px] text-slate-400 font-mono tabular-nums block">
+                        {cacheSummary?.serviceWorkerActive ? 'SW Ready' : 'Initializing SW'} · {cacheSummary?.totalEntries ?? 0} assets cached
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void handleWarmOfflineCache()}
+                      disabled={isWarmingCache || !browserOnline}
+                      className="min-h-[38px] px-2.5 py-1.5 rounded-lg bg-[#15253F] hover:bg-[#1D3254] disabled:opacity-50 border border-[#223B63] text-[#84E000] text-[11px] font-bold flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0"
+                    >
+                      <HardDriveDownload className={`w-3.5 h-3.5 ${isWarmingCache ? 'animate-pulse' : ''}`} />
+                      <span>{isWarmingCache ? 'Caching...' : 'Cache Offline'}</span>
+                    </button>
+                  </div>
+
+                  <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <span className="text-[11px] font-medium text-slate-300 block">
+                        Progress Sync Queue:{' '}
+                        <strong className="font-mono tabular-nums text-white">
+                          {pendingSyncCount} pending
+                        </strong>
+                      </span>
+                      <span className="text-[10px] text-slate-400 block truncate">
+                        {lastOfflineSyncedAt
+                          ? `Last synced ${new Date(lastOfflineSyncedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                          : 'Offline progress saves locally and syncs automatically'}
+                      </span>
+                    </div>
+                    {pendingSyncCount > 0 && currentUser && !isOffline && (
+                      <button
+                        type="button"
+                        onClick={() => void syncOfflineQueue()}
+                        disabled={isSyncingOfflineQueue}
+                        className="min-h-[36px] px-2.5 py-1 rounded-lg bg-[#84E000] hover:bg-[#75c900] text-slate-950 font-bold text-[11px] flex items-center gap-1 cursor-pointer whitespace-nowrap shrink-0"
+                      >
+                        <RefreshCw className={`w-3 h-3 ${isSyncingOfflineQueue ? 'animate-spin' : ''}`} />
+                        <span>Sync Now</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+
                 {/* Offline Mode Toggle (Student & Super Admin only) */}
                 {showOfflineToggle && (
                   <button
@@ -302,7 +387,11 @@ export const InAppControlsDrawer: React.FC<InAppControlsDrawerProps> = ({
                       </div>
                       <div className="text-left">
                         <span className="font-semibold block">
-                          {isOffline ? 'Offline Mode (Active)' : 'Online Mode'}
+                          {!browserOnline
+                            ? 'Browser Offline Detected'
+                            : isOffline
+                            ? 'Offline Mode (Active)'
+                            : 'Online Mode'}
                         </span>
                         <span className="text-[10px] text-slate-400">
                           {isOffline ? 'Cached offline curriculum & CBT access' : 'Connected to high-speed cloud network'}

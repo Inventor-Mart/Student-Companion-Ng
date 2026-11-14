@@ -35,6 +35,7 @@ import { XPAwardNotification } from './components/student/XPAwardNotification';
 import { SplashScreen } from './components/common/SplashScreen';
 import { ShieldAlert, LogOut, X, Clock, Trash2 } from 'lucide-react';
 import { AppUpdateGate, OTAModulePausedCard, PausedFeatureModal } from './components/common/AppUpdateGate';
+import { OfflineIndicator } from './components/common/OfflineIndicator';
 
 const AppContent: React.FC = () => {
   const [quotaExceeded, setQuotaExceeded] = React.useState(false);
@@ -682,6 +683,7 @@ export default function App() {
   return (
     <AppProvider>
       <AppContent />
+      <OfflineIndicator />
     </AppProvider>
   );
 }

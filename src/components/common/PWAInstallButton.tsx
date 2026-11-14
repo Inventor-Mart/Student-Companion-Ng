@@ -1,407 +1,275 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Download,
-  Smartphone,
-  CheckCircle2,
-  Package,
-  Globe,
-  Cpu,
-  X,
-  Info,
+  Share,
+  PlusSquare,
   ExternalLink,
   Copy,
-  Check
+  Check,
+  X,
+  Smartphone,
+  Info
 } from 'lucide-react';
-
-interface BeforeInstallPromptEvent extends Event {
-  prompt: () => Promise<void>;
-  userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
-}
+import { usePWAInstall } from '../../hooks/usePWAInstall';
 
 interface PWAInstallButtonProps {
   compact?: boolean;
+  variant?: 'header' | 'compact' | 'landing' | 'drawer';
+  onInstalled?: () => void;
 }
 
-interface ApkStatusResponse {
-  apkReady: boolean;
-  apkUrl: string | null;
-  apkSizeBytes: number;
-  versionName: string;
-  standalonePwaUrl: string;
-  studioKitUrl: string;
-  offlinePwaUrl: string;
-  workflowOnRemote?: boolean;
-  latestRun?: {
-    status: string;
-    conclusion: string | null;
-    htmlUrl: string;
-    createdAt: string;
-  } | null;
-  actionsPageUrl?: string;
-}
+export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
+  compact = false,
+  variant,
+  onInstalled
+}) => {
+  const { isInstallable, isInstalled, isIOS, isEmbedded, isDevPreview, standaloneUrl, install } =
+    usePWAInstall();
+  const [showGuideModal, setShowGuideModal] = useState(false);
+  const [copyStatus, setCopyStatus] = useState<'idle' | 'copied' | 'manual'>('idle');
+  const urlInputRef = useRef<HTMLInputElement | null>(null);
 
-export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({ compact = false }) => {
-  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
-  const [isInstalled, setIsInstalled] = useState(false);
-  const [isEmbedded, setIsEmbedded] = useState(false);
-  const [isIOS, setIsIOS] = useState(false);
-  const [showMenu, setShowMenu] = useState(false);
-  const [showManualSteps, setShowManualSteps] = useState(false);
-  const [apkStatus, setApkStatus] = useState<ApkStatusResponse | null>(null);
-  const [copiedUrl, setCopiedUrl] = useState(false);
+  const resolvedVariant = variant || (compact ? 'compact' : 'header');
 
   useEffect(() => {
-    const checkStandalone = () =>
-      window.matchMedia('(display-mode: standalone)').matches ||
-      (window.navigator as unknown as { standalone?: boolean }).standalone === true ||
-      document.referrer.includes('android-app://');
-
-    setIsInstalled(checkStandalone());
-
-    try {
-      setIsEmbedded(window.self !== window.top);
-    } catch {
-      setIsEmbedded(true);
-    }
-
-    const userAgent = window.navigator.userAgent.toLowerCase();
-    setIsIOS(/iphone|ipad|ipod/.test(userAgent));
-
-    const mediaQuery = window.matchMedia('(display-mode: standalone)');
-    const handleDisplayModeChange = (e: MediaQueryListEvent) => {
-      if (e.matches) {
-        setIsInstalled(true);
-        setShowMenu(false);
-      }
-    };
-
-    const handleBeforeInstallPrompt = (e: Event) => {
-      e.preventDefault();
-      setDeferredPrompt(e as BeforeInstallPromptEvent);
-    };
-
-    const handleAppInstalled = () => {
-      setIsInstalled(true);
-      setDeferredPrompt(null);
-      setShowMenu(false);
-    };
-
-    mediaQuery.addEventListener?.('change', handleDisplayModeChange);
-    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-    window.addEventListener('appinstalled', handleAppInstalled);
-
-    return () => {
-      mediaQuery.removeEventListener?.('change', handleDisplayModeChange);
-      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-      window.removeEventListener('appinstalled', handleAppInstalled);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!showMenu) return;
-
-    fetch('/api/android/apk-status')
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (data?.success) {
-          setApkStatus(data);
-        }
-      })
-      .catch(() => null);
-
+    if (!showGuideModal) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        setShowMenu(false);
+        setShowGuideModal(false);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [showMenu]);
+  }, [showGuideModal]);
 
-  // Once installed or running in standalone mode, hide the install button completely
+  // Suppress install affordance once running inside standalone installed PWA
   if (isInstalled) {
     return null;
   }
 
-  const standaloneUrl =
-    apkStatus?.standalonePwaUrl ||
-    (typeof window !== 'undefined' ? window.location.origin : '');
-
-  const handleOnlineInstall = async () => {
-    if (deferredPrompt) {
-      try {
-        await deferredPrompt.prompt();
-        const { outcome } = await deferredPrompt.userChoice;
-        if (outcome === 'accepted') {
-          setIsInstalled(true);
-          setDeferredPrompt(null);
-          setShowMenu(false);
-        }
-      } catch {
-        setShowManualSteps(true);
+  const handleInstallAction = async () => {
+    if (isInstallable) {
+      const outcome = await install();
+      if (outcome === 'accepted') {
+        setShowGuideModal(false);
+        onInstalled?.();
+        return;
       }
-    } else {
-      setShowManualSteps((prev) => !prev);
+      if (outcome === 'unavailable') {
+        setShowGuideModal(true);
+      }
+      return;
     }
+    setShowGuideModal(true);
   };
 
-  const handleCopyInstallUrl = () => {
+  const handleCopyUrl = async () => {
     if (!standaloneUrl) return;
-    try {
-      void navigator.clipboard.writeText(standaloneUrl);
-      setCopiedUrl(true);
-      setTimeout(() => setCopiedUrl(false), 2000);
-    } catch {}
+    let copied = false;
+
+    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(standaloneUrl);
+        copied = true;
+      } catch {
+        copied = false;
+      }
+    }
+
+    if (!copied && typeof document !== 'undefined') {
+      try {
+        const textarea = document.createElement('textarea');
+        textarea.value = standaloneUrl;
+        textarea.setAttribute('readonly', '');
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        textarea.style.pointerEvents = 'none';
+        document.body.appendChild(textarea);
+        textarea.focus();
+        textarea.select();
+        copied = document.execCommand('copy');
+        document.body.removeChild(textarea);
+      } catch {
+        copied = false;
+      }
+    }
+
+    if (copied) {
+      setCopyStatus('copied');
+      window.setTimeout(() => setCopyStatus('idle'), 2200);
+      return;
+    }
+
+    setCopyStatus('manual');
+    urlInputRef.current?.focus();
+    urlInputRef.current?.select();
   };
 
-  const modalPortal =
-    showMenu && typeof document !== 'undefined'
+  const showStandaloneLauncher = (isEmbedded || isDevPreview) && Boolean(standaloneUrl);
+
+  const guideModal =
+    showGuideModal && typeof document !== 'undefined'
       ? createPortal(
           <div
             className="fixed inset-0 z-[100] flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 overflow-y-auto"
             role="dialog"
             aria-modal="true"
-            aria-labelledby="sc-pwa-modal-title"
-            onClick={() => setShowMenu(false)}
+            aria-labelledby="sc-pwa-install-title"
+            onClick={() => setShowGuideModal(false)}
           >
             <div
-              className="my-auto w-full max-w-md max-h-[90dvh] overflow-y-auto rounded-2xl bg-[#0B1526] border border-slate-700 p-5 shadow-2xl text-slate-100 space-y-4 relative"
+              className="my-auto w-full max-w-md max-h-[90dvh] overflow-y-auto rounded-2xl bg-[#0B1526] border border-[#1E304F] p-5 shadow-2xl text-slate-100 space-y-4 relative"
               onClick={(e) => e.stopPropagation()}
             >
               <button
                 type="button"
-                onClick={() => setShowMenu(false)}
-                className="absolute top-4 right-4 text-slate-400 hover:text-white min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg bg-slate-900 border border-slate-700 transition-colors cursor-pointer"
-                aria-label="Close download menu"
+                onClick={() => setShowGuideModal(false)}
+                className="absolute top-3.5 right-3.5 text-slate-400 hover:text-white min-w-[44px] min-h-[44px] flex items-center justify-center rounded-xl bg-slate-900 border border-[#1E304F] transition-colors cursor-pointer"
+                aria-label="Close install guide"
               >
                 <X className="w-4 h-4" />
               </button>
 
-              <div className="flex items-center gap-3 pr-10">
+              <div className="flex items-center gap-3 pr-12">
                 <img
                   src="/pwa-192x192.png"
-                  alt="Student Companion icon"
-                  className="w-11 h-11 rounded-xl border border-slate-700 shrink-0 object-cover"
+                  alt="Student Companion app icon"
+                  className="w-12 h-12 rounded-2xl border border-[#1E304F] shrink-0 object-cover"
                 />
                 <div className="min-w-0">
-                  <h3 id="sc-pwa-modal-title" className="text-sm font-bold text-white tracking-tight">
+                  <h3 id="sc-pwa-install-title" className="text-base font-bold text-white tracking-tight">
                     Install Student Companion
                   </h3>
-                  <p className="text-[11px] text-slate-400">
-                    Installable PWA (Android 6+ / iOS) &amp; Cloud-Built Android APK
+                  <p className="text-xs text-slate-400">
+                    Offline-ready study notes, CBT exams &amp; games
                   </p>
                 </div>
               </div>
 
-              <div className="space-y-2.5 pt-1">
-                {/* Option 1: Install Online PWA */}
+              {isInstallable && (
                 <button
                   type="button"
-                  onClick={() => void handleOnlineInstall()}
-                  className="w-full bg-slate-950 hover:bg-slate-900 border border-emerald-700/70 hover:border-[#84E000] rounded-xl p-3 flex items-center justify-between gap-3 text-left transition-all group cursor-pointer"
+                  onClick={() => void handleInstallAction()}
+                  className="w-full min-h-[44px] py-2.5 px-4 rounded-xl bg-[#84E000] hover:bg-[#75c900] text-slate-950 font-extrabold text-sm flex items-center justify-center gap-2 transition-colors cursor-pointer whitespace-nowrap"
                 >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-9 h-9 rounded-lg bg-emerald-950/80 border border-emerald-800 flex items-center justify-center text-[#84E000] shrink-0 group-hover:scale-105 transition-transform">
-                      <Globe className="w-4 h-4" />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="text-xs font-bold text-white group-hover:text-[#84E000] transition-colors">
-                        {deferredPrompt
-                          ? 'Install App to Home Screen Now'
-                          : 'Install Online PWA (Android 6+ & Desktop)'}
-                      </div>
-                      <div className="text-[11px] text-slate-400">
-                        {deferredPrompt
-                          ? 'Ready — tap to open native browser install prompt'
-                          : isEmbedded
-                          ? 'Open standalone tab to install directly on your device'
-                          : 'Works offline after first load · Zero App Store needed'}
-                      </div>
-                    </div>
-                  </div>
-                  <CheckCircle2 className="w-4 h-4 text-[#84E000] shrink-0" />
+                  <Download className="w-4 h-4 shrink-0" />
+                  <span>Install Now</span>
                 </button>
+              )}
 
-                {(showManualSteps || (isEmbedded && !deferredPrompt)) && (
-                  <div className="bg-[#111E35] border border-amber-500/40 rounded-xl p-3 text-xs text-slate-200 space-y-2">
-                    <div className="flex items-center gap-1.5 font-semibold text-amber-300">
-                      <Info className="w-3.5 h-3.5 shrink-0" />
-                      <span>
-                        {isIOS
-                          ? 'Install on iPhone / iPad (Safari)'
-                          : isEmbedded
-                          ? 'Open Standalone Link to Install'
-                          : 'Install via Browser Menu'}
-                      </span>
-                    </div>
-                    {isEmbedded ? (
-                      <p className="text-[11px] text-slate-300 leading-relaxed">
-                        Browser security blocks PWA installation inside embedded preview frames. Open the live app URL directly in Chrome/Edge on Android 6+ or Safari on iOS, then tap <strong>Install</strong>.
-                      </p>
-                    ) : isIOS ? (
-                      <ol className="list-decimal list-inside space-y-1 text-[11px] text-slate-300">
-                        <li>Tap the Share icon in Safari.</li>
-                        <li>Select &quot;Add to Home Screen&quot; and confirm.</li>
-                      </ol>
-                    ) : (
-                      <ol className="list-decimal list-inside space-y-1 text-[11px] text-slate-300">
-                        <li>Tap your browser menu (three dots) or the address-bar install icon.</li>
-                        <li>Select &quot;Install App&quot; or &quot;Add to Home screen&quot;.</li>
-                      </ol>
-                    )}
-
-                    {standaloneUrl && (
-                      <div className="flex items-center gap-2 pt-1">
-                        <a
-                          href={standaloneUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex-1 py-2 px-3 rounded-lg bg-[#84E000] hover:bg-[#75c900] text-slate-950 font-bold text-[11px] flex items-center justify-center gap-1.5 transition-colors"
-                        >
-                          <ExternalLink className="w-3.5 h-3.5" />
-                          <span>Open Standalone App</span>
-                        </a>
-                        <button
-                          type="button"
-                          onClick={handleCopyInstallUrl}
-                          className="py-2 px-3 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-200 text-[11px] font-semibold flex items-center gap-1 cursor-pointer"
-                          title="Copy standalone app URL"
-                        >
-                          {copiedUrl ? (
-                            <>
-                              <Check className="w-3.5 h-3.5 text-[#84E000]" />
-                              <span>Copied</span>
-                            </>
-                          ) : (
-                            <>
-                              <Copy className="w-3.5 h-3.5" />
-                              <span>Copy URL</span>
-                            </>
-                          )}
-                        </button>
-                      </div>
-                    )}
+              {showStandaloneLauncher && (
+                <div className="rounded-xl bg-[#101C34] border border-amber-500/40 p-4 space-y-3">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-amber-300">
+                    <Info className="w-4 h-4 shrink-0" />
+                    <span>Open Shared App Tab to Install</span>
                   </div>
-                )}
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    Preview frames block home-screen installation, and private dev preview links trigger a 403 error outside AI Studio. Open the shared app link below directly in {isIOS ? 'Safari' : 'Chrome, Edge, or Safari'}.
+                  </p>
 
-                {/* Option 2: Signed Android APK (from GitHub Releases) OR Cloud Build Status */}
-                {apkStatus?.apkReady && apkStatus.apkUrl ? (
-                  <a
-                    href={apkStatus.apkUrl}
-                    className="w-full bg-slate-950 hover:bg-slate-900 border border-amber-800/60 hover:border-amber-500 rounded-xl p-3 flex items-center justify-between gap-3 text-left transition-all group cursor-pointer"
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-9 h-9 rounded-lg bg-amber-950/80 border border-amber-800 flex items-center justify-center text-amber-400 shrink-0 group-hover:scale-105 transition-transform">
-                        <Smartphone className="w-4 h-4" />
-                      </div>
-                      <div className="min-w-0">
-                        <div className="text-xs font-bold text-white group-hover:text-amber-400 transition-colors">
-                          Download Signed Android APK ({apkStatus.versionName})
-                        </div>
-                        <div className="text-[11px] text-slate-400">
-                          Android 6.0+ (minSdk 23) · {(apkStatus.apkSizeBytes / (1024 * 1024)).toFixed(1)} MB
-                        </div>
-                      </div>
-                    </div>
-                    <Download className="w-4 h-4 text-amber-400 shrink-0" />
-                  </a>
-                ) : apkStatus?.latestRun &&
-                  (apkStatus.latestRun.status === 'in_progress' || apkStatus.latestRun.status === 'queued') ? (
-                  <a
-                    href={apkStatus.latestRun.htmlUrl || apkStatus.actionsPageUrl || '#'}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="w-full bg-slate-950 hover:bg-slate-900 border border-amber-600/70 rounded-xl p-3 flex items-center justify-between gap-3 text-left transition-all group cursor-pointer"
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-9 h-9 rounded-lg bg-amber-950/80 border border-amber-700 flex items-center justify-center text-amber-400 shrink-0 animate-pulse">
-                        <Cpu className="w-4 h-4" />
-                      </div>
-                      <div className="min-w-0">
-                        <div className="text-xs font-bold text-amber-300">
-                          Android 6+ APK Compiling on GitHub...
-                        </div>
-                        <div className="text-[11px] text-slate-400">
-                          Takes ~2–3 mins · Tap to view live GitHub Actions build progress
-                        </div>
-                      </div>
-                    </div>
-                    <ExternalLink className="w-4 h-4 text-amber-400 shrink-0" />
-                  </a>
-                ) : (
-                  <div className="w-full bg-slate-950 border border-amber-800/60 rounded-xl p-3 space-y-2">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className="w-9 h-9 rounded-lg bg-amber-950/80 border border-amber-800 flex items-center justify-center text-amber-400 shrink-0">
-                          <Smartphone className="w-4 h-4" />
-                        </div>
-                        <div className="min-w-0">
-                          <div className="text-xs font-bold text-white">
-                            Android 6+ APK (GitHub Cloud Build)
-                          </div>
-                          <div className="text-[11px] text-slate-400">
-                            No Android Studio needed · Super Admin compiles APK via GitHub Actions
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 pt-0.5">
-                      {apkStatus?.actionsPageUrl && (
-                        <a
-                          href={apkStatus.actionsPageUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex-1 py-1.5 px-2.5 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-600/50 text-amber-300 text-[11px] font-semibold flex items-center justify-center gap-1.5 transition-colors"
-                        >
-                          <ExternalLink className="w-3 h-3" />
-                          <span>Open GitHub Actions</span>
-                        </a>
+                  <input
+                    ref={urlInputRef}
+                    type="text"
+                    readOnly
+                    value={standaloneUrl}
+                    onClick={(e) => e.currentTarget.select()}
+                    aria-label="Shared Student Companion app URL"
+                    className="w-full rounded-lg bg-[#081020] border border-[#1E304F] px-3 py-2 text-[11px] font-mono text-slate-200 select-all focus:outline-none focus:border-[#84E000]"
+                  />
+
+                  <div className="flex items-center gap-2">
+                    <a
+                      href={standaloneUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex-1 min-h-[44px] py-2 px-4 rounded-xl bg-[#84E000] hover:bg-[#75c900] text-slate-950 font-bold text-xs flex items-center justify-center gap-1.5 transition-colors whitespace-nowrap"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5 shrink-0" />
+                      <span>Open Standalone App</span>
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => void handleCopyUrl()}
+                      className="min-h-[44px] py-2 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 border border-[#1E304F] text-slate-200 text-xs font-semibold flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+                      title="Copy shared app URL"
+                    >
+                      {copyStatus === 'copied' ? (
+                        <>
+                          <Check className="w-3.5 h-3.5 text-[#84E000]" />
+                          <span>Copied</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3.5 h-3.5" />
+                          <span>Copy URL</span>
+                        </>
                       )}
-                      <a
-                        href="/api/download/android-studio-kit"
-                        className="py-1.5 px-2.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 text-[11px] font-semibold flex items-center gap-1 transition-colors"
-                        title="Optional Gradle project source archive"
-                      >
-                        <Download className="w-3 h-3" />
-                        <span>Source .zip</span>
-                      </a>
-                    </div>
+                    </button>
                   </div>
-                )}
 
-                {/* Option 3: Offline PWA & Icon Assets Archive (.zip) */}
-                <a
-                  href="/api/download/offline-pwa-bundle"
-                  className="w-full bg-slate-950 hover:bg-slate-900 border border-sky-800/60 hover:border-sky-500 rounded-xl p-3 flex items-center justify-between gap-3 text-left transition-all group cursor-pointer"
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-9 h-9 rounded-lg bg-sky-950/80 border border-sky-800 flex items-center justify-center text-sky-400 shrink-0 group-hover:scale-105 transition-transform">
-                      <Package className="w-4 h-4" />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="text-xs font-bold text-white group-hover:text-sky-400 transition-colors">
-                        Download Offline PWA &amp; Icons (.zip)
-                      </div>
-                      <div className="text-[11px] text-slate-400">
-                        512px Android &amp; 1024px iOS PNGs + manifest + Service Worker
-                      </div>
-                    </div>
+                  {copyStatus === 'manual' && (
+                    <p className="text-[11px] text-amber-300 leading-relaxed">
+                      Browser preview blocked automatic copy — tap the URL field above to select and copy it manually.
+                    </p>
+                  )}
+
+                  <p className="text-[11px] text-slate-400 leading-relaxed">
+                    If your browser asks for permission on first launch, confirm <strong>Share</strong> access is enabled in AI Studio or sign into the same Google account in your browser.
+                  </p>
+                </div>
+              )}
+
+              {isIOS ? (
+                <div className="rounded-xl bg-[#101C34] border border-[#1E304F] p-4 space-y-3">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-white">
+                    <Smartphone className="w-4 h-4 text-[#FF5B00] shrink-0" />
+                    <span>Add to iPhone / iPad Home Screen</span>
                   </div>
-                  <Download className="w-4 h-4 text-sky-400 shrink-0" />
-                </a>
-              </div>
-
-              <div className="text-[11px] text-slate-400 bg-slate-950 p-2.5 rounded-xl border border-slate-800 text-center">
-                Compatible with Android 6.0 Marshmallow up to Android 15+, iOS Safari, and Desktop Chrome/Edge.
-              </div>
+                  <ol className="space-y-2.5 text-xs text-slate-300 leading-relaxed">
+                    <li className="flex items-start gap-2.5">
+                      <span className="font-mono text-[11px] font-bold text-[#84E000] mt-0.5">01.</span>
+                      <span>
+                        Open the shared link in <strong>Safari</strong> and tap the{' '}
+                        <Share className="inline w-3.5 h-3.5 text-[#84E000] mx-0.5 align-text-bottom" />{' '}
+                        <strong>Share</strong> icon in the toolbar.
+                      </span>
+                    </li>
+                    <li className="flex items-start gap-2.5">
+                      <span className="font-mono text-[11px] font-bold text-[#84E000] mt-0.5">02.</span>
+                      <span>
+                        Scroll down and tap{' '}
+                        <PlusSquare className="inline w-3.5 h-3.5 text-[#FF5B00] mx-0.5 align-text-bottom" />{' '}
+                        <strong>Add to Home Screen</strong>.
+                      </span>
+                    </li>
+                    <li className="flex items-start gap-2.5">
+                      <span className="font-mono text-[11px] font-bold text-[#84E000] mt-0.5">03.</span>
+                      <span>
+                        Tap <strong>Add</strong> in the top corner to launch offline anytime.
+                      </span>
+                    </li>
+                  </ol>
+                </div>
+              ) : !showStandaloneLauncher ? (
+                <div className="rounded-xl bg-[#101C34] border border-[#1E304F] p-4 space-y-2.5">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-white">
+                    <Info className="w-4 h-4 text-[#84E000] shrink-0" />
+                    <span>Install via Browser Menu</span>
+                  </div>
+                  <ol className="space-y-2 text-xs text-slate-300 leading-relaxed">
+                    <li>1. Click the install icon in your browser address bar or open the browser menu.</li>
+                    <li>2. Select <strong>Install Student Companion</strong> or <strong>Add to Home screen</strong>.</li>
+                  </ol>
+                </div>
+              ) : null}
 
               <button
                 type="button"
-                onClick={() => setShowMenu(false)}
-                className="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs transition-colors cursor-pointer"
+                onClick={() => setShowGuideModal(false)}
+                className="w-full min-h-[44px] py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-semibold text-xs transition-colors cursor-pointer"
               >
-                Close Menu
+                Close
               </button>
             </div>
           </div>,
@@ -409,28 +277,78 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({ compact = fa
         )
       : null;
 
+  if (resolvedVariant === 'drawer') {
+    return (
+      <>
+        <button
+          type="button"
+          onClick={() => void handleInstallAction()}
+          className="w-full flex items-center justify-between p-3 min-h-[48px] rounded-xl border border-emerald-700/60 bg-[#101C31] hover:bg-[#162846] text-slate-100 transition-all cursor-pointer"
+        >
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-8 h-8 rounded-lg bg-[#84E000]/15 text-[#84E000] flex items-center justify-center shrink-0">
+              <Download className="w-4 h-4" />
+            </div>
+            <div className="text-left min-w-0">
+              <span className="font-semibold block text-white truncate">
+                {isInstallable
+                  ? 'Install App to Device'
+                  : isIOS
+                  ? 'Install on iPhone / iPad'
+                  : 'Install Offline App'}
+              </span>
+              <span className="text-[11px] text-slate-400 block truncate">
+                {isInstallable
+                  ? 'One-tap home screen install · Works offline'
+                  : 'Launch standalone without internet'}
+              </span>
+            </div>
+          </div>
+          <span className="px-2.5 py-1 rounded-lg bg-[#84E000] text-slate-950 font-bold text-[11px] whitespace-nowrap shrink-0">
+            Install
+          </span>
+        </button>
+        {guideModal}
+      </>
+    );
+  }
+
+  if (resolvedVariant === 'landing') {
+    return (
+      <>
+        <button
+          type="button"
+          onClick={() => void handleInstallAction()}
+          className="min-h-[44px] px-3 sm:px-3.5 py-2 rounded-xl bg-[#162746] hover:bg-[#1E335A] active:scale-95 border border-[#84E000]/60 text-[#84E000] font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap shrink-0"
+          aria-label="Install Student Companion app"
+        >
+          <Download className="w-3.5 h-3.5 shrink-0" />
+          <span className="sm:hidden">Install</span>
+          <span className="hidden sm:inline">Install App</span>
+        </button>
+        {guideModal}
+      </>
+    );
+  }
+
   return (
     <>
       <button
         type="button"
-        onClick={() => {
-          setShowManualSteps(false);
-          setShowMenu(true);
-        }}
+        onClick={() => void handleInstallAction()}
         className={`flex items-center gap-1.5 rounded-lg bg-[#84E000] hover:bg-[#75c900] active:scale-95 text-slate-950 font-black transition-all cursor-pointer shadow-sm whitespace-nowrap shrink-0 ${
-          compact
-            ? 'px-2 min-h-[36px] text-[11px]'
-            : 'px-2.5 sm:px-3 py-1.5 min-h-[40px] text-xs'
+          resolvedVariant === 'compact'
+            ? 'px-2.5 min-h-[38px] text-[11px]'
+            : 'px-3 py-1.5 min-h-[44px] text-xs'
         }`}
-        title="Install Student Companion app"
-        aria-label="Install Student Companion app"
+        title={isInstallable ? 'Install Student Companion App' : 'Install or view Safari instructions'}
+        aria-label="Install Student Companion App"
       >
         <Download className="w-3.5 h-3.5 shrink-0" />
-        <span className={compact ? 'hidden' : 'hidden sm:inline'}>Install App</span>
-        <span className={compact ? 'inline' : 'inline sm:hidden'}>Install</span>
+        <span className={resolvedVariant === 'compact' ? 'hidden' : 'hidden sm:inline'}>Install App</span>
+        <span className={resolvedVariant === 'compact' ? 'inline' : 'inline sm:hidden'}>Install</span>
       </button>
-
-      {modalPortal}
+      {guideModal}
     </>
   );
 };
