@@ -5,10 +5,12 @@ import android.content.Intent;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
+import android.text.TextUtils;
 import android.webkit.CookieManager;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -59,18 +61,51 @@ public class MainActivity extends AppCompatActivity {
 
             @Override
             public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
-                if (request.isForMainFrame()) {
-                    String offlineHtml = "<html><body style='background:#0B1526;color:#f8fafc;font-family:sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;text-align:center;padding:24px;'>"
-                        + "<h2 style='color:#84E000;margin-bottom:8px;'>Student Companion</h2>"
-                        + "<p style='color:#cbd5e1;font-size:14px;max-width:300px;'>Unable to connect right now. Check your mobile data or Wi-Fi and tap Retry.</p>"
-                        + "<button onclick=\"window.location='" + APP_URL + "'\" style='margin-top:16px;padding:12px 24px;border-radius:10px;border:none;background:#84E000;color:#0B1526;font-weight:bold;font-size:14px;'>Retry</button>"
-                        + "</body></html>";
-                    view.loadDataWithBaseURL(null, offlineHtml, "text/html", "UTF-8", null);
+                if (request != null && request.isForMainFrame()) {
+                    showBrandedErrorScreen(
+                        view,
+                        "CONNECTION OFFLINE",
+                        "Unable to connect right now",
+                        "Check your mobile data or Wi-Fi connection and tap Retry to reload Student Companion."
+                    );
+                }
+            }
+
+            @Override
+            public void onReceivedHttpError(WebView view, WebResourceRequest request, WebResourceResponse errorResponse) {
+                if (request != null && request.isForMainFrame() && errorResponse != null && errorResponse.getStatusCode() >= 400) {
+                    int statusCode = errorResponse.getStatusCode();
+                    String detail = statusCode == 404
+                        ? "The app server returned HTTP 404. Please confirm the hosted Student Companion deployment is published and live, then tap Retry."
+                        : "The server responded with HTTP " + statusCode + ". Please wait a moment and tap Retry.";
+                    showBrandedErrorScreen(
+                        view,
+                        "HTTP " + statusCode,
+                        "Student Companion unavailable",
+                        detail
+                    );
                 }
             }
         });
 
         webView.loadUrl(APP_URL);
+    }
+
+    private void showBrandedErrorScreen(WebView view, String badgeText, String headline, String detail) {
+        String safeBadge = TextUtils.htmlEncode(badgeText);
+        String safeHeadline = TextUtils.htmlEncode(headline);
+        String safeDetail = TextUtils.htmlEncode(detail);
+        String offlineHtml = "<!DOCTYPE html><html><head><meta name='viewport' content='width=device-width,initial-scale=1'/></head>"
+            + "<body style='margin:0;background:#0B1526;color:#F8FAFC;font-family:-apple-system,BlinkMacSystemFont,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;text-align:center;padding:24px;box-sizing:border-box;'>"
+            + "<div style='max-width:340px;width:100%;background:#132238;border:1px solid #1E3352;border-radius:18px;padding:28px 22px;box-sizing:border-box;'>"
+            + "<div style='display:inline-block;padding:5px 12px;border-radius:999px;background:#261F10;border:1px solid #F59E0B;color:#FBBF24;font-size:11px;font-weight:700;letter-spacing:0.06em;margin-bottom:14px;'>" + safeBadge + "</div>"
+            + "<h2 style='color:#84E000;margin:0 0 8px 0;font-size:20px;font-weight:800;'>Student Companion</h2>"
+            + "<p style='color:#F8FAFC;font-size:15px;font-weight:600;margin:0 0 8px 0;'>" + safeHeadline + "</p>"
+            + "<p style='color:#CBD5E1;font-size:13px;line-height:1.5;margin:0 0 20px 0;'>" + safeDetail + "</p>"
+            + "<button onclick=\"window.location.replace('" + APP_URL + "')\" style='width:100%;min-height:48px;padding:12px 24px;border-radius:12px;border:none;background:#84E000;color:#0B1526;font-weight:800;font-size:15px;cursor:pointer;'>Retry</button>"
+            + "</div>"
+            + "</body></html>";
+        view.loadDataWithBaseURL(null, offlineHtml, "text/html", "UTF-8", null);
     }
 
     @SuppressWarnings("deprecation")
