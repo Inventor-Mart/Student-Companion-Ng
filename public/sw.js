@@ -13,7 +13,14 @@ self.addEventListener('message', (event) => {
   }
   if (event.data && event.data.type === 'CLEAR_CACHES') {
     event.waitUntil(
-      caches.keys().then((names) => Promise.all(names.map((n) => caches.delete(n))))
+      caches
+        .keys()
+        .then((names) => Promise.all(names.map((n) => caches.delete(n))))
+        .finally(() => {
+          if (event.ports && event.ports[0]) {
+            event.ports[0].postMessage({ cleared: true });
+          }
+        })
     );
   }
 });

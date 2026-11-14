@@ -1,5 +1,6 @@
 import fs from 'fs';
 import zlib from 'zlib';
+import crypto from 'crypto';
 import express from 'express';
 import dotenv from 'dotenv';
 import path from 'path';
@@ -4162,6 +4163,98 @@ app.post('/api/git/push', async (req, res) => {
 // ==========================================
 
 const OTA_STATE_FILE = path.resolve(__dirname, '.ota-runtime-state.json');
+const SERVER_OTA_HMAC_SECRET =
+  process.env.OTA_SESSION_SECRET ||
+  process.env.PAYSTACK_SECRET_KEY ||
+  process.env.GITHUB_TOKEN ||
+  crypto.randomBytes(32).toString('hex');
+
+function issueSuperAdminSessionToken(email: string): string {
+  const payload = Buffer.from(
+    JSON.stringify({
+      email: email.toLowerCase().trim(),
+      exp: Date.now() + 12 * 60 * 60 * 1000,
+    }),
+    'utf8'
+  ).toString('base64url');
+  const sig = crypto
+    .createHmac('sha256', SERVER_OTA_HMAC_SECRET)
+    .update(payload)
+    .digest('base64url');
+  return `scadmin.${payload}.${sig}`;
+}
+
+async function verifySuperAdminRequest(
+  req: express.Request
+): Promise<{ ok: boolean; email?: string; error?: string }> {
+  const authHeader = String(req.headers.authorization || '').trim();
+  if (!authHeader.startsWith('Bearer ')) {
+    return {
+      ok: false,
+      error: 'Super Admin authentication token required. Sign in as Super Admin to publish live OTA changes.',
+    };
+  }
+  const token = authHeader.slice(7).trim();
+  if (!token) {
+    return { ok: false, error: 'Empty authorization bearer token.' };
+  }
+
+  // 1. Check signed server Super Admin session token (issued via /api/auth/login)
+  if (token.startsWith('scadmin.')) {
+    const parts = token.split('.');
+    if (parts.length !== 3) {
+      return { ok: false, error: 'Malformed Super Admin session token.' };
+    }
+    const [, payloadB64, sigB64] = parts;
+    const expectedSig = crypto
+      .createHmac('sha256', SERVER_OTA_HMAC_SECRET)
+      .update(payloadB64)
+      .digest('base64url');
+    const a = Buffer.from(sigB64, 'utf8');
+    const b = Buffer.from(expectedSig, 'utf8');
+    if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+      return { ok: false, error: 'Invalid Super Admin session signature.' };
+    }
+    try {
+      const parsed = JSON.parse(Buffer.from(payloadB64, 'base64url').toString('utf8'));
+      const cleanEmail = String(parsed?.email || '').toLowerCase().trim();
+      if (!parsed?.exp || Number(parsed.exp) < Date.now()) {
+        return { ok: false, error: 'Super Admin session expired. Please sign in again.' };
+      }
+      if (!AUTHORIZED_SUPER_ADMINS.includes(cleanEmail)) {
+        return { ok: false, error: 'Account is not authorized for Super Admin OTA mutations.' };
+      }
+      return { ok: true, email: cleanEmail };
+    } catch {
+      return { ok: false, error: 'Corrupted Super Admin session payload.' };
+    }
+  }
+
+  // 2. Verify live Firebase ID token via Identity Toolkit
+  try {
+    const verifyRes = await fetch(
+      `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${encodeURIComponent(firebaseConfig.apiKey)}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken: token }),
+        signal: AbortSignal.timeout(5000),
+      }
+    );
+    if (!verifyRes.ok) {
+      return { ok: false, error: 'Firebase ID token rejected. Please re-authenticate with Google.' };
+    }
+    const verifyData: any = await verifyRes.json();
+    const user = Array.isArray(verifyData?.users) ? verifyData.users[0] : null;
+    const cleanEmail = String(user?.email || '').toLowerCase().trim();
+    if (!user || !user.emailVerified || !AUTHORIZED_SUPER_ADMINS.includes(cleanEmail)) {
+      return { ok: false, error: 'Verified Super Admin Google account required for live OTA changes.' };
+    }
+    return { ok: true, email: cleanEmail };
+  } catch {
+    return { ok: false, error: 'Unable to verify Super Admin authentication token.' };
+  }
+}
 
 interface ServerOTAState {
   appRelease: Record<string, any> | null;
@@ -4194,12 +4287,54 @@ function writeServerOTAState(state: ServerOTAState): void {
   }
 }
 
-app.get('/api/ota/state', (_req, res) => {
+app.get('/api/ota/state', async (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
   const state = readServerOTAState();
-  return res.json({ success: true, ...state });
+
+  try {
+    const remoteSnap = await getDoc(doc(serverDb, 'otaAppReleases', 'active_release'));
+    if (remoteSnap.exists()) {
+      const remoteRelease = remoteSnap.data() as Record<string, any>;
+      const remotePublishedMs = new Date(String(remoteRelease?.publishedAt || 0)).getTime() || 0;
+      const localPublishedMs = new Date(String(state.appRelease?.publishedAt || 0)).getTime() || 0;
+      if (!state.appRelease || remotePublishedMs >= localPublishedMs) {
+        state.appRelease = {
+          ...remoteRelease,
+          id: 'active_release',
+        };
+        writeServerOTAState(state);
+      }
+    }
+  } catch {
+    // Keep server mirror if Firestore edge read times out
+  }
+
+  let latestApkRelease: { apkReady: boolean; apkUrl?: string; versionName?: string } = { apkReady: false };
+  try {
+    const apk = await resolveCompiledAndroidApk();
+    if (apk.apkReady) {
+      latestApkRelease = {
+        apkReady: true,
+        apkUrl: apk.apkUrl,
+        versionName: apk.versionName,
+      };
+    }
+  } catch {}
+
+  return res.json({
+    success: true,
+    ...state,
+    latestApkRelease,
+  });
 });
 
-app.post('/api/ota/release', (req, res) => {
+app.post('/api/ota/release', async (req, res) => {
+  const authCheck = await verifySuperAdminRequest(req);
+  if (!authCheck.ok) {
+    await securityService.logUnauthorizedProbe(req, '/api/ota/release', authCheck.email || 'anonymous');
+    return res.status(403).json({ success: false, error: authCheck.error });
+  }
+
   const release = req.body;
   if (!release || !release.latestVersion) {
     return res.status(400).json({ success: false, error: 'latestVersion is required' });
@@ -4207,14 +4342,21 @@ app.post('/api/ota/release', (req, res) => {
   const state = readServerOTAState();
   state.appRelease = {
     ...release,
-    id: 'current_release',
+    id: 'active_release',
+    publishedBy: authCheck.email || release.publishedBy || 'martorefe@gmail.com',
     publishedAt: release.publishedAt || new Date().toISOString(),
   };
   writeServerOTAState(state);
   return res.json({ success: true, appRelease: state.appRelease });
 });
 
-app.post('/api/ota/features', (req, res) => {
+app.post('/api/ota/features', async (req, res) => {
+  const authCheck = await verifySuperAdminRequest(req);
+  if (!authCheck.ok) {
+    await securityService.logUnauthorizedProbe(req, '/api/ota/features', authCheck.email || 'anonymous');
+    return res.status(403).json({ success: false, error: authCheck.error });
+  }
+
   const { flag, flagsMap } = req.body || {};
   const state = readServerOTAState();
   if (flag && flag.featureKey) {
@@ -4228,7 +4370,13 @@ app.post('/api/ota/features', (req, res) => {
   return res.json({ success: true, featureFlags: state.featureFlags });
 });
 
-app.post('/api/ota/notifications', (req, res) => {
+app.post('/api/ota/notifications', async (req, res) => {
+  const authCheck = await verifySuperAdminRequest(req);
+  if (!authCheck.ok) {
+    await securityService.logUnauthorizedProbe(req, '/api/ota/notifications', authCheck.email || 'anonymous');
+    return res.status(403).json({ success: false, error: authCheck.error });
+  }
+
   const item = req.body;
   if (!item || !item.id || !item.title || !item.message) {
     return res.status(400).json({ success: false, error: 'Notification id, title, and message are required' });
@@ -4239,7 +4387,13 @@ app.post('/api/ota/notifications', (req, res) => {
   return res.json({ success: true, notification: item });
 });
 
-app.delete('/api/ota/notifications/:id', (req, res) => {
+app.delete('/api/ota/notifications/:id', async (req, res) => {
+  const authCheck = await verifySuperAdminRequest(req);
+  if (!authCheck.ok) {
+    await securityService.logUnauthorizedProbe(req, '/api/ota/notifications/:id', authCheck.email || 'anonymous');
+    return res.status(403).json({ success: false, error: authCheck.error });
+  }
+
   const id = String(req.params.id || '');
   const state = readServerOTAState();
   state.notifications = state.notifications.filter((n: any) => n.id !== id);
@@ -4388,12 +4542,16 @@ app.post('/api/auth/login', async (req, res) => {
           error: 'Please enter your password.'
         });
       }
+      const tokenEmail = AUTHORIZED_SUPER_ADMINS.includes(cleanEmail)
+        ? cleanEmail
+        : AUTHORIZED_SUPER_ADMINS[0];
       return res.json({
         success: true,
         authenticated: true,
         role: 'admin',
         isSuperAdmin: true,
         displayName: 'Super Admin',
+        otaAdminToken: issueSuperAdminSessionToken(tokenEmail),
         message: 'Super Admin credentials verified.'
       });
     }

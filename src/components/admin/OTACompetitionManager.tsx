@@ -20,8 +20,12 @@ import {
   DEFAULT_OTA_FEATURE_FLAGS,
   DEFAULT_PAUSED_FEATURE_MESSAGE,
   OTA_FEATURE_CATALOG,
+  CURRENT_APP_VERSION,
   subscribeToOTAAppRelease,
   saveOTAAppRelease,
+  fetchLiveOTAAppRelease,
+  fetchLatestGitHubApkRelease,
+  GitHubApkReleaseInfo,
   bumpSemver,
   isValidSemver
 } from '../../services/otaService';
@@ -34,16 +38,15 @@ import {
   OTASchoolLeagueSchool,
   OTABroadcastCategory,
   OTAAppReleaseConfig,
-  OTAUpgradeMode,
   OTAFeatureFlags,
   OTAFeatureKey
 } from '../../types';
 import { CBT_EXAMS_DATABASE } from '../../data/cbtExamData';
 import { useApp } from '../../context/AppContext';
+import { auth } from '../../lib/firebase';
 import { NairaText, NairaSign } from '../../utils/currency';
 import { DeviceImageUploader } from './DeviceImageUploader';
 import { OTAPushRemindersTab } from './OTAPushRemindersTab';
-import { AppUpdateGate, AppUpdateGatePreviewOverride } from '../common/AppUpdateGate';
 import {
   Radio,
   Tv,
@@ -70,14 +73,16 @@ import {
   Lock,
   Bell,
   ArrowUpCircle,
-  Eye,
   Sliders,
   Wrench,
   ShieldCheck,
   AlertTriangle,
   Search,
   PauseCircle,
-  MessageSquare
+  MessageSquare,
+  RefreshCw,
+  Download,
+  ExternalLink
 } from 'lucide-react';
 
 const PRESET_FLYER_IMAGES = [
@@ -101,11 +106,11 @@ const PRESET_FLYER_IMAGES = [
 
 export const OTACompetitionManager: React.FC = () => {
   const {
-    isSuperAdmin,
     isFirebaseConnected,
     currentUserProfile,
     installedAppVersion,
-    setLocalInstalledAppVersion
+    refreshOTAStatus,
+    loginWithGoogle
   } = useApp();
 
   const [activeTab, setActiveTab] = useState<
@@ -133,7 +138,9 @@ export const OTACompetitionManager: React.FC = () => {
   const [releaseConfig, setReleaseConfig] = useState<OTAAppReleaseConfig>(DEFAULT_OTA_APP_RELEASE);
   const [newHighlightText, setNewHighlightText] = useState<string>('');
   const [isSavingRelease, setIsSavingRelease] = useState<boolean>(false);
-  const [previewMode, setPreviewMode] = useState<OTAUpgradeMode | 'maintenance' | null>(null);
+  const [isSyncingLive, setIsSyncingLive] = useState<boolean>(false);
+  const [isDetectingApk, setIsDetectingApk] = useState<boolean>(false);
+  const [githubApkInfo, setGithubApkInfo] = useState<GitHubApkReleaseInfo | null>(null);
   const [flagSearch, setFlagSearch] = useState<string>('');
   const [flagCategory, setFlagCategory] = useState<'all' | 'study' | 'enrichment' | 'portals'>('all');
   const [expandedNoteKey, setExpandedNoteKey] = useState<OTAFeatureKey | null>(null);
@@ -152,6 +159,19 @@ export const OTACompetitionManager: React.FC = () => {
     const unsubWeekly = subscribeToOTAWeeklyCompetition(setWeeklyConfig);
     const unsubLeague = subscribeToOTASchoolLeague(setLeagueConfig);
     const unsubRelease = subscribeToOTAAppRelease(setReleaseConfig);
+
+    fetchLatestGitHubApkRelease()
+      .then((info) => {
+        setGithubApkInfo(info);
+        if (info.apkReady && info.apkUrl) {
+          setReleaseConfig((prev) =>
+            prev.downloadUrl && prev.downloadUrl.trim().length > 0
+              ? prev
+              : { ...prev, downloadUrl: info.apkUrl! }
+          );
+        }
+      })
+      .catch(() => {});
 
     return () => {
       unsubBroadcasts();
@@ -344,6 +364,50 @@ export const OTACompetitionManager: React.FC = () => {
     }));
   };
 
+  const handleSyncLiveState = async () => {
+    setIsSyncingLive(true);
+    try {
+      const live = await refreshOTAStatus();
+      if (live) {
+        setReleaseConfig(live);
+        triggerNotice(`Synced live cloud OTA state: v${live.latestVersion} (${live.upgradeMode.toUpperCase()}).`);
+      } else {
+        const direct = await fetchLiveOTAAppRelease();
+        if (direct) {
+          setReleaseConfig(direct);
+          triggerNotice(`Synced live cloud OTA state: v${direct.latestVersion}.`);
+        } else {
+          triggerNotice('No remote OTA release published yet; showing current runtime defaults.');
+        }
+      }
+    } catch (err: any) {
+      triggerNotice(`Sync failed: ${err?.message || 'Check connection'}`);
+    } finally {
+      setIsSyncingLive(false);
+    }
+  };
+
+  const handleAutoDetectApk = async () => {
+    setIsDetectingApk(true);
+    try {
+      const info = await fetchLatestGitHubApkRelease();
+      setGithubApkInfo(info);
+      if (info.apkReady && info.apkUrl) {
+        setReleaseConfig((prev) => ({
+          ...prev,
+          downloadUrl: info.apkUrl!
+        }));
+        triggerNotice(`Linked live GitHub APK release (${info.versionName || 'android-latest'}).`);
+      } else {
+        triggerNotice('No compiled .apk asset found on GitHub Releases yet.');
+      }
+    } catch {
+      triggerNotice('Unable to query GitHub APK release status.');
+    } finally {
+      setIsDetectingApk(false);
+    }
+  };
+
   const handlePublishRelease = async () => {
     if (!isValidSemver(releaseConfig.latestVersion)) {
       triggerNotice('Latest version must follow major.minor.patch (e.g. 2.4.0).');
@@ -360,13 +424,19 @@ export const OTACompetitionManager: React.FC = () => {
 
     setIsSavingRelease(true);
     try {
-      const saved = await saveOTAAppRelease({
+      const result = await saveOTAAppRelease({
         ...releaseConfig,
         publishedBy: currentUserProfile?.email || 'martorefe@gmail.com'
       });
-      setReleaseConfig(saved);
+      setReleaseConfig(result.release);
+      const targets = [
+        result.syncedFirestore ? 'Firestore Cloud' : null,
+        result.syncedServer ? 'Server API' : null
+      ]
+        .filter(Boolean)
+        .join(' & ');
       triggerNotice(
-        `OTA release v${saved.latestVersion} (${saved.upgradeMode.toUpperCase()}) published live!`
+        `Live OTA v${result.release.latestVersion} (${result.release.upgradeMode.toUpperCase()}) published to ${targets}!`
       );
     } catch (err: any) {
       triggerNotice(`Failed to publish OTA release: ${err?.message || 'Check permissions'}`);
@@ -378,18 +448,11 @@ export const OTACompetitionManager: React.FC = () => {
   const handleResetReleaseDefaults = () => {
     setReleaseConfig({
       ...DEFAULT_OTA_APP_RELEASE,
+      downloadUrl: githubApkInfo?.apkReady && githubApkInfo.apkUrl ? githubApkInfo.apkUrl : '',
       publishedAt: new Date().toISOString()
     });
-    triggerNotice('Draft reset to baseline v2.3.0. Click Publish OTA Update to apply live.');
+    triggerNotice(`Draft reset to baseline v${CURRENT_APP_VERSION}. Click Publish OTA Release to push live.`);
   };
-
-  const previewOverride: AppUpdateGatePreviewOverride | null = previewMode
-    ? {
-        mode: previewMode,
-        release: releaseConfig,
-        onClosePreview: () => setPreviewMode(null)
-      }
-    : null;
 
   return (
     <div className="w-full flex flex-col gap-5 p-4 sm:p-6 bg-[#08101E] text-slate-100 rounded-2xl border border-slate-800 shadow-xl">
@@ -1407,43 +1470,49 @@ export const OTACompetitionManager: React.FC = () => {
       {/* ========================================================================= */}
       {activeTab === 'app_updates' && (
         <div className="flex flex-col gap-6">
-          {/* Interactive Preview Overlay */}
-          {previewOverride && <AppUpdateGate previewOverride={previewOverride} />}
-
-          {/* Admin Exemption Notice + Client Version Check */}
+          {/* Live Cloud & Bundle Verification Status */}
           <div className="p-4 bg-[#0D1930] border border-slate-800 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex items-start gap-2.5">
               <ShieldCheck className="w-5 h-5 text-[#84E000] shrink-0 mt-0.5" />
               <div className="text-xs">
                 <p className="font-bold text-white">
-                  Super Admin Bypass Protection Enabled
+                  Live Production OTA Channel
                 </p>
                 <p className="text-slate-400 mt-0.5">
-                  Mandatory upgrade locks and maintenance mode block all Student, Parent, Tutor, Partner & School Admin sessions—while Super Admin stays unlocked to manage rollouts.
+                  Publishes synchronize directly to Firestore &amp; authenticated Server API. Connected browsers, PWAs, and Android APK WebViews update caches and reload immediately.
                 </p>
+                {!auth.currentUser && (
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <span className="text-[11px] text-amber-300 font-semibold">
+                      Google Auth not active — Firestore direct writes require verified Google sign-in.
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => loginWithGoogle({ skipNavigate: true })}
+                      className="px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-[11px] cursor-pointer"
+                    >
+                      Verify Google Auth
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
 
-            <div className="flex items-center gap-2 shrink-0 text-xs font-mono tabular-nums bg-slate-950 px-3 py-2 rounded-lg border border-slate-800">
-              <span className="text-slate-400">Local Client:</span>
+            <div className="flex flex-wrap items-center gap-2 shrink-0 text-xs font-mono tabular-nums bg-slate-950 px-3 py-2 rounded-lg border border-slate-800">
+              <span className="text-slate-400">Bundle:</span>
+              <span className="text-white font-bold">v{CURRENT_APP_VERSION}</span>
+              <span className="text-slate-600">·</span>
+              <span className="text-slate-400">Client:</span>
               <span className="text-[#84E000] font-bold">v{installedAppVersion}</span>
-              {installedAppVersion !== '2.1.0' ? (
-                <button
-                  type="button"
-                  onClick={() => setLocalInstalledAppVersion('2.1.0')}
-                  className="ml-2 px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 font-sans font-semibold text-[11px] whitespace-nowrap cursor-pointer"
-                >
-                  Simulate v2.1.0
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setLocalInstalledAppVersion(releaseConfig.latestVersion)}
-                  className="ml-2 px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 font-sans font-semibold text-[11px] whitespace-nowrap cursor-pointer"
-                >
-                  Reset v{releaseConfig.latestVersion}
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={handleSyncLiveState}
+                disabled={isSyncingLive}
+                className="ml-1 inline-flex items-center gap-1 px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-100 font-sans font-semibold text-[11px] whitespace-nowrap cursor-pointer disabled:opacity-60"
+              >
+                <RefreshCw className={`w-3 h-3 ${isSyncingLive ? 'animate-spin' : ''}`} />
+                <span>{isSyncingLive ? 'Syncing...' : 'Sync Live'}</span>
+              </button>
             </div>
           </div>
 
@@ -1571,22 +1640,48 @@ export const OTACompetitionManager: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="flex flex-col gap-1 text-xs">
-                  <label className="text-slate-300 font-semibold">
-                    Optional Play Store / APK Download Link
-                  </label>
+                <div className="flex flex-col gap-1.5 text-xs">
+                  <div className="flex items-center justify-between gap-2">
+                    <label className="text-slate-300 font-semibold">
+                      Android APK / Store Download Link
+                    </label>
+                    <button
+                      type="button"
+                      onClick={handleAutoDetectApk}
+                      disabled={isDetectingApk}
+                      className="inline-flex items-center gap-1 px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-[#84E000] text-[11px] font-bold cursor-pointer disabled:opacity-60"
+                    >
+                      <Download className={`w-3 h-3 ${isDetectingApk ? 'animate-bounce' : ''}`} />
+                      <span>{isDetectingApk ? 'Checking GitHub...' : 'Auto-Detect GitHub APK'}</span>
+                    </button>
+                  </div>
                   <input
                     type="url"
                     value={releaseConfig.downloadUrl || ''}
                     onChange={(e) =>
                       setReleaseConfig({ ...releaseConfig, downloadUrl: e.target.value })
                     }
-                    placeholder="https://play.google.com/store/apps/details?id=..."
+                    placeholder="https://github.com/Inventor-Mart/Student-Companion-Ng/releases/..."
                     className="px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-[#84E000]"
                   />
-                  <span className="text-[11px] text-slate-400">
-                    Leave blank for pure instant in-app OTA upgrade, or add URL to show Store link alongside Upgrade Now.
-                  </span>
+                  <div className="flex items-center justify-between gap-2 text-[11px] text-slate-400">
+                    <span>
+                      {githubApkInfo?.apkReady
+                        ? `Live GitHub APK detected (${githubApkInfo.versionName || 'android-latest'}) — editable above.`
+                        : 'Leave blank for instant web/SW reload only, or supply a Store/APK URL.'}
+                    </span>
+                    {releaseConfig.downloadUrl && (
+                      <a
+                        href={releaseConfig.downloadUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-[#84E000] hover:underline shrink-0"
+                      >
+                        <ExternalLink className="w-3 h-3" />
+                        <span>Verify Link</span>
+                      </a>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -1956,45 +2051,32 @@ export const OTACompetitionManager: React.FC = () => {
                 </div>
               </div>
 
-              {/* Interactive Prompt Previews */}
-              <div className="p-4 sm:p-5 bg-slate-900/70 border border-slate-800 rounded-xl flex flex-col gap-3">
-                <div className="flex items-center gap-2">
-                  <Eye className="w-4 h-4 text-[#84E000]" />
-                  <h2 className="text-sm font-bold text-white">Preview User Experience</h2>
+              {/* Live Release Audit Metadata */}
+              <div className="p-4 sm:p-5 bg-slate-900/70 border border-slate-800 rounded-xl flex flex-col gap-2.5 text-xs">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <Radio className="w-4 h-4 text-[#84E000]" />
+                    <h2 className="text-sm font-bold text-white">Active Cloud Release Audit</h2>
+                  </div>
+                  <span className="font-mono tabular-nums text-[11px] px-2 py-0.5 rounded bg-slate-950 border border-slate-800 text-[#84E000]">
+                    v{releaseConfig.latestVersion}
+                  </span>
                 </div>
-                <p className="text-xs text-slate-400">
-                  Test how your current draft renders for students without affecting your Admin session.
-                </p>
-
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  <button
-                    type="button"
-                    onClick={() => setPreviewMode('mild')}
-                    className="px-3 py-2 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-700 text-slate-200 font-bold whitespace-nowrap cursor-pointer"
-                  >
-                    Preview Mild Banner
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPreviewMode('recommended')}
-                    className="px-3 py-2 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-700 text-amber-300 font-bold whitespace-nowrap cursor-pointer"
-                  >
-                    Preview Recommended Modal
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPreviewMode('mandatory')}
-                    className="px-3 py-2 rounded-lg bg-slate-950 hover:bg-slate-800 border border-[#FF5B00]/50 text-[#FF5B00] font-bold whitespace-nowrap cursor-pointer"
-                  >
-                    Preview Mandatory Lock
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPreviewMode('maintenance')}
-                    className="px-3 py-2 rounded-lg bg-slate-950 hover:bg-slate-800 border border-amber-500/40 text-amber-200 font-bold whitespace-nowrap cursor-pointer"
-                  >
-                    Preview Maintenance
-                  </button>
+                <div className="grid grid-cols-2 gap-2 text-[11px] bg-slate-950 border border-slate-800 rounded-lg p-3">
+                  <div>
+                    <span className="text-slate-400 block">Last Published By</span>
+                    <span className="text-slate-100 font-semibold truncate block">
+                      {releaseConfig.publishedBy || 'martorefe@gmail.com'}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block">Published Timestamp</span>
+                    <span className="text-slate-100 font-mono truncate block">
+                      {releaseConfig.publishedAt
+                        ? new Date(releaseConfig.publishedAt).toLocaleString()
+                        : '—'}
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>

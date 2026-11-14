@@ -80,11 +80,12 @@ import {
   OTA_FEATURE_CATALOG,
   resolvePausedFeatureMessage,
   subscribeToOTAAppRelease,
+  fetchLiveOTAAppRelease,
   getInstalledAppVersion,
-  setInstalledAppVersion,
   applyInAppOTAUpgrade,
   dismissReleasePrompt,
-  isReleaseDismissed
+  isReleaseDismissed,
+  setServerOTAAdminToken
 } from '../services/otaService';
 import {
   DEFAULT_NOTIFICATION_PREFERENCES,
@@ -442,7 +443,7 @@ interface AppContextType {
   isCurrentReleaseDismissed: boolean;
   applyOTAUpgrade: () => Promise<string>;
   dismissOTAPrompt: () => void;
-  setLocalInstalledAppVersion: (ver: string) => void;
+  refreshOTAStatus: () => Promise<OTAAppReleaseConfig | null>;
   isFeatureEnabled: (key: OTAFeatureKey) => boolean;
   getPausedFeatureMessage: (key: OTAFeatureKey) => string;
   pausedFeatureNotice: { featureKey: OTAFeatureKey; title: string; message: string } | null;
@@ -1171,9 +1172,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [otaAppRelease.latestVersion, otaAppRelease.upgradeMode, otaDismissTick]);
 
   const applyOTAUpgrade = useCallback(async (): Promise<string> => {
-    // Brief smooth install delay so user sees in-app OTA refresh feedback cleanly
-    await new Promise((resolve) => window.setTimeout(resolve, 650));
-    const nextVersion = applyInAppOTAUpgrade(otaAppRelease);
+    const nextVersion = await applyInAppOTAUpgrade(otaAppRelease);
     setInstalledAppVersionState(nextVersion);
     setOtaDismissTick((prev) => prev + 1);
     return nextVersion;
@@ -1184,10 +1183,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setOtaDismissTick((prev) => prev + 1);
   }, [otaAppRelease.latestVersion, otaAppRelease.upgradeMode]);
 
-  const setLocalInstalledAppVersion = useCallback((ver: string) => {
-    const normalized = setInstalledAppVersion(ver);
-    setInstalledAppVersionState(normalized);
-    setOtaDismissTick((prev) => prev + 1);
+  const refreshOTAStatus = useCallback(async (): Promise<OTAAppReleaseConfig | null> => {
+    const live = await fetchLiveOTAAppRelease();
+    if (live) {
+      setOtaAppRelease(live);
+    }
+    return live;
   }, []);
 
   const [pausedFeatureNotice, setPausedFeatureNotice] = useState<{
@@ -1481,11 +1482,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             hasLocalProfile: true
           })
         });
+        const data = await res.json().catch(() => ({}));
         if (!res.ok) {
-          const data = await res.json().catch(() => ({}));
           if (data?.error) {
             return { success: false, error: data.error };
           }
+        } else if (typeof data?.otaAdminToken === 'string') {
+          setServerOTAAdminToken(data.otaAdminToken);
         }
       } catch {
         // Offline fallback handled below
@@ -1578,12 +1581,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             hasLocalProfile: true
           })
         });
+        const data = await res.json().catch(() => ({}));
         if (!res.ok) {
-          const data = await res.json().catch(() => ({}));
           if (data?.error) {
             recordLoginFailure(cleanInput);
             return { success: false, error: data.error };
           }
+        } else if (typeof data?.otaAdminToken === 'string') {
+          setServerOTAAdminToken(data.otaAdminToken);
         }
       } catch {
         // Offline fallback allowed for local Super Admin development
@@ -1721,6 +1726,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const logoutUser = async () => {
     try {
       await logOut();
+      setServerOTAAdminToken(null);
       setCurrentUser(null);
       setIsFirebaseConnected(false);
     } catch (error) {
@@ -5833,7 +5839,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         isCurrentReleaseDismissed,
         applyOTAUpgrade,
         dismissOTAPrompt,
-        setLocalInstalledAppVersion,
+        refreshOTAStatus,
         isFeatureEnabled,
         getPausedFeatureMessage,
         pausedFeatureNotice,

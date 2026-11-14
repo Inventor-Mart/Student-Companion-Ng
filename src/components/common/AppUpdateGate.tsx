@@ -13,7 +13,6 @@ import {
   X
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import { OTAAppReleaseConfig, OTAUpgradeMode } from '../../types';
 import {
   DEFAULT_PAUSED_FEATURE_MESSAGE,
   compareSemver,
@@ -21,23 +20,14 @@ import {
   normalizeSemver
 } from '../../services/otaService';
 
-export interface AppUpdateGatePreviewOverride {
-  mode: OTAUpgradeMode | 'maintenance';
-  release: OTAAppReleaseConfig;
-  onClosePreview: () => void;
-}
-
-interface AppUpdateGateProps {
-  previewOverride?: AppUpdateGatePreviewOverride | null;
-}
-
-export const AppUpdateGate: React.FC<AppUpdateGateProps> = ({ previewOverride }) => {
+export const AppUpdateGate: React.FC = () => {
   const {
     otaAppRelease,
     installedAppVersion,
     isCurrentReleaseDismissed,
     applyOTAUpgrade,
     dismissOTAPrompt,
+    refreshOTAStatus,
     isSuperAdmin,
     isAuthenticated,
     currentScreen,
@@ -47,11 +37,10 @@ export const AppUpdateGate: React.FC<AppUpdateGateProps> = ({ previewOverride })
   const [isUpgrading, setIsUpgrading] = useState(false);
   const [upgradeDoneVersion, setUpgradeDoneVersion] = useState<string | null>(null);
   const [isCheckingStatus, setIsCheckingStatus] = useState(false);
+  const [statusFeedback, setStatusFeedback] = useState<string | null>(null);
 
-  const activeRelease = previewOverride ? previewOverride.release : otaAppRelease;
-  const effectiveInstalledVersion = previewOverride
-    ? '2.1.0'
-    : normalizeSemver(installedAppVersion);
+  const activeRelease = otaAppRelease;
+  const effectiveInstalledVersion = normalizeSemver(installedAppVersion);
 
   const hasNewerVersion =
     compareSemver(effectiveInstalledVersion, activeRelease.latestVersion) < 0;
@@ -59,34 +48,44 @@ export const AppUpdateGate: React.FC<AppUpdateGateProps> = ({ previewOverride })
     compareSemver(effectiveInstalledVersion, activeRelease.minimumSupportedVersion) < 0;
 
   const hasSafeDownloadUrl = isValidSafeExternalUrl(activeRelease.downloadUrl);
+  const isApkDownloadUrl = Boolean(
+    activeRelease.downloadUrl &&
+      (activeRelease.downloadUrl.toLowerCase().includes('.apk') ||
+        activeRelease.downloadUrl.toLowerCase().includes('/releases/'))
+  );
 
   const handleUpgradeNow = async () => {
-    if (previewOverride) {
-      setIsUpgrading(true);
-      await new Promise((resolve) => window.setTimeout(resolve, 500));
-      setIsUpgrading(false);
-      setUpgradeDoneVersion(activeRelease.latestVersion);
-      window.setTimeout(() => {
-        setUpgradeDoneVersion(null);
-        previewOverride.onClosePreview();
-      }, 900);
-      return;
-    }
-
     setIsUpgrading(true);
+    setStatusFeedback(null);
     try {
       const upgradedTo = await applyOTAUpgrade();
       setUpgradeDoneVersion(upgradedTo);
-      window.setTimeout(() => {
-        setUpgradeDoneVersion(null);
-      }, 2200);
+    } catch (err: any) {
+      setStatusFeedback(err?.message || 'Unable to apply update right now. Check your connection.');
     } finally {
       setIsUpgrading(false);
     }
   };
 
-  // Never interrupt the initial 3s splash or admin sign-in flow when live
-  if (!previewOverride && (currentScreen === 'splash' || currentScreen === 'signin')) {
+  const handleCheckLiveStatus = async () => {
+    setIsCheckingStatus(true);
+    setStatusFeedback(null);
+    try {
+      const latest = await refreshOTAStatus();
+      if (!latest) {
+        setStatusFeedback('Offline or unable to reach cloud OTA server. Retrying when online.');
+      } else if (latest.maintenanceMode) {
+        setStatusFeedback(`Maintenance remains active as of ${new Date().toLocaleTimeString()}.`);
+      }
+    } catch {
+      setStatusFeedback('Unable to check live release status.');
+    } finally {
+      setIsCheckingStatus(false);
+    }
+  };
+
+  // Never interrupt the initial 3s splash or admin sign-in flow
+  if (currentScreen === 'splash' || currentScreen === 'signin') {
     return null;
   }
 
@@ -94,9 +93,7 @@ export const AppUpdateGate: React.FC<AppUpdateGateProps> = ({ previewOverride })
   let resolvedState: 'none' | 'admin_notice' | 'mild' | 'recommended' | 'mandatory' | 'maintenance' =
     'none';
 
-  if (previewOverride) {
-    resolvedState = previewOverride.mode;
-  } else if (isSuperAdmin) {
+  if (isSuperAdmin) {
     // Super Admin is ALWAYS exempted from maintenance/mandatory locks
     if (
       activeRelease.maintenanceMode ||
@@ -223,10 +220,7 @@ export const AppUpdateGate: React.FC<AppUpdateGateProps> = ({ previewOverride })
 
             <button
               type="button"
-              onClick={() => {
-                if (previewOverride) previewOverride.onClosePreview();
-                else dismissOTAPrompt();
-              }}
+              onClick={dismissOTAPrompt}
               aria-label="Dismiss update banner"
               className="p-2 min-h-[36px] min-w-[36px] flex items-center justify-center rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 cursor-pointer transition-colors"
             >
@@ -270,10 +264,7 @@ export const AppUpdateGate: React.FC<AppUpdateGateProps> = ({ previewOverride })
 
             <button
               type="button"
-              onClick={() => {
-                if (previewOverride) previewOverride.onClosePreview();
-                else dismissOTAPrompt();
-              }}
+              onClick={dismissOTAPrompt}
               aria-label="Close update modal"
               className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 cursor-pointer"
             >
@@ -335,19 +326,16 @@ export const AppUpdateGate: React.FC<AppUpdateGateProps> = ({ previewOverride })
                   className="min-h-[44px] px-3.5 rounded-xl border border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-100 text-xs font-bold flex items-center justify-center gap-1.5 whitespace-nowrap"
                 >
                   <ExternalLink className="w-3.5 h-3.5" />
-                  <span>Play Store</span>
+                  <span>{isApkDownloadUrl ? 'Get APK' : 'Store'}</span>
                 </a>
               )}
 
               <button
                 type="button"
-                onClick={() => {
-                  if (previewOverride) previewOverride.onClosePreview();
-                  else dismissOTAPrompt();
-                }}
+                onClick={dismissOTAPrompt}
                 className="min-h-[44px] px-4 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 text-xs font-bold whitespace-nowrap cursor-pointer"
               >
-                {previewOverride ? 'Close Preview' : 'Remind Me Later'}
+                Remind Me Later
               </button>
             </div>
           </div>
@@ -399,16 +387,6 @@ export const AppUpdateGate: React.FC<AppUpdateGateProps> = ({ previewOverride })
               </h2>
             </div>
           </div>
-
-          {previewOverride && (
-            <button
-              type="button"
-              onClick={previewOverride.onClosePreview}
-              className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold whitespace-nowrap cursor-pointer"
-            >
-              Exit Preview
-            </button>
-          )}
         </div>
 
         <div className="p-5 space-y-4">
@@ -483,14 +461,12 @@ export const AppUpdateGate: React.FC<AppUpdateGateProps> = ({ previewOverride })
             {isMaintenance && (
               <button
                 type="button"
-                onClick={() => {
-                  setIsCheckingStatus(true);
-                  window.setTimeout(() => setIsCheckingStatus(false), 600);
-                }}
-                className="w-full min-h-[44px] px-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs flex items-center justify-center gap-2 whitespace-nowrap cursor-pointer"
+                onClick={handleCheckLiveStatus}
+                disabled={isCheckingStatus}
+                className="w-full min-h-[44px] px-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs flex items-center justify-center gap-2 whitespace-nowrap cursor-pointer disabled:opacity-70"
               >
                 <RefreshCw className={`w-4 h-4 ${isCheckingStatus ? 'animate-spin' : ''}`} />
-                <span>{isCheckingStatus ? 'Checking Live Status...' : 'Check Release Status'}</span>
+                <span>{isCheckingStatus ? 'Querying Live Cloud State...' : 'Check Live Release Status'}</span>
               </button>
             )}
 
@@ -502,12 +478,22 @@ export const AppUpdateGate: React.FC<AppUpdateGateProps> = ({ previewOverride })
                 className="w-full min-h-[44px] px-4 rounded-xl border border-slate-700 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs flex items-center justify-center gap-2 whitespace-nowrap"
               >
                 <ExternalLink className="w-4 h-4" />
-                <span>Download Latest App Package (Store / APK)</span>
+                <span>
+                  {isApkDownloadUrl
+                    ? 'Download Latest Android APK'
+                    : 'Download Latest App Package (Store / APK)'}
+                </span>
               </a>
             )}
           </div>
 
-          {!previewOverride && !isAuthenticated && (
+          {statusFeedback && (
+            <p className="text-[11px] text-amber-300 text-center bg-amber-950/50 border border-amber-500/30 rounded-lg px-3 py-2">
+              {statusFeedback}
+            </p>
+          )}
+
+          {!isAuthenticated && (
             <div className="pt-2 border-t border-slate-800/80 text-center">
               <button
                 type="button"

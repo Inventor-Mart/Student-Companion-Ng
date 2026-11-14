@@ -5,10 +5,11 @@ import {
   setDoc,
   deleteDoc,
   getDocs,
-  getDoc
+  getDoc,
+  getDocFromServer
 } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
-import { auth, db } from '../lib/firebase';
+import { auth, db, handleFirestoreError, OperationType } from '../lib/firebase';
 import {
   OTABroadcastItem,
   OTAPopupAnnouncement,
@@ -26,7 +27,12 @@ import {
   CHAMPIONSHIP_DAYS_CONFIG
 } from '../data/competitionPrizesData';
 
-export const CURRENT_APP_VERSION = '2.4.0';
+const RAW_BUNDLED_VERSION =
+  typeof __APP_VERSION__ !== 'undefined' ? String(__APP_VERSION__) : '2.4.0';
+
+export const CURRENT_APP_VERSION = /^\d+\.\d+\.\d+$/.test(RAW_BUNDLED_VERSION.replace(/^v/i, ''))
+  ? RAW_BUNDLED_VERSION.replace(/^v/i, '')
+  : '2.4.0';
 
 // Cache keys
 const CACHE_KEY_BROADCASTS = 'sc_ota_broadcasts_v1';
@@ -39,8 +45,9 @@ const CACHE_KEY_APP_RELEASE = 'sc_ota_app_release_v1';
 const STORAGE_KEY_INSTALLED_VERSION = 'sc_installed_app_version';
 const STORAGE_KEY_DISMISSED_RELEASE = 'sc_ota_dismissed_release_v1';
 const STORAGE_KEY_DISMISSED_RECOMMENDED_AT = 'sc_ota_dismissed_recommended_at_v1';
+const STORAGE_KEY_ADMIN_TOKEN = 'sc_ota_admin_token_v1';
 
-export const BASE_APP_VERSION = '2.3.0';
+export const BASE_APP_VERSION = CURRENT_APP_VERSION;
 
 export const DEFAULT_PAUSED_FEATURE_MESSAGE =
   'This module is temporarily paused over-the-air while improvements are rolled out. Other study tools remain available.';
@@ -182,11 +189,11 @@ export const DEFAULT_OTA_FEATURE_FLAGS: OTAFeatureFlags = {
 
 export const DEFAULT_OTA_APP_RELEASE: OTAAppReleaseConfig = {
   id: 'active_release',
-  latestVersion: BASE_APP_VERSION,
+  latestVersion: CURRENT_APP_VERSION,
   minimumSupportedVersion: '2.2.0',
   upgradeMode: 'mild',
-  releaseTitle: 'Student Companion v2.3.0 · Verified Study Engine',
-  releaseNotes: 'Includes realistic active reading timers, cross-session lesson progress persistence, and enhanced CBT audio diagnostics.',
+  releaseTitle: `Student Companion v${CURRENT_APP_VERSION} · Live Study Engine`,
+  releaseNotes: 'Includes active reading timers, cross-session lesson progress persistence, optimized live whiteboard, and instant cloud OTA sync.',
   featureHighlights: [
     'Verified active reading study timers (20–35 min)',
     'Cross-session reading progress & offline resilience',
@@ -399,31 +406,29 @@ export function subscribeToOTABroadcasts(
   callback(cached);
 
   const handleBroadcastSnap = (snapshot: { empty: boolean; forEach: (fn: (d: { id: string; data: () => unknown }) => void) => void }) => {
-    if (!snapshot.empty) {
-      const remoteItems: OTABroadcastItem[] = [];
-      snapshot.forEach((d) => {
-        const data = d.data() as Partial<OTABroadcastItem>;
-        if (data.text) {
-          remoteItems.push({
-            id: d.id,
-            text: data.text || '',
-            category: data.category || 'general',
-            isActive: data.isActive !== undefined ? data.isActive : true,
-            priority: data.priority || 0,
-            actionTab: data.actionTab,
-            createdAt: data.createdAt || new Date().toISOString(),
-            updatedAt: data.updatedAt || new Date().toISOString()
-          });
-        }
-      });
-
-      remoteItems.sort((a, b) => (b.priority || 0) - (a.priority || 0));
-
-      if (remoteItems.length > 0) {
-        writeLocalJson(CACHE_KEY_BROADCASTS, remoteItems);
-        callback(remoteItems);
-        return;
+    const remoteItems: OTABroadcastItem[] = [];
+    snapshot.forEach((d) => {
+      const data = d.data() as Partial<OTABroadcastItem>;
+      if (data.text) {
+        remoteItems.push({
+          id: d.id,
+          text: data.text || '',
+          category: data.category || 'general',
+          isActive: data.isActive !== undefined ? data.isActive : true,
+          priority: data.priority || 0,
+          actionTab: data.actionTab,
+          createdAt: data.createdAt || new Date().toISOString(),
+          updatedAt: data.updatedAt || new Date().toISOString()
+        });
       }
+    });
+
+    remoteItems.sort((a, b) => (b.priority || 0) - (a.priority || 0));
+
+    if (!snapshot.empty) {
+      writeLocalJson(CACHE_KEY_BROADCASTS, remoteItems);
+      callback(remoteItems);
+      return;
     }
     callback(cached);
   };
@@ -472,8 +477,12 @@ export function subscribeToOTAPopup(
         const newest = activeList[0];
         writeLocalJson(CACHE_KEY_POPUP, newest);
         callback(newest);
-        return;
+      } else {
+        // Remote popup documents exist and all are paused/inactive: hide popup live
+        writeLocalJson(CACHE_KEY_POPUP, null);
+        callback(null);
       }
+      return;
     }
     callback(cached);
   };
@@ -704,9 +713,9 @@ export function markPopupDismissedToday(popupId: string): void {
 // ==========================================
 
 export function normalizeSemver(version?: string | null): string {
-  if (!version) return BASE_APP_VERSION;
+  if (!version) return CURRENT_APP_VERSION;
   const cleaned = version.trim().replace(/^v/i, '');
-  return /^\d+\.\d+\.\d+$/.test(cleaned) ? cleaned : BASE_APP_VERSION;
+  return /^\d+\.\d+\.\d+$/.test(cleaned) ? cleaned : CURRENT_APP_VERSION;
 }
 
 export function isValidSemver(version?: string | null): boolean {
@@ -738,13 +747,19 @@ export function bumpSemver(version: string, part: 'major' | 'minor' | 'patch'): 
 
 export function getInstalledAppVersion(): string {
   try {
-    if (typeof window === 'undefined') return BASE_APP_VERSION;
+    if (typeof window === 'undefined') return CURRENT_APP_VERSION;
     const stored = localStorage.getItem(STORAGE_KEY_INSTALLED_VERSION);
     if (stored && isValidSemver(stored)) {
-      return normalizeSemver(stored);
+      const normalized = normalizeSemver(stored);
+      // If user loaded a newer bundled code build than previously persisted, promote to current bundle version
+      if (compareSemver(normalized, CURRENT_APP_VERSION) < 0) {
+        localStorage.setItem(STORAGE_KEY_INSTALLED_VERSION, CURRENT_APP_VERSION);
+        return CURRENT_APP_VERSION;
+      }
+      return normalized;
     }
   } catch {}
-  return BASE_APP_VERSION;
+  return CURRENT_APP_VERSION;
 }
 
 export function setInstalledAppVersion(version: string): string {
@@ -755,6 +770,37 @@ export function setInstalledAppVersion(version: string): string {
     }
   } catch {}
   return normalized;
+}
+
+export function setServerOTAAdminToken(token: string | null): void {
+  try {
+    if (typeof window === 'undefined') return;
+    if (token && token.trim()) {
+      sessionStorage.setItem(STORAGE_KEY_ADMIN_TOKEN, token.trim());
+    } else {
+      sessionStorage.removeItem(STORAGE_KEY_ADMIN_TOKEN);
+    }
+  } catch {}
+}
+
+export async function getSuperAdminAuthHeader(): Promise<Record<string, string>> {
+  try {
+    if (auth.currentUser) {
+      const idToken = await auth.currentUser.getIdToken();
+      if (idToken) {
+        return { Authorization: `Bearer ${idToken}` };
+      }
+    }
+  } catch {}
+  try {
+    if (typeof window !== 'undefined') {
+      const sessionToken = sessionStorage.getItem(STORAGE_KEY_ADMIN_TOKEN);
+      if (sessionToken) {
+        return { Authorization: `Bearer ${sessionToken}` };
+      }
+    }
+  } catch {}
+  return {};
 }
 
 export function isReleaseDismissed(version: string, mode: OTAUpgradeMode): boolean {
@@ -864,6 +910,86 @@ export function resolvePausedFeatureMessage(
 
 const releaseListeners = new Set<(config: OTAAppReleaseConfig) => void>();
 
+function notifyReleaseListeners(config: OTAAppReleaseConfig): void {
+  writeLocalJson(CACHE_KEY_APP_RELEASE, config);
+  releaseListeners.forEach((cb) => cb(config));
+}
+
+export interface LiveOTASaveResult {
+  release: OTAAppReleaseConfig;
+  syncedFirestore: boolean;
+  syncedServer: boolean;
+}
+
+export interface GitHubApkReleaseInfo {
+  apkReady: boolean;
+  apkUrl: string | null;
+  versionName: string | null;
+}
+
+export async function fetchLatestGitHubApkRelease(): Promise<GitHubApkReleaseInfo> {
+  try {
+    const res = await fetch('/api/android/apk-status', { cache: 'no-store' });
+    if (!res.ok) {
+      return { apkReady: false, apkUrl: null, versionName: null };
+    }
+    const data = await res.json();
+    return {
+      apkReady: Boolean(data?.apkReady && data?.apkUrl),
+      apkUrl: typeof data?.apkUrl === 'string' ? data.apkUrl : null,
+      versionName: typeof data?.versionName === 'string' ? data.versionName : null,
+    };
+  } catch {
+    return { apkReady: false, apkUrl: null, versionName: null };
+  }
+}
+
+/**
+ * Queries live Firestore (bypassing IndexedDB cache) and Express /api/ota/state
+ * concurrently to obtain the latest authoritative OTA release configuration.
+ */
+export async function fetchLiveOTAAppRelease(): Promise<OTAAppReleaseConfig | null> {
+  const docRef = doc(db, 'otaAppReleases', 'active_release');
+
+  const [firestoreRes, serverRes] = await Promise.allSettled([
+    getDocFromServer(docRef),
+    fetch('/api/ota/state', { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)),
+  ]);
+
+  let fsRelease: OTAAppReleaseConfig | null = null;
+  if (firestoreRes.status === 'fulfilled' && firestoreRes.value.exists()) {
+    fsRelease = sanitizeReleaseConfig(
+      firestoreRes.value.data() as Partial<OTAAppReleaseConfig>
+    );
+  }
+
+  let srvRelease: OTAAppReleaseConfig | null = null;
+  if (
+    serverRes.status === 'fulfilled' &&
+    serverRes.value?.appRelease?.latestVersion &&
+    serverRes.value?.appRelease?.featureFlags
+  ) {
+    srvRelease = sanitizeReleaseConfig(
+      serverRes.value.appRelease as Partial<OTAAppReleaseConfig>
+    );
+  }
+
+  let chosen: OTAAppReleaseConfig | null = null;
+  if (fsRelease && srvRelease) {
+    const fsTime = new Date(fsRelease.publishedAt).getTime() || 0;
+    const srvTime = new Date(srvRelease.publishedAt).getTime() || 0;
+    chosen = srvTime > fsTime ? srvRelease : fsRelease;
+  } else {
+    chosen = fsRelease || srvRelease;
+  }
+
+  if (chosen) {
+    notifyReleaseListeners(chosen);
+  }
+
+  return chosen;
+}
+
 export function subscribeToOTAAppRelease(
   callback: (config: OTAAppReleaseConfig) => void
 ): () => void {
@@ -873,17 +999,8 @@ export function subscribeToOTAAppRelease(
   callback(cached);
   releaseListeners.add(callback);
 
-  // Optional Express mirror fallback when payload matches OTAAppReleaseConfig schema
-  fetch('/api/ota/state')
-    .then((r) => (r.ok ? r.json() : null))
-    .then((data) => {
-      if (data?.appRelease?.latestVersion && data.appRelease.featureFlags) {
-        const sanitized = sanitizeReleaseConfig(data.appRelease as Partial<OTAAppReleaseConfig>);
-        writeLocalJson(CACHE_KEY_APP_RELEASE, sanitized);
-        releaseListeners.forEach((cb) => cb(sanitized));
-      }
-    })
-    .catch(() => {});
+  // Perform immediate live server/Firestore check
+  fetchLiveOTAAppRelease().catch(() => {});
 
   let unsubFirestore = () => {};
   try {
@@ -893,8 +1010,7 @@ export function subscribeToOTAAppRelease(
       (snap) => {
         if (snap.exists()) {
           const sanitized = sanitizeReleaseConfig(snap.data() as Partial<OTAAppReleaseConfig>);
-          writeLocalJson(CACHE_KEY_APP_RELEASE, sanitized);
-          releaseListeners.forEach((cb) => cb(sanitized));
+          notifyReleaseListeners(sanitized);
         }
       },
       (error) => {
@@ -911,31 +1027,128 @@ export function subscribeToOTAAppRelease(
   };
 }
 
-export async function saveOTAAppRelease(config: OTAAppReleaseConfig): Promise<OTAAppReleaseConfig> {
+export async function saveOTAAppRelease(config: OTAAppReleaseConfig): Promise<LiveOTASaveResult> {
   const payload = sanitizeReleaseConfig({
     ...config,
     id: 'active_release',
     publishedAt: new Date().toISOString()
   });
 
-  writeLocalJson(CACHE_KEY_APP_RELEASE, payload);
-  releaseListeners.forEach((cb) => cb(payload));
+  const authHeaders = await getSuperAdminAuthHeader();
+  if (!authHeaders.Authorization && !auth.currentUser) {
+    throw new Error(
+      'Super Admin verification required. Please sign in with your verified Google or Super Admin account before publishing live OTA updates.'
+    );
+  }
 
-  fetch('/api/ota/release', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload)
-  }).catch(() => {});
+  let syncedServer = false;
+  let serverError: string | null = null;
+  try {
+    const res = await fetch('/api/ota/release', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...authHeaders,
+      },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data?.success) {
+      serverError = data?.error || `Server returned HTTP ${res.status}`;
+    } else {
+      syncedServer = true;
+    }
+  } catch (err: any) {
+    serverError = err?.message || 'Unable to reach OTA Server API';
+  }
 
-  const docRef = doc(db, 'otaAppReleases', 'active_release');
-  await setDoc(docRef, payload);
-  return payload;
+  let syncedFirestore = false;
+  let firestoreError: string | null = null;
+  if (auth.currentUser) {
+    const docRef = doc(db, 'otaAppReleases', 'active_release');
+    try {
+      await setDoc(docRef, payload);
+      syncedFirestore = true;
+    } catch (err: any) {
+      try {
+        handleFirestoreError(err, OperationType.WRITE, 'otaAppReleases/active_release');
+      } catch (structuredErr: any) {
+        firestoreError = structuredErr?.message || err?.message || 'Firestore permission denied';
+      }
+    }
+  } else {
+    firestoreError = 'Google Firebase Auth session not active';
+  }
+
+  if (!syncedServer && !syncedFirestore) {
+    throw new Error(firestoreError || serverError || 'Live OTA publish failed on both Firestore and Server API.');
+  }
+
+  notifyReleaseListeners(payload);
+  return {
+    release: payload,
+    syncedFirestore,
+    syncedServer,
+  };
 }
 
-export function applyInAppOTAUpgrade(release: OTAAppReleaseConfig): string {
-  const updatedVer = setInstalledAppVersion(release.latestVersion);
+async function clearServiceWorkerAndRuntimeCaches(): Promise<void> {
+  if (typeof window === 'undefined') return;
+
+  if ('serviceWorker' in navigator) {
+    try {
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(
+        registrations.map(async (reg) => {
+          try {
+            await reg.update();
+          } catch {}
+          if (reg.waiting) {
+            reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+          }
+          if (reg.installing) {
+            reg.installing.postMessage({ type: 'SKIP_WAITING' });
+          }
+          const worker = reg.active || reg.waiting || navigator.serviceWorker.controller;
+          if (worker) {
+            await new Promise<void>((resolve) => {
+              const timeout = window.setTimeout(resolve, 1200);
+              const channel = new MessageChannel();
+              channel.port1.onmessage = () => {
+                window.clearTimeout(timeout);
+                resolve();
+              };
+              try {
+                worker.postMessage({ type: 'CLEAR_CACHES' }, [channel.port2]);
+              } catch {
+                window.clearTimeout(timeout);
+                resolve();
+              }
+            });
+          }
+        })
+      );
+    } catch {}
+  }
+
+  if ('caches' in window) {
+    try {
+      const cacheNames = await caches.keys();
+      await Promise.all(cacheNames.map((name) => caches.delete(name)));
+    } catch {}
+  }
+}
+
+export async function applyInAppOTAUpgrade(release: OTAAppReleaseConfig): Promise<string> {
+  const freshRelease = (await fetchLiveOTAAppRelease().catch(() => null)) || sanitizeReleaseConfig(release);
+  await clearServiceWorkerAndRuntimeCaches();
+  const updatedVer = setInstalledAppVersion(freshRelease.latestVersion);
   clearReleaseDismissal();
-  writeLocalJson(CACHE_KEY_APP_RELEASE, sanitizeReleaseConfig(release));
+  notifyReleaseListeners(freshRelease);
+
+  if (typeof window !== 'undefined') {
+    window.location.reload();
+  }
   return updatedVer;
 }
 
