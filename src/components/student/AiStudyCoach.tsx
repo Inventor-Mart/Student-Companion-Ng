@@ -18,6 +18,7 @@ import {
   Bot
 } from 'lucide-react';
 import { playSound } from '../../utils/audioSynthesis';
+import { RichMathMarkdown } from '../common/RichMathMarkdown';
 
 interface AiStudyCoachProps {
   initialSubject?: string;
@@ -468,10 +469,8 @@ export const AiStudyCoach: React.FC<AiStudyCoachProps> = ({
             </button>
           </div>
 
-          {/* Formatted Markdown Content */}
-          <div className="text-xs text-slate-200 leading-relaxed whitespace-pre-wrap font-sans space-y-2">
-            {responseMarkdown}
-          </div>
+          {/* Formatted Mathematics & Markdown Content */}
+          <RichMathMarkdown content={responseMarkdown} />
 
           <div className="pt-2.5 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400">
             <div className="flex items-center gap-1.5 text-[#84CC16] font-bold">

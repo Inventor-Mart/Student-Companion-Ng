@@ -222,7 +222,7 @@ Strict Pedagogical Guidelines:
 4. For WAEC / NECO essay & theory questions:
    - Highlight what WAEC marking schemes and Chief Examiner reports demand (presentation, steps, units, grammatical concord).
 5. Use relatable Nigerian context and examples (e.g., Naira ₦, local geography, practical day-to-day analogies in Lagos, Abuja, Port Harcourt, Ibadan).
-6. Present information clearly with markdown headings, bullet points, and numbered steps.`;
+6. Present information clearly with markdown headings, bullet points, and numbered steps. Wrap inline mathematical expressions in single dollar signs ($...$) and major step equations on their own lines in double dollar signs ($$...$$) using clean LaTeX (e.g., $\\frac{2}{3}$, $\\times$, $\\div$). Avoid raw HTML tags.`;
 
     const contents: any[] = [];
     if (Array.isArray(history)) {
