@@ -47,7 +47,6 @@ export function usePWAInstall() {
   const [isIOS, setIsIOS] = useState<boolean>(false);
   const [isEmbedded, setIsEmbedded] = useState<boolean>(false);
   const [standaloneUrl, setStandaloneUrl] = useState<string>(initialStandalone.url);
-  const [isDevPreview, setIsDevPreview] = useState<boolean>(initialStandalone.isDevPreview);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -69,9 +68,8 @@ export function usePWAInstall() {
 
     const resolved = resolveClientStandaloneUrl();
     setStandaloneUrl(resolved.url);
-    setIsDevPreview(resolved.isDevPreview);
 
-    if (embedded || resolved.isDevPreview) {
+    if (embedded && resolved.isDevPreview) {
       fetch('/api/pwa/config')
         .then((res) => (res.ok ? res.json() : null))
         .then((data) => {
@@ -149,7 +147,6 @@ export function usePWAInstall() {
     isInstalled,
     isIOS,
     isEmbedded,
-    isDevPreview,
     standaloneUrl,
     install
   };

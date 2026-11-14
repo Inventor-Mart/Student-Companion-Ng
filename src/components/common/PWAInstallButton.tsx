@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Download,
@@ -24,11 +24,9 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
   variant,
   onInstalled
 }) => {
-  const { isInstallable, isInstalled, isIOS, isEmbedded, isDevPreview, standaloneUrl, install } =
-    usePWAInstall();
+  const { isInstallable, isInstalled, isIOS, isEmbedded, standaloneUrl, install } = usePWAInstall();
   const [showGuideModal, setShowGuideModal] = useState(false);
-  const [copyStatus, setCopyStatus] = useState<'idle' | 'copied' | 'manual'>('idle');
-  const urlInputRef = useRef<HTMLInputElement | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const resolvedVariant = variant || (compact ? 'compact' : 'header');
 
@@ -66,18 +64,18 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
 
   const handleCopyUrl = async () => {
     if (!standaloneUrl) return;
-    let copied = false;
+    let didCopy = false;
 
     if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
       try {
         await navigator.clipboard.writeText(standaloneUrl);
-        copied = true;
+        didCopy = true;
       } catch {
-        copied = false;
+        didCopy = false;
       }
     }
 
-    if (!copied && typeof document !== 'undefined') {
+    if (!didCopy && typeof document !== 'undefined') {
       try {
         const textarea = document.createElement('textarea');
         textarea.value = standaloneUrl;
@@ -88,25 +86,18 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
         document.body.appendChild(textarea);
         textarea.focus();
         textarea.select();
-        copied = document.execCommand('copy');
+        didCopy = document.execCommand('copy');
         document.body.removeChild(textarea);
       } catch {
-        copied = false;
+        didCopy = false;
       }
     }
 
-    if (copied) {
-      setCopyStatus('copied');
-      window.setTimeout(() => setCopyStatus('idle'), 2200);
-      return;
+    if (didCopy) {
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
     }
-
-    setCopyStatus('manual');
-    urlInputRef.current?.focus();
-    urlInputRef.current?.select();
   };
-
-  const showStandaloneLauncher = (isEmbedded || isDevPreview) && Boolean(standaloneUrl);
 
   const guideModal =
     showGuideModal && typeof document !== 'undefined'
@@ -119,7 +110,7 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
             onClick={() => setShowGuideModal(false)}
           >
             <div
-              className="my-auto w-full max-w-md max-h-[90dvh] overflow-y-auto rounded-2xl bg-[#0B1526] border border-[#1E304F] p-5 shadow-2xl text-slate-100 space-y-4 relative"
+              className="my-auto w-full max-w-sm max-h-[90dvh] overflow-y-auto rounded-2xl bg-[#0B1526] border border-[#1E304F] p-5 shadow-2xl text-slate-100 space-y-4 relative"
               onClick={(e) => e.stopPropagation()}
             >
               <button
@@ -142,7 +133,7 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
                     Install Student Companion
                   </h3>
                   <p className="text-xs text-slate-400">
-                    Offline-ready study notes, CBT exams &amp; games
+                    Offline study notes, CBT &amp; games
                   </p>
                 </div>
               </div>
@@ -158,109 +149,72 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
                 </button>
               )}
 
-              {showStandaloneLauncher && (
-                <div className="rounded-xl bg-[#101C34] border border-amber-500/40 p-4 space-y-3">
-                  <div className="flex items-center gap-2 text-xs font-semibold text-amber-300">
-                    <Info className="w-4 h-4 shrink-0" />
-                    <span>Open Shared App Tab to Install</span>
-                  </div>
-                  <p className="text-xs text-slate-300 leading-relaxed">
-                    Preview frames block home-screen installation, and private dev preview links trigger a 403 error outside AI Studio. Open the shared app link below directly in {isIOS ? 'Safari' : 'Chrome, Edge, or Safari'}.
-                  </p>
-
-                  <input
-                    ref={urlInputRef}
-                    type="text"
-                    readOnly
-                    value={standaloneUrl}
-                    onClick={(e) => e.currentTarget.select()}
-                    aria-label="Shared Student Companion app URL"
-                    className="w-full rounded-lg bg-[#081020] border border-[#1E304F] px-3 py-2 text-[11px] font-mono text-slate-200 select-all focus:outline-none focus:border-[#84E000]"
-                  />
-
-                  <div className="flex items-center gap-2">
-                    <a
-                      href={standaloneUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex-1 min-h-[44px] py-2 px-4 rounded-xl bg-[#84E000] hover:bg-[#75c900] text-slate-950 font-bold text-xs flex items-center justify-center gap-1.5 transition-colors whitespace-nowrap"
-                    >
-                      <ExternalLink className="w-3.5 h-3.5 shrink-0" />
-                      <span>Open Standalone App</span>
-                    </a>
-                    <button
-                      type="button"
-                      onClick={() => void handleCopyUrl()}
-                      className="min-h-[44px] py-2 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 border border-[#1E304F] text-slate-200 text-xs font-semibold flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
-                      title="Copy shared app URL"
-                    >
-                      {copyStatus === 'copied' ? (
-                        <>
-                          <Check className="w-3.5 h-3.5 text-[#84E000]" />
-                          <span>Copied</span>
-                        </>
-                      ) : (
-                        <>
-                          <Copy className="w-3.5 h-3.5" />
-                          <span>Copy URL</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
-
-                  {copyStatus === 'manual' && (
-                    <p className="text-[11px] text-amber-300 leading-relaxed">
-                      Browser preview blocked automatic copy — tap the URL field above to select and copy it manually.
-                    </p>
-                  )}
-
-                  <p className="text-[11px] text-slate-400 leading-relaxed">
-                    If your browser asks for permission on first launch, confirm <strong>Share</strong> access is enabled in AI Studio or sign into the same Google account in your browser.
-                  </p>
+              {isEmbedded && standaloneUrl && (
+                <div className="flex items-center gap-2">
+                  <a
+                    href={standaloneUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-1 min-h-[44px] py-2.5 px-4 rounded-xl bg-[#84E000] hover:bg-[#75c900] text-slate-950 font-bold text-xs flex items-center justify-center gap-1.5 transition-colors whitespace-nowrap"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5 shrink-0" />
+                    <span>Open in Browser</span>
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => void handleCopyUrl()}
+                    className="min-h-[44px] py-2.5 px-3.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-[#1E304F] text-slate-200 text-xs font-semibold flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+                    title="Copy app link"
+                  >
+                    {copied ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-[#84E000]" />
+                        <span>Copied</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3.5 h-3.5" />
+                        <span>Copy Link</span>
+                      </>
+                    )}
+                  </button>
                 </div>
               )}
 
               {isIOS ? (
-                <div className="rounded-xl bg-[#101C34] border border-[#1E304F] p-4 space-y-3">
+                <div className="rounded-xl bg-[#101C34] border border-[#1E304F] p-4 space-y-2.5">
                   <div className="flex items-center gap-2 text-xs font-semibold text-white">
                     <Smartphone className="w-4 h-4 text-[#FF5B00] shrink-0" />
-                    <span>Add to iPhone / iPad Home Screen</span>
+                    <span>Add to Home Screen</span>
                   </div>
-                  <ol className="space-y-2.5 text-xs text-slate-300 leading-relaxed">
-                    <li className="flex items-start gap-2.5">
-                      <span className="font-mono text-[11px] font-bold text-[#84E000] mt-0.5">01.</span>
+                  <ol className="space-y-2 text-xs text-slate-300 leading-relaxed">
+                    <li className="flex items-center gap-2">
+                      <span className="font-mono text-[11px] font-bold text-[#84E000]">1.</span>
                       <span>
-                        Open the shared link in <strong>Safari</strong> and tap the{' '}
-                        <Share className="inline w-3.5 h-3.5 text-[#84E000] mx-0.5 align-text-bottom" />{' '}
-                        <strong>Share</strong> icon in the toolbar.
+                        Tap <Share className="inline w-3.5 h-3.5 text-[#84E000] mx-0.5 align-text-bottom" /> <strong>Share</strong> in Safari
                       </span>
                     </li>
-                    <li className="flex items-start gap-2.5">
-                      <span className="font-mono text-[11px] font-bold text-[#84E000] mt-0.5">02.</span>
+                    <li className="flex items-center gap-2">
+                      <span className="font-mono text-[11px] font-bold text-[#84E000]">2.</span>
                       <span>
-                        Scroll down and tap{' '}
-                        <PlusSquare className="inline w-3.5 h-3.5 text-[#FF5B00] mx-0.5 align-text-bottom" />{' '}
-                        <strong>Add to Home Screen</strong>.
+                        Tap <PlusSquare className="inline w-3.5 h-3.5 text-[#FF5B00] mx-0.5 align-text-bottom" /> <strong>Add to Home Screen</strong>
                       </span>
                     </li>
-                    <li className="flex items-start gap-2.5">
-                      <span className="font-mono text-[11px] font-bold text-[#84E000] mt-0.5">03.</span>
-                      <span>
-                        Tap <strong>Add</strong> in the top corner to launch offline anytime.
-                      </span>
+                    <li className="flex items-center gap-2">
+                      <span className="font-mono text-[11px] font-bold text-[#84E000]">3.</span>
+                      <span>Tap <strong>Add</strong></span>
                     </li>
                   </ol>
                 </div>
-              ) : !showStandaloneLauncher ? (
-                <div className="rounded-xl bg-[#101C34] border border-[#1E304F] p-4 space-y-2.5">
+              ) : !isInstallable && !isEmbedded ? (
+                <div className="rounded-xl bg-[#101C34] border border-[#1E304F] p-4 space-y-2">
                   <div className="flex items-center gap-2 text-xs font-semibold text-white">
                     <Info className="w-4 h-4 text-[#84E000] shrink-0" />
                     <span>Install via Browser Menu</span>
                   </div>
-                  <ol className="space-y-2 text-xs text-slate-300 leading-relaxed">
-                    <li>1. Click the install icon in your browser address bar or open the browser menu.</li>
-                    <li>2. Select <strong>Install Student Companion</strong> or <strong>Add to Home screen</strong>.</li>
-                  </ol>
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    Tap the install icon in your browser address bar or choose <strong>Add to Home screen</strong> in your browser menu.
+                  </p>
                 </div>
               ) : null}
 
