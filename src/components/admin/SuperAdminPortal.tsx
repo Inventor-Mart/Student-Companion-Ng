@@ -59,6 +59,7 @@ import {
   getStoredForumMessages,
   saveStoredForumMessages
 } from '../../data/forumData';
+import { clearGoogleAuthReturnTarget, peekGoogleAuthReturnTarget } from '../../lib/firebase';
 
 export const SuperAdminPortal: React.FC = () => {
   const {
@@ -73,7 +74,14 @@ export const SuperAdminPortal: React.FC = () => {
     adminLessonNotes
   } = useApp();
 
-  const [portalView, setPortalView] = useState<'directory' | 'school_admin' | 'forum_moderation' | 'ota_competitions' | 'lesson_notes' | 'class_directory' | 'past_questions' | 'security_trust' | 'aspirant_rewards'>('directory');
+  const [portalView, setPortalView] = useState<'directory' | 'school_admin' | 'forum_moderation' | 'ota_competitions' | 'lesson_notes' | 'class_directory' | 'past_questions' | 'security_trust' | 'aspirant_rewards'>(() => {
+    const returnTarget = peekGoogleAuthReturnTarget();
+    if (returnTarget === 'ota_app_updates') {
+      clearGoogleAuthReturnTarget();
+      return 'ota_competitions';
+    }
+    return 'directory';
+  });
   const [roleFilter, setRoleFilter] = useState<'all' | UserRole>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'locked' | 'suspended' | 'deleted' | 'wallet_frozen'>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');

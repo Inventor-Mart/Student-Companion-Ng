@@ -115,7 +115,13 @@ export const EducatorQuestionImporter: React.FC<EducatorQuestionImporterProps> =
   // Auto-unlock for Super Admin or verified admin email
   useEffect(() => {
     const email = auth.currentUser?.email || currentUserProfile?.email;
-    if (skipPinGate || isSuperAdmin || email === 'wowrealities@gmail.com' || email === 'martorefe@gmail.com') {
+    if (
+      skipPinGate ||
+      isSuperAdmin ||
+      email === 'wowrealities@gmail.com' ||
+      email === 'martorefe@gmail.com' ||
+      email === 'martinnosaomorefe@gmail.com'
+    ) {
       setIsUnlocked(true);
       if (typeof window !== 'undefined') {
         sessionStorage.setItem('educator_pin_unlocked', 'true');

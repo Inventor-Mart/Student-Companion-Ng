@@ -36,6 +36,7 @@ service cloud.firestore {
       return isSignedIn() && (
         (request.auth.token.email == 'martorefe@gmail.com' && request.auth.token.email_verified == true) ||
         (request.auth.token.email == 'wowrealities@gmail.com' && request.auth.token.email_verified == true) ||
+        (request.auth.token.email == 'martinnosaomorefe@gmail.com' && request.auth.token.email_verified == true) ||
         exists(/databases/$(database)/documents/admins/$(request.auth.uid))
       );
     }
@@ -448,7 +449,13 @@ service cloud.firestore {
     // 5. Admins Collection
     match /admins/{adminId} {
       allow get: if isValidId(adminId) && isVerified() && (request.auth.uid == adminId || isAdmin());
-      allow create, update: if isValidId(adminId) && (isAdmin() || (isSignedIn() && request.auth.uid == adminId && request.auth.token.email == 'martorefe@gmail.com'));
+      allow create, update: if isValidId(adminId) && (
+        isAdmin() || (
+          isVerified() &&
+          request.auth.uid == adminId &&
+          request.auth.token.email in ['martorefe@gmail.com', 'wowrealities@gmail.com', 'martinnosaomorefe@gmail.com']
+        )
+      );
       allow list, delete: if isAdmin();
     }
 

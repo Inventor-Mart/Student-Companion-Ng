@@ -43,7 +43,6 @@ import {
 } from '../../types';
 import { CBT_EXAMS_DATABASE } from '../../data/cbtExamData';
 import { useApp } from '../../context/AppContext';
-import { auth } from '../../lib/firebase';
 import { NairaText, NairaSign } from '../../utils/currency';
 import { DeviceImageUploader } from './DeviceImageUploader';
 import { OTAPushRemindersTab } from './OTAPushRemindersTab';
@@ -106,11 +105,16 @@ const PRESET_FLYER_IMAGES = [
 
 export const OTACompetitionManager: React.FC = () => {
   const {
+    currentUser,
+    authLoading,
+    googleAuthError,
+    clearGoogleAuthError,
     isFirebaseConnected,
     currentUserProfile,
     installedAppVersion,
     refreshOTAStatus,
-    loginWithGoogle
+    loginWithGoogle,
+    loginWithGoogleRedirect
   } = useApp();
 
   const [activeTab, setActiveTab] = useState<
@@ -141,6 +145,13 @@ export const OTACompetitionManager: React.FC = () => {
   const [isSyncingLive, setIsSyncingLive] = useState<boolean>(false);
   const [isDetectingApk, setIsDetectingApk] = useState<boolean>(false);
   const [githubApkInfo, setGithubApkInfo] = useState<GitHubApkReleaseInfo | null>(null);
+  const [isVerifyingGoogle, setIsVerifyingGoogle] = useState<boolean>(false);
+  const [authErrorBanner, setAuthErrorBanner] = useState<{
+    message: string;
+    code?: string;
+    domain?: string;
+    canRetryRedirect?: boolean;
+  } | null>(null);
   const [flagSearch, setFlagSearch] = useState<string>('');
   const [flagCategory, setFlagCategory] = useState<'all' | 'study' | 'enrichment' | 'portals'>('all');
   const [expandedNoteKey, setExpandedNoteKey] = useState<OTAFeatureKey | null>(null);
@@ -186,6 +197,58 @@ export const OTACompetitionManager: React.FC = () => {
   const triggerNotice = (msg: string) => {
     setSaveFeedback(msg);
     setTimeout(() => setSaveFeedback(null), 4000);
+  };
+
+  useEffect(() => {
+    if (currentUser) {
+      setAuthErrorBanner(null);
+      setIsVerifyingGoogle(false);
+    }
+  }, [currentUser]);
+
+  const handleVerifyGoogleAuth = async () => {
+    if (isVerifyingGoogle || authLoading) return;
+    setIsVerifyingGoogle(true);
+    setAuthErrorBanner(null);
+    clearGoogleAuthError();
+    try {
+      const result = await loginWithGoogle({
+        skipNavigate: true,
+        returnTarget: 'ota_app_updates'
+      });
+      if (result.redirecting) {
+        return;
+      }
+      if (result.success) {
+        triggerNotice(`Google Auth verified for ${result.profile?.email || currentUserProfile?.email || 'Super Admin'}.`);
+      } else {
+        setAuthErrorBanner({
+          message: result.error || 'Google Auth verification did not complete.',
+          code: result.code,
+          domain: result.domain,
+          canRetryRedirect: result.canRetryRedirect ?? true
+        });
+      }
+    } finally {
+      setIsVerifyingGoogle(false);
+    }
+  };
+
+  const handleRetryRedirectAuth = async () => {
+    if (isVerifyingGoogle || authLoading) return;
+    setIsVerifyingGoogle(true);
+    setAuthErrorBanner(null);
+    clearGoogleAuthError();
+    const res = await loginWithGoogleRedirect('ota_app_updates');
+    if (!res.success) {
+      setIsVerifyingGoogle(false);
+      setAuthErrorBanner({
+        message: res.error || 'Redirect sign-in could not be started.',
+        code: res.code,
+        domain: typeof window !== 'undefined' ? window.location.hostname : undefined,
+        canRetryRedirect: false
+      });
+    }
   };
 
   // --- Ticker Handlers ---
@@ -1481,18 +1544,65 @@ export const OTACompetitionManager: React.FC = () => {
                 <p className="text-slate-400 mt-0.5">
                   Publishes synchronize directly to Firestore &amp; authenticated Server API. Connected browsers, PWAs, and Android APK WebViews update caches and reload immediately.
                 </p>
-                {!auth.currentUser && (
-                  <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <span className="text-[11px] text-amber-300 font-semibold">
-                      Google Auth not active — Firestore direct writes require verified Google sign-in.
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => loginWithGoogle({ skipNavigate: true })}
-                      className="px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-[11px] cursor-pointer"
-                    >
-                      Verify Google Auth
-                    </button>
+                {currentUser ? (
+                  <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-950/70 border border-emerald-700/60 text-emerald-300 text-[11px] font-semibold">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-[#84E000] shrink-0" />
+                    <span>Google Auth Verified: {currentUser.email || 'Connected'}</span>
+                  </div>
+                ) : (
+                  <div className="mt-2 flex flex-col gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-[11px] text-amber-300 font-semibold">
+                        Google Auth not active — Firestore direct writes require verified Google sign-in.
+                      </span>
+                      <button
+                        type="button"
+                        onClick={handleVerifyGoogleAuth}
+                        disabled={isVerifyingGoogle || authLoading}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 disabled:opacity-60 text-slate-950 font-black text-[11px] cursor-pointer"
+                      >
+                        <RefreshCw className={`w-3 h-3 ${isVerifyingGoogle ? 'animate-spin' : ''}`} />
+                        <span>{isVerifyingGoogle ? 'Verifying Google...' : 'Verify Google Auth'}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleRetryRedirectAuth}
+                        disabled={isVerifyingGoogle || authLoading}
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-60 text-slate-200 border border-slate-700 font-bold text-[11px] cursor-pointer"
+                      >
+                        <span>Use Redirect Sign-In</span>
+                      </button>
+                    </div>
+
+                    {(authErrorBanner || googleAuthError) && (
+                      <div className="p-2.5 rounded-lg bg-rose-950/60 border border-rose-700/60 text-[11px] text-rose-200 flex flex-col gap-2">
+                        <div className="flex items-start gap-2">
+                          <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                          <div className="flex flex-col gap-1">
+                            <span className="font-semibold text-rose-100">
+                              {authErrorBanner?.message || googleAuthError}
+                            </span>
+                            {authErrorBanner?.code === 'auth/unauthorized-domain' && authErrorBanner.domain && (
+                              <span className="font-mono text-[10px] text-amber-200 bg-slate-950/80 px-2 py-0.5 rounded border border-slate-800 w-fit">
+                                Hostname to authorize: {authErrorBanner.domain}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        {authErrorBanner?.canRetryRedirect !== false && (
+                          <div className="flex items-center gap-2 pl-6">
+                            <button
+                              type="button"
+                              onClick={handleRetryRedirectAuth}
+                              disabled={isVerifyingGoogle || authLoading}
+                              className="px-2.5 py-1 rounded bg-[#FF5B00] hover:bg-[#e55200] text-white font-bold text-[11px] cursor-pointer"
+                            >
+                              Try Redirect Sign-In
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

@@ -127,6 +127,11 @@ import {
   auth,
   db,
   signInWithGoogle,
+  signInWithGoogleRedirect,
+  consumeGoogleRedirectResult,
+  peekGoogleAuthReturnTarget,
+  clearGoogleAuthReturnTarget,
+  GoogleAuthReturnTarget,
   logOut,
   handleFirestoreError,
   OperationType
@@ -171,7 +176,28 @@ interface AppContextType {
   // Firebase & Credential Auth
   currentUser: User | null;
   authLoading: boolean;
-  loginWithGoogle: (options?: { skipNavigate?: boolean } | unknown) => Promise<{ success: boolean; profile?: RegisteredUserProfile; error?: string }>;
+  googleAuthError: string | null;
+  clearGoogleAuthError: () => void;
+  loginWithGoogle: (options?: {
+    skipNavigate?: boolean;
+    allowRedirectFallback?: boolean;
+    forceRedirect?: boolean;
+    returnTarget?: GoogleAuthReturnTarget;
+  } | unknown) => Promise<{
+    success: boolean;
+    profile?: RegisteredUserProfile;
+    error?: string;
+    code?: string;
+    domain?: string;
+    canRetryRedirect?: boolean;
+    redirecting?: boolean;
+  }>;
+  loginWithGoogleRedirect: (returnTarget?: GoogleAuthReturnTarget) => Promise<{
+    success: boolean;
+    redirecting?: boolean;
+    error?: string;
+    code?: string;
+  }>;
   authenticateUser: (identifier: string, password: string) => Promise<{ success: boolean; profile?: RegisteredUserProfile; error?: string }>;
   logoutUser: () => Promise<void>;
   isFirebaseConnected: boolean;
@@ -496,7 +522,7 @@ const INITIAL_EMPTY_WALLET: ParentWallet = {
   transactions: []
 };
 
-export const SUPER_ADMIN_EMAILS = ['martorefe@gmail.com', 'wowrealities@gmail.com'];
+export const SUPER_ADMIN_EMAILS = ['martorefe@gmail.com', 'wowrealities@gmail.com', 'martinnosaomorefe@gmail.com'];
 export const SUPER_ADMIN_EMAIL = 'martorefe@gmail.com';
 export const isSuperAdminEmail = (email?: string | null) => {
   if (!email) return false;
@@ -581,7 +607,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isDeviceFrame, setIsDeviceFrame] = useState<boolean>(false);
   const [isOffline, setIsOffline] = useState<boolean>(false);
   const [isLandingView, setIsLandingView] = useState<boolean>(false);
-  const [currentScreen, setCurrentScreen] = useState<'splash' | 'landing' | 'signin' | 'signup' | 'know_more' | 'app'>('splash');
+  const [currentScreen, setCurrentScreen] = useState<'splash' | 'landing' | 'signin' | 'signup' | 'know_more' | 'app'>(() => {
+    const returnTarget = peekGoogleAuthReturnTarget();
+    if (returnTarget) {
+      return 'app';
+    }
+    return 'splash';
+  });
+  const [googleAuthError, setGoogleAuthError] = useState<string | null>(null);
+  const clearGoogleAuthError = useCallback(() => setGoogleAuthError(null), []);
   const [activeStudentTab, setActiveStudentTab] = useState<'dashboard' | 'syllabus' | 'cbt' | 'competitions' | 'formulas' | 'tutors' | 'games' | 'ai-coach' | 'community' | 'exam-prep' | 'aspirant-cbt' | 'admission-guide' | 'mock-tournaments' | 'educator-importer'>('dashboard');
   const [activeReadingNote, setActiveReadingNote] = useState<CurriculumTopic | null>(null);
   const [activeExam, setActiveExam] = useState<CBTExam | null>(null);
@@ -1291,13 +1325,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setIsFirebaseConnected(!!user);
 
       if (user) {
-        // Automatic Super Admin Promotion for martorefe@gmail.com
+        setGoogleAuthError(null);
+        // Automatic Super Admin Promotion for authorized Super Admin emails
         if (isSuperAdminEmail(user.email)) {
+          const normalizedAdminEmail = (user.email || SUPER_ADMIN_EMAIL).toLowerCase().trim();
           const adminDocRef = doc(db, 'admins', user.uid);
           setDoc(
             adminDocRef,
             {
-              email: SUPER_ADMIN_EMAIL,
+              email: normalizedAdminEmail,
               role: 'superadmin',
               updatedAt: new Date().toISOString()
             },
@@ -1308,7 +1344,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             id: user.uid,
             role: 'admin',
             fullName: user.displayName || 'Martin Omorefe (Lead Developer)',
-            email: SUPER_ADMIN_EMAIL,
+            email: normalizedAdminEmail,
             avatarUrl: user.photoURL || undefined,
             emailVerified: true,
             createdAt: new Date().toISOString(),
@@ -1428,115 +1464,272 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, []);
 
-  const loginWithGoogle = async (options?: { skipNavigate?: boolean } | unknown): Promise<{ success: boolean; profile?: RegisteredUserProfile; error?: string }> => {
-    const skipNavigate =
-      options && typeof options === 'object' && 'skipNavigate' in options
-        ? Boolean((options as { skipNavigate?: boolean }).skipNavigate)
-        : false;
-
-    try {
-      const user = await signInWithGoogle();
-      if (isSuperAdminEmail(user.email)) {
-        const profile = loginAsDeveloper(user.email || SUPER_ADMIN_EMAIL, { skipNavigate });
-        return { success: true, profile };
-      }
-
-      const existing = allRegisteredUsers.find(
-        u => u.email.toLowerCase() === (user.email || '').toLowerCase()
-      );
-      if (existing?.accountStatus === 'deleted') {
-        return {
-          success: false,
-          error: existing.deletionReason || 'This account has been permanently closed.'
-        };
-      }
-      if (existing?.accountStatus === 'suspended') {
-        return {
-          success: false,
-          error: existing.suspensionReason || 'This account is currently suspended pending Super Admin review.'
-        };
-      }
-      if (
-        existing?.accountStatus === 'locked' &&
-        existing.lockedUntil &&
-        new Date(existing.lockedUntil).getTime() > Date.now()
-      ) {
-        return {
-          success: false,
-          error: existing.lockReason || 'This account is temporarily locked for security reasons.'
-        };
-      }
-
+  const finalizeGoogleUserSession = async (
+    user: User,
+    options?: { skipNavigate?: boolean }
+  ): Promise<{
+    success: boolean;
+    profile?: RegisteredUserProfile;
+    error?: string;
+    code?: string;
+  }> => {
+    const skipNavigate = Boolean(options?.skipNavigate);
+    if (isSuperAdminEmail(user.email)) {
+      const normalizedEmail = (user.email || SUPER_ADMIN_EMAIL).toLowerCase().trim();
+      const profile = loginAsDeveloper(normalizedEmail, { skipNavigate });
       try {
         const res = await fetch('/api/auth/login', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            ...getSecurityHeaders({ userId: existing?.id || user.uid, userEmail: user.email || undefined })
+            ...getSecurityHeaders({ userId: user.uid, userEmail: normalizedEmail })
           },
           body: JSON.stringify({
             method: 'google',
-            userId: existing?.id || user.uid,
-            email: user.email || '',
-            role: existing?.role || currentUserProfile?.role || 'student',
+            userId: user.uid,
+            email: normalizedEmail,
+            role: 'admin',
             hasLocalProfile: true
           })
         });
         const data = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          if (data?.error) {
-            return { success: false, error: data.error };
-          }
-        } else if (typeof data?.otaAdminToken === 'string') {
+        if (res.ok && typeof data?.otaAdminToken === 'string') {
           setServerOTAAdminToken(data.otaAdminToken);
         }
       } catch {
-        // Offline fallback handled below
+        // Non-fatal: direct Firebase ID token also authenticates /api/ota/*
       }
-
-      const profile: RegisteredUserProfile = existing || {
-        id: user.uid,
-        role: currentUserProfile?.role || 'student',
-        fullName: user.displayName || 'Student Companion Learner',
-        email: user.email || '',
-        avatarUrl: user.photoURL || undefined,
-        emailVerified: user.emailVerified ?? true,
-        createdAt: new Date().toISOString(),
-        studentData: student
-      };
-
-      setCurrentUserProfile(profile);
-      safeSetItem('sc_user_profile', JSON.stringify(profile));
-      setCurrentRole(profile.role);
-      if (profile.studentData) {
-        setStudent(profile.studentData);
-        safeSetItem('sc_student', JSON.stringify(profile.studentData));
-      }
-      if (!skipNavigate) {
-        confetti({ particleCount: 50, spread: 60, origin: { y: 0.6 } });
-      }
+      setGoogleAuthError(null);
       return { success: true, profile };
-    } catch (error: any) {
-      if (error?.code === 'auth/unauthorized-domain') {
-        console.info(
-          `[Firebase Auth] Origin domain "${window.location.hostname}" is not yet added to Firebase Console Authorized Domains. ` +
-          `Activating preview developer session for wowrealities@gmail.com.`
-        );
-        const profile = loginAsDeveloper('wowrealities@gmail.com', { skipNavigate });
-        if (!skipNavigate) {
-          confetti({ particleCount: 50, spread: 60, origin: { y: 0.6 } });
-        }
-        return { success: true, profile };
-      }
-      console.warn('Google Sign In:', error?.message || error);
-      const isCancelled =
-        error?.code === 'auth/popup-closed-by-user' ||
-        error?.code === 'auth/cancelled-popup-request';
+    }
+
+    const existing = allRegisteredUsers.find(
+      u => u.email.toLowerCase() === (user.email || '').toLowerCase()
+    );
+    if (existing?.accountStatus === 'deleted') {
       return {
         success: false,
-        error: isCancelled
-          ? 'Google sign-in was cancelled. Please try again.'
-          : error?.message || 'Google sign-in failed. Please try again.'
+        error: existing.deletionReason || 'This account has been permanently closed.'
+      };
+    }
+    if (existing?.accountStatus === 'suspended') {
+      return {
+        success: false,
+        error: existing.suspensionReason || 'This account is currently suspended pending Super Admin review.'
+      };
+    }
+    if (
+      existing?.accountStatus === 'locked' &&
+      existing.lockedUntil &&
+      new Date(existing.lockedUntil).getTime() > Date.now()
+    ) {
+      return {
+        success: false,
+        error: existing.lockReason || 'This account is temporarily locked for security reasons.'
+      };
+    }
+
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getSecurityHeaders({ userId: existing?.id || user.uid, userEmail: user.email || undefined })
+        },
+        body: JSON.stringify({
+          method: 'google',
+          userId: existing?.id || user.uid,
+          email: user.email || '',
+          role: existing?.role || currentUserProfile?.role || 'student',
+          hasLocalProfile: true
+        })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (data?.error) {
+          return { success: false, error: data.error };
+        }
+      } else if (typeof data?.otaAdminToken === 'string') {
+        setServerOTAAdminToken(data.otaAdminToken);
+      }
+    } catch {
+      // Offline fallback handled below
+    }
+
+    const profile: RegisteredUserProfile = existing || {
+      id: user.uid,
+      role: currentUserProfile?.role || 'student',
+      fullName: user.displayName || 'Student Companion Learner',
+      email: user.email || '',
+      avatarUrl: user.photoURL || undefined,
+      emailVerified: user.emailVerified ?? true,
+      createdAt: new Date().toISOString(),
+      studentData: student
+    };
+
+    setCurrentUserProfile(profile);
+    safeSetItem('sc_user_profile', JSON.stringify(profile));
+    setCurrentRole(profile.role);
+    if (profile.studentData) {
+      setStudent(profile.studentData);
+      safeSetItem('sc_student', JSON.stringify(profile.studentData));
+    }
+    if (!skipNavigate) {
+      setCurrentScreen('app');
+      confetti({ particleCount: 50, spread: 60, origin: { y: 0.6 } });
+    }
+    setGoogleAuthError(null);
+    return { success: true, profile };
+  };
+
+  // Handle Google Sign-In Redirect completion on boot (when popup fallback / redirect flow reloads page)
+  useEffect(() => {
+    let active = true;
+    consumeGoogleRedirectResult()
+      .then(async ({ user, returnTarget }) => {
+        if (!active) return;
+        if (user) {
+          await finalizeGoogleUserSession(user, { skipNavigate: true });
+          if (returnTarget) {
+            setCurrentScreen('app');
+          }
+          if (returnTarget === 'app' || returnTarget === 'super_admin') {
+            clearGoogleAuthReturnTarget();
+          }
+        } else if (returnTarget === 'app') {
+          clearGoogleAuthReturnTarget();
+        }
+      })
+      .catch((error: any) => {
+        if (!active) return;
+        const code = error?.code || 'auth/redirect-failed';
+        const domain = error?.domain || (typeof window !== 'undefined' ? window.location.hostname : '');
+        const msg =
+          code === 'auth/unauthorized-domain'
+            ? `Google Redirect rejected domain "${domain}" (${code}). Add "${domain}" in Firebase Console → Authentication → Settings → Authorized domains.`
+            : `Google Redirect sign-in failed (${code}): ${error?.message || 'Unable to verify Google session.'}`;
+        setGoogleAuthError(msg);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const loginWithGoogleRedirect = async (
+    returnTarget: GoogleAuthReturnTarget = 'app'
+  ): Promise<{ success: boolean; redirecting?: boolean; error?: string; code?: string }> => {
+    setGoogleAuthError(null);
+    try {
+      await signInWithGoogleRedirect(returnTarget);
+      return { success: true, redirecting: true };
+    } catch (error: any) {
+      const code = error?.code || 'auth/redirect-failed';
+      const domain = error?.domain || (typeof window !== 'undefined' ? window.location.hostname : '');
+      const msg =
+        code === 'auth/unauthorized-domain'
+          ? `Firebase Auth rejected domain "${domain}" (${code}). Add "${domain}" in Firebase Console → Authentication → Settings → Authorized domains.`
+          : error?.message || `Unable to launch Google redirect sign-in (${code}).`;
+      setGoogleAuthError(msg);
+      return { success: false, error: msg, code };
+    }
+  };
+
+  const loginWithGoogle = async (options?: {
+    skipNavigate?: boolean;
+    allowRedirectFallback?: boolean;
+    forceRedirect?: boolean;
+    returnTarget?: GoogleAuthReturnTarget;
+  } | unknown): Promise<{
+    success: boolean;
+    profile?: RegisteredUserProfile;
+    error?: string;
+    code?: string;
+    domain?: string;
+    canRetryRedirect?: boolean;
+    redirecting?: boolean;
+  }> => {
+    const opts = options && typeof options === 'object' ? (options as {
+      skipNavigate?: boolean;
+      allowRedirectFallback?: boolean;
+      forceRedirect?: boolean;
+      returnTarget?: GoogleAuthReturnTarget;
+    }) : {};
+    const skipNavigate = Boolean(opts.skipNavigate);
+    const allowRedirectFallback = Boolean(opts.allowRedirectFallback);
+    const forceRedirect = Boolean(opts.forceRedirect);
+    const returnTarget: GoogleAuthReturnTarget = opts.returnTarget || (skipNavigate ? 'ota_app_updates' : 'app');
+
+    setGoogleAuthError(null);
+
+    if (forceRedirect) {
+      const redirRes = await loginWithGoogleRedirect(returnTarget);
+      return {
+        success: redirRes.success,
+        redirecting: redirRes.redirecting,
+        error: redirRes.error,
+        code: redirRes.code
+      };
+    }
+
+    try {
+      const user = await signInWithGoogle();
+      return await finalizeGoogleUserSession(user, { skipNavigate });
+    } catch (error: any) {
+      const code: string = error?.code || 'auth/unknown';
+      const domain: string = error?.domain || (typeof window !== 'undefined' ? window.location.hostname : '');
+      console.warn('Google Sign In:', code, error?.message || error);
+
+      if (code === 'auth/unauthorized-domain') {
+        const msg = `Firebase Auth rejected domain "${domain}" (${code}). Add "${domain}" under Firebase Console → Authentication → Settings → Authorized domains, then retry.`;
+        setGoogleAuthError(msg);
+        return {
+          success: false,
+          code,
+          domain,
+          canRetryRedirect: false,
+          error: msg
+        };
+      }
+
+      const isPopupRetryable =
+        code === 'auth/popup-blocked' ||
+        code === 'auth/popup-closed-by-user' ||
+        code === 'auth/cancelled-popup-request' ||
+        code === 'auth/operation-not-supported-in-this-environment';
+
+      if (isPopupRetryable && allowRedirectFallback) {
+        try {
+          await signInWithGoogleRedirect(returnTarget);
+          return { success: true, redirecting: true, code };
+        } catch (redirError: any) {
+          const redirMsg = redirError?.message || `Redirect fallback failed (${redirError?.code || 'auth/redirect-failed'}).`;
+          setGoogleAuthError(redirMsg);
+          return {
+            success: false,
+            code: redirError?.code || code,
+            domain,
+            canRetryRedirect: true,
+            error: redirMsg
+          };
+        }
+      }
+
+      const exactMsg =
+        code === 'auth/popup-blocked'
+          ? `Popup was blocked by the browser or WebView (${code}). Tap "Retry with Redirect Sign-In" to authenticate in this window.`
+          : code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request'
+          ? `Google Auth tab/popup closed before sign-in finished (${code}). This can happen in embedded iframes or WebViews — tap "Retry with Redirect Sign-In".`
+          : code === 'auth/operation-not-supported-in-this-environment'
+          ? `Popup auth is not supported in this browser environment (${code}). Tap "Retry with Redirect Sign-In".`
+          : `Google sign-in failed (${code}): ${error?.message || 'Please try again.'}`;
+
+      setGoogleAuthError(exactMsg);
+      return {
+        success: false,
+        code,
+        domain,
+        canRetryRedirect: true,
+        error: exactMsg
       };
     }
   };
@@ -1565,7 +1758,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Brief realistic verification step so loading state is clearly rendered
     await new Promise(resolve => window.setTimeout(resolve, 420));
 
-    if (cleanInput === 'martorefe@gmail.com' || cleanInput === 'wowrealities@gmail.com') {
+    if (isSuperAdminEmail(cleanInput)) {
       try {
         const res = await fetch('/api/auth/login', {
           method: 'POST',
@@ -5249,10 +5442,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const loginAsDeveloper = (emailInput?: string, options?: { skipNavigate?: boolean }): RegisteredUserProfile => {
     const targetEmail = (emailInput || SUPER_ADMIN_EMAIL).toLowerCase().trim();
+    const displayName =
+      targetEmail === 'martinnosaomorefe@gmail.com'
+        ? 'Martin Nosa Omorefe (Super Admin)'
+        : 'Martin Omorefe (Lead Developer)';
     const devProfile: RegisteredUserProfile = {
       id: 'usr-dev-martorefe',
       role: 'admin',
-      fullName: 'Martin Omorefe (Lead Developer)',
+      fullName: displayName,
       email: targetEmail,
       emailVerified: true,
       isSuperAdmin: true,
@@ -5715,7 +5912,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deleteAccount,
         currentUser,
         authLoading,
+        googleAuthError,
+        clearGoogleAuthError,
         loginWithGoogle,
+        loginWithGoogleRedirect,
         authenticateUser,
         logoutUser,
         isFirebaseConnected,

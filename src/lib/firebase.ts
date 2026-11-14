@@ -1,5 +1,13 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
+import {
+  getAuth,
+  GoogleAuthProvider,
+  signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
+  signOut,
+  User
+} from 'firebase/auth';
 import { initializeFirestore, getFirestore, doc, getDocFromServer } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 
@@ -16,6 +24,41 @@ try {
 export const db = getFirestore(app, (firebaseConfig as any).firestoreDatabaseId); /* CRITICAL: The app will break without this line */
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
+googleProvider.setCustomParameters({ prompt: 'select_account' });
+
+export const GOOGLE_AUTH_RETURN_TARGET_KEY = 'sc_google_auth_return_target';
+export type GoogleAuthReturnTarget = 'ota_app_updates' | 'super_admin' | 'app';
+
+export function setGoogleAuthReturnTarget(target: GoogleAuthReturnTarget): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.sessionStorage.setItem(GOOGLE_AUTH_RETURN_TARGET_KEY, target);
+  } catch {
+    // Ignore storage restriction
+  }
+}
+
+export function peekGoogleAuthReturnTarget(): GoogleAuthReturnTarget | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const val = window.sessionStorage.getItem(GOOGLE_AUTH_RETURN_TARGET_KEY);
+    if (val === 'ota_app_updates' || val === 'super_admin' || val === 'app') {
+      return val;
+    }
+  } catch {
+    // Ignore storage restriction
+  }
+  return null;
+}
+
+export function clearGoogleAuthReturnTarget(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.sessionStorage.removeItem(GOOGLE_AUTH_RETURN_TARGET_KEY);
+  } catch {
+    // Ignore storage restriction
+  }
+}
 
 export enum OperationType {
   CREATE = 'create',
@@ -95,19 +138,56 @@ if (typeof window !== 'undefined') {
   }, 1000);
 }
 
-export async function signInWithGoogle() {
+function normalizeFirebaseAuthError(error: any): Error {
+  const hostname = typeof window !== 'undefined' ? window.location.hostname : '';
+  const code =
+    error?.code ||
+    (error?.message?.includes('unauthorized-domain') ? 'auth/unauthorized-domain' : undefined) ||
+    'auth/unknown';
+  const msg = error?.message || code;
+  const wrapped = new Error(msg);
+  (wrapped as any).code = code;
+  (wrapped as any).domain = hostname;
+  return wrapped;
+}
+
+export async function signInWithGoogle(): Promise<User> {
   try {
     const result = await signInWithPopup(auth, googleProvider);
     return result.user;
   } catch (error: any) {
-    if (error?.code === 'auth/unauthorized-domain' || error?.message?.includes('unauthorized-domain')) {
-      const err = new Error('auth/unauthorized-domain');
-      (err as any).code = 'auth/unauthorized-domain';
-      (err as any).domain = typeof window !== 'undefined' ? window.location.hostname : '';
-      throw err;
+    const normalized = normalizeFirebaseAuthError(error);
+    console.warn('Google Sign In (Popup):', (normalized as any).code, normalized.message);
+    throw normalized;
+  }
+}
+
+export async function signInWithGoogleRedirect(returnTarget: GoogleAuthReturnTarget = 'app'): Promise<void> {
+  setGoogleAuthReturnTarget(returnTarget);
+  try {
+    await signInWithRedirect(auth, googleProvider);
+  } catch (error: any) {
+    const normalized = normalizeFirebaseAuthError(error);
+    console.warn('Google Sign In (Redirect):', (normalized as any).code, normalized.message);
+    throw normalized;
+  }
+}
+
+export async function consumeGoogleRedirectResult(): Promise<{
+  user: User | null;
+  returnTarget: GoogleAuthReturnTarget | null;
+}> {
+  const returnTarget = peekGoogleAuthReturnTarget();
+  try {
+    const result = await getRedirectResult(auth);
+    if (result?.user) {
+      return { user: result.user, returnTarget };
     }
-    console.warn('Google Sign In:', error?.message || error);
-    throw error;
+    return { user: null, returnTarget };
+  } catch (error: any) {
+    const normalized = normalizeFirebaseAuthError(error);
+    console.warn('Google Redirect Result Error:', (normalized as any).code, normalized.message);
+    throw normalized;
   }
 }
 

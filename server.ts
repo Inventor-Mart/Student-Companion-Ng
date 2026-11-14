@@ -2151,7 +2151,7 @@ app.get('/api/paystack/config', (_req, res) => {
 // 2. Save / Update Paystack Live Keys (Admin Only: wowrealities@gmail.com, martorefe@gmail.com)
 app.post('/api/paystack/save-keys', async (req, res) => {
   const { publicKey, secretKey, adminEmail } = req.body;
-  const authorizedAdmins = ['martorefe@gmail.com', 'wowrealities@gmail.com'];
+  const authorizedAdmins = ['martorefe@gmail.com', 'wowrealities@gmail.com', 'martinnosaomorefe@gmail.com'];
 
   if (!adminEmail || !authorizedAdmins.includes(String(adminEmail).toLowerCase().trim())) {
     await securityService.logUnauthorizedProbe(req, '/api/paystack/save-keys', adminEmail);
@@ -2852,7 +2852,7 @@ app.post('/api/admin/purge-test-accounts', async (req, res) => {
 // GIT HUB REPOSITORY SYNC ROUTES (Authorized Existing Super Admins Only)
 // =========================================================================
 const execFileAsync = promisify(execFile);
-const AUTHORIZED_GIT_ADMINS = ['martorefe@gmail.com', 'wowrealities@gmail.com'];
+const AUTHORIZED_GIT_ADMINS = ['martorefe@gmail.com', 'wowrealities@gmail.com', 'martinnosaomorefe@gmail.com'];
 const TARGET_GITHUB_OWNER = 'Inventor-Mart';
 const TARGET_GITHUB_REPO = 'Student-Companion-Ng';
 const TARGET_GITHUB_BRANCH = 'main';
