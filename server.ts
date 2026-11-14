@@ -71,6 +71,18 @@ app.get('/health', (_req, res) => res.status(200).json({ status: 'ok', uptime: p
 app.get('/api/health', (_req, res) => res.status(200).json({ status: 'ok', uptime: process.uptime() }));
 
 // Global Security Middleware (IP / Device Fingerprint Blocking & Sliding-Window Rate Limiting)
+app.use('/api', (req, res, next) => {
+  const origin = String(req.headers.origin || '');
+  if (origin === 'https://appassets.androidplatform.net') {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Device-Fingerprint');
+    if (req.method === 'OPTIONS') {
+      return res.sendStatus(204);
+    }
+  }
+  return next();
+});
 app.use('/api', securityService.middleware());
 securityService.registerRoutes(app);
 
@@ -3199,18 +3211,29 @@ async function resolveCompiledAndroidApk(): Promise<{
   apkSizeBytes?: number;
   versionName?: string;
 }> {
-  const localReleaseApk = path.join(__dirname, 'public', 'releases', 'StudentCompanion-v1.0.0-android6plus.apk');
-  if (fs.existsSync(localReleaseApk)) {
-    const stat = fs.statSync(localReleaseApk);
-    if (stat.size > 50_000) {
-      return {
-        apkReady: true,
-        source: 'local',
-        localPath: localReleaseApk,
-        apkUrl: '/api/download/android-apk',
-        apkSizeBytes: stat.size,
-        versionName: '1.0.0',
-      };
+  const localCandidates = [
+    {
+      filePath: path.join(__dirname, 'public', 'releases', 'StudentCompanion-v2.0.0-offline-android6plus.apk'),
+      versionName: '2.0.0',
+    },
+    {
+      filePath: path.join(__dirname, 'public', 'releases', 'StudentCompanion-v1.0.0-android6plus.apk'),
+      versionName: '1.0.0',
+    },
+  ];
+  for (const candidate of localCandidates) {
+    if (fs.existsSync(candidate.filePath)) {
+      const stat = fs.statSync(candidate.filePath);
+      if (stat.size > 50_000) {
+        return {
+          apkReady: true,
+          source: 'local',
+          localPath: candidate.filePath,
+          apkUrl: '/api/download/android-apk',
+          apkSizeBytes: stat.size,
+          versionName: candidate.versionName,
+        };
+      }
     }
   }
 
@@ -3230,16 +3253,25 @@ async function resolveCompiledAndroidApk(): Promise<{
       if (releaseRes.ok) {
         const releaseData: any = await releaseRes.json();
         const assets: any[] = Array.isArray(releaseData?.assets) ? releaseData.assets : [];
-        const apkAsset = assets.find(
-          (a) => typeof a?.name === 'string' && a.name.toLowerCase().endsWith('.apk') && Number(a.size) > 50_000
-        );
+        const apkAssets = assets
+          .filter(
+            (a) => typeof a?.name === 'string' && a.name.toLowerCase().endsWith('.apk') && Number(a.size) > 50_000
+          )
+          .sort((a, b) => {
+            const aOffline = String(a.name).toLowerCase().includes('offline') ? 1 : 0;
+            const bOffline = String(b.name).toLowerCase().includes('offline') ? 1 : 0;
+            if (aOffline !== bOffline) return bOffline - aOffline;
+            return Date.parse(String(b.updated_at || b.created_at || 0)) - Date.parse(String(a.updated_at || a.created_at || 0));
+          });
+        const apkAsset = apkAssets[0];
         if (apkAsset?.browser_download_url) {
+          const isOfflineBuild = String(apkAsset.name).toLowerCase().includes('offline');
           return {
             apkReady: true,
             source: 'github',
             apkUrl: apkAsset.browser_download_url,
             apkSizeBytes: Number(apkAsset.size),
-            versionName: String(releaseData?.tag_name || '1.0.0'),
+            versionName: isOfflineBuild ? '2.0.0 Offline' : String(releaseData?.tag_name || '1.0.0'),
           };
         }
       }
@@ -3338,7 +3370,7 @@ app.get('/api/android/apk-status', async (req, res) => {
     apkReady: resolved.apkReady,
     apkUrl: resolved.apkUrl || null,
     apkSizeBytes: resolved.apkSizeBytes || 0,
-    versionName: resolved.versionName || '1.0.0',
+    versionName: resolved.versionName || '2.0.0',
     packageName: 'com.studentcompanion.app',
     minSdkVersion: 23,
     androidMinLabel: 'Android 6.0 Marshmallow+',
@@ -3427,7 +3459,7 @@ app.post('/api/android/trigger-github-apk-build', async (req, res) => {
 app.get('/api/download/android-apk', async (req, res) => {
   const resolved = await resolveCompiledAndroidApk();
   if (resolved.apkReady && resolved.source === 'local' && resolved.localPath) {
-    return res.download(resolved.localPath, 'StudentCompanion-v1.0.0-android6plus.apk');
+    return res.download(resolved.localPath, 'StudentCompanion-v2.0.0-offline-android6plus.apk');
   }
   if (resolved.apkReady && resolved.source === 'github' && resolved.apkUrl) {
     return res.redirect(resolved.apkUrl);

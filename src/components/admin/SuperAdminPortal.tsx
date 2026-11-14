@@ -1466,13 +1466,13 @@ export const SuperAdminPortal: React.FC = () => {
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <h2 className="text-sm font-bold text-white tracking-tight">GitHub Cloud Android APK Builder</h2>
+                <h2 className="text-sm font-bold text-white tracking-tight">GitHub Cloud Offline APK Builder</h2>
                 <span className="text-[11px] font-mono text-emerald-400">
-                  com.studentcompanion.app · minSdk 23 (Android 6.0+)
+                  com.studentcompanion.app · minSdk 23 (Android 6.0+) · Offline Standalone
                 </span>
               </div>
               <p className="text-[11px] text-slate-400 mt-0.5">
-                Compiles a signed multi-MB <code className="text-slate-300">.apk</code> in the cloud via GitHub Actions — zero Android Studio installation required.
+                Bundles the full app inside APK assets and compiles a signed offline <code className="text-slate-300">.apk</code> via GitHub Actions — works without internet.
               </p>
             </div>
           </div>
@@ -1549,7 +1549,7 @@ export const SuperAdminPortal: React.FC = () => {
                   : apkCloudStatus.latestRun
                   ? `Latest GitHub Actions run: ${apkCloudStatus.latestRun.status}${apkCloudStatus.latestRun.conclusion ? ` (${apkCloudStatus.latestRun.conclusion})` : ''}`
                   : apkCloudStatus.workflowOnRemote
-                  ? 'Workflow active on GitHub — click "Build APK on GitHub" to compile your signed Android 6+ APK.'
+                  ? 'Workflow active on GitHub — click "Build APK on GitHub" to compile your signed offline Android 6+ APK.'
                   : 'Click "Sync to GitHub (main)" above once to push the Android cloud build workflow, then click "Build APK on GitHub".'}
               </span>
             </div>
@@ -1604,27 +1604,27 @@ export const SuperAdminPortal: React.FC = () => {
               <span>Push Workflow to GitHub</span>
             </div>
             <p className="text-[11px] text-slate-400 leading-relaxed">
-              Ensure your <code className="text-emerald-400 font-mono">GITHUB_TOKEN</code> has <strong className="text-slate-200">workflow</strong> scope enabled, then click <strong className="text-slate-200">Sync to GitHub (main)</strong> above.
+              Click <strong className="text-slate-200">Sync to GitHub (main)</strong> above to upload the latest web bundle &amp; Android offline wrapper to GitHub.
             </p>
           </div>
 
           <div className="bg-slate-950 border border-slate-800 rounded-xl p-3.5 space-y-1.5">
             <div className="font-bold text-white flex items-center gap-1.5">
               <span className="w-5 h-5 rounded-full bg-slate-800 text-amber-400 flex items-center justify-center text-[10px] font-mono">2</span>
-              <span>GitHub Cloud Compiles APK</span>
+              <span>GitHub Bundles &amp; Compiles APK</span>
             </div>
             <p className="text-[11px] text-slate-400 leading-relaxed">
-              GitHub Actions automatically runs JDK 17 + Android SDK + Gradle to compile and sign a real multi-MB <code className="text-emerald-400 font-mono">.apk</code> for Android 6.0+ (<code className="text-emerald-400 font-mono">minSdk 23</code>).
+              GitHub Actions builds the web bundle directly into APK assets and runs JDK 17 + Gradle to sign a complete offline <code className="text-emerald-400 font-mono">.apk</code> (<code className="text-emerald-400 font-mono">minSdk 23</code>).
             </p>
           </div>
 
           <div className="bg-slate-950 border border-slate-800 rounded-xl p-3.5 space-y-1.5">
             <div className="font-bold text-white flex items-center gap-1.5">
               <span className="w-5 h-5 rounded-full bg-slate-800 text-amber-400 flex items-center justify-center text-[10px] font-mono">3</span>
-              <span>1-Click Download Everywhere</span>
+              <span>Download Signed Offline APK</span>
             </div>
             <p className="text-[11px] text-slate-400 leading-relaxed">
-              As soon as the ~2 min build finishes, <strong className="text-slate-200">Download Signed APK</strong> unlocks automatically right here and inside the top-bar <strong className="text-slate-200">Install App</strong> menu.
+              Once finished (~2–3 min), tap <strong className="text-slate-200">Check Build</strong> and click <strong className="text-slate-200">Download Signed APK</strong> right here.
             </p>
           </div>
         </div>
