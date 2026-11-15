@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import confetti from 'canvas-confetti';
-import { User, onAuthStateChanged } from 'firebase/auth';
+import { User, onAuthStateChanged, signInWithEmailAndPassword } from 'firebase/auth';
 import {
   doc,
   collection,
@@ -573,7 +573,7 @@ const INITIAL_EMPTY_WALLET: ParentWallet = {
   transactions: []
 };
 
-export const SUPER_ADMIN_EMAILS = ['martorefe@gmail.com', 'wowrealities@gmail.com', 'martinnosaomorefe@gmail.com'];
+export const SUPER_ADMIN_EMAILS = ['martorefe@gmail.com', 'wowrealities@gmail.com'];
 export const SUPER_ADMIN_EMAIL = 'martorefe@gmail.com';
 export const isSuperAdminEmail = (email?: string | null) => {
   if (!email) return false;
@@ -1815,10 +1815,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const normalizedEmail = (user.email || SUPER_ADMIN_EMAIL).toLowerCase().trim();
       const profile = loginAsDeveloper(normalizedEmail, { skipNavigate });
       try {
+        const firebaseIdToken = await user.getIdToken().catch(() => '');
         const res = await fetch('/api/auth/login', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            ...(firebaseIdToken ? { Authorization: `Bearer ${firebaseIdToken}` } : {}),
             ...getSecurityHeaders({ userId: user.uid, userEmail: normalizedEmail })
           },
           body: JSON.stringify({
@@ -1826,7 +1828,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             userId: user.uid,
             email: normalizedEmail,
             role: 'admin',
-            hasLocalProfile: true
+            hasLocalProfile: true,
+            firebaseIdToken
           })
         });
         const data = await res.json().catch(() => ({}));
@@ -1992,7 +1995,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       returnTarget?: GoogleAuthReturnTarget;
     }) : {};
     const skipNavigate = Boolean(opts.skipNavigate);
-    const allowRedirectFallback = Boolean(opts.allowRedirectFallback);
+    const isBundledAndroidApk =
+      typeof window !== 'undefined' && window.location.hostname === 'appassets.androidplatform.net';
+    const allowRedirectFallback = opts.allowRedirectFallback !== undefined
+      ? Boolean(opts.allowRedirectFallback)
+      : isBundledAndroidApk;
     const forceRedirect = Boolean(opts.forceRedirect);
     const returnTarget: GoogleAuthReturnTarget = opts.returnTarget || (skipNavigate ? 'ota_app_updates' : 'app');
 
@@ -2096,11 +2103,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     await new Promise(resolve => window.setTimeout(resolve, 420));
 
     if (isSuperAdminEmail(cleanInput)) {
+      let firebaseIdToken = '';
+      try {
+        const cred = await signInWithEmailAndPassword(auth, cleanInput, password);
+        firebaseIdToken = await cred.user.getIdToken();
+      } catch {
+        // If Firebase email/password account is not set up, server will verify SUPER_ADMIN_PASSWORD strictly
+      }
+
       try {
         const res = await fetch('/api/auth/login', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            ...(firebaseIdToken ? { Authorization: `Bearer ${firebaseIdToken}` } : {}),
             ...getSecurityHeaders({ userEmail: cleanInput })
           },
           body: JSON.stringify({
@@ -2108,24 +2124,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             password,
             method: 'super_admin',
             email: cleanInput,
-            hasLocalProfile: true
+            hasLocalProfile: true,
+            firebaseIdToken
           })
         });
         const data = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          if (data?.error) {
-            recordLoginFailure(cleanInput);
-            return { success: false, error: data.error };
-          }
-        } else if (typeof data?.otaAdminToken === 'string') {
+        if (!res.ok || data?.authenticated !== true) {
+          recordLoginFailure(cleanInput);
+          return {
+            success: false,
+            error:
+              data?.error ||
+              'Incorrect Super Admin password. Please verify your password or tap "Continue with Google".'
+          };
+        }
+        if (typeof data?.otaAdminToken === 'string') {
           setServerOTAAdminToken(data.otaAdminToken);
         }
+        resetLoginFailures(cleanInput);
+        const devProfile = loginAsDeveloper(cleanInput, { skipNavigate: true });
+        return { success: true, profile: devProfile };
       } catch {
-        // Offline fallback allowed for local Super Admin development
+        return {
+          success: false,
+          error:
+            'Unable to reach verification server for Super Admin sign-in. Check your internet connection or tap "Continue with Google".'
+        };
       }
-      resetLoginFailures(cleanInput);
-      const devProfile = loginAsDeveloper(cleanInput, { skipNavigate: true });
-      return { success: true, profile: devProfile };
     }
 
     const matched =
@@ -6920,10 +6945,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const loginAsDeveloper = (emailInput?: string, options?: { skipNavigate?: boolean }): RegisteredUserProfile => {
     const targetEmail = (emailInput || SUPER_ADMIN_EMAIL).toLowerCase().trim();
-    const displayName =
-      targetEmail === 'martinnosaomorefe@gmail.com'
-        ? 'Martin Nosa Omorefe (Super Admin)'
-        : 'Martin Omorefe (Lead Developer)';
+    const displayName = 'Martin Omorefe (Lead Developer)';
     const devProfile: RegisteredUserProfile = {
       id: 'usr-dev-martorefe',
       role: 'admin',

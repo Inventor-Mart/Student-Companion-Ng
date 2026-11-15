@@ -198,7 +198,13 @@ export const SignInPage: React.FC<SignInPageProps> = ({
               <Mail className="w-5 h-5 stroke-[2.2]" />
             </div>
             <input
+              id="sc-login-identifier"
+              name="username"
               type="text"
+              autoComplete="username"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
               disabled={isSubmitting}
               value={emailOrUsername}
               onChange={(e) => {
@@ -216,7 +222,10 @@ export const SignInPage: React.FC<SignInPageProps> = ({
               <Lock className="w-5 h-5 stroke-[2.2]" />
             </div>
             <input
+              id="sc-login-password"
+              name="password"
               type="password"
+              autoComplete="current-password"
               disabled={isSubmitting}
               value={password}
               onChange={(e) => {

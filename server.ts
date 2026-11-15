@@ -99,10 +99,18 @@ app.get('/api/health', (_req, res) => res.status(200).json({ status: 'ok', uptim
 // Global Security Middleware (IP / Device Fingerprint Blocking & Sliding-Window Rate Limiting)
 app.use('/api', (req, res, next) => {
   const origin = String(req.headers.origin || '');
-  if (origin === 'https://appassets.androidplatform.net') {
+  const isAllowedApkOrigin =
+    origin === 'https://appassets.androidplatform.net' ||
+    origin === 'http://localhost' ||
+    origin === 'https://localhost';
+  if (isAllowedApkOrigin) {
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Device-Fingerprint');
+    res.setHeader(
+      'Access-Control-Allow-Headers',
+      'Content-Type,Authorization,X-Device-Fingerprint,X-User-Id,X-User-Email'
+    );
+    res.setHeader('Access-Control-Max-Age', '86400');
     if (req.method === 'OPTIONS') {
       return res.sendStatus(204);
     }
@@ -114,9 +122,21 @@ securityService.registerRoutes(app, verifySuperAdminRequest);
 
 // Initialize GoogleGenAI server-side with required User-Agent
 let aiInstance: GoogleGenAI | null = null;
+let aiInstanceKey = '';
+function getConfiguredGeminiApiKey(): string {
+  return (process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || '').trim();
+}
 function getAi(): GoogleGenAI {
-  if (!aiInstance) {
-    const key = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || '';
+  const key = getConfiguredGeminiApiKey();
+  if (!key || key === 'MY_GEMINI_API_KEY') {
+    const missingErr: any = new Error(
+      'SC AI Study Coach is unavailable because GEMINI_API_KEY is not configured in AI Studio Settings → Secrets.'
+    );
+    missingErr.status = 503;
+    throw missingErr;
+  }
+  if (!aiInstance || aiInstanceKey !== key) {
+    aiInstanceKey = key;
     aiInstance = new GoogleGenAI({
       apiKey: key,
       httpOptions: {
@@ -181,9 +201,11 @@ async function generateGeminiWithResilience(params: {
   const fallbackModel = params.fallbackModel || 'gemini-3.1-flash-lite';
   const label = params.label || 'Gemini Request';
 
+  const aiClient = getAi();
+
   // Attempt 1: Primary model
   try {
-    return await getAi().models.generateContent({
+    return await aiClient.models.generateContent({
       model: primaryModel,
       contents: params.contents,
       config: params.config,
@@ -197,7 +219,7 @@ async function generateGeminiWithResilience(params: {
 
     // Attempt 2: Retry primary model after 1.5s backoff
     try {
-      return await getAi().models.generateContent({
+      return await aiClient.models.generateContent({
         model: primaryModel,
         contents: params.contents,
         config: params.config,
@@ -3683,8 +3705,48 @@ app.post('/api/partners/withdraw', async (req, res) => {
 // PAYSTACK PAYMENT & VERIFICATION GATEWAY
 // ==========================================
 
-let runtimePaystackPublicKey = process.env.VITE_PAYSTACK_PUBLIC_KEY || process.env.PAYSTACK_PUBLIC_KEY || '';
-let runtimePaystackSecretKey = process.env.PAYSTACK_SECRET_KEY || '';
+const PAYSTACK_RUNTIME_CONFIG_FILE = path.resolve(__dirname, '.paystack-runtime-config.json');
+
+function loadPersistedPaystackConfig(): { publicKey: string; secretKey: string } {
+  try {
+    if (fs.existsSync(PAYSTACK_RUNTIME_CONFIG_FILE)) {
+      const parsed = JSON.parse(fs.readFileSync(PAYSTACK_RUNTIME_CONFIG_FILE, 'utf8'));
+      return {
+        publicKey: typeof parsed?.publicKey === 'string' ? parsed.publicKey.trim() : '',
+        secretKey: typeof parsed?.secretKey === 'string' ? parsed.secretKey.trim() : '',
+      };
+    }
+  } catch {
+    // Ignore corrupt runtime config
+  }
+  return { publicKey: '', secretKey: '' };
+}
+
+function savePersistedPaystackConfig(publicKey: string, secretKey: string): void {
+  try {
+    fs.writeFileSync(
+      PAYSTACK_RUNTIME_CONFIG_FILE,
+      JSON.stringify(
+        {
+          publicKey,
+          secretKey,
+          updatedAt: new Date().toISOString(),
+        },
+        null,
+        2
+      ),
+      'utf8'
+    );
+  } catch (err) {
+    console.warn('[Paystack] Unable to persist runtime config to disk:', err);
+  }
+}
+
+const persistedPaystack = loadPersistedPaystackConfig();
+let runtimePaystackPublicKey =
+  (process.env.VITE_PAYSTACK_PUBLIC_KEY || process.env.PAYSTACK_PUBLIC_KEY || persistedPaystack.publicKey || '').trim();
+let runtimePaystackSecretKey =
+  (process.env.PAYSTACK_SECRET_KEY || persistedPaystack.secretKey || '').trim();
 
 // 1. Get Paystack Public Config (Live Keys Only)
 app.get('/api/paystack/config', (_req, res) => {
@@ -3708,7 +3770,7 @@ app.get('/api/paystack/config', (_req, res) => {
 // 2. Save / Update Paystack Live Keys (Admin Only: wowrealities@gmail.com, martorefe@gmail.com)
 app.post('/api/paystack/save-keys', async (req, res) => {
   const { publicKey, secretKey, adminEmail } = req.body;
-  const authorizedAdmins = ['martorefe@gmail.com', 'wowrealities@gmail.com', 'martinnosaomorefe@gmail.com'];
+  const authorizedAdmins = ['martorefe@gmail.com', 'wowrealities@gmail.com'];
 
   if (!adminEmail || !authorizedAdmins.includes(String(adminEmail).toLowerCase().trim())) {
     await securityService.logUnauthorizedProbe(req, '/api/paystack/save-keys', adminEmail);
@@ -3739,13 +3801,15 @@ app.post('/api/paystack/save-keys', async (req, res) => {
     runtimePaystackSecretKey = nextSec;
   }
 
+  savePersistedPaystackConfig(runtimePaystackPublicKey, runtimePaystackSecretKey);
+
   const liveConfigured =
     runtimePaystackPublicKey.startsWith('pk_live_') && runtimePaystackSecretKey.startsWith('sk_live_');
 
   return res.json({
     success: true,
     message: liveConfigured
-      ? 'Paystack Live gateway keys verified and active.'
+      ? 'Paystack Live gateway keys verified, persisted, and active.'
       : 'Paystack live key saved. Both pk_live_ and sk_live_ must be configured to process live payments.',
     publicKey: runtimePaystackPublicKey.startsWith('pk_live_') ? runtimePaystackPublicKey : '',
     hasSecretKey: runtimePaystackSecretKey.startsWith('sk_live_'),
@@ -5082,7 +5146,7 @@ app.post('/api/admin/purge-test-accounts', async (req, res) => {
 // GIT HUB REPOSITORY SYNC ROUTES (Authorized Existing Super Admins Only)
 // =========================================================================
 const execFileAsync = promisify(execFile);
-const AUTHORIZED_GIT_ADMINS = ['martorefe@gmail.com', 'wowrealities@gmail.com', 'martinnosaomorefe@gmail.com'];
+const AUTHORIZED_GIT_ADMINS = ['martorefe@gmail.com', 'wowrealities@gmail.com'];
 const TARGET_GITHUB_OWNER = 'Inventor-Mart';
 const TARGET_GITHUB_REPO = 'Student-Companion-Ng';
 const TARGET_GITHUB_BRANCH = 'main';
@@ -5296,19 +5360,12 @@ async function ensureGitWorkspace(adminEmail: string): Promise<{ autoInitialized
     autoInitialized = true;
   }
 
-  try {
-    const nameOut = await runGit(['config', 'user.name']);
-    if (!nameOut.stdout.trim()) throw new Error('empty');
-  } catch {
-    await runGit(['config', 'user.name', 'Student Companion Admin']);
-  }
-
-  try {
-    const emailOut = await runGit(['config', 'user.email']);
-    if (!emailOut.stdout.trim()) throw new Error('empty');
-  } catch {
-    await runGit(['config', 'user.email', adminEmail || 'martorefe@gmail.com']);
-  }
+  const activeEmail =
+    adminEmail && AUTHORIZED_GIT_ADMINS.includes(adminEmail.toLowerCase().trim())
+      ? adminEmail.toLowerCase().trim()
+      : 'martorefe@gmail.com';
+  await runGit(['config', 'user.name', 'Martin Omorefe']);
+  await runGit(['config', 'user.email', activeEmail]);
 
   try {
     const remoteOut = await runGit(['remote', 'get-url', 'origin']);
@@ -5658,13 +5715,56 @@ function resolveStandalonePwaUrl(req?: express.Request): string {
   if (reqHost.startsWith('ais-pre-')) {
     return `https://${reqHost}`;
   }
-  return 'https://ais-pre-2gu2b762mx2v4rebuyqej3-245109150484.europe-west2.run.app';
+  return 'https://ais-pre-6kneqjoxpjhkhbumgktpro-896173298722.europe-west2.run.app';
 }
 
 app.get('/api/pwa/config', (req, res) => {
   return res.json({
     success: true,
     standaloneUrl: resolveStandalonePwaUrl(req),
+  });
+});
+
+app.get('/api/public-config', (req, res) => {
+  const rawMapsKey = (process.env.VITE_GOOGLE_MAPS_API_KEY || process.env.GOOGLE_MAPS_API_KEY || '').trim();
+  const googleMapsApiKey = rawMapsKey && rawMapsKey !== 'MY_GOOGLE_MAPS_API_KEY' ? rawMapsKey : '';
+  const pubPaystack = (runtimePaystackPublicKey || process.env.VITE_PAYSTACK_PUBLIC_KEY || process.env.PAYSTACK_PUBLIC_KEY || '').trim();
+
+  return res.json({
+    success: true,
+    googleMapsApiKey,
+    paystackPublicKey: pubPaystack.startsWith('pk_live_') ? pubPaystack : '',
+    appUrl: resolveStandalonePwaUrl(req),
+  });
+});
+
+app.get('/api/system/integrations-status', (req, res) => {
+  const geminiKey = getConfiguredGeminiApiKey();
+  const geminiConfigured = Boolean(geminiKey && geminiKey !== 'MY_GEMINI_API_KEY');
+  const pubPaystack = (runtimePaystackPublicKey || process.env.VITE_PAYSTACK_PUBLIC_KEY || process.env.PAYSTACK_PUBLIC_KEY || '').trim();
+  const secPaystack = (runtimePaystackSecretKey || process.env.PAYSTACK_SECRET_KEY || '').trim();
+  const paystackPublicConfigured = pubPaystack.startsWith('pk_live_');
+  const paystackSecretConfigured = secPaystack.startsWith('sk_live_');
+  const resendConfigured = Boolean((process.env.RESEND_API_KEY || '').trim());
+  const gmailConfigured = Boolean((process.env.GMAIL_APP_PASSWORD || '').trim());
+  const mapsKey = (process.env.VITE_GOOGLE_MAPS_API_KEY || process.env.GOOGLE_MAPS_API_KEY || '').trim();
+  const googleMapsConfigured = Boolean(mapsKey && mapsKey !== 'MY_GOOGLE_MAPS_API_KEY');
+  const githubTokenConfigured = Boolean((process.env.GITHUB_TOKEN || process.env.GH_TOKEN || '').trim());
+  const superAdminPasswordConfigured = Boolean((process.env.SUPER_ADMIN_PASSWORD || '').trim());
+
+  return res.json({
+    success: true,
+    geminiConfigured,
+    paystackPublicConfigured,
+    paystackSecretConfigured,
+    paystackLiveReady: paystackPublicConfigured && paystackSecretConfigured,
+    resendConfigured,
+    gmailConfigured,
+    emailReady: resendConfigured || gmailConfigured,
+    googleMapsConfigured,
+    githubTokenConfigured,
+    superAdminPasswordConfigured,
+    backendUrl: resolveStandalonePwaUrl(req),
   });
 });
 
@@ -5876,7 +5976,7 @@ app.get('/api/download/offline-pwa-bundle', (_req, res) => {
     '  - apple-touch-icon.png    (180x180 iOS Safari)',
     '',
     'To install the live PWA on Android 6.0+:',
-    '  1. Open https://ais-pre-2gu2b762mx2v4rebuyqej3-245109150484.europe-west2.run.app in Chrome or Edge.',
+    '  1. Open https://ais-pre-6kneqjoxpjhkhbumgktpro-896173298722.europe-west2.run.app in Chrome or Edge.',
     '  2. Tap "Install" in the top bar or browser menu -> "Install app".',
   ].join('\n');
   entries.push({ name: 'README.txt', content: Buffer.from(readme, 'utf-8') });
@@ -6928,25 +7028,100 @@ app.post('/api/auth/login', async (req, res) => {
     const ip = extractClientIp(req);
     const fp = extractDeviceFingerprint(req);
 
-    // Verified Super Admin login path
+    // Verified Super Admin login path (Zero wrong-password bypass)
     if (AUTHORIZED_SUPER_ADMINS.includes(cleanEmail) || method === 'super_admin') {
-      if (method === 'password' && !String(password || '').trim()) {
-        return res.status(400).json({
-          success: false,
-          authenticated: false,
-          error: 'Please enter your password.'
-        });
-      }
-      const tokenEmail = AUTHORIZED_SUPER_ADMINS.includes(cleanEmail)
+      const targetAdminEmail = AUTHORIZED_SUPER_ADMINS.includes(cleanEmail)
         ? cleanEmail
         : AUTHORIZED_SUPER_ADMINS[0];
+
+      // Check supplied Firebase ID Token first (Google Sign-In or Firebase Email/Password auth)
+      const bodyToken = typeof (req.body as any)?.firebaseIdToken === 'string' ? (req.body as any).firebaseIdToken.trim() : '';
+      const authHeader = String(req.headers.authorization || '').trim();
+      const headerToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+      const candidateFirebaseToken = bodyToken || (headerToken && !headerToken.startsWith('scadmin.') ? headerToken : '');
+
+      let verifiedViaFirebase = false;
+      if (candidateFirebaseToken) {
+        try {
+          const verifyRes = await fetch(
+            `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${encodeURIComponent(firebaseConfig.apiKey)}`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ idToken: candidateFirebaseToken }),
+              signal: AbortSignal.timeout(5000),
+            }
+          );
+          if (verifyRes.ok) {
+            const verifyData: any = await verifyRes.json();
+            const user = Array.isArray(verifyData?.users) ? verifyData.users[0] : null;
+            const fbEmail = String(user?.email || '').toLowerCase().trim();
+            if (user && AUTHORIZED_SUPER_ADMINS.includes(fbEmail) && (!cleanEmail || fbEmail === cleanEmail)) {
+              if (method === 'google' ? Boolean(user.emailVerified) : true) {
+                verifiedViaFirebase = true;
+              }
+            }
+          }
+        } catch {
+          // Fall through to password secret verification if method is password/super_admin
+        }
+      }
+
+      if (method === 'google') {
+        if (!verifiedViaFirebase) {
+          return res.status(401).json({
+            success: false,
+            authenticated: false,
+            error: 'Google verification failed or expired for Super Admin account. Please tap "Continue with Google".',
+          });
+        }
+      } else {
+        if (!String(password || '').trim()) {
+          return res.status(400).json({
+            success: false,
+            authenticated: false,
+            error: 'Please enter your Super Admin password.',
+          });
+        }
+        const configuredAdminPass = (process.env.SUPER_ADMIN_PASSWORD || '').trim();
+        let verifiedViaSecret = false;
+        if (configuredAdminPass) {
+          const suppliedDigest = crypto.createHash('sha256').update(String(password)).digest();
+          const expectedDigest = crypto.createHash('sha256').update(configuredAdminPass).digest();
+          verifiedViaSecret = crypto.timingSafeEqual(suppliedDigest, expectedDigest);
+        }
+
+        if (!verifiedViaFirebase && !verifiedViaSecret) {
+          await securityService.recordIncident({
+            category: 'brute_force',
+            severity: 'high',
+            status: 'open',
+            source: 'server_guard',
+            title: `Rejected Super Admin Password Attempt (${targetAdminEmail})`,
+            description: `Rejected invalid password attempt for Super Admin ${targetAdminEmail} from ${ip}.`,
+            actorEmail: targetAdminEmail,
+            ipAddress: ip,
+            deviceFingerprint: fp,
+            endpoint: '/api/auth/login',
+            actionTaken: '401 Rejected Invalid Super Admin Password',
+          });
+          return res.status(401).json({
+            success: false,
+            authenticated: false,
+            error: configuredAdminPass
+              ? 'Incorrect Super Admin password. Please verify your password or tap "Continue with Google".'
+              : 'Incorrect Super Admin credentials. Sign in with your registered Firebase password, configure SUPER_ADMIN_PASSWORD in AI Studio Secrets, or tap "Continue with Google".',
+          });
+        }
+      }
+
       return res.json({
         success: true,
         authenticated: true,
         role: 'admin',
         isSuperAdmin: true,
-        displayName: 'Super Admin',
-        otaAdminToken: issueSuperAdminSessionToken(tokenEmail),
+        displayName: 'Martin Omorefe (Lead Developer)',
+        otaAdminToken: issueSuperAdminSessionToken(targetAdminEmail),
         message: 'Super Admin credentials verified.'
       });
     }

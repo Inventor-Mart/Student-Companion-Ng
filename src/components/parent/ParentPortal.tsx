@@ -203,8 +203,7 @@ export const ParentPortal: React.FC = () => {
 
   const isAdmin =
     currentUserProfile?.email === 'wowrealities@gmail.com' ||
-    currentUserProfile?.email === 'martorefe@gmail.com' ||
-    currentUserProfile?.email === 'martinnosaomorefe@gmail.com';
+    currentUserProfile?.email === 'martorefe@gmail.com';
 
   const fetchPaystackConfig = async () => {
     try {

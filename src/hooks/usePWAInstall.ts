@@ -11,7 +11,7 @@ declare global {
   }
 }
 
-const FALLBACK_SHARED_APP_URL = 'https://ais-pre-2gu2b762mx2v4rebuyqej3-245109150484.europe-west2.run.app';
+const FALLBACK_SHARED_APP_URL = 'https://ais-pre-6kneqjoxpjhkhbumgktpro-896173298722.europe-west2.run.app';
 
 function resolveClientStandaloneUrl(): { url: string; isDevPreview: boolean } {
   if (typeof window === 'undefined') {

@@ -60,7 +60,34 @@ export const TutorMapLocator: React.FC<TutorMapLocatorProps> = ({
   onOpenChat,
   onViewProfile
 }) => {
-  const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
+  const buildApiKey = (import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '').trim();
+  const [runtimeApiKey, setRuntimeApiKey] = useState<string>(buildApiKey);
+  const [isCheckingMapKey, setIsCheckingMapKey] = useState<boolean>(!buildApiKey);
+
+  React.useEffect(() => {
+    if (buildApiKey) {
+      setRuntimeApiKey(buildApiKey);
+      setIsCheckingMapKey(false);
+      return;
+    }
+    let active = true;
+    fetch('/api/public-config')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!active) return;
+        const remoteKey = typeof data?.googleMapsApiKey === 'string' ? data.googleMapsApiKey.trim() : '';
+        if (remoteKey) {
+          setRuntimeApiKey(remoteKey);
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (active) setIsCheckingMapKey(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [buildApiKey]);
 
   const [selectedHub, setSelectedHub] = useState(NIGERIAN_HUBS[0]);
   const [selectedTutor, setSelectedTutor] = useState<Tutor | null>(null);
@@ -197,25 +224,26 @@ export const TutorMapLocator: React.FC<TutorMapLocatorProps> = ({
 
       {/* Map Container */}
       <div className="w-full h-[360px] md:h-[420px] rounded-2xl overflow-hidden border border-slate-800 relative bg-slate-950 shadow-inner">
-        <APIProvider apiKey={apiKey}>
-          <Map
-            mapId="DEMO_MAP_ID"
-            center={selectedHub.center}
-            zoom={selectedHub.zoom}
-            gestureHandling="greedy"
-            disableDefaultUI={false}
-            internalUsageAttributionIds={['gmp_mcp_codeassist_v1_aistudio']}
-            className="w-full h-full"
-          >
-            {/* User Location Marker if available */}
-            {userLocation && (
-              <AdvancedMarker position={userLocation}>
-                <div className="relative flex items-center justify-center">
-                  <div className="w-4 h-4 rounded-full bg-blue-500 border-2 border-white shadow-lg animate-pulse" />
-                  <div className="w-8 h-8 rounded-full bg-blue-500/30 absolute" />
-                </div>
-              </AdvancedMarker>
-            )}
+        {runtimeApiKey ? (
+          <APIProvider apiKey={runtimeApiKey}>
+            <Map
+              mapId="DEMO_MAP_ID"
+              center={selectedHub.center}
+              zoom={selectedHub.zoom}
+              gestureHandling="greedy"
+              disableDefaultUI={false}
+              internalUsageAttributionIds={['gmp_mcp_codeassist_v1_aistudio']}
+              className="w-full h-full"
+            >
+              {/* User Location Marker if available */}
+              {userLocation && (
+                <AdvancedMarker position={userLocation}>
+                  <div className="relative flex items-center justify-center">
+                    <div className="w-4 h-4 rounded-full bg-blue-500 border-2 border-white shadow-lg" />
+                    <div className="w-7 h-7 rounded-full bg-blue-500/25 absolute" />
+                  </div>
+                </AdvancedMarker>
+              )}
 
             {/* Verified Tutors Markers */}
             {filteredTutors.map((tutor) => {
@@ -282,8 +310,81 @@ export const TutorMapLocator: React.FC<TutorMapLocatorProps> = ({
                 </div>
               </InfoWindow>
             )}
-          </Map>
-        </APIProvider>
+            </Map>
+          </APIProvider>
+        ) : (
+          <div className="w-full h-full flex flex-col justify-between p-4 bg-[#081221] overflow-y-auto">
+            <div className="flex items-start justify-between gap-3 border-b border-slate-800/80 pb-3">
+              <div className="space-y-1">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-white">
+                  <MapPin className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>{selectedHub.name} Verified Tutor Directory</span>
+                </div>
+                <p className="text-[11px] text-slate-400 leading-relaxed">
+                  {isCheckingMapKey
+                    ? 'Connecting to live map configuration...'
+                    : 'Interactive map tiles activate once VITE_GOOGLE_MAPS_API_KEY is configured in Secrets. You can browse verified Nigerian tutors by hub and distance below.'}
+                </p>
+              </div>
+              <span className="text-[11px] font-mono text-slate-400 shrink-0 tabular-nums">
+                {selectedHub.center.lat.toFixed(2)}°N, {selectedHub.center.lng.toFixed(2)}°E
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 py-3 flex-1 overflow-y-auto content-start">
+              {filteredTutors.length > 0 ? (
+                filteredTutors.map((tutor) => {
+                  const dist = userLocation
+                    ? calculateDistanceKm(userLocation.lat, userLocation.lng, tutor.lat, tutor.lng)
+                    : null;
+                  const isSelected = selectedTutor?.id === tutor.id;
+                  return (
+                    <button
+                      key={tutor.id}
+                      type="button"
+                      onClick={() => setSelectedTutor(tutor)}
+                      className={`text-left p-3 rounded-xl border transition-colors cursor-pointer flex items-center justify-between gap-2.5 ${
+                        isSelected
+                          ? 'bg-emerald-950/50 border-emerald-500 text-white'
+                          : 'bg-slate-900/80 hover:bg-slate-900 border-slate-800 text-slate-200'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <PersonaAvatar
+                          name={tutor.name}
+                          src={tutor.avatarUrl}
+                          alt={tutor.name}
+                          className="w-9 h-9 rounded-xl shrink-0"
+                          textClassName="text-xs"
+                        />
+                        <div className="min-w-0">
+                          <div className="text-xs font-bold text-white truncate">{tutor.name}</div>
+                          <div className="text-[11px] text-slate-400 truncate">
+                            {tutor.location}, {tutor.state}
+                            {dist !== null ? ` · ${dist} km` : ''}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <div className="text-[11px] font-bold text-emerald-400">
+                          <NairaText amount={tutor.hourlyRateNaira} />
+                        </div>
+                        <div className="text-[10px] text-amber-400 flex items-center justify-end gap-0.5">
+                          <Star className="w-2.5 h-2.5 fill-amber-400" />
+                          <span>{tutor.rating}</span>
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })
+              ) : (
+                <div className="col-span-full py-10 text-center text-xs text-slate-400">
+                  No tutors matched the selected subject or radius. Widen your filter above to view all verified tutors.
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Selected Tutor Drawer Card Overlay */}
         {selectedTutor && (

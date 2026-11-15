@@ -105,7 +105,14 @@ const AppContent: React.FC = () => {
       <SplashScreen
         durationMs={3000}
         onFinish={() => {
-          setCurrentScreen('landing');
+          if (isAuthenticated && currentUserProfile) {
+            if (currentRole !== currentUserProfile.role) {
+              setCurrentRole(currentUserProfile.role);
+            }
+            setCurrentScreen('app');
+          } else {
+            setCurrentScreen('landing');
+          }
         }}
       />
     );

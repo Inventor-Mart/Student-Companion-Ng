@@ -371,9 +371,40 @@ export const SuperAdminPortal: React.FC = () => {
     }
   }, []);
 
+  const [integrationsStatus, setIntegrationsStatus] = useState<{
+    geminiConfigured: boolean;
+    paystackPublicConfigured: boolean;
+    paystackSecretConfigured: boolean;
+    paystackLiveReady: boolean;
+    resendConfigured: boolean;
+    gmailConfigured: boolean;
+    emailReady: boolean;
+    googleMapsConfigured: boolean;
+    githubTokenConfigured: boolean;
+    superAdminPasswordConfigured: boolean;
+    backendUrl: string;
+  } | null>(null);
+  const [isCheckingIntegrations, setIsCheckingIntegrations] = useState(false);
+
+  const fetchIntegrationsStatus = React.useCallback(async () => {
+    setIsCheckingIntegrations(true);
+    try {
+      const res = await fetch('/api/system/integrations-status');
+      const data = await res.json();
+      if (res.ok && data?.success) {
+        setIntegrationsStatus(data);
+      }
+    } catch {
+      // ignore transient errors
+    } finally {
+      setIsCheckingIntegrations(false);
+    }
+  }, []);
+
   React.useEffect(() => {
     void fetchApkCloudStatus();
-  }, [fetchApkCloudStatus]);
+    void fetchIntegrationsStatus();
+  }, [fetchApkCloudStatus, fetchIntegrationsStatus]);
 
   const handleTriggerGithubApkBuild = async () => {
     if (!authorizedAdminEmail) return;
@@ -1340,6 +1371,98 @@ export const SuperAdminPortal: React.FC = () => {
             <div className="text-[10px] text-slate-500">JSS1, JSS2, JSS3 English</div>
           </div>
         </div>
+      </div>
+
+      {/* Live Integrations & Secrets Readiness Diagnostic */}
+      <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 border-b border-slate-800 pb-3">
+          <div className="min-w-0">
+            <h2 className="text-sm font-bold text-white tracking-tight">
+              Live Services &amp; Secrets Readiness
+            </h2>
+            <p className="text-[11px] text-slate-400 mt-0.5">
+              Private server keys stay in <strong className="text-slate-200">AI Studio → Settings → Secrets</strong> (never bundled in APKs or GitHub). Public client keys go in Secrets and optional GitHub Repo Secrets.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void fetchIntegrationsStatus()}
+            disabled={isCheckingIntegrations}
+            className="px-3 py-2 min-h-[40px] rounded-xl bg-slate-950 hover:bg-slate-800 border border-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50 whitespace-nowrap shrink-0 self-start sm:self-auto"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isCheckingIntegrations ? 'animate-spin' : ''}`} />
+            <span>{isCheckingIntegrations ? 'Checking...' : 'Check Integrations'}</span>
+          </button>
+        </div>
+
+        {integrationsStatus && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 text-xs">
+            {[
+              {
+                label: 'SC AI Study Coach',
+                secretName: 'GEMINI_API_KEY',
+                where: 'AI Studio Secrets',
+                ready: integrationsStatus.geminiConfigured
+              },
+              {
+                label: 'Paystack Live Gateway',
+                secretName: 'VITE_PAYSTACK_PUBLIC_KEY + PAYSTACK_SECRET_KEY',
+                where: 'AI Studio Secrets / Gateway Save',
+                ready: integrationsStatus.paystackLiveReady
+              },
+              {
+                label: 'Email Delivery (Resend / Gmail)',
+                secretName: 'RESEND_API_KEY or GMAIL_APP_PASSWORD',
+                where: 'AI Studio Secrets',
+                ready: integrationsStatus.emailReady
+              },
+              {
+                label: 'Google Maps Tutor Locator',
+                secretName: 'VITE_GOOGLE_MAPS_API_KEY',
+                where: 'AI Studio Secrets & GitHub Secrets',
+                ready: integrationsStatus.googleMapsConfigured
+              },
+              {
+                label: 'GitHub Repo Sync & APK Trigger',
+                secretName: 'GITHUB_TOKEN',
+                where: 'AI Studio Secrets',
+                ready: integrationsStatus.githubTokenConfigured
+              },
+              {
+                label: 'Admin Password Fallback',
+                secretName: 'SUPER_ADMIN_PASSWORD',
+                where: 'AI Studio Secrets (or Firebase Auth)',
+                ready: integrationsStatus.superAdminPasswordConfigured
+              }
+            ].map((item) => (
+              <div
+                key={item.label}
+                className="bg-slate-950 border border-slate-800 rounded-xl p-3 flex flex-col justify-between gap-1.5"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-bold text-white truncate">{item.label}</span>
+                  <span
+                    className={`text-[11px] font-bold shrink-0 ${
+                      item.ready ? 'text-[#84E000]' : 'text-amber-400'
+                    }`}
+                  >
+                    {item.ready ? 'Ready' : 'Needs Secret'}
+                  </span>
+                </div>
+                <div className="text-[11px] font-mono text-slate-400 truncate">
+                  {item.secretName}
+                </div>
+                <div className="text-[10px] text-slate-500">{item.where}</div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {integrationsStatus?.backendUrl && (
+          <div className="text-[11px] text-slate-400 font-mono truncate">
+            Active APK Backend URL: <span className="text-emerald-300">{integrationsStatus.backendUrl}</span>
+          </div>
+        )}
       </div>
 
       {/* GitHub Repository Sync Panel */}

@@ -3,7 +3,10 @@ import App from './App.tsx';
 import './index.css';
 import 'katex/dist/katex.min.css';
 
-const REMOTE_API_ORIGIN = 'https://ais-pre-2gu2b762mx2v4rebuyqej3-245109150484.europe-west2.run.app';
+const REMOTE_API_ORIGIN = (
+  import.meta.env.VITE_API_ORIGIN ||
+  'https://ais-pre-6kneqjoxpjhkhbumgktpro-896173298722.europe-west2.run.app'
+).replace(/\/+$/, '');
 const isBundledAndroidApk =
   typeof window !== 'undefined' && window.location.hostname === 'appassets.androidplatform.net';
 

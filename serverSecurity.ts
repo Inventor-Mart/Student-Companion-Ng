@@ -11,7 +11,7 @@ import {
   limit as firestoreLimit
 } from 'firebase/firestore/lite';
 
-export const AUTHORIZED_SUPER_ADMINS = ['martorefe@gmail.com', 'wowrealities@gmail.com', 'martinnosaomorefe@gmail.com'];
+export const AUTHORIZED_SUPER_ADMINS = ['martorefe@gmail.com', 'wowrealities@gmail.com'];
 const STORE_PATH = '/tmp/sc-security-store.json';
 
 export type SecurityIncidentCategory =

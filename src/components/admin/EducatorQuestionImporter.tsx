@@ -119,8 +119,7 @@ export const EducatorQuestionImporter: React.FC<EducatorQuestionImporterProps> =
       skipPinGate ||
       isSuperAdmin ||
       email === 'wowrealities@gmail.com' ||
-      email === 'martorefe@gmail.com' ||
-      email === 'martinnosaomorefe@gmail.com'
+      email === 'martorefe@gmail.com'
     ) {
       setIsUnlocked(true);
       if (typeof window !== 'undefined') {

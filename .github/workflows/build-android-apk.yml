@@ -55,6 +55,9 @@ jobs:
           echo "Computed APK identity: ${VERSION_NAME} (versionCode=${VERSION_CODE}, tag=${RELEASE_TAG}, sha=${SHORT_SHA})"
 
       - name: Install dependencies & build offline web bundle
+        env:
+          VITE_GOOGLE_MAPS_API_KEY: ${{ secrets.VITE_GOOGLE_MAPS_API_KEY }}
+          VITE_PAYSTACK_PUBLIC_KEY: ${{ secrets.VITE_PAYSTACK_PUBLIC_KEY }}
         run: |
           npm install --legacy-peer-deps
           npm run build
