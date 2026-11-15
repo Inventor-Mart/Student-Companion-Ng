@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../../../context/AppContext';
 import { Tutor, BookingType } from '../../../types';
 import { NairaText } from '../../../utils/currency';
@@ -49,10 +49,13 @@ export const TutorCreditBookingModal: React.FC<TutorCreditBookingModalProps> = (
     currentUserProfile
   } = useApp();
 
-  const matchingTutors = registeredTutors.filter(t =>
-    t.subjects.some(s => s.toLowerCase().includes(suggestedSubject.toLowerCase()) || suggestedSubject.toLowerCase().includes(s.toLowerCase()))
-  );
-  const displayTutors = matchingTutors.length > 0 ? matchingTutors : registeredTutors;
+  const displayTutors = useMemo(() => {
+    const query = suggestedSubject.toLowerCase();
+    const matching = registeredTutors.filter(t =>
+      t.subjects.some(s => s.toLowerCase().includes(query) || query.includes(s.toLowerCase()))
+    );
+    return matching.length > 0 ? matching : registeredTutors;
+  }, [registeredTutors, suggestedSubject]);
 
   const [selectedTutor, setSelectedTutor] = useState<Tutor | null>(displayTutors[0] || null);
   const [sessionTopic, setSessionTopic] = useState<string>(suggestedTopic);

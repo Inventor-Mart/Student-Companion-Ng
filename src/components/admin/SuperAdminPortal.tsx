@@ -330,12 +330,22 @@ export const SuperAdminPortal: React.FC = () => {
   const [apkCloudStatus, setApkCloudStatus] = useState<{
     apkReady: boolean;
     apkUrl: string | null;
+    apkFileName?: string | null;
     apkSizeBytes: number;
     versionName: string;
+    semver?: string | null;
+    buildNumber?: number | null;
+    versionCode?: number | null;
+    releaseTag?: string | null;
+    commitSha?: string | null;
+    signingMode?: 'persistent' | 'ephemeral' | 'unknown';
+    releasePageUrl?: string | null;
     workflowOnRemote: boolean;
     latestRun: {
       status: string;
       conclusion: string | null;
+      runNumber?: number | null;
+      headSha?: string | null;
       htmlUrl: string;
       createdAt: string;
     } | null;
@@ -1612,49 +1622,75 @@ export const SuperAdminPortal: React.FC = () => {
 
         {/* Live GitHub APK Build & Release Status Strip */}
         {apkCloudStatus && (
-          <div className="bg-slate-950 border border-slate-800 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
-            <div className="flex items-center gap-2 min-w-0">
-              {apkCloudStatus.apkReady ? (
-                <CheckCircle2 className="w-4 h-4 text-[#84E000] shrink-0" />
-              ) : apkCloudStatus.latestRun?.status === 'in_progress' || apkCloudStatus.latestRun?.status === 'queued' ? (
-                <Clock className="w-4 h-4 text-amber-400 shrink-0 animate-spin" />
-              ) : (
-                <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
-              )}
-              <span className="text-slate-200 truncate">
-                {apkCloudStatus.apkReady
-                  ? `Signed Release APK ready (${(apkCloudStatus.apkSizeBytes / (1024 * 1024)).toFixed(2)} MB · ${apkCloudStatus.versionName})`
-                  : apkCloudStatus.latestRun
-                  ? `Latest GitHub Actions run: ${apkCloudStatus.latestRun.status}${apkCloudStatus.latestRun.conclusion ? ` (${apkCloudStatus.latestRun.conclusion})` : ''}`
-                  : apkCloudStatus.workflowOnRemote
-                  ? 'Workflow active on GitHub — click "Build APK on GitHub" to compile your signed offline Android 6+ APK.'
-                  : 'Click "Sync to GitHub (main)" above once to push the Android cloud build workflow, then click "Build APK on GitHub".'}
-              </span>
+          <div className="bg-slate-950 border border-slate-800 rounded-xl p-3 flex flex-col gap-2 text-xs">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                {apkCloudStatus.apkReady ? (
+                  <CheckCircle2 className="w-4 h-4 text-[#84E000] shrink-0" />
+                ) : apkCloudStatus.latestRun?.status === 'in_progress' || apkCloudStatus.latestRun?.status === 'queued' ? (
+                  <Clock className="w-4 h-4 text-amber-400 shrink-0 animate-spin" />
+                ) : (
+                  <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                )}
+                <span className="text-slate-200 truncate font-mono tabular-nums">
+                  {apkCloudStatus.apkReady
+                    ? [
+                        `v${apkCloudStatus.versionName}`,
+                        apkCloudStatus.versionCode ? `code ${apkCloudStatus.versionCode}` : null,
+                        `${(apkCloudStatus.apkSizeBytes / (1024 * 1024)).toFixed(2)} MB`,
+                        apkCloudStatus.releaseTag ? `tag ${apkCloudStatus.releaseTag}` : null,
+                        apkCloudStatus.commitSha ? `sha ${apkCloudStatus.commitSha}` : null,
+                        apkCloudStatus.signingMode === 'persistent'
+                          ? 'Key: Persistent'
+                          : apkCloudStatus.signingMode === 'ephemeral'
+                          ? 'Key: Ephemeral'
+                          : null,
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')
+                    : apkCloudStatus.latestRun
+                    ? `Latest GitHub Actions run${apkCloudStatus.latestRun.runNumber ? ` #${apkCloudStatus.latestRun.runNumber}` : ''}: ${apkCloudStatus.latestRun.status}${apkCloudStatus.latestRun.conclusion ? ` (${apkCloudStatus.latestRun.conclusion})` : ''}`
+                    : apkCloudStatus.workflowOnRemote
+                    ? 'Workflow active on GitHub — click "Build APK on GitHub" to compile your signed offline Android 6+ APK.'
+                    : 'Click "Sync to GitHub (main)" above once to push the Android cloud build workflow, then click "Build APK on GitHub".'}
+                </span>
+              </div>
+              <div className="flex items-center gap-3 shrink-0 text-[11px]">
+                {apkCloudStatus.actionsPageUrl && (
+                  <a
+                    href={apkCloudStatus.latestRun?.htmlUrl || apkCloudStatus.actionsPageUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sky-400 hover:text-sky-300 font-semibold flex items-center gap-1 whitespace-nowrap"
+                  >
+                    <span>GitHub Actions</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                )}
+                {(apkCloudStatus.releasePageUrl || apkCloudStatus.releasesPageUrl) && (
+                  <a
+                    href={apkCloudStatus.releasePageUrl || apkCloudStatus.releasesPageUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-emerald-400 hover:text-emerald-300 font-semibold flex items-center gap-1 whitespace-nowrap"
+                  >
+                    <span>{apkCloudStatus.releaseTag ? `Release (${apkCloudStatus.releaseTag})` : 'GitHub Releases'}</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                )}
+              </div>
             </div>
-            <div className="flex items-center gap-3 shrink-0 text-[11px]">
-              {apkCloudStatus.actionsPageUrl && (
-                <a
-                  href={apkCloudStatus.latestRun?.htmlUrl || apkCloudStatus.actionsPageUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-sky-400 hover:text-sky-300 font-semibold flex items-center gap-1"
-                >
-                  <span>GitHub Actions</span>
-                  <ExternalLink className="w-3 h-3" />
-                </a>
-              )}
-              {apkCloudStatus.releasesPageUrl && (
-                <a
-                  href={apkCloudStatus.releasesPageUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-emerald-400 hover:text-emerald-300 font-semibold flex items-center gap-1"
-                >
-                  <span>GitHub Releases</span>
-                  <ExternalLink className="w-3 h-3" />
-                </a>
-              )}
-            </div>
+
+            {apkCloudStatus.apkReady && apkCloudStatus.signingMode === 'ephemeral' && (
+              <div className="pt-2 border-t border-slate-800/80 text-[11px] text-amber-300 flex items-start gap-2 leading-snug">
+                <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
+                <span>
+                  Built with an ephemeral test keystore. Add <code className="text-amber-200 font-mono">ANDROID_KEYSTORE_BASE64</code>,{' '}
+                  <code className="text-amber-200 font-mono">ANDROID_KEYSTORE_PASSWORD</code>, <code className="text-amber-200 font-mono">ANDROID_KEY_ALIAS</code>, and{' '}
+                  <code className="text-amber-200 font-mono">ANDROID_KEY_PASSWORD</code> to GitHub Repository Secrets so devices can upgrade in-place without uninstalling first.
+                </span>
+              </div>
+            )}
           </div>
         )}
 

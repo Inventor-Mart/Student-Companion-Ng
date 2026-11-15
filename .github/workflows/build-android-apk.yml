@@ -31,6 +31,29 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Compute Build Version & Identity
+        id: meta
+        run: |
+          PKG_VERSION=$(node -p "String(require('./package.json').version || '2.4.0').replace(/^v/i, '')")
+          IFS='.' read -r MAJ MIN PAT <<< "$PKG_VERSION"
+          MAJ=${MAJ:-2}
+          MIN=${MIN:-4}
+          PAT=${PAT:-0}
+          RUN_NUM=${GITHUB_RUN_NUMBER:-1}
+          VERSION_CODE=$(( (MAJ * 10000000) + (MIN * 100000) + (PAT * 10000) + RUN_NUM ))
+          VERSION_NAME="${PKG_VERSION}-build.${RUN_NUM}"
+          SHORT_SHA="${GITHUB_SHA::7}"
+          APK_FILENAME="StudentCompanion-v${VERSION_NAME}-offline-android6plus.apk"
+          RELEASE_TAG="apk-v${PKG_VERSION}-b${RUN_NUM}"
+          echo "semver=${PKG_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "run_number=${RUN_NUM}" >> "$GITHUB_OUTPUT"
+          echo "version_code=${VERSION_CODE}" >> "$GITHUB_OUTPUT"
+          echo "version_name=${VERSION_NAME}" >> "$GITHUB_OUTPUT"
+          echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+          echo "apk_filename=${APK_FILENAME}" >> "$GITHUB_OUTPUT"
+          echo "release_tag=${RELEASE_TAG}" >> "$GITHUB_OUTPUT"
+          echo "Computed APK identity: ${VERSION_NAME} (versionCode=${VERSION_CODE}, tag=${RELEASE_TAG}, sha=${SHORT_SHA})"
+
       - name: Install dependencies & build offline web bundle
         run: |
           npm install --legacy-peer-deps
@@ -57,7 +80,10 @@ jobs:
 
       - name: Build Offline Release APK (minSdk 23 / Android 6.0+)
         working-directory: android-project
-        run: gradle assembleRelease --no-daemon
+        run: |
+          gradle assembleRelease --no-daemon \
+            -PappVersionCode="${{ steps.meta.outputs.version_code }}" \
+            -PappVersionName="${{ steps.meta.outputs.version_name }}"
 
       - name: Prepare Signing Keystore & Sign Offline APK
         id: sign
@@ -77,10 +103,12 @@ jobs:
             PASS="${KEYSTORE_PASS:-studentcompanion}"
             ALIAS="${KEY_ALIAS:-studentcompanion}"
             KPASS="${KEY_PASS:-$PASS}"
+            SIGNING_MODE="persistent"
           else
             PASS="studentcompanion123"
             ALIAS="studentcompanion"
             KPASS="studentcompanion123"
+            SIGNING_MODE="ephemeral"
             keytool -genkeypair -v \
               -keystore release.keystore \
               -alias "$ALIAS" \
@@ -88,6 +116,7 @@ jobs:
               -storepass "$PASS" -keypass "$KPASS" \
               -dname "CN=Student Companion, OU=Mobile, O=Inventor-Mart, L=Lagos, C=NG"
           fi
+          echo "signing_mode=${SIGNING_MODE}" >> "$GITHUB_OUTPUT"
 
           APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name "apksigner" 2>/dev/null | sort -V | tail -n 1)
           ZIPALIGN=$(find "$ANDROID_HOME/build-tools" -name "zipalign" 2>/dev/null | sort -V | tail -n 1)
@@ -98,42 +127,101 @@ jobs:
             ZIPALIGN=$(find "$ANDROID_HOME/build-tools" -name "zipalign" | sort -V | tail -n 1)
           fi
 
+          APK_OUT="${{ steps.meta.outputs.apk_filename }}"
           $ZIPALIGN -f -p 4 "$UNSIGNED_APK" aligned.apk
           $APKSIGNER sign \
             --ks release.keystore \
             --ks-pass "pass:$PASS" \
             --ks-key-alias "$ALIAS" \
             --key-pass "pass:$KPASS" \
-            --out StudentCompanion-v2.0.0-offline-android6plus.apk \
+            --out "$APK_OUT" \
             aligned.apk
 
-          $APKSIGNER verify StudentCompanion-v2.0.0-offline-android6plus.apk
-          ls -lh StudentCompanion-v2.0.0-offline-android6plus.apk
+          $APKSIGNER verify "$APK_OUT"
+          ls -lh "$APK_OUT"
+
+      - name: Generate Build Metadata Manifest
+        env:
+          VNAME: ${{ steps.meta.outputs.version_name }}
+          SEMVER: ${{ steps.meta.outputs.semver }}
+          RNUM: ${{ steps.meta.outputs.run_number }}
+          VCODE: ${{ steps.meta.outputs.version_code }}
+          RTAG: ${{ steps.meta.outputs.release_tag }}
+          CSHA: ${{ steps.meta.outputs.short_sha }}
+          SMODE: ${{ steps.sign.outputs.signing_mode }}
+          AFNAME: ${{ steps.meta.outputs.apk_filename }}
+        run: |
+          node -e '
+            const fs = require("fs");
+            const meta = {
+              versionName: process.env.VNAME,
+              semver: process.env.SEMVER,
+              buildNumber: Number(process.env.RNUM),
+              versionCode: Number(process.env.VCODE),
+              releaseTag: process.env.RTAG,
+              commitSha: process.env.CSHA,
+              signingMode: process.env.SMODE,
+              apkFileName: process.env.AFNAME,
+              builtAt: new Date().toISOString()
+            };
+            fs.writeFileSync("apk-build-metadata.json", JSON.stringify(meta, null, 2));
+            console.log("Generated apk-build-metadata.json:", meta);
+          '
 
       - name: Upload Offline APK Workflow Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: StudentCompanion-v2.0.0-offline-android6plus
-          path: StudentCompanion-v2.0.0-offline-android6plus.apk
+          name: StudentCompanion-v${{ steps.meta.outputs.version_name }}-offline-android6plus
+          path: |
+            ${{ steps.meta.outputs.apk_filename }}
+            apk-build-metadata.json
 
-      - name: Clean previous APK asset on android-latest release
+      - name: Publish Tagged Versioned APK Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.release_tag }}
+          name: Student Companion Offline Android 6.0+ (v${{ steps.meta.outputs.version_name }})
+          make_latest: true
+          body: |
+            Complete offline standalone Android APK compatible with Android 6.0 Marshmallow (`minSdk 23`) and upwards (`targetSdk 34`).
+            - Package ID: `com.studentcompanion.app`
+            - Version Name: `${{ steps.meta.outputs.version_name }}`
+            - Version Code: `${{ steps.meta.outputs.version_code }}`
+            - Build Number: `#${{ steps.meta.outputs.run_number }}`
+            - Commit SHA: `${{ steps.meta.outputs.short_sha }}`
+            - Signing Mode: `${{ steps.sign.outputs.signing_mode }}`
+          files: |
+            ${{ steps.meta.outputs.apk_filename }}
+            apk-build-metadata.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Clean old APK assets on rolling android-latest release
         continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release delete-asset android-latest StudentCompanion-v1.0.0-android6plus.apk --yes || true
+          ASSETS=$(gh release view android-latest --json assets -q '.assets[].name' 2>/dev/null || true)
+          for ASSET in $ASSETS; do
+            gh release delete-asset android-latest "$ASSET" --yes || true
+          done
 
-      - name: Publish Signed Offline Release APK
+      - name: Update Rolling android-latest Release Alias
         uses: softprops/action-gh-release@v2
         with:
           tag_name: android-latest
-          name: Student Companion Offline Android 6.0+ (v2.0.0)
-          make_latest: true
+          name: Student Companion Offline Android 6.0+ Latest (v${{ steps.meta.outputs.version_name }})
+          make_latest: false
           body: |
-            Complete offline standalone Android APK compatible with Android 6.0 Marshmallow (`minSdk 23`) and upwards (`targetSdk 34`).
-            - Bundles full study notes, scheme of work, CBT exams, and offline queue directly inside APK assets
+            Rolling latest offline Android APK alias pointing to release `${{ steps.meta.outputs.release_tag }}`.
             - Package ID: `com.studentcompanion.app`
-            - Version: `2.0.0`
-          files: StudentCompanion-v2.0.0-offline-android6plus.apk
+            - Version Name: `${{ steps.meta.outputs.version_name }}`
+            - Version Code: `${{ steps.meta.outputs.version_code }}`
+            - Build Number: `#${{ steps.meta.outputs.run_number }}`
+            - Commit SHA: `${{ steps.meta.outputs.short_sha }}`
+            - Signing Mode: `${{ steps.sign.outputs.signing_mode }}`
+          files: |
+            ${{ steps.meta.outputs.apk_filename }}
+            apk-build-metadata.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

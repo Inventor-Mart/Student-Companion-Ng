@@ -924,23 +924,92 @@ export interface LiveOTASaveResult {
 export interface GitHubApkReleaseInfo {
   apkReady: boolean;
   apkUrl: string | null;
+  apkFileName: string | null;
+  apkSizeBytes: number;
   versionName: string | null;
+  semver: string | null;
+  buildNumber: number | null;
+  versionCode: number | null;
+  releaseTag: string | null;
+  commitSha: string | null;
+  signingMode: 'persistent' | 'ephemeral' | 'unknown';
+  releasePageUrl: string | null;
+  publishedAt: string | null;
+}
+
+const CACHE_KEY_LATEST_APK = 'sc_ota_latest_apk_v1';
+
+export function isBundledAndroidApkShell(): boolean {
+  if (typeof window === 'undefined') return false;
+  const host = window.location.hostname.toLowerCase();
+  if (host === 'appassets.androidplatform.net') return true;
+  const ua = typeof navigator !== 'undefined' ? navigator.userAgent || '' : '';
+  return /;\s*wv\)/i.test(ua) && host.includes('androidplatform');
+}
+
+export function getCachedLatestApkRelease(): GitHubApkReleaseInfo | null {
+  return readLocalJson<GitHubApkReleaseInfo | null>(CACHE_KEY_LATEST_APK, null);
 }
 
 export async function fetchLatestGitHubApkRelease(): Promise<GitHubApkReleaseInfo> {
   try {
     const res = await fetch('/api/android/apk-status', { cache: 'no-store' });
     if (!res.ok) {
-      return { apkReady: false, apkUrl: null, versionName: null };
+      return {
+        apkReady: false,
+        apkUrl: null,
+        apkFileName: null,
+        apkSizeBytes: 0,
+        versionName: null,
+        semver: null,
+        buildNumber: null,
+        versionCode: null,
+        releaseTag: null,
+        commitSha: null,
+        signingMode: 'unknown',
+        releasePageUrl: null,
+        publishedAt: null,
+      };
     }
     const data = await res.json();
-    return {
+    const info: GitHubApkReleaseInfo = {
       apkReady: Boolean(data?.apkReady && data?.apkUrl),
       apkUrl: typeof data?.apkUrl === 'string' ? data.apkUrl : null,
+      apkFileName: typeof data?.apkFileName === 'string' ? data.apkFileName : null,
+      apkSizeBytes: typeof data?.apkSizeBytes === 'number' ? data.apkSizeBytes : 0,
       versionName: typeof data?.versionName === 'string' ? data.versionName : null,
+      semver: typeof data?.semver === 'string' ? data.semver : null,
+      buildNumber: typeof data?.buildNumber === 'number' ? data.buildNumber : null,
+      versionCode: typeof data?.versionCode === 'number' ? data.versionCode : null,
+      releaseTag: typeof data?.releaseTag === 'string' ? data.releaseTag : null,
+      commitSha: typeof data?.commitSha === 'string' ? data.commitSha : null,
+      signingMode:
+        data?.signingMode === 'persistent' || data?.signingMode === 'ephemeral'
+          ? data.signingMode
+          : 'unknown',
+      releasePageUrl: typeof data?.releasePageUrl === 'string' ? data.releasePageUrl : null,
+      publishedAt: typeof data?.publishedAt === 'string' ? data.publishedAt : null,
     };
+    if (info.apkReady) {
+      writeLocalJson(CACHE_KEY_LATEST_APK, info);
+    }
+    return info;
   } catch {
-    return { apkReady: false, apkUrl: null, versionName: null };
+    return {
+      apkReady: false,
+      apkUrl: null,
+      apkFileName: null,
+      apkSizeBytes: 0,
+      versionName: null,
+      semver: null,
+      buildNumber: null,
+      versionCode: null,
+      releaseTag: null,
+      commitSha: null,
+      signingMode: 'unknown',
+      releasePageUrl: null,
+      publishedAt: null,
+    };
   }
 }
 
@@ -972,6 +1041,28 @@ export async function fetchLiveOTAAppRelease(): Promise<OTAAppReleaseConfig | nu
     srvRelease = sanitizeReleaseConfig(
       serverRes.value.appRelease as Partial<OTAAppReleaseConfig>
     );
+  }
+
+  if (serverRes.status === 'fulfilled' && serverRes.value?.latestApkRelease?.apkReady) {
+    const rawApk = serverRes.value.latestApkRelease;
+    writeLocalJson<GitHubApkReleaseInfo>(CACHE_KEY_LATEST_APK, {
+      apkReady: true,
+      apkUrl: typeof rawApk.apkUrl === 'string' ? rawApk.apkUrl : null,
+      apkFileName: typeof rawApk.apkFileName === 'string' ? rawApk.apkFileName : null,
+      apkSizeBytes: typeof rawApk.apkSizeBytes === 'number' ? rawApk.apkSizeBytes : 0,
+      versionName: typeof rawApk.versionName === 'string' ? rawApk.versionName : null,
+      semver: typeof rawApk.semver === 'string' ? rawApk.semver : null,
+      buildNumber: typeof rawApk.buildNumber === 'number' ? rawApk.buildNumber : null,
+      versionCode: typeof rawApk.versionCode === 'number' ? rawApk.versionCode : null,
+      releaseTag: typeof rawApk.releaseTag === 'string' ? rawApk.releaseTag : null,
+      commitSha: typeof rawApk.commitSha === 'string' ? rawApk.commitSha : null,
+      signingMode:
+        rawApk.signingMode === 'persistent' || rawApk.signingMode === 'ephemeral'
+          ? rawApk.signingMode
+          : 'unknown',
+      releasePageUrl: typeof rawApk.releasePageUrl === 'string' ? rawApk.releasePageUrl : null,
+      publishedAt: typeof rawApk.publishedAt === 'string' ? rawApk.publishedAt : null,
+    });
   }
 
   let chosen: OTAAppReleaseConfig | null = null;

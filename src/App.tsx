@@ -77,8 +77,11 @@ const AppContent: React.FC = () => {
     dismissSecurityAlert
   } = useApp();
 
+  const expiredLockRefreshRef = React.useRef<string | null>(null);
+
   React.useEffect(() => {
     if (securityStatus.accountStatus !== 'locked' || !securityStatus.lockedUntil) {
+      expiredLockRefreshRef.current = null;
       setLockCountdownSec(0);
       return;
     }
@@ -86,7 +89,8 @@ const AppContent: React.FC = () => {
     const updateTick = () => {
       const rem = Math.max(0, Math.ceil((targetMs - Date.now()) / 1000));
       setLockCountdownSec(rem);
-      if (rem === 0) {
+      if (rem === 0 && expiredLockRefreshRef.current !== securityStatus.lockedUntil) {
+        expiredLockRefreshRef.current = securityStatus.lockedUntil || null;
         void refreshSecurityStatus();
       }
     };

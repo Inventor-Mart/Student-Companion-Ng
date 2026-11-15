@@ -464,6 +464,8 @@ export const LessonNoteReader: React.FC = () => {
     };
   }, []);
 
+  const isReadingTargetReached = elapsedSeconds >= targetSeconds;
+
   // Increment active on-screen reading seconds up to estimatedStudyMinutes * 60 and persist periodically
   useEffect(() => {
     if (!activeReadingNote || isAlreadyVerified) return;
@@ -472,7 +474,7 @@ export const LessonNoteReader: React.FC = () => {
       term: activeReadingNote.term
     });
     if (!accessCheck.hasAccess) return;
-    if (!isTabVisible || elapsedSeconds >= targetSeconds) return;
+    if (!isTabVisible || isReadingTargetReached) return;
 
     const noteId = activeReadingNote.id;
     const studentId = student.id;
@@ -489,7 +491,7 @@ export const LessonNoteReader: React.FC = () => {
     }, 1000);
 
     return () => window.clearInterval(timerId);
-  }, [activeReadingNote, student.id, isAlreadyVerified, isTabVisible, elapsedSeconds, targetSeconds, checkStudentFeatureAccess]);
+  }, [activeReadingNote, student.id, isAlreadyVerified, isTabVisible, isReadingTargetReached, targetSeconds, checkStudentFeatureAccess]);
 
   // Track scroll depth down to bottom sentinel (or immediate pass if note fits without scroll)
   const checkScrollCompletion = useCallback(() => {

@@ -5426,17 +5426,42 @@ async function resolveCompiledAndroidApk(): Promise<{
   source?: 'local' | 'github';
   localPath?: string;
   apkUrl?: string;
+  apkFileName?: string;
   apkSizeBytes?: number;
   versionName?: string;
+  semver?: string;
+  buildNumber?: number | null;
+  versionCode?: number | null;
+  releaseTag?: string | null;
+  commitSha?: string | null;
+  signingMode?: 'persistent' | 'ephemeral' | 'unknown';
+  releasePageUrl?: string | null;
+  publishedAt?: string | null;
 }> {
+  const pkgVer = (() => {
+    try {
+      const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8'));
+      return String(pkg?.version || '2.4.0').replace(/^v/i, '');
+    } catch {
+      return '2.4.0';
+    }
+  })();
+
   const localCandidates = [
+    {
+      filePath: path.join(__dirname, 'public', 'releases', `StudentCompanion-v${pkgVer}-offline-android6plus.apk`),
+      versionName: pkgVer,
+      semver: pkgVer,
+    },
     {
       filePath: path.join(__dirname, 'public', 'releases', 'StudentCompanion-v2.0.0-offline-android6plus.apk'),
       versionName: '2.0.0',
+      semver: '2.0.0',
     },
     {
       filePath: path.join(__dirname, 'public', 'releases', 'StudentCompanion-v1.0.0-android6plus.apk'),
       versionName: '1.0.0',
+      semver: '1.0.0',
     },
   ];
   for (const candidate of localCandidates) {
@@ -5448,8 +5473,17 @@ async function resolveCompiledAndroidApk(): Promise<{
           source: 'local',
           localPath: candidate.filePath,
           apkUrl: '/api/download/android-apk',
+          apkFileName: path.basename(candidate.filePath),
           apkSizeBytes: stat.size,
           versionName: candidate.versionName,
+          semver: candidate.semver,
+          buildNumber: null,
+          versionCode: null,
+          releaseTag: null,
+          commitSha: null,
+          signingMode: 'unknown',
+          releasePageUrl: null,
+          publishedAt: stat.mtime.toISOString(),
         };
       }
     }
@@ -5463,7 +5497,7 @@ async function resolveCompiledAndroidApk(): Promise<{
     };
     if (token) headers.Authorization = `Bearer ${token}`;
 
-    for (const relPath of ['releases/tags/android-latest', 'releases/latest']) {
+    for (const relPath of ['releases/latest', 'releases/tags/android-latest']) {
       const releaseRes = await fetch(
         `https://api.github.com/repos/${TARGET_GITHUB_OWNER}/${TARGET_GITHUB_REPO}/${relPath}`,
         { headers, signal: AbortSignal.timeout(5000) }
@@ -5476,6 +5510,9 @@ async function resolveCompiledAndroidApk(): Promise<{
             (a) => typeof a?.name === 'string' && a.name.toLowerCase().endsWith('.apk') && Number(a.size) > 50_000
           )
           .sort((a, b) => {
+            const aBuild = /-build\.(\d+)/i.test(String(a.name)) ? 1 : 0;
+            const bBuild = /-build\.(\d+)/i.test(String(b.name)) ? 1 : 0;
+            if (aBuild !== bBuild) return bBuild - aBuild;
             const aOffline = String(a.name).toLowerCase().includes('offline') ? 1 : 0;
             const bOffline = String(b.name).toLowerCase().includes('offline') ? 1 : 0;
             if (aOffline !== bOffline) return bOffline - aOffline;
@@ -5483,13 +5520,60 @@ async function resolveCompiledAndroidApk(): Promise<{
           });
         const apkAsset = apkAssets[0];
         if (apkAsset?.browser_download_url) {
-          const isOfflineBuild = String(apkAsset.name).toLowerCase().includes('offline');
+          let metaJson: Record<string, any> | null = null;
+          const metaAsset = assets.find((a) => a?.name === 'apk-build-metadata.json' && a?.browser_download_url);
+          if (metaAsset?.browser_download_url) {
+            try {
+              const metaRes = await fetch(metaAsset.browser_download_url, {
+                headers: token ? { Authorization: `Bearer ${token}`, 'User-Agent': 'Student-Companion-Ng-APK' } : { 'User-Agent': 'Student-Companion-Ng-APK' },
+                signal: AbortSignal.timeout(3000),
+              });
+              if (metaRes.ok) {
+                metaJson = await metaRes.json();
+              }
+            } catch {}
+          }
+
+          const assetName = String(apkAsset.name || '');
+          const buildMatch = assetName.match(/StudentCompanion-v(\d+\.\d+\.\d+)(?:-build\.(\d+))?/i);
+          const releaseBody = String(releaseData?.body || '');
+          const signingMatch = releaseBody.match(/Signing Mode:\s*`?(persistent|ephemeral)`?/i);
+          const shaMatch = releaseBody.match(/Commit SHA:\s*`?([a-f0-9]{6,40})`?/i);
+          const codeMatch = releaseBody.match(/Version Code:\s*`?(\d+)`?/i);
+          const isOfflineBuild = assetName.toLowerCase().includes('offline');
+
+          const inferredSemver = String(metaJson?.semver || buildMatch?.[1] || (isOfflineBuild ? '2.0.0' : '1.0.0'));
+          const inferredBuildNum = metaJson?.buildNumber != null
+            ? Number(metaJson.buildNumber)
+            : buildMatch?.[2]
+            ? Number(buildMatch[2])
+            : null;
+          const inferredVersionName = String(
+            metaJson?.versionName ||
+              (inferredBuildNum != null ? `${inferredSemver}-build.${inferredBuildNum}` : isOfflineBuild ? `${inferredSemver} Offline` : String(releaseData?.tag_name || '1.0.0'))
+          );
+          const inferredSigningMode: 'persistent' | 'ephemeral' | 'unknown' =
+            metaJson?.signingMode === 'persistent' || signingMatch?.[1]?.toLowerCase() === 'persistent'
+              ? 'persistent'
+              : metaJson?.signingMode === 'ephemeral' || signingMatch?.[1]?.toLowerCase() === 'ephemeral'
+              ? 'ephemeral'
+              : 'unknown';
+
           return {
             apkReady: true,
             source: 'github',
             apkUrl: apkAsset.browser_download_url,
+            apkFileName: assetName,
             apkSizeBytes: Number(apkAsset.size),
-            versionName: isOfflineBuild ? '2.0.0 Offline' : String(releaseData?.tag_name || '1.0.0'),
+            versionName: inferredVersionName,
+            semver: inferredSemver,
+            buildNumber: inferredBuildNum,
+            versionCode: metaJson?.versionCode != null ? Number(metaJson.versionCode) : codeMatch ? Number(codeMatch[1]) : null,
+            releaseTag: String(metaJson?.releaseTag || releaseData?.tag_name || 'android-latest'),
+            commitSha: metaJson?.commitSha ? String(metaJson.commitSha) : shaMatch ? shaMatch[1] : null,
+            signingMode: inferredSigningMode,
+            releasePageUrl: releaseData?.html_url ? String(releaseData.html_url) : null,
+            publishedAt: String(metaJson?.builtAt || apkAsset.updated_at || releaseData?.published_at || ''),
           };
         }
       }
@@ -5504,6 +5588,8 @@ async function inspectGithubApkWorkflow(): Promise<{
   latestRun: {
     status: string;
     conclusion: string | null;
+    runNumber: number | null;
+    headSha: string | null;
     htmlUrl: string;
     createdAt: string;
   } | null;
@@ -5519,6 +5605,8 @@ async function inspectGithubApkWorkflow(): Promise<{
   let latestRun: {
     status: string;
     conclusion: string | null;
+    runNumber: number | null;
+    headSha: string | null;
     htmlUrl: string;
     createdAt: string;
   } | null = null;
@@ -5542,6 +5630,8 @@ async function inspectGithubApkWorkflow(): Promise<{
         latestRun = {
           status: String(firstRun.status || 'unknown'),
           conclusion: firstRun.conclusion ? String(firstRun.conclusion) : null,
+          runNumber: typeof firstRun.run_number === 'number' ? firstRun.run_number : null,
+          headSha: firstRun.head_sha ? String(firstRun.head_sha).slice(0, 7) : null,
           htmlUrl: String(firstRun.html_url || ''),
           createdAt: String(firstRun.created_at || ''),
         };
@@ -5587,8 +5677,17 @@ app.get('/api/android/apk-status', async (req, res) => {
     success: true,
     apkReady: resolved.apkReady,
     apkUrl: resolved.apkUrl || null,
+    apkFileName: resolved.apkFileName || null,
     apkSizeBytes: resolved.apkSizeBytes || 0,
-    versionName: resolved.versionName || '2.0.0',
+    versionName: resolved.versionName || '2.4.0',
+    semver: resolved.semver || null,
+    buildNumber: resolved.buildNumber ?? null,
+    versionCode: resolved.versionCode ?? null,
+    releaseTag: resolved.releaseTag || null,
+    commitSha: resolved.commitSha || null,
+    signingMode: resolved.signingMode || 'unknown',
+    releasePageUrl: resolved.releasePageUrl || null,
+    publishedAt: resolved.publishedAt || null,
     packageName: 'com.studentcompanion.app',
     minSdkVersion: 23,
     androidMinLabel: 'Android 6.0 Marshmallow+',
@@ -5677,7 +5776,7 @@ app.post('/api/android/trigger-github-apk-build', async (req, res) => {
 app.get('/api/download/android-apk', async (req, res) => {
   const resolved = await resolveCompiledAndroidApk();
   if (resolved.apkReady && resolved.source === 'local' && resolved.localPath) {
-    return res.download(resolved.localPath, 'StudentCompanion-v2.0.0-offline-android6plus.apk');
+    return res.download(resolved.localPath, resolved.apkFileName || 'StudentCompanion-offline-android6plus.apk');
   }
   if (resolved.apkReady && resolved.source === 'github' && resolved.apkUrl) {
     return res.redirect(resolved.apkUrl);
@@ -6589,14 +6688,30 @@ app.get('/api/ota/state', async (_req, res) => {
     // Keep server mirror if Firestore edge read times out
   }
 
-  let latestApkRelease: { apkReady: boolean; apkUrl?: string; versionName?: string } = { apkReady: false };
+  let latestApkRelease: {
+    apkReady: boolean;
+    apkUrl?: string;
+    apkFileName?: string;
+    versionName?: string;
+    semver?: string;
+    buildNumber?: number | null;
+    versionCode?: number | null;
+    releaseTag?: string | null;
+    signingMode?: 'persistent' | 'ephemeral' | 'unknown';
+  } = { apkReady: false };
   try {
     const apk = await resolveCompiledAndroidApk();
     if (apk.apkReady) {
       latestApkRelease = {
         apkReady: true,
         apkUrl: apk.apkUrl,
+        apkFileName: apk.apkFileName,
         versionName: apk.versionName,
+        semver: apk.semver,
+        buildNumber: apk.buildNumber ?? null,
+        versionCode: apk.versionCode ?? null,
+        releaseTag: apk.releaseTag ?? null,
+        signingMode: apk.signingMode || 'unknown',
       };
     }
   } catch {}

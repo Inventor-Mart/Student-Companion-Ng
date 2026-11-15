@@ -365,8 +365,15 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
     }
   };
 
+  const autoSchoolCodeAttemptedRef = React.useRef(false);
+
   useEffect(() => {
-    if (selectedRole === 'admin' && !adminSchoolCode && !isGeneratingSchoolCode) {
+    if (selectedRole !== 'admin') {
+      autoSchoolCodeAttemptedRef.current = false;
+      return;
+    }
+    if (!adminSchoolCode && !isGeneratingSchoolCode && !autoSchoolCodeAttemptedRef.current) {
+      autoSchoolCodeAttemptedRef.current = true;
       void requestServerSchoolCode(false);
     }
   }, [selectedRole, adminSchoolCode, isGeneratingSchoolCode]);
@@ -412,8 +419,15 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
     setPartnerReferralCode(`GP-${letters}${digits}`);
   };
 
+  const autoPartnerCodeAttemptedRef = React.useRef(false);
+
   useEffect(() => {
-    if (selectedRole === 'growth_partner' && !partnerReferralCode && !isGeneratingPartnerCode) {
+    if (selectedRole !== 'growth_partner') {
+      autoPartnerCodeAttemptedRef.current = false;
+      return;
+    }
+    if (!partnerReferralCode && !isGeneratingPartnerCode && !autoPartnerCodeAttemptedRef.current) {
+      autoPartnerCodeAttemptedRef.current = true;
       void requestServerPartnerCode(false);
     }
   }, [selectedRole, partnerReferralCode, isGeneratingPartnerCode]);

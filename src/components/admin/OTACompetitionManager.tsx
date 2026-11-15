@@ -27,6 +27,7 @@ import {
   fetchLatestGitHubApkRelease,
   GitHubApkReleaseInfo,
   bumpSemver,
+  compareSemver,
   isValidSemver
 } from '../../services/otaService';
 import {
@@ -458,9 +459,20 @@ export const OTACompetitionManager: React.FC = () => {
       if (info.apkReady && info.apkUrl) {
         setReleaseConfig((prev) => ({
           ...prev,
-          downloadUrl: info.apkUrl!
+          downloadUrl: info.apkUrl!,
+          latestVersion:
+            info.semver && isValidSemver(info.semver) && compareSemver(prev.latestVersion, info.semver) < 0
+              ? info.semver
+              : prev.latestVersion,
         }));
-        triggerNotice(`Linked live GitHub APK release (${info.versionName || 'android-latest'}).`);
+        const buildTag = [
+          info.versionName ? `v${info.versionName}` : info.releaseTag || 'android-latest',
+          info.versionCode ? `code ${info.versionCode}` : null,
+          info.signingMode !== 'unknown' ? `${info.signingMode} key` : null,
+        ]
+          .filter(Boolean)
+          .join(' · ');
+        triggerNotice(`Linked live GitHub APK (${buildTag}). Click Publish OTA Release to notify devices.`);
       } else {
         triggerNotice('No compiled .apk asset found on GitHub Releases yet.');
       }
@@ -1775,9 +1787,20 @@ export const OTACompetitionManager: React.FC = () => {
                     className="px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-[#84E000]"
                   />
                   <div className="flex items-center justify-between gap-2 text-[11px] text-slate-400">
-                    <span>
+                    <span className="font-mono tabular-nums truncate">
                       {githubApkInfo?.apkReady
-                        ? `Live GitHub APK detected (${githubApkInfo.versionName || 'android-latest'}) — editable above.`
+                        ? [
+                            `APK v${githubApkInfo.versionName || 'latest'}`,
+                            githubApkInfo.versionCode ? `code ${githubApkInfo.versionCode}` : null,
+                            githubApkInfo.releaseTag || null,
+                            githubApkInfo.signingMode === 'persistent'
+                              ? 'Key: Persistent'
+                              : githubApkInfo.signingMode === 'ephemeral'
+                              ? 'Key: Ephemeral'
+                              : null,
+                          ]
+                            .filter(Boolean)
+                            .join(' · ')
                         : 'Leave blank for instant web/SW reload only, or supply a Store/APK URL.'}
                     </span>
                     {releaseConfig.downloadUrl && (
@@ -1785,7 +1808,7 @@ export const OTACompetitionManager: React.FC = () => {
                         href={releaseConfig.downloadUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 text-[#84E000] hover:underline shrink-0"
+                        className="inline-flex items-center gap-1 text-[#84E000] hover:underline shrink-0 whitespace-nowrap"
                       >
                         <ExternalLink className="w-3 h-3" />
                         <span>Verify Link</span>

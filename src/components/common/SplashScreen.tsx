@@ -42,6 +42,11 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({
     };
   }, []);
 
+  const onFinishRef = React.useRef(onFinish);
+  useEffect(() => {
+    onFinishRef.current = onFinish;
+  }, [onFinish]);
+
   // 2. Automated 3-second navigation timer with smooth fade out
   useEffect(() => {
     const fadeTimer = setTimeout(() => {
@@ -49,20 +54,20 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({
     }, Math.max(0, durationMs - 400));
 
     const finishTimer = setTimeout(() => {
-      onFinish();
+      onFinishRef.current();
     }, durationMs);
 
     return () => {
       clearTimeout(fadeTimer);
       clearTimeout(finishTimer);
     };
-  }, [durationMs, onFinish]);
+  }, [durationMs]);
 
   // 3. Instant skip on tap/click
   const handleSkip = () => {
     setIsFadingOut(true);
     setTimeout(() => {
-      onFinish();
+      onFinishRef.current();
     }, 150);
   };
 

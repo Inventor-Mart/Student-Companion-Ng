@@ -1365,7 +1365,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   useEffect(() => {
     const unsub = subscribeToOTAAppRelease((release) => {
-      setOtaAppRelease(release);
+      setOtaAppRelease((prev) =>
+        JSON.stringify(prev) === JSON.stringify(release) ? prev : release
+      );
     });
     return () => unsub();
   }, []);
@@ -1390,7 +1392,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const refreshOTAStatus = useCallback(async (): Promise<OTAAppReleaseConfig | null> => {
     const live = await fetchLiveOTAAppRelease();
     if (live) {
-      setOtaAppRelease(live);
+      setOtaAppRelease((prev) =>
+        JSON.stringify(prev) === JSON.stringify(live) ? prev : live
+      );
     }
     return live;
   }, []);
@@ -5800,15 +5804,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isStudentSubscriptionModalOpen, setIsStudentSubscriptionModalOpen] = useState<boolean>(false);
   const [targetSubscriptionPlan, setTargetSubscriptionPlan] = useState<StudentSubscriptionPlan | null>(null);
 
-  const openStudentSubscriptionModal = (targetPlan?: StudentSubscriptionPlan) => {
+  const openStudentSubscriptionModal = useCallback((targetPlan?: StudentSubscriptionPlan) => {
     if (targetPlan) setTargetSubscriptionPlan(targetPlan);
     setIsStudentSubscriptionModalOpen(true);
-  };
+  }, []);
 
-  const closeStudentSubscriptionModal = () => {
+  const closeStudentSubscriptionModal = useCallback(() => {
     setIsStudentSubscriptionModalOpen(false);
     setTargetSubscriptionPlan(null);
-  };
+  }, []);
 
   const getAcademicTermEndDate = (): string => {
     const now = new Date();
@@ -6197,7 +6201,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return { allowed: true, remainingAttempts: 0 };
   };
 
-  const checkStudentFeatureAccess = (
+  const checkStudentFeatureAccess = useCallback((
     feature:
       | 'scheme_weeks'
       | 'quiz_questions'
@@ -6422,7 +6426,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     return { hasAccess: true };
-  };
+  }, [
+    student.subscriptionPlan,
+    student.isSubscribed,
+    student.addOns,
+    effectiveTermBypass,
+    effectiveGamesBypass,
+    effectiveAiCoachBypass,
+    examPrepState.isUnlocked
+  ]);
 
   const updateTutorProfile = (updatedTutorData: Partial<RegisteredTutorData>) => {
     if (!currentUserProfile || currentUserProfile.role !== 'tutor') return;
@@ -6962,6 +6974,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const seenLiveOtaIdsRef = React.useRef<Set<string>>(new Set());
   const otaHydratedRef = React.useRef<boolean>(false);
+  const otaBroadcastNotifsRef = React.useRef<OTANotificationBroadcast[]>(otaBroadcastNotifs);
+  otaBroadcastNotifsRef.current = otaBroadcastNotifs;
+  const personalInboxRef = React.useRef<AppNotificationItem[]>(personalInbox);
+  personalInboxRef.current = personalInbox;
 
   // Sync user-scoped notification storage when account switches
   useEffect(() => {
@@ -7037,7 +7053,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const markNotificationRead = useCallback(
     (id: string) => {
-      if (id.startsWith('ota_') || otaBroadcastNotifs.some((b) => b.id === id)) {
+      if (id.startsWith('ota_') || otaBroadcastNotifsRef.current.some((b) => b.id === id)) {
         setReadOtaIds((prev) => {
           if (prev.includes(id)) return prev;
           const next = [...prev, id];
@@ -7053,7 +7069,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return next;
       });
     },
-    [notifUserScope, otaBroadcastNotifs]
+    [notifUserScope]
   );
 
   const handleNotificationAction = useCallback(
@@ -7064,6 +7080,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     },
     [markNotificationRead, routeToDeepLinkTab]
   );
+
+  const notifRuntimeRef = React.useRef({
+    currentRole,
+    isAuthenticated,
+    notificationPreferences,
+    handleNotificationAction
+  });
+  notifRuntimeRef.current = {
+    currentRole,
+    isAuthenticated,
+    notificationPreferences,
+    handleNotificationAction
+  };
 
   // Register Service Worker, parse ?notifTab URL deep links, and listen to SW click messages
   useEffect(() => {
@@ -7113,7 +7142,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Subscribe to live Super Admin OTA Notification Broadcasts
   useEffect(() => {
     const unsub = subscribeToOTANotificationBroadcasts((items) => {
-      setOtaBroadcastNotifs(items);
+      setOtaBroadcastNotifs((prev) => {
+        if (prev.length === items.length && JSON.stringify(prev) === JSON.stringify(items)) {
+          return prev;
+        }
+        return items;
+      });
 
       // Dispatch browser push for newly added active OTA broadcasts targeting the active user
       if (!otaHydratedRef.current) {
@@ -7122,7 +7156,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return;
       }
 
-      if (!isAuthenticated || !notificationPreferences.otaBroadcasts) {
+      const rt = notifRuntimeRef.current;
+      if (!rt.isAuthenticated || !rt.notificationPreferences.otaBroadcasts) {
         items.forEach((b) => seenLiveOtaIdsRef.current.add(b.id));
         return;
       }
@@ -7132,7 +7167,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           seenLiveOtaIdsRef.current.add(b.id);
           const matchesRole =
             b.isActive &&
-            (b.targetRoles.includes('all') || b.targetRoles.includes(currentRole));
+            (b.targetRoles.includes('all') || b.targetRoles.includes(rt.currentRole));
           if (matchesRole) {
             const notifItem: AppNotificationItem = {
               id: b.id,
@@ -7147,22 +7182,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               read: false,
               priority: b.priority
             };
-            dispatchBrowserNotification(notifItem, notificationPreferences, {
-              onForegroundClick: (clicked) => handleNotificationAction(clicked)
+            dispatchBrowserNotification(notifItem, rt.notificationPreferences, {
+              onForegroundClick: (clicked) => notifRuntimeRef.current.handleNotificationAction(clicked)
             });
           }
         }
       });
     });
     return () => unsub();
-  }, [currentRole, handleNotificationAction, isAuthenticated, notificationPreferences]);
+  }, []);
 
   // Automated Streak & Inactivity Draw-Back Evaluation Loop
   useEffect(() => {
     if (!isAuthenticated || currentScreen !== 'app') return;
 
     const runCheck = () => {
-      const existingIds = new Set(personalInbox.map((i) => i.id));
+      const existingIds = new Set(personalInboxRef.current.map((i) => i.id));
       const newItems = evaluateAutomatedReengagementNudges({
         userId: notifUserScope,
         role: currentRole,
@@ -7175,14 +7210,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       if (newItems.length > 0) {
         setPersonalInbox((prev) => {
-          const merged = [...newItems, ...prev].slice(0, 60);
+          const prevIds = new Set(prev.map((i) => i.id));
+          const trulyNew = newItems.filter((item) => !prevIds.has(item.id));
+          if (trulyNew.length === 0) return prev;
+          const merged = [...trulyNew, ...prev].slice(0, 60);
           saveStoredInboxNotifications(notifUserScope, merged);
           return merged;
         });
 
         // Push up to 1 top automated alert to browser OS notifications when allowed
         dispatchBrowserNotification(newItems[0], notificationPreferences, {
-          onForegroundClick: (clicked) => handleNotificationAction(clicked)
+          onForegroundClick: (clicked) => notifRuntimeRef.current.handleNotificationAction(clicked)
         });
       }
     };
@@ -7194,11 +7232,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     championshipRegistrations,
     currentRole,
     currentScreen,
-    handleNotificationAction,
     isAuthenticated,
     notifUserScope,
     notificationPreferences,
-    personalInbox,
     student,
     tutorBookings
   ]);
@@ -7352,13 +7388,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [currentRole, handleNotificationAction, notifUserScope, notificationPreferences, student]);
 
   const offlineQueueScopeId = currentUser?.uid || currentUserProfile?.id || 'guest';
+  const pendingSyncCountRef = React.useRef(pendingSyncCount);
+  pendingSyncCountRef.current = pendingSyncCount;
 
   const syncOfflineQueue = useCallback(async (): Promise<{ synced: number; remaining: number }> => {
     if (typeof navigator !== 'undefined' && !navigator.onLine) {
-      return { synced: 0, remaining: pendingSyncCount };
+      return { synced: 0, remaining: pendingSyncCountRef.current };
     }
     if (manualOffline) {
-      return { synced: 0, remaining: pendingSyncCount };
+      return { synced: 0, remaining: pendingSyncCountRef.current };
     }
 
     const scopesToCheck = Array.from(
@@ -7474,7 +7512,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setIsSyncingOfflineQueue(false);
     return { synced: syncedCount, remaining: remainingCount };
-  }, [currentUser, currentUserProfile?.id, manualOffline, offlineQueueScopeId, pendingSyncCount]);
+  }, [currentUser, currentUserProfile?.id, manualOffline, offlineQueueScopeId]);
 
   // Monitor real browser connectivity, hydrate queue count, and warm offline cache on startup
   useEffect(() => {

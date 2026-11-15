@@ -16,6 +16,8 @@ import { useApp } from '../../context/AppContext';
 import {
   DEFAULT_PAUSED_FEATURE_MESSAGE,
   compareSemver,
+  getCachedLatestApkRelease,
+  isBundledAndroidApkShell,
   isValidSafeExternalUrl,
   normalizeSemver
 } from '../../services/otaService';
@@ -47,12 +49,26 @@ export const AppUpdateGate: React.FC = () => {
   const belowMinimum =
     compareSemver(effectiveInstalledVersion, activeRelease.minimumSupportedVersion) < 0;
 
-  const hasSafeDownloadUrl = isValidSafeExternalUrl(activeRelease.downloadUrl);
+  const isAndroidApkShell = isBundledAndroidApkShell();
+  const cachedApkRelease = getCachedLatestApkRelease();
+  const fallbackApkUrl =
+    isAndroidApkShell && cachedApkRelease?.apkReady && isValidSafeExternalUrl(cachedApkRelease.apkUrl)
+      ? cachedApkRelease.apkUrl || undefined
+      : undefined;
+
+  const effectiveDownloadUrl = isValidSafeExternalUrl(activeRelease.downloadUrl)
+    ? activeRelease.downloadUrl
+    : fallbackApkUrl;
+  const hasSafeDownloadUrl = isValidSafeExternalUrl(effectiveDownloadUrl);
   const isApkDownloadUrl = Boolean(
-    activeRelease.downloadUrl &&
-      (activeRelease.downloadUrl.toLowerCase().includes('.apk') ||
-        activeRelease.downloadUrl.toLowerCase().includes('/releases/'))
+    effectiveDownloadUrl &&
+      (effectiveDownloadUrl.toLowerCase().includes('.apk') ||
+        effectiveDownloadUrl.toLowerCase().includes('/releases/'))
   );
+  const prioritizeApkInstallCta = isAndroidApkShell && hasSafeDownloadUrl;
+  const apkLabelSuffix = cachedApkRelease?.versionName
+    ? `v${cachedApkRelease.versionName}`
+    : `v${activeRelease.latestVersion}`;
 
   const handleUpgradeNow = async () => {
     setIsUpgrading(true);
@@ -178,45 +194,71 @@ export const AppUpdateGate: React.FC = () => {
                   v{activeRelease.latestVersion}
                 </span>
               </div>
-              {activeRelease.featureHighlights[0] && (
-                <p className="text-[11px] text-slate-300 truncate">
-                  {activeRelease.featureHighlights[0]}
-                </p>
-              )}
+              <p className="text-[11px] text-slate-300 truncate">
+                {prioritizeApkInstallCta
+                  ? 'New Android APK build ready — download & tap Install to upgrade your offline app.'
+                  : activeRelease.featureHighlights[0] || 'Tap Upgrade Now to load the latest update.'}
+              </p>
             </div>
           </div>
 
           <div className="flex items-center gap-1.5 shrink-0">
-            {hasSafeDownloadUrl && (
-              <a
-                href={activeRelease.downloadUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="hidden sm:inline-flex items-center gap-1 px-2.5 min-h-[34px] rounded-lg border border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-200 text-[11px] font-bold whitespace-nowrap"
-              >
-                <ExternalLink className="w-3.5 h-3.5" />
-                <span>Store</span>
-              </a>
-            )}
-
-            <button
-              type="button"
-              onClick={handleUpgradeNow}
-              disabled={isUpgrading}
-              className="inline-flex items-center gap-1.5 px-3 min-h-[36px] rounded-lg bg-[#84E000] hover:bg-[#74c700] text-slate-950 font-black text-xs whitespace-nowrap shrink-0 cursor-pointer transition-all active:scale-95"
-            >
-              {isUpgrading ? (
-                <>
-                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                  <span>Updating...</span>
-                </>
-              ) : (
-                <>
+            {prioritizeApkInstallCta ? (
+              <>
+                <a
+                  href={effectiveDownloadUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-3 min-h-[40px] rounded-lg bg-[#84E000] hover:bg-[#74c700] text-slate-950 font-black text-xs whitespace-nowrap shrink-0 cursor-pointer transition-all active:scale-95"
+                >
                   <Download className="w-3.5 h-3.5" />
-                  <span>Upgrade Now</span>
-                </>
-              )}
-            </button>
+                  <span>Download APK</span>
+                </a>
+                <button
+                  type="button"
+                  onClick={handleUpgradeNow}
+                  disabled={isUpgrading}
+                  title="Reload local app state"
+                  aria-label="Reload local app state"
+                  className="p-2 min-h-[40px] min-w-[40px] flex items-center justify-center rounded-lg border border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-200 cursor-pointer transition-colors"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isUpgrading ? 'animate-spin' : ''}`} />
+                </button>
+              </>
+            ) : (
+              <>
+                {hasSafeDownloadUrl && (
+                  <a
+                    href={effectiveDownloadUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={`${isApkDownloadUrl ? 'inline-flex' : 'hidden sm:inline-flex'} items-center gap-1 px-2.5 min-h-[36px] rounded-lg border border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-200 text-[11px] font-bold whitespace-nowrap shrink-0`}
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    <span>{isApkDownloadUrl ? 'Get APK' : 'Store'}</span>
+                  </a>
+                )}
+
+                <button
+                  type="button"
+                  onClick={handleUpgradeNow}
+                  disabled={isUpgrading}
+                  className="inline-flex items-center gap-1.5 px-3 min-h-[36px] rounded-lg bg-[#84E000] hover:bg-[#74c700] text-slate-950 font-black text-xs whitespace-nowrap shrink-0 cursor-pointer transition-all active:scale-95"
+                >
+                  {isUpgrading ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Updating...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-3.5 h-3.5" />
+                      <span>Upgrade Now</span>
+                    </>
+                  )}
+                </button>
+              </>
+            )}
 
             <button
               type="button"
@@ -293,41 +335,73 @@ export const AppUpdateGate: React.FC = () => {
               </div>
             )}
 
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 pt-1">
-              <button
-                type="button"
-                onClick={handleUpgradeNow}
-                disabled={isUpgrading}
-                className="flex-1 min-h-[44px] px-4 rounded-xl bg-[#84E000] hover:bg-[#74c700] text-slate-950 font-black text-xs flex items-center justify-center gap-2 whitespace-nowrap cursor-pointer transition-all active:scale-95"
-              >
-                {isUpgrading ? (
-                  <>
-                    <RefreshCw className="w-4 h-4 animate-spin" />
-                    <span>Installing OTA Update...</span>
-                  </>
-                ) : upgradeDoneVersion ? (
-                  <>
-                    <CheckCircle2 className="w-4 h-4" />
-                    <span>Updated to v{upgradeDoneVersion}</span>
-                  </>
-                ) : (
-                  <>
-                    <Download className="w-4 h-4" />
-                    <span>Upgrade Now</span>
-                  </>
-                )}
-              </button>
+            {prioritizeApkInstallCta && (
+              <p className="text-[11px] text-slate-300 bg-[#091122] border border-slate-800 rounded-xl px-3.5 py-2.5 leading-relaxed">
+                Downloading opens the updated offline Android APK installer ({apkLabelSuffix}). Tap <strong className="text-white">Install</strong> over your existing app and allow <strong className="text-white">Install unknown apps</strong> if Android prompts you.
+              </p>
+            )}
 
-              {hasSafeDownloadUrl && (
-                <a
-                  href={activeRelease.downloadUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="min-h-[44px] px-3.5 rounded-xl border border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-100 text-xs font-bold flex items-center justify-center gap-1.5 whitespace-nowrap"
-                >
-                  <ExternalLink className="w-3.5 h-3.5" />
-                  <span>{isApkDownloadUrl ? 'Get APK' : 'Store'}</span>
-                </a>
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 pt-1">
+              {prioritizeApkInstallCta ? (
+                <>
+                  <a
+                    href={effectiveDownloadUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-1 min-h-[44px] px-4 rounded-xl bg-[#84E000] hover:bg-[#74c700] text-slate-950 font-black text-xs flex items-center justify-center gap-2 whitespace-nowrap cursor-pointer transition-all active:scale-95"
+                  >
+                    <Download className="w-4 h-4" />
+                    <span>Download &amp; Install APK</span>
+                  </a>
+
+                  <button
+                    type="button"
+                    onClick={handleUpgradeNow}
+                    disabled={isUpgrading}
+                    className="min-h-[44px] px-3.5 rounded-xl border border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-100 text-xs font-bold flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isUpgrading ? 'animate-spin' : ''}`} />
+                    <span>{isUpgrading ? 'Reloading...' : 'Reload Data'}</span>
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={handleUpgradeNow}
+                    disabled={isUpgrading}
+                    className="flex-1 min-h-[44px] px-4 rounded-xl bg-[#84E000] hover:bg-[#74c700] text-slate-950 font-black text-xs flex items-center justify-center gap-2 whitespace-nowrap cursor-pointer transition-all active:scale-95"
+                  >
+                    {isUpgrading ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        <span>Installing OTA Update...</span>
+                      </>
+                    ) : upgradeDoneVersion ? (
+                      <>
+                        <CheckCircle2 className="w-4 h-4" />
+                        <span>Updated to v{upgradeDoneVersion}</span>
+                      </>
+                    ) : (
+                      <>
+                        <Download className="w-4 h-4" />
+                        <span>Upgrade Now</span>
+                      </>
+                    )}
+                  </button>
+
+                  {hasSafeDownloadUrl && (
+                    <a
+                      href={effectiveDownloadUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="min-h-[44px] px-3.5 rounded-xl border border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-100 text-xs font-bold flex items-center justify-center gap-1.5 whitespace-nowrap"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      <span>{isApkDownloadUrl ? 'Get APK' : 'Store'}</span>
+                    </a>
+                  )}
+                </>
               )}
 
               <button
@@ -431,59 +505,90 @@ export const AppUpdateGate: React.FC = () => {
             </div>
           )}
 
+          {!isMaintenance && prioritizeApkInstallCta && (
+            <p className="text-[11px] text-slate-300 bg-[#091122] border border-slate-800 rounded-xl px-3.5 py-2.5 leading-relaxed">
+              This device is running the offline Android APK. Download the latest APK installer ({apkLabelSuffix}), open it, and tap <strong className="text-white">Install</strong> to upgrade without losing local notes.
+            </p>
+          )}
+
           <div className="flex flex-col gap-2.5 pt-1">
-            {(!isMaintenance || hasNewerVersion) && (
-              <button
-                type="button"
-                onClick={handleUpgradeNow}
-                disabled={isUpgrading}
-                className="w-full min-h-[46px] px-4 rounded-xl bg-[#84E000] hover:bg-[#74c700] text-slate-950 font-black text-xs sm:text-sm flex items-center justify-center gap-2 whitespace-nowrap cursor-pointer shadow-lg transition-all active:scale-95"
-              >
-                {isUpgrading ? (
-                  <>
-                    <RefreshCw className="w-4 h-4 animate-spin" />
-                    <span>Applying OTA Update...</span>
-                  </>
-                ) : upgradeDoneVersion ? (
-                  <>
-                    <CheckCircle2 className="w-4 h-4" />
-                    <span>Updated to v{upgradeDoneVersion}!</span>
-                  </>
-                ) : (
-                  <>
-                    <Download className="w-4 h-4" />
-                    <span>Upgrade Now to v{activeRelease.latestVersion}</span>
-                  </>
+            {!isMaintenance && prioritizeApkInstallCta ? (
+              <>
+                <a
+                  href={effectiveDownloadUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full min-h-[46px] px-4 rounded-xl bg-[#84E000] hover:bg-[#74c700] text-slate-950 font-black text-xs sm:text-sm flex items-center justify-center gap-2 whitespace-nowrap shadow-lg transition-all active:scale-95"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>Download &amp; Install APK ({apkLabelSuffix})</span>
+                </a>
+                <button
+                  type="button"
+                  onClick={handleUpgradeNow}
+                  disabled={isUpgrading}
+                  className="w-full min-h-[44px] px-4 rounded-xl border border-slate-700 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs flex items-center justify-center gap-2 whitespace-nowrap cursor-pointer"
+                >
+                  <RefreshCw className={`w-4 h-4 ${isUpgrading ? 'animate-spin' : ''}`} />
+                  <span>{isUpgrading ? 'Reloading App...' : 'Reload Local App Status'}</span>
+                </button>
+              </>
+            ) : (
+              <>
+                {(!isMaintenance || hasNewerVersion) && (
+                  <button
+                    type="button"
+                    onClick={handleUpgradeNow}
+                    disabled={isUpgrading}
+                    className="w-full min-h-[46px] px-4 rounded-xl bg-[#84E000] hover:bg-[#74c700] text-slate-950 font-black text-xs sm:text-sm flex items-center justify-center gap-2 whitespace-nowrap cursor-pointer shadow-lg transition-all active:scale-95"
+                  >
+                    {isUpgrading ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        <span>Applying OTA Update...</span>
+                      </>
+                    ) : upgradeDoneVersion ? (
+                      <>
+                        <CheckCircle2 className="w-4 h-4" />
+                        <span>Updated to v{upgradeDoneVersion}!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Download className="w-4 h-4" />
+                        <span>Upgrade Now to v{activeRelease.latestVersion}</span>
+                      </>
+                    )}
+                  </button>
                 )}
-              </button>
-            )}
 
-            {isMaintenance && (
-              <button
-                type="button"
-                onClick={handleCheckLiveStatus}
-                disabled={isCheckingStatus}
-                className="w-full min-h-[44px] px-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs flex items-center justify-center gap-2 whitespace-nowrap cursor-pointer disabled:opacity-70"
-              >
-                <RefreshCw className={`w-4 h-4 ${isCheckingStatus ? 'animate-spin' : ''}`} />
-                <span>{isCheckingStatus ? 'Querying Live Cloud State...' : 'Check Live Release Status'}</span>
-              </button>
-            )}
+                {isMaintenance && (
+                  <button
+                    type="button"
+                    onClick={handleCheckLiveStatus}
+                    disabled={isCheckingStatus}
+                    className="w-full min-h-[44px] px-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs flex items-center justify-center gap-2 whitespace-nowrap cursor-pointer disabled:opacity-70"
+                  >
+                    <RefreshCw className={`w-4 h-4 ${isCheckingStatus ? 'animate-spin' : ''}`} />
+                    <span>{isCheckingStatus ? 'Querying Live Cloud State...' : 'Check Live Release Status'}</span>
+                  </button>
+                )}
 
-            {hasSafeDownloadUrl && (
-              <a
-                href={activeRelease.downloadUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="w-full min-h-[44px] px-4 rounded-xl border border-slate-700 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs flex items-center justify-center gap-2 whitespace-nowrap"
-              >
-                <ExternalLink className="w-4 h-4" />
-                <span>
-                  {isApkDownloadUrl
-                    ? 'Download Latest Android APK'
-                    : 'Download Latest App Package (Store / APK)'}
-                </span>
-              </a>
+                {hasSafeDownloadUrl && (
+                  <a
+                    href={effectiveDownloadUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full min-h-[44px] px-4 rounded-xl border border-slate-700 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs flex items-center justify-center gap-2 whitespace-nowrap"
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                    <span>
+                      {isApkDownloadUrl
+                        ? 'Download Latest Android APK'
+                        : 'Download Latest App Package (Store / APK)'}
+                    </span>
+                  </a>
+                )}
+              </>
             )}
           </div>
 
