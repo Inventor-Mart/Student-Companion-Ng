@@ -7,13 +7,13 @@ import {
   GraduationCap,
   ShieldCheck,
   Building2,
-  Sliders,
-  LogOut,
   Sparkles,
   ArrowRight,
   Database,
   Lock,
-  Unlock
+  Unlock,
+  Gamepad2,
+  Bot
 } from 'lucide-react';
 
 interface DeveloperQuickBarProps {
@@ -25,6 +25,10 @@ export const DeveloperQuickBar: React.FC<DeveloperQuickBarProps> = ({ onOpenDire
     isSuperAdmin,
     adminTermLockOverride,
     setAdminTermLockOverride,
+    adminGamesUnlockOverride,
+    setAdminGamesUnlockOverride,
+    adminAiCoachUnlockOverride,
+    setAdminAiCoachUnlockOverride,
     currentRole,
     switchRole,
     impersonatedUser,
@@ -33,6 +37,8 @@ export const DeveloperQuickBar: React.FC<DeveloperQuickBarProps> = ({ onOpenDire
   } = useApp();
 
   if (!isSuperAdmin) return null;
+
+  const isStudentMode = currentRole === 'student' || impersonatedUser?.role === 'student';
 
   const roleOptions: { id: UserRole | 'super_admin'; label: string; icon: any; color: string }[] = [
     { id: 'super_admin', label: 'Super Admin', icon: Sparkles, color: 'text-amber-400 bg-amber-950/80 border-amber-600/60' },
@@ -69,11 +75,11 @@ export const DeveloperQuickBar: React.FC<DeveloperQuickBarProps> = ({ onOpenDire
         {/* Left: Developer Badge */}
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-emerald-950/90 border border-emerald-500/50 text-[#84E000] font-bold text-[11px]">
-            <span className="w-2 h-2 rounded-full bg-[#84E000] animate-ping" />
+            <span className="w-2 h-2 rounded-full bg-[#84E000]" />
             <span>DEV MODE</span>
           </div>
-          <span className="text-slate-300 font-semibold hidden sm:inline">martorefe@gmail.com</span>
-          <span className="text-[10px] text-slate-500 font-mono hidden md:inline">| Super Admin Access</span>
+          <span className="text-slate-300 font-semibold hidden sm:inline">Super Admin</span>
+          <span className="text-[10px] text-slate-500 font-mono hidden md:inline">| Preview Controls</span>
         </div>
 
         {/* Center: Live Role Switcher */}
@@ -107,30 +113,68 @@ export const DeveloperQuickBar: React.FC<DeveloperQuickBarProps> = ({ onOpenDire
           })}
         </div>
 
-        {/* Right: Term Lock Preview Toggle (Student View) + User Directory Trigger */}
-        <div className="flex items-center gap-2">
-          {(currentRole === 'student' || impersonatedUser?.role === 'student') && (
-            <button
-              type="button"
-              onClick={() => setAdminTermLockOverride(!adminTermLockOverride)}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border font-semibold text-[11px] transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
-                adminTermLockOverride
-                  ? 'bg-emerald-950/90 hover:bg-emerald-900 text-emerald-300 border-emerald-600/60'
-                  : 'bg-amber-950/80 hover:bg-amber-900/90 text-amber-300 border-amber-600/50'
-              }`}
-              title={
-                adminTermLockOverride
-                  ? 'Currently previewing unlocked terms. Click to enforce Student term locks & countdown.'
-                  : 'Enforcing Student NERDC term locks & countdown. Click to unlock all terms for preview.'
-              }
-            >
-              {adminTermLockOverride ? (
-                <Unlock className="w-3.5 h-3.5 shrink-0" />
-              ) : (
-                <Lock className="w-3.5 h-3.5 shrink-0" />
-              )}
-              <span>{adminTermLockOverride ? 'Term Lock: Preview Open' : 'Term Lock: Student View'}</span>
-            </button>
+        {/* Right: Student Mode Preview Toggles + User Directory Trigger */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          {isStudentMode && (
+            <>
+              <button
+                type="button"
+                onClick={() => setAdminTermLockOverride(!adminTermLockOverride)}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border font-semibold text-[11px] transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                  adminTermLockOverride
+                    ? 'bg-emerald-950/90 hover:bg-emerald-900 text-emerald-300 border-emerald-600/60'
+                    : 'bg-amber-950/80 hover:bg-amber-900/90 text-amber-300 border-amber-600/50'
+                }`}
+                title={
+                  adminTermLockOverride
+                    ? 'Currently previewing unlocked terms. Click to enforce Student term locks & countdown.'
+                    : 'Enforcing Student NERDC term locks & countdown. Click to unlock all terms for preview.'
+                }
+              >
+                {adminTermLockOverride ? (
+                  <Unlock className="w-3.5 h-3.5 shrink-0" />
+                ) : (
+                  <Lock className="w-3.5 h-3.5 shrink-0" />
+                )}
+                <span>{adminTermLockOverride ? 'Term Lock: Open' : 'Term Lock: Student'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setAdminGamesUnlockOverride(!adminGamesUnlockOverride)}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border font-semibold text-[11px] transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                  adminGamesUnlockOverride
+                    ? 'bg-emerald-950/90 hover:bg-emerald-900 text-emerald-300 border-emerald-600/60'
+                    : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border-slate-700'
+                }`}
+                title={
+                  adminGamesUnlockOverride
+                    ? 'Games Hub unlocked for Super Admin preview. Click to enforce real student locks.'
+                    : 'Click to unlock all 12 Games Hub titles while acting as a student.'
+                }
+              >
+                <Gamepad2 className="w-3.5 h-3.5 shrink-0" />
+                <span>{adminGamesUnlockOverride ? 'Games Hub: Unlocked' : 'Games Hub: Student'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setAdminAiCoachUnlockOverride(!adminAiCoachUnlockOverride)}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border font-semibold text-[11px] transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                  adminAiCoachUnlockOverride
+                    ? 'bg-emerald-950/90 hover:bg-emerald-900 text-emerald-300 border-emerald-600/60'
+                    : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border-slate-700'
+                }`}
+                title={
+                  adminAiCoachUnlockOverride
+                    ? 'SC AI Coach unlocked with unlimited preview. Click to enforce student gate & quota.'
+                    : 'Click to unlock SC AI Coach without subscription while acting as a student.'
+                }
+              >
+                <Bot className="w-3.5 h-3.5 shrink-0" />
+                <span>{adminAiCoachUnlockOverride ? 'AI Coach: Unlocked' : 'AI Coach: Student'}</span>
+              </button>
+            </>
           )}
 
           {onOpenDirectory && (
@@ -155,3 +199,4 @@ export const DeveloperQuickBar: React.FC<DeveloperQuickBarProps> = ({ onOpenDire
     </div>
   );
 };
+

@@ -1128,7 +1128,10 @@ export class SecurityService {
     };
   }
 
-  registerRoutes(app: express.Express): void {
+  registerRoutes(
+    app: express.Express,
+    verifySuperAdminFn?: (req: Request) => Promise<{ ok: boolean; email?: string; error?: string }>
+  ): void {
     // A. User Security Report Submission (Available to ALL Personas, with Automated Multi-Report Enforcement)
     app.post('/api/security/report', async (req, res) => {
       try {
@@ -1441,7 +1444,19 @@ export class SecurityService {
 
     // D. Super Admin Security & Trust Center Overview
     app.get('/api/security/overview', async (req, res) => {
-      const adminEmail = String(req.query.adminEmail || '').toLowerCase().trim();
+      let verifiedEmail = '';
+      if (verifySuperAdminFn) {
+        const tokenCheck = await verifySuperAdminFn(req);
+        if (!tokenCheck.ok) {
+          await this.logUnauthorizedProbe(req, '/api/security/overview', String(req.query.adminEmail || tokenCheck.email || ''));
+          return res.status(403).json({
+            success: false,
+            error: tokenCheck.error || 'Unauthorized: Signed Super Admin authentication token required.'
+          });
+        }
+        verifiedEmail = String(tokenCheck.email || '').toLowerCase().trim();
+      }
+      const adminEmail = verifiedEmail || String(req.query.adminEmail || '').toLowerCase().trim();
       if (!isAuthorizedSuperAdmin(adminEmail)) {
         await this.logUnauthorizedProbe(req, '/api/security/overview', adminEmail);
         return res.status(403).json({
@@ -1496,8 +1511,21 @@ export class SecurityService {
         policy
       } = req.body || {};
 
-      if (!isAuthorizedSuperAdmin(adminEmail)) {
-        await this.logUnauthorizedProbe(req, '/api/security/action', adminEmail);
+      let verifiedEmail = '';
+      if (verifySuperAdminFn) {
+        const tokenCheck = await verifySuperAdminFn(req);
+        if (!tokenCheck.ok) {
+          await this.logUnauthorizedProbe(req, '/api/security/action', String(adminEmail || tokenCheck.email || ''));
+          return res.status(403).json({
+            success: false,
+            error: tokenCheck.error || 'Unauthorized: Signed Super Admin authentication token required.'
+          });
+        }
+        verifiedEmail = String(tokenCheck.email || '').toLowerCase().trim();
+      }
+      const actor = verifiedEmail || String(adminEmail || '').toLowerCase().trim();
+      if (!isAuthorizedSuperAdmin(actor)) {
+        await this.logUnauthorizedProbe(req, '/api/security/action', actor);
         return res.status(403).json({
           success: false,
           error: 'Unauthorized: Super Admin privileges required to execute enforcement actions.'
@@ -1505,7 +1533,6 @@ export class SecurityService {
       }
 
       const nowIso = new Date().toISOString();
-      const actor = String(adminEmail).toLowerCase().trim();
 
       const resolveTargets = (): string[] => {
         return Array.from(

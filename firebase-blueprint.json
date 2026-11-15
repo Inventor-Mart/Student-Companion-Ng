@@ -38,7 +38,7 @@
         },
         "rank": {
           "type": "string",
-          "enum": ["Fresher", "Scholar", "Prefect", "Senior Boy", "Senior Girl"],
+          "enum": ["Fresher", "Scholar", "Prefect", "Senior Boy", "Senior Girl", "Senior Prefect"],
           "description": "Academic rank in school"
         },
         "streakDays": {
@@ -1262,6 +1262,164 @@
         }
       },
       "required": ["id", "schoolCode", "studentId", "studentName", "classLevel", "stream", "xp", "rank", "streakDays", "isSubscribed", "subscriptionTier", "joinedAt", "updatedAt"]
+    },
+    "AICoachUsage": {
+      "title": "AICoachUsage",
+      "description": "Server-enforced daily prompt quota ledger for SC AI Study Coach keyed by studentId and WAT calendar date",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_-]+$",
+          "description": "Composite identifier {studentId}_{dateWat}"
+        },
+        "studentId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_-]+$",
+          "description": "Student UID or session identifier"
+        },
+        "dateWat": {
+          "type": "string",
+          "maxLength": 20,
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+          "description": "West Africa Time calendar date YYYY-MM-DD"
+        },
+        "planType": {
+          "type": "string",
+          "enum": ["addon", "elite", "admin_bypass"],
+          "description": "Entitlement tier governing daily quota"
+        },
+        "count": {
+          "type": "number",
+          "description": "Number of AI Study Coach prompts consumed on dateWat"
+        },
+        "dailyLimit": {
+          "type": "number",
+          "description": "Configured maximum prompts permitted for planType on dateWat"
+        },
+        "lastPromptAt": {
+          "type": "string",
+          "maxLength": 50,
+          "description": "ISO timestamp of most recent prompt"
+        },
+        "updatedAt": {
+          "type": "string",
+          "maxLength": 50,
+          "description": "Last update ISO timestamp"
+        }
+      },
+      "required": ["id", "studentId", "dateWat", "planType", "count", "dailyLimit", "updatedAt"]
+    },
+    "UserAccount": {
+      "title": "UserAccount",
+      "description": "Registered account profile across student, parent, tutor, school_admin, growth_partner, and admin roles",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+        "role": { "type": "string", "enum": ["student", "parent", "tutor", "admin", "growth_partner", "school_admin"] },
+        "fullName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "email": { "type": "string", "maxLength": 150 },
+        "avatarUrl": { "type": "string", "maxLength": 500 },
+        "emailVerified": { "type": "boolean" },
+        "createdAt": { "type": "string", "maxLength": 50 },
+        "studentData": { "type": "object" },
+        "parentData": { "type": "object" },
+        "tutorData": { "type": "object" },
+        "adminData": { "type": "object" },
+        "growthPartnerData": { "type": "object" },
+        "isSuperAdmin": { "type": "boolean" },
+        "isDeveloper": { "type": "boolean" },
+        "accountStatus": { "type": "string", "enum": ["active", "locked", "suspended", "deleted"] },
+        "lockedUntil": { "type": "string", "maxLength": 50 },
+        "lockReason": { "type": "string", "maxLength": 300 },
+        "suspensionReason": { "type": "string", "maxLength": 300 },
+        "suspendedAt": { "type": "string", "maxLength": 50 },
+        "walletFrozen": { "type": "boolean" },
+        "walletFrozenReason": { "type": "string", "maxLength": 300 }
+      },
+      "required": ["id", "role", "fullName", "email", "emailVerified", "createdAt"]
+    },
+    "ParentWalletLedger": {
+      "title": "ParentWalletLedger",
+      "description": "Server-authoritative Parent Escrow Wallet balance ledger",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+        "parentId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+        "balance": { "type": "number" },
+        "balanceNaira": { "type": "number" },
+        "totalFunded": { "type": "number" },
+        "lastFundedAt": { "type": "string", "maxLength": 50 },
+        "lastPaymentReference": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "maxLength": 50 },
+        "updatedAt": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["id", "parentId"]
+    },
+    "ParentWalletTransaction": {
+      "title": "ParentWalletTransaction",
+      "description": "Immutable escrow wallet funding and debit transaction receipt",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+        "parentId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+        "type": { "type": "string", "enum": ["fund", "credit", "debit"] },
+        "amount": { "type": "number" },
+        "channel": { "type": "string", "maxLength": 50 },
+        "reference": { "type": "string", "maxLength": 128 },
+        "status": { "type": "string", "enum": ["success", "successful", "pending", "failed"] },
+        "purpose": { "type": "string", "maxLength": 100 },
+        "wardName": { "type": "string", "maxLength": 120 },
+        "description": { "type": "string", "maxLength": 300 },
+        "createdAt": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["id", "parentId", "type", "amount", "status", "createdAt"]
+    },
+    "SchoolMaterial": {
+      "title": "SchoolMaterial",
+      "description": "School-published lesson notes, assignments, projects, and past questions scoped to a schoolCode",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+        "schoolCode": { "type": "string", "maxLength": 40, "pattern": "^[A-Z0-9_-]+$" },
+        "schoolName": { "type": "string", "maxLength": 150 },
+        "type": { "type": "string", "enum": ["lesson_note", "assignment", "project", "past_question"] },
+        "title": { "type": "string", "minLength": 2, "maxLength": 200 },
+        "subject": { "type": "string", "maxLength": 100 },
+        "classLevel": { "type": "string", "maxLength": 40 },
+        "term": { "type": "string", "enum": ["First Term", "Second Term", "Third Term"] },
+        "week": { "type": "string", "maxLength": 40 },
+        "content": { "type": "string", "maxLength": 60000 },
+        "attachmentUrl": { "type": "string", "maxLength": 500 },
+        "attachmentName": { "type": "string", "maxLength": 200 },
+        "dueDate": { "type": "string", "maxLength": 50 },
+        "maxScore": { "type": "number" },
+        "examBoard": { "type": "string", "enum": ["WAEC", "JAMB", "NECO", "BECE"] },
+        "authorName": { "type": "string", "maxLength": 120 },
+        "createdAt": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["id", "schoolCode", "schoolName", "type", "title", "subject", "classLevel", "content", "authorName", "createdAt"]
+    },
+    "SchoolSubscription": {
+      "title": "SchoolSubscription",
+      "description": "Verified institutional school direct subscription payment record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+        "adminId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+        "schoolName": { "type": "string", "maxLength": 150 },
+        "schoolCode": { "type": "string", "maxLength": 40 },
+        "plan": { "type": "string", "enum": ["monthly", "termly"] },
+        "amountNaira": { "type": "number" },
+        "channel": { "type": "string", "maxLength": 50 },
+        "reference": { "type": "string", "maxLength": 128 },
+        "paidAt": { "type": "string", "maxLength": 50 },
+        "expiresAt": { "type": "string", "maxLength": 50 },
+        "status": { "type": "string", "enum": ["active", "expired"] }
+      },
+      "required": ["id", "adminId", "schoolName", "plan", "amountNaira", "reference", "paidAt", "expiresAt", "status"]
     }
   },
   "firestore": {
@@ -1450,6 +1608,42 @@
         "$ref": "#/entities/SchoolEnrollment"
       },
       "description": "Live cross-device student-to-school enrollment summaries for rosters and accreditation"
+    },
+    "/aiCoachUsage/{usageId}": {
+      "schema": {
+        "$ref": "#/entities/AICoachUsage"
+      },
+      "description": "Daily SC AI Study Coach prompt quota ledger per student and WAT calendar date"
+    },
+    "/users/{userId}": {
+      "schema": {
+        "$ref": "#/entities/UserAccount"
+      },
+      "description": "Authenticated user account profiles and role metadata isolated to owners and Super Admins"
+    },
+    "/parentWallets/{userId}": {
+      "schema": {
+        "$ref": "#/entities/ParentWalletLedger"
+      },
+      "description": "Server-authoritative Parent Escrow Wallet balance ledger"
+    },
+    "/parentWallets/{userId}/transactions/{txId}": {
+      "schema": {
+        "$ref": "#/entities/ParentWalletTransaction"
+      },
+      "description": "Immutable Parent Escrow Wallet funding and debit transaction receipts"
+    },
+    "/school_materials/{materialId}": {
+      "schema": {
+        "$ref": "#/entities/SchoolMaterial"
+      },
+      "description": "Institutional lesson notes, assignments, projects, and past questions published by verified school admins"
+    },
+    "/school_subscriptions/{subId}": {
+      "schema": {
+        "$ref": "#/entities/SchoolSubscription"
+      },
+      "description": "Verified institutional direct Paystack subscription receipts"
     }
   }
 }

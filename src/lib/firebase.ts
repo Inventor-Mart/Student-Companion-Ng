@@ -249,3 +249,28 @@ export async function logOut() {
   }
 }
 
+export async function getFirebaseAuthHeaders(): Promise<Record<string, string>> {
+  try {
+    const user = auth.currentUser;
+    if (user) {
+      const idToken = await user.getIdToken();
+      if (idToken) {
+        return { Authorization: `Bearer ${idToken}` };
+      }
+    }
+  } catch {
+    // Fall through cleanly
+  }
+  try {
+    if (typeof window !== 'undefined') {
+      const adminToken = window.sessionStorage.getItem('sc_ota_admin_token_v1');
+      if (adminToken && adminToken.trim()) {
+        return { Authorization: `Bearer ${adminToken.trim()}` };
+      }
+    }
+  } catch {
+    // Ignore storage access errors
+  }
+  return {};
+}
+

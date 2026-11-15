@@ -59,7 +59,7 @@ import {
   getStoredForumMessages,
   saveStoredForumMessages
 } from '../../data/forumData';
-import { clearGoogleAuthReturnTarget, peekGoogleAuthReturnTarget } from '../../lib/firebase';
+import { clearGoogleAuthReturnTarget, peekGoogleAuthReturnTarget, getFirebaseAuthHeaders } from '../../lib/firebase';
 
 export const SuperAdminPortal: React.FC = () => {
   const {
@@ -68,6 +68,7 @@ export const SuperAdminPortal: React.FC = () => {
     updateUserRecord,
     softDeleteUserRecord,
     purgeAllTestAccountsAndCredits,
+    purgeSimulatedSubscriptions,
     isSuperAdmin,
     currentUserProfile,
     getSchoolAccreditationMetrics,
@@ -91,6 +92,7 @@ export const SuperAdminPortal: React.FC = () => {
   const [directoryNotice, setDirectoryNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [actingUserId, setActingUserId] = useState<string | null>(null);
   const [isPurgingTestAccounts, setIsPurgingTestAccounts] = useState<boolean>(false);
+  const [isPurgingSimSubs, setIsPurgingSimSubs] = useState<boolean>(false);
   const [deleteModalTarget, setDeleteModalTarget] = useState<{ user: RegisteredUserProfile; reason: string } | null>(null);
 
   // Aspirant Referral Rewards Queue State
@@ -510,10 +512,12 @@ export const SuperAdminPortal: React.FC = () => {
     durationMinutes?: number;
     reason?: string;
   }) => {
+    const authHeaders = await getFirebaseAuthHeaders();
     const res = await fetch('/api/security/action', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        ...authHeaders,
         ...getSecurityHeaders({ userEmail: authorizedAdminEmail })
       },
       body: JSON.stringify({
@@ -1718,6 +1722,30 @@ export const SuperAdminPortal: React.FC = () => {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              disabled={isPurgingSimSubs}
+              onClick={async () => {
+                setIsPurgingSimSubs(true);
+                setDirectoryNotice(null);
+                const res = await purgeSimulatedSubscriptions(authorizedAdminEmail);
+                setDirectoryNotice({
+                  type: res.success ? 'success' : 'error',
+                  text: res.message
+                });
+                setIsPurgingSimSubs(false);
+              }}
+              className="px-3 py-1.5 rounded-xl bg-amber-950/80 hover:bg-amber-900 border border-amber-700/70 text-amber-200 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50 whitespace-nowrap"
+              title="Reset any Prepare For Exam, SC AI Coach, or Tier unlocks created by test simulation without verified live payments"
+            >
+              {isPurgingSimSubs ? (
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <ShieldAlert className="w-3.5 h-3.5 text-amber-400" />
+              )}
+              <span>{isPurgingSimSubs ? 'Clearing...' : 'Purge Simulated Subscriptions'}</span>
+            </button>
+
             <button
               type="button"
               disabled={isPurgingTestAccounts}

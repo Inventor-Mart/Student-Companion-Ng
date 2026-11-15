@@ -21,6 +21,7 @@ import {
   Flame,
   Gem,
   Lock,
+  Unlock,
   ArrowRight
 } from 'lucide-react';
 
@@ -60,7 +61,11 @@ export const GamesHub: React.FC = () => {
     addStudentXP,
     openStudentSubscriptionModal,
     checkStudentFeatureAccess,
-    recordDailyGameAttempt
+    recordDailyGameAttempt,
+    isSuperAdmin,
+    adminGamesUnlockOverride,
+    setAdminGamesUnlockOverride,
+    effectiveGamesBypass
   } = useApp();
   const [activeGame, setActiveGame] = useState<GameId>('hub');
   const [filterCategory, setFilterCategory] = useState<'ALL' | 'RELAX' | 'STEM' | 'ARTS' | 'CIVICS'>('ALL');
@@ -355,8 +360,30 @@ export const GamesHub: React.FC = () => {
             </p>
           </div>
 
-          {/* Quick Sound FX & Leaderboard Actions */}
+          {/* Quick Sound FX, Leaderboard & Super Admin Preview Toggle */}
           <div className="flex flex-col items-end gap-2 shrink-0">
+            {isSuperAdmin && (
+              <button
+                type="button"
+                onClick={() => {
+                  playSound.tileTap();
+                  setAdminGamesUnlockOverride(!adminGamesUnlockOverride);
+                }}
+                className={`flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-xl border transition-all cursor-pointer active:scale-95 whitespace-nowrap shadow-sm ${
+                  adminGamesUnlockOverride
+                    ? 'bg-emerald-950/90 text-emerald-300 border-emerald-500/60 hover:bg-emerald-900'
+                    : 'bg-amber-950/90 text-amber-300 border-amber-500/60 hover:bg-amber-900'
+                }`}
+              >
+                {adminGamesUnlockOverride ? (
+                  <Unlock className="w-3.5 h-3.5 shrink-0" />
+                ) : (
+                  <Lock className="w-3.5 h-3.5 shrink-0" />
+                )}
+                <span>{adminGamesUnlockOverride ? 'Super Admin: Unlocked' : 'Super Admin: Unlock All'}</span>
+              </button>
+            )}
+
             <button
               type="button"
               onClick={handleToggleSound}
@@ -475,7 +502,7 @@ export const GamesHub: React.FC = () => {
                 const todayStr = new Date().toISOString().split('T')[0];
                 const dailyData = student.addOns?.dailyGameAttempts;
                 const attemptsToday = dailyData?.date === todayStr ? (dailyData?.attempts?.[game.id] || 0) : 0;
-                const isFreeDailyExhausted = (student.subscriptionPlan || 'free') === 'free' && attemptsToday >= 1;
+                const isFreeDailyExhausted = !effectiveGamesBypass && (student.subscriptionPlan || 'free') === 'free' && attemptsToday >= 1;
 
                 return (
                   <div className="flex items-center justify-between text-xs text-slate-400 pt-2.5 border-t border-white/10">

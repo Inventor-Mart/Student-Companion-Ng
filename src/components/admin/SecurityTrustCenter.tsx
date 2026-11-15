@@ -32,6 +32,7 @@ import {
 } from '../../types';
 import { useApp } from '../../context/AppContext';
 import { getSecurityHeaders } from '../../utils/securityGuard';
+import { getFirebaseAuthHeaders } from '../../lib/firebase';
 
 interface SecurityTrustCenterProps {
   adminEmail: string;
@@ -115,10 +116,11 @@ export const SecurityTrustCenter: React.FC<SecurityTrustCenterProps> = ({
   const loadOverview = useCallback(async () => {
     setIsLoading(true);
     try {
+      const authHeaders = await getFirebaseAuthHeaders();
       const res = await fetch(
         `/api/security/overview?adminEmail=${encodeURIComponent(adminEmail)}`,
         {
-          headers: getSecurityHeaders({ userEmail: adminEmail })
+          headers: { ...authHeaders, ...getSecurityHeaders({ userEmail: adminEmail }) }
         }
       );
       const data = await res.json();
@@ -176,17 +178,18 @@ export const SecurityTrustCenter: React.FC<SecurityTrustCenterProps> = ({
             setFeedback({ type: 'error', text: delRes.error || 'Could not delete account.' });
             return;
           }
+          const authHeaders = await getFirebaseAuthHeaders();
           if (payload.incidentId) {
             await fetch('/api/security/action', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json', ...getSecurityHeaders({ userEmail: adminEmail }) },
+              headers: { 'Content-Type': 'application/json', ...authHeaders, ...getSecurityHeaders({ userEmail: adminEmail }) },
               body: JSON.stringify({ adminEmail, action: 'resolve_incident', incidentId: payload.incidentId })
             });
           }
           if (payload.reportId) {
             await fetch('/api/security/action', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json', ...getSecurityHeaders({ userEmail: adminEmail }) },
+              headers: { 'Content-Type': 'application/json', ...authHeaders, ...getSecurityHeaders({ userEmail: adminEmail }) },
               body: JSON.stringify({ adminEmail, action: 'resolve_report', reportId: payload.reportId })
             });
           }
@@ -199,10 +202,12 @@ export const SecurityTrustCenter: React.FC<SecurityTrustCenterProps> = ({
         }
       }
 
+      const authHeaders = await getFirebaseAuthHeaders();
       const res = await fetch('/api/security/action', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...authHeaders,
           ...getSecurityHeaders({ userEmail: adminEmail })
         },
         body: JSON.stringify({

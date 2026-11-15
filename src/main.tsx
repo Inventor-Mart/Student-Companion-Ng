@@ -18,9 +18,21 @@ if (isBundledAndroidApk && typeof window !== 'undefined' && typeof window.fetch 
 }
 
 if (typeof window !== 'undefined' && 'serviceWorker' in navigator && !isBundledAndroidApk) {
+  if ('caches' in window) {
+    caches
+      .keys()
+      .then((names) =>
+        Promise.all(
+          names
+            .filter((name) => name === 'sc-shell-v2' || name === 'sc-runtime-v2' || name === 'sc-api-v2')
+            .map((name) => caches.delete(name))
+        )
+      )
+      .catch(() => {});
+  }
   window.addEventListener('load', () => {
     navigator.serviceWorker
-      .register('/sw.js', { scope: '/' })
+      .register('/sw.js', { scope: '/', updateViaCache: 'none' })
       .then((reg) => {
         reg.update().catch(() => {});
       })

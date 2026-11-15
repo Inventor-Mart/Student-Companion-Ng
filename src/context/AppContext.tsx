@@ -7,7 +7,9 @@ import {
   onSnapshot,
   setDoc,
   updateDoc,
-  deleteDoc
+  deleteDoc,
+  getDoc,
+  getDocs
 } from 'firebase/firestore';
 import {
   UserRole,
@@ -134,7 +136,8 @@ import {
   GoogleAuthReturnTarget,
   logOut,
   handleFirestoreError,
-  OperationType
+  OperationType,
+  getFirebaseAuthHeaders
 } from '../lib/firebase';
 import {
   safeSetItem,
@@ -375,6 +378,12 @@ interface AppContextType {
   adminTermLockOverride: boolean;
   effectiveTermBypass: boolean;
   setAdminTermLockOverride: (override: boolean) => void;
+  adminGamesUnlockOverride: boolean;
+  effectiveGamesBypass: boolean;
+  setAdminGamesUnlockOverride: (override: boolean) => void;
+  adminAiCoachUnlockOverride: boolean;
+  effectiveAiCoachBypass: boolean;
+  setAdminAiCoachUnlockOverride: (override: boolean) => void;
   impersonatedUser: RegisteredUserProfile | null;
   allRegisteredUsers: RegisteredUserProfile[];
   startImpersonation: (user: RegisteredUserProfile) => void;
@@ -392,6 +401,16 @@ interface AppContextType {
     purgedLocalCount: number;
     deletedFirestoreDocs: number;
     purgedStoreEntries: number;
+    message: string;
+    error?: string;
+  }>;
+  purgeSimulatedSubscriptions: (
+    adminEmailOverride?: string
+  ) => Promise<{
+    success: boolean;
+    resetStudentsCount: number;
+    resetUsersCount: number;
+    resetEnrollmentsCount: number;
     message: string;
     error?: string;
   }>;
@@ -599,6 +618,97 @@ const isPurgedRecord = (data: any): boolean => {
   return PURGED_PATTERNS.some(p => str.includes(p));
 };
 
+const isVerifiedSubscriptionRef = (ref?: string | null): boolean => {
+  const clean = String(ref || '').trim();
+  if (!clean) return false;
+  const upper = clean.toUpperCase();
+  if (
+    upper.startsWith('SIM_') ||
+    upper.startsWith('TEST_') ||
+    upper.startsWith('DEMO_') ||
+    upper.startsWith('MOCK_') ||
+    upper.startsWith('WALLET_EXAM_') ||
+    upper.startsWith('WALLET_SUBJ_')
+  ) {
+    return false;
+  }
+  return upper.startsWith('PSTK_') || upper.startsWith('PAYSTACK_') || upper.startsWith('WALLET_');
+};
+
+const stripUnverifiedStudentUnlocks = (s?: StudentProfile): StudentProfile | undefined => {
+  if (!s) return s;
+  if (isVerifiedSubscriptionRef(s.lastPaymentReference)) return s;
+  const preservedDaily = s.addOns?.dailyGameAttempts ? { dailyGameAttempts: s.addOns.dailyGameAttempts } : {};
+  return {
+    ...s,
+    isSubscribed: false,
+    subscriptionPlan: 'free',
+    subscriptionTier: 'free',
+    subscribedUntil: undefined,
+    termExpiresAt: undefined,
+    lastSubscribedAt: undefined,
+    lastPaymentReference: undefined,
+    addOns: preservedDaily
+  };
+};
+
+// One-time browser migration stripping subscriptions previously unlocked by test simulation
+if (typeof window !== 'undefined') {
+  try {
+    const SIM_SUBS_PURGE_FLAG = 'sc_sim_subs_purged_v1';
+    if (!safeGetItem(SIM_SUBS_PURGE_FLAG)) {
+      const rawExamPrep = safeGetItem('sc_exam_prep');
+      if (rawExamPrep) {
+        try {
+          const parsedEp = JSON.parse(rawExamPrep);
+          if (!isVerifiedSubscriptionRef(parsedEp?.paymentReference)) {
+            safeRemoveItem('sc_exam_prep');
+          }
+        } catch {
+          safeRemoveItem('sc_exam_prep');
+        }
+      }
+
+      const rawStudent = safeGetItem('sc_student');
+      if (rawStudent) {
+        try {
+          const parsedSt = JSON.parse(rawStudent);
+          const sanitized = stripUnverifiedStudentUnlocks(parsedSt);
+          if (sanitized) safeSetItem('sc_student', JSON.stringify(sanitized));
+        } catch {}
+      }
+
+      const rawProfile = safeGetItem('sc_user_profile');
+      if (rawProfile) {
+        try {
+          const parsedProf = JSON.parse(rawProfile);
+          if (parsedProf?.studentData) {
+            parsedProf.studentData = stripUnverifiedStudentUnlocks(parsedProf.studentData);
+            safeSetItem('sc_user_profile', JSON.stringify(parsedProf));
+          }
+        } catch {}
+      }
+
+      const rawUsers = safeGetItem('sc_all_users');
+      if (rawUsers) {
+        try {
+          const parsedUsers = JSON.parse(rawUsers);
+          if (Array.isArray(parsedUsers)) {
+            const cleanedUsers = parsedUsers.map((u: RegisteredUserProfile) =>
+              u?.studentData && !isSuperAdminEmail(u.email) && !u.isSuperAdmin
+                ? { ...u, studentData: stripUnverifiedStudentUnlocks(u.studentData) }
+                : u
+            );
+            safeSetItem('sc_all_users', JSON.stringify(cleanedUsers));
+          }
+        } catch {}
+      }
+
+      safeSetItem(SIM_SUBS_PURGE_FLAG, '1');
+    }
+  } catch {}
+}
+
 const DEFAULT_INITIAL_MATERIALS: SchoolMaterial[] = [];
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -673,7 +783,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const saved = safeGetItem('sc_exam_prep');
     if (saved) {
       try {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        if (
+          parsed &&
+          (parsed.isUnlocked || (Array.isArray(parsed.unlockedSubjectExams) && parsed.unlockedSubjectExams.length > 0)) &&
+          !isVerifiedSubscriptionRef(parsed.paymentReference)
+        ) {
+          safeRemoveItem('sc_exam_prep');
+        } else if (parsed) {
+          return parsed;
+        }
       } catch {}
     }
     return {
@@ -756,9 +875,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     currentUserProfile?.isDeveloper
   );
 
-  // Explicit opt-in preview override so Super Admins acting as students see real locks & countdowns by default
+  // Explicit opt-in preview overrides so Super Admins acting as students see real locks & countdowns by default
   const [adminTermLockOverride, setAdminTermLockOverride] = useState<boolean>(false);
   const effectiveTermBypass = Boolean(isSuperAdmin && adminTermLockOverride);
+  const [adminGamesUnlockOverride, setAdminGamesUnlockOverride] = useState<boolean>(false);
+  const effectiveGamesBypass = Boolean(isSuperAdmin && adminGamesUnlockOverride);
+  const [adminAiCoachUnlockOverride, setAdminAiCoachUnlockOverride] = useState<boolean>(false);
+  const effectiveAiCoachBypass = Boolean(isSuperAdmin && adminAiCoachUnlockOverride);
 
   // Real-time Security Shield & Enforcement Status
   const [securityStatus, setSecurityStatus] = useState<SecurityStatusSnapshot>({
@@ -1350,6 +1473,108 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [currentUserProfile]);
 
+  const authoritativeStudentOverlayRef = React.useRef<Partial<StudentProfile> | null>(null);
+  const authoritativeWalletOverlayRef = React.useRef<{
+    balanceNaira?: number;
+    transactions?: WalletTransaction[];
+  } | null>(null);
+
+  const applyAuthoritativeStudentOverlay = React.useCallback((base: StudentProfile): StudentProfile => {
+    const overlay = authoritativeStudentOverlayRef.current;
+    if (!overlay) return base;
+    const mergedXP = Math.max(Number(base.xp || 0), Number(overlay.xp || 0));
+    return {
+      ...base,
+      isSubscribed: overlay.isSubscribed !== undefined ? overlay.isSubscribed : base.isSubscribed,
+      subscriptionPlan: overlay.subscriptionPlan !== undefined ? overlay.subscriptionPlan : base.subscriptionPlan,
+      subscriptionTier: overlay.subscriptionTier !== undefined ? overlay.subscriptionTier : base.subscriptionTier,
+      subscribedUntil: overlay.subscribedUntil !== undefined ? overlay.subscribedUntil : base.subscribedUntil,
+      termExpiresAt: overlay.termExpiresAt !== undefined ? overlay.termExpiresAt : base.termExpiresAt,
+      lastSubscribedAt: overlay.lastSubscribedAt !== undefined ? overlay.lastSubscribedAt : base.lastSubscribedAt,
+      lastPaymentReference: overlay.lastPaymentReference !== undefined ? overlay.lastPaymentReference : base.lastPaymentReference,
+      addOns: overlay.addOns !== undefined ? overlay.addOns : base.addOns,
+      xp: mergedXP,
+      rank: mergedXP >= Number(base.xp || 0) && overlay.rank ? overlay.rank : calculateRankFromXP(mergedXP),
+      uniformVerified: overlay.uniformVerified ?? base.uniformVerified,
+    };
+  }, []);
+
+  const refreshAuthoritativeLedgers = React.useCallback(async () => {
+    if (!auth.currentUser) return;
+    try {
+      const headers = await getFirebaseAuthHeaders();
+      if (!headers.Authorization) return;
+
+      const [entRes, walRes] = await Promise.all([
+        fetch('/api/entitlements/me', { headers }).catch(() => null),
+        fetch('/api/wallet/me', { headers }).catch(() => null),
+      ]);
+
+      if (entRes && entRes.ok) {
+        const entData = await entRes.json().catch(() => null);
+        const e = entData?.entitlements;
+        if (e && typeof e === 'object') {
+          authoritativeStudentOverlayRef.current = {
+            isSubscribed: Boolean(e.isSubscribed),
+            subscriptionPlan: e.subscriptionPlan || 'free',
+            subscriptionTier: e.subscriptionTier || 'free',
+            subscribedUntil: e.subscribedUntil || undefined,
+            termExpiresAt: e.termExpiresAt || undefined,
+            lastSubscribedAt: e.lastSubscribedAt || undefined,
+            lastPaymentReference: e.lastPaymentReference || undefined,
+            addOns: e.addOns || {},
+            xp: Number(e.xp || 0),
+            rank: (e.rank || 'Fresher') as StudentRank,
+            uniformVerified: Boolean(e.uniformVerified),
+          };
+          setStudent((prev) => applyAuthoritativeStudentOverlay(prev));
+
+          if (e.examPrepState && typeof e.examPrepState === 'object') {
+            setExamPrepState((prev) => ({
+              ...prev,
+              isUnlocked: Boolean(e.examPrepState.isUnlocked || prev.isUnlocked),
+              unlockedSubjectExams: Array.from(
+                new Set([
+                  ...(prev.unlockedSubjectExams || []),
+                  ...(Array.isArray(e.examPrepState.unlockedSubjectExams)
+                    ? e.examPrepState.unlockedSubjectExams
+                    : []),
+                ])
+              ),
+              unlockedAt: e.examPrepState.unlockedAt || prev.unlockedAt,
+              paymentMethod: e.examPrepState.paymentMethod || prev.paymentMethod,
+              paymentReference: e.examPrepState.paymentReference || prev.paymentReference,
+              tutorCreditsNaira: Math.max(
+                Number(prev.tutorCreditsNaira || 0),
+                Number(e.examPrepState.tutorCreditsNaira || 0)
+              ),
+            }));
+          }
+        }
+      }
+
+      if (walRes && walRes.ok) {
+        const walData = await walRes.json().catch(() => null);
+        const w = walData?.wallet;
+        if (w && typeof w === 'object') {
+          const authBalance = typeof w.balanceNaira === 'number' ? w.balanceNaira : 0;
+          const authTxs: WalletTransaction[] = Array.isArray(w.transactions) ? w.transactions : [];
+          authoritativeWalletOverlayRef.current = {
+            balanceNaira: authBalance,
+            transactions: authTxs,
+          };
+          setParentWallet((prev) => ({
+            ...prev,
+            balanceNaira: authBalance,
+            transactions: authTxs.length > 0 ? authTxs : prev.transactions,
+          }));
+        }
+      }
+    } catch {
+      // Offline / transient network errors fall back gracefully
+    }
+  }, [applyAuthoritativeStudentOverlay]);
+
   // Auth Listener with robust snapshot listener cleanup
   useEffect(() => {
     let unsubs: Array<() => void> = [];
@@ -1410,6 +1635,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         const isAdminAccount = isSuperAdminEmail(user.email);
 
+        // Hydrate server-verified entitlements & escrow wallet immediately upon Firebase auth
+        void refreshAuthoritativeLedgers();
+
         // Sync student profile from Firestore
         const studentDocRef = doc(db, 'students', user.uid);
         const path = `students/${user.uid}`;
@@ -1419,7 +1647,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           (docSnap) => {
             if (docSnap.exists()) {
               const data = docSnap.data() as StudentProfile;
-              setStudent(data);
+              setStudent(applyAuthoritativeStudentOverlay(data));
               if (!isAdminAccount && !data.studentLinkCode) {
                 fetch('/api/students/link-code/issue', {
                   method: 'POST',
@@ -1478,7 +1706,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               setDoc(studentDocRef, newProfile, { merge: true }).catch((err) => {
                 handleFirestoreError(err, OperationType.CREATE, path);
               });
-              setStudent(newProfile);
+              setStudent(applyAuthoritativeStudentOverlay(newProfile));
 
               fetch('/api/students/link-code/issue', {
                 method: 'POST',
@@ -1531,9 +1759,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const unsubWallet = onSnapshot(
           walletDocRef,
           (snap) => {
+            const authWallet = authoritativeWalletOverlayRef.current;
             if (snap.exists()) {
               const data = snap.data() as ParentWallet;
-              setParentWallet(prev => ({ ...prev, ...data }));
+              setParentWallet(prev => ({
+                ...prev,
+                ...data,
+                balanceNaira: authWallet?.balanceNaira !== undefined ? authWallet.balanceNaira : data.balanceNaira,
+                transactions: authWallet?.transactions?.length ? authWallet.transactions : prev.transactions,
+              }));
             } else if (!isAdminAccount) {
               setDoc(walletDocRef, {
                 userId: user.uid,
@@ -1551,6 +1785,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         );
 
         unsubs.push(unsubDoc, unsubExams, unsubWallet);
+      } else {
+        authoritativeStudentOverlayRef.current = null;
+        authoritativeWalletOverlayRef.current = null;
       }
     });
 
@@ -1558,7 +1795,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       cleanupListeners();
       unsubscribeAuth();
     };
-  }, []);
+  }, [applyAuthoritativeStudentOverlay, refreshAuthoritativeLedgers]);
 
   const finalizeGoogleUserSession = async (
     user: User,
@@ -2065,31 +2302,55 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (currentUser && !isOffline && !isSuperAdminEmail(currentUser.email)) {
         const docRef = doc(db, 'students', currentUser.uid);
         const path = `students/${currentUser.uid}`;
+        // Allowed client-side profile fields only; XP & rank are enforced server-side
         updateDoc(docRef, {
-          xp: newXP,
-          rank: newRank,
-          streakDays: prev.streakDays,
           lastStudyDate: studyDate,
           dailyExploration: updatedExploration,
         }).catch(err => {
-          const scopeId = currentUser.uid || currentUserProfile?.id || 'guest';
-          const updatedQueue = enqueueOfflineSyncItem(scopeId, {
-            operationKey: 'student_xp_snapshot',
-            type: 'xp_award',
-            label: opts.reason || 'XP progress snapshot',
-            payload: {
-              xp: newXP,
-              rank: newRank,
-              streakDays: prev.streakDays,
-              lastStudyDate: studyDate
-            }
-          });
-          setPendingSyncCount(updatedQueue.length);
           const msg = String(err?.message || '').toLowerCase();
-          if (!msg.includes('offline') && !msg.includes('network')) {
+          if (!msg.includes('offline') && !msg.includes('network') && !msg.includes('no document to update') && !msg.includes('not-found')) {
             handleFirestoreError(err, OperationType.UPDATE, path);
           }
         });
+
+        void (async () => {
+          try {
+            const headers = await getFirebaseAuthHeaders();
+            if (!headers.Authorization) return;
+            const res = await fetch('/api/students/sync-progress', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', ...headers },
+              body: JSON.stringify({
+                deltaXP: result.totalXPAwarded,
+                reason: opts.reason,
+                streakDays: prev.streakDays,
+              }),
+            });
+            const data = await res.json().catch(() => null);
+            if (res.ok && data?.success) {
+              authoritativeStudentOverlayRef.current = {
+                ...(authoritativeStudentOverlayRef.current || {}),
+                xp: data.xp,
+                rank: data.rank,
+              };
+            }
+          } catch {
+            const scopeId = currentUser.uid || currentUserProfile?.id || 'guest';
+            const updatedQueue = enqueueOfflineSyncItem(scopeId, {
+              operationKey: 'student_xp_snapshot',
+              type: 'xp_award',
+              label: opts.reason || 'XP progress snapshot',
+              payload: {
+                xp: newXP,
+                deltaXP: result.totalXPAwarded,
+                rank: newRank,
+                streakDays: prev.streakDays,
+                lastStudyDate: studyDate
+              }
+            });
+            setPendingSyncCount(updatedQueue.length);
+          }
+        })();
       } else {
         const scopeId = currentUser?.uid || currentUserProfile?.id || 'guest';
         const updatedQueue = enqueueOfflineSyncItem(scopeId, {
@@ -2098,6 +2359,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           label: opts.reason || 'Offline XP award',
           payload: {
             xp: newXP,
+            deltaXP: result.totalXPAwarded,
             rank: newRank,
             streakDays: prev.streakDays,
             lastStudyDate: studyDate
@@ -2205,34 +2467,57 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (currentUser && !isOffline && !isSuperAdminEmail(currentUser.email)) {
         const docRef = doc(db, 'students', currentUser.uid);
         const path = `students/${currentUser.uid}`;
+        // Allowed client-side reading log fields only; XP & rank are enforced server-side
         updateDoc(docRef, {
-          xp: newXP,
-          rank: newRank,
-          streakDays: prev.streakDays,
           lastStudyDate: studyDate,
           completedReadNoteIds: nextCompletedIds,
           verifiedReadingLogs: nextLogs
         }).catch(err => {
-          const scopeId = currentUser.uid || currentUserProfile?.id || 'guest';
-          const updatedQueue = enqueueOfflineSyncItem(
-            scopeId,
-            createLessonReadQueuePayload({
-              noteId: topic.id,
-              topicTitle: topic.topicTitle,
-              xp: newXP,
-              rank: newRank,
-              streakDays: prev.streakDays,
-              lastStudyDate: studyDate,
-              completedReadNoteIds: nextCompletedIds,
-              verifiedReadingLogs: nextLogs
-            })
-          );
-          setPendingSyncCount(updatedQueue.length);
           const msg = String(err?.message || '').toLowerCase();
-          if (!msg.includes('offline') && !msg.includes('network')) {
+          if (!msg.includes('offline') && !msg.includes('network') && !msg.includes('no document to update') && !msg.includes('not-found')) {
             handleFirestoreError(err, OperationType.UPDATE, path);
           }
         });
+
+        void (async () => {
+          try {
+            const headers = await getFirebaseAuthHeaders();
+            if (!headers.Authorization) return;
+            const res = await fetch('/api/students/sync-progress', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', ...headers },
+              body: JSON.stringify({
+                deltaXP: result.totalXPAwarded,
+                reason: `Verified Reading: ${topic.topicTitle}`,
+                streakDays: prev.streakDays,
+              }),
+            });
+            const data = await res.json().catch(() => null);
+            if (res.ok && data?.success) {
+              authoritativeStudentOverlayRef.current = {
+                ...(authoritativeStudentOverlayRef.current || {}),
+                xp: data.xp,
+                rank: data.rank,
+              };
+            }
+          } catch {
+            const scopeId = currentUser.uid || currentUserProfile?.id || 'guest';
+            const updatedQueue = enqueueOfflineSyncItem(
+              scopeId,
+              createLessonReadQueuePayload({
+                noteId: topic.id,
+                topicTitle: topic.topicTitle,
+                xp: newXP,
+                rank: newRank,
+                streakDays: prev.streakDays,
+                lastStudyDate: studyDate,
+                completedReadNoteIds: nextCompletedIds,
+                verifiedReadingLogs: nextLogs
+              })
+            );
+            setPendingSyncCount(updatedQueue.length);
+          }
+        })();
       } else {
         const scopeId = currentUser?.uid || currentUserProfile?.id || 'guest';
         const updatedQueue = enqueueOfflineSyncItem(
@@ -2374,12 +2659,36 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const safeFirestorePhotoUrl = photoUrl && photoUrl.length <= 500 ? photoUrl : null;
         updateDoc(docRef, {
           uniformVerified: true,
-          uniformPhotoUrl: safeFirestorePhotoUrl,
-          xp: updatedXP,
-          rank: calculateRank(updatedXP)
+          uniformPhotoUrl: safeFirestorePhotoUrl
         }).catch(err => {
           handleFirestoreError(err, OperationType.UPDATE, path);
         });
+
+        const deltaXP = prev.uniformVerified ? 0 : 500;
+        void (async () => {
+          try {
+            const headers = await getFirebaseAuthHeaders();
+            if (!headers.Authorization) return;
+            const res = await fetch('/api/students/sync-progress', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', ...headers },
+              body: JSON.stringify({
+                deltaXP,
+                uniformVerified: true,
+                reason: 'School Uniform Verification Bonus',
+              }),
+            });
+            const data = await res.json().catch(() => null);
+            if (res.ok && data?.success) {
+              authoritativeStudentOverlayRef.current = {
+                ...(authoritativeStudentOverlayRef.current || {}),
+                xp: data.xp,
+                rank: data.rank,
+                uniformVerified: true,
+              };
+            }
+          } catch {}
+        })();
       }
 
       return updated;
@@ -2614,26 +2923,37 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     if (currentUser && !isOffline) {
       try {
-        const walletDocRef = doc(db, 'parentWallets', currentUser.uid);
-        await setDoc(walletDocRef, {
-          balanceNaira: updatedBalance,
-          updatedAt: new Date().toISOString()
-        }, { merge: true });
-
-        const txDocRef = doc(db, 'parentWallets', currentUser.uid, 'transactions', txId);
-        await setDoc(txDocRef, {
-          id: txId,
-          parentId: currentUser.uid,
-          type: 'debit',
-          amount: feeNaira,
-          status: 'success',
-          purpose: 'certificate_drill_regeneration',
-          board: board || 'NERDC',
-          subject,
-          createdAt: new Date().toISOString()
+        const headers = await getFirebaseAuthHeaders();
+        const res = await fetch('/api/wallet/debit', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...headers },
+          body: JSON.stringify({
+            amountNaira: feeNaira,
+            purpose: 'certificate_drill_regeneration',
+            description: `Fresh ${boardLabel}Examination Paper: ${subject}`,
+            reference: txId,
+          }),
         });
+        const data = await res.json().catch(() => null);
+        if (!res.ok || !data?.success) {
+          setParentWallet(parentWallet);
+          safeSetItem('sc_parent_wallet', JSON.stringify(parentWallet));
+          setLastSecurityAlert(data?.error || 'Could not verify wallet debit on server.');
+          return false;
+        }
+        if (data.wallet) {
+          authoritativeWalletOverlayRef.current = {
+            balanceNaira: data.wallet.balanceNaira,
+            transactions: data.wallet.transactions,
+          };
+          setParentWallet((prev) => ({
+            ...prev,
+            balanceNaira: data.wallet.balanceNaira,
+            transactions: Array.isArray(data.wallet.transactions) ? data.wallet.transactions : prev.transactions,
+          }));
+        }
       } catch (err) {
-        console.warn('Could not sync drill wallet deduction to Firestore:', err);
+        console.warn('Could not verify drill wallet deduction on server:', err);
       }
     }
 
@@ -2956,20 +3276,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         balanceNaira: updatedBalance,
         transactions: [newTx, ...prev.transactions]
       };
-
-      if (currentUser && !isOffline) {
-        const walletDocRef = doc(db, 'wallets', currentUser.uid);
-        const path = `wallets/${currentUser.uid}`;
-        updateDoc(walletDocRef, {
-          balanceNaira: updatedBalance,
-          updatedAt: new Date().toISOString()
-        }).catch(err => {
-          handleFirestoreError(err, OperationType.UPDATE, path);
-        });
-      }
-
       return updated;
     });
+
+    if (currentUser && !isOffline) {
+      void refreshAuthoritativeLedgers();
+    }
 
     try {
       confetti({
@@ -3040,25 +3352,42 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       setParentWallet(prev => {
         const updatedBalance = prev.balanceNaira - targetBooking.amountNaira;
-        const updated = {
+        return {
           ...prev,
           balanceNaira: updatedBalance,
           transactions: [debitTx, ...prev.transactions]
         };
-
-        if (currentUser && !isOffline) {
-          const walletDocRef = doc(db, 'wallets', currentUser.uid);
-          const path = `wallets/${currentUser.uid}`;
-          updateDoc(walletDocRef, {
-            balanceNaira: updatedBalance,
-            updatedAt: new Date().toISOString()
-          }).catch(err => {
-            handleFirestoreError(err, OperationType.UPDATE, path);
-          });
-        }
-
-        return updated;
       });
+
+      if (currentUser && !isOffline) {
+        void (async () => {
+          try {
+            const headers = await getFirebaseAuthHeaders();
+            if (!headers.Authorization) return;
+            const res = await fetch('/api/wallet/debit', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', ...headers },
+              body: JSON.stringify({
+                amountNaira: targetBooking.amountNaira,
+                purpose: 'tutor_booking_hold',
+                bookingId,
+                description: `Escrow Hold: ${targetBooking.tutorName} (${targetBooking.subject})`,
+                reference: `ESCROW_${bookingId}`,
+              }),
+            });
+            const data = await res.json().catch(() => null);
+            if (res.ok && data?.wallet) {
+              authoritativeWalletOverlayRef.current = {
+                balanceNaira: data.wallet.balanceNaira,
+                transactions: data.wallet.transactions,
+              };
+            } else if (!res.ok) {
+              setLastSecurityAlert(data?.error || 'Server rejected escrow debit; refreshing wallet.');
+              void refreshAuthoritativeLedgers();
+            }
+          } catch {}
+        })();
+      }
     }
 
     const parentDateStr = new Date().toLocaleDateString('en-NG', {
@@ -3119,6 +3448,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         balanceNaira: prev.balanceNaira + booking.amountNaira,
         transactions: [refundTx, ...prev.transactions]
       }));
+      if (currentUser && !isOffline) {
+        void (async () => {
+          try {
+            const headers = await getFirebaseAuthHeaders();
+            if (!headers.Authorization) return;
+            const res = await fetch('/api/wallet/refund-escrow', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', ...headers },
+              body: JSON.stringify({ bookingId: booking.id, reason: reasonText }),
+            });
+            const data = await res.json().catch(() => null);
+            if (res.ok && data?.wallet) {
+              authoritativeWalletOverlayRef.current = {
+                balanceNaira: data.wallet.balanceNaira,
+                transactions: data.wallet.transactions,
+              };
+            }
+          } catch {}
+        })();
+      }
     }
   };
 
@@ -3260,25 +3609,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setParentWallet(prev => {
       const updatedBalance = prev.balanceNaira - reg.registrationFeeNaira;
-      const updated = {
+      return {
         ...prev,
         balanceNaira: updatedBalance,
         transactions: [debitTx, ...prev.transactions]
       };
-
-      if (currentUser && !isOffline) {
-        const walletDocRef = doc(db, 'wallets', currentUser.uid);
-        const path = `wallets/${currentUser.uid}`;
-        updateDoc(walletDocRef, {
-          balanceNaira: updatedBalance,
-          updatedAt: new Date().toISOString()
-        }).catch(err => {
-          handleFirestoreError(err, OperationType.UPDATE, path);
-        });
-      }
-
-      return updated;
     });
+
+    if (currentUser && !isOffline) {
+      void (async () => {
+        try {
+          const headers = await getFirebaseAuthHeaders();
+          if (!headers.Authorization) return;
+          const res = await fetch('/api/wallet/debit', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...headers },
+            body: JSON.stringify({
+              amountNaira: reg.registrationFeeNaira,
+              purpose: 'championship_entry',
+              description: `Termly Championship Entry: ${reg.studentName} (${reg.classLevel})`,
+              reference: `CHAMP_${registrationId}`,
+            }),
+          });
+          const data = await res.json().catch(() => null);
+          if (res.ok && data?.wallet) {
+            authoritativeWalletOverlayRef.current = {
+              balanceNaira: data.wallet.balanceNaira,
+              transactions: data.wallet.transactions,
+            };
+          } else if (!res.ok) {
+            setLastSecurityAlert(data?.error || 'Championship wallet debit could not be verified.');
+            void refreshAuthoritativeLedgers();
+          }
+        } catch {}
+      })();
+    }
 
     setChampionshipRegistrations(prev => {
       const updated = prev.map(r =>
@@ -3337,25 +3702,39 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (method === 'wallet') {
       setParentWallet(prev => {
         const updatedBalance = Math.max(0, prev.balanceNaira - UNLOCK_FEE_NAIRA);
-        const updated = {
+        return {
           ...prev,
           balanceNaira: updatedBalance,
           transactions: [debitTx, ...prev.transactions]
         };
-
-        if (currentUser && !isOffline) {
-          const walletDocRef = doc(db, 'wallets', currentUser.uid);
-          const path = `wallets/${currentUser.uid}`;
-          updateDoc(walletDocRef, {
-            balanceNaira: updatedBalance,
-            updatedAt: new Date().toISOString()
-          }).catch(err => {
-            handleFirestoreError(err, OperationType.UPDATE, path);
-          });
-        }
-
-        return updated;
       });
+
+      if (currentUser && !isOffline) {
+        void (async () => {
+          try {
+            const headers = await getFirebaseAuthHeaders();
+            if (!headers.Authorization) return;
+            const res = await fetch('/api/entitlements/unlock-with-wallet', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', ...headers },
+              body: JSON.stringify({ action: 'exam_prep_full' }),
+            });
+            const data = await res.json().catch(() => null);
+            if (res.ok && data?.success) {
+              if (data.wallet) {
+                authoritativeWalletOverlayRef.current = {
+                  balanceNaira: data.wallet.balanceNaira,
+                  transactions: data.wallet.transactions,
+                };
+              }
+              void refreshAuthoritativeLedgers();
+            } else if (!res.ok) {
+              setLastSecurityAlert(data?.error || 'Could not verify Exam Prep wallet unlock on server.');
+              void refreshAuthoritativeLedgers();
+            }
+          } catch {}
+        })();
+      }
     } else {
       setParentWallet(prev => ({
         ...prev,
@@ -3367,6 +3746,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ...prev,
       isUnlocked: true,
       unlockedAt: new Date().toISOString(),
+      paymentMethod: method === 'paystack' ? 'direct_paystack' : 'escrow_wallet',
+      paymentReference: paymentReference || debitTx.reference,
       tutorCreditsNaira: (prev.tutorCreditsNaira || 0) + INCLUDED_TUTOR_CREDITS_NAIRA
     }));
 
@@ -3423,25 +3804,39 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (method === 'wallet') {
       setParentWallet(prev => {
         const updatedBalance = Math.max(0, prev.balanceNaira - SINGLE_SUBJECT_EXAM_FEE_NAIRA);
-        const updated = {
+        return {
           ...prev,
           balanceNaira: updatedBalance,
           transactions: [debitTx, ...prev.transactions]
         };
-
-        if (currentUser && !isOffline) {
-          const walletDocRef = doc(db, 'wallets', currentUser.uid);
-          const path = `wallets/${currentUser.uid}`;
-          updateDoc(walletDocRef, {
-            balanceNaira: updatedBalance,
-            updatedAt: new Date().toISOString()
-          }).catch(err => {
-            handleFirestoreError(err, OperationType.UPDATE, path);
-          });
-        }
-
-        return updated;
       });
+
+      if (currentUser && !isOffline) {
+        void (async () => {
+          try {
+            const headers = await getFirebaseAuthHeaders();
+            if (!headers.Authorization) return;
+            const res = await fetch('/api/entitlements/unlock-with-wallet', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', ...headers },
+              body: JSON.stringify({ action: 'exam_prep_single', subject }),
+            });
+            const data = await res.json().catch(() => null);
+            if (res.ok && data?.success) {
+              if (data.wallet) {
+                authoritativeWalletOverlayRef.current = {
+                  balanceNaira: data.wallet.balanceNaira,
+                  transactions: data.wallet.transactions,
+                };
+              }
+              void refreshAuthoritativeLedgers();
+            } else if (!res.ok) {
+              setLastSecurityAlert(data?.error || 'Could not verify subject unlock on server.');
+              void refreshAuthoritativeLedgers();
+            }
+          } catch {}
+        })();
+      }
     } else {
       setParentWallet(prev => ({
         ...prev,
@@ -3454,6 +3849,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const updated = Array.from(new Set([...existing, subject]));
       return {
         ...prev,
+        paymentReference: paymentReference || debitTx.reference || prev.paymentReference,
         unlockedSubjectExams: updated
       };
     });
@@ -3946,19 +4342,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
       setParentWallet(prev => {
         const updatedBalance = Math.max(0, prev.balanceNaira - params.amountNaira);
-        const updated = {
+        return {
           ...prev,
           balanceNaira: updatedBalance,
           transactions: [debitTx, ...prev.transactions]
         };
-        if (currentUser && !isOffline) {
-          updateDoc(doc(db, 'wallets', currentUser.uid), {
-            balanceNaira: updatedBalance,
-            updatedAt: new Date().toISOString()
-          }).catch(() => {});
-        }
-        return updated;
       });
+      if (currentUser && !isOffline) {
+        void (async () => {
+          try {
+            const headers = await getFirebaseAuthHeaders();
+            if (!headers.Authorization) return;
+            const res = await fetch('/api/wallet/debit', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', ...headers },
+              body: JSON.stringify({
+                amountNaira: params.amountNaira,
+                purpose: 'tutor_booking_hold',
+                bookingId,
+                description: `Tutor Escrow Hold: ${params.tutorName} (${params.subject})`,
+                reference: `ESCROW_${bookingId}`,
+              }),
+            });
+            const data = await res.json().catch(() => null);
+            if (res.ok && data?.wallet) {
+              authoritativeWalletOverlayRef.current = {
+                balanceNaira: data.wallet.balanceNaira,
+                transactions: data.wallet.transactions,
+              };
+            } else if (!res.ok) {
+              setLastSecurityAlert(data?.error || 'Tutor escrow wallet debit rejected by server.');
+              void refreshAuthoritativeLedgers();
+            }
+          } catch {}
+        })();
+      }
     } else if (params.amountNaira > 0 && gateway === 'paystack_live' && params.paymentReference) {
       const liveTx: any = {
         id: `tx-book-live-${Date.now().toString().slice(-6)}`,
@@ -5010,7 +5428,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return updatedList;
     });
 
-    if (!isOffline && isFirebaseConnected && currentUserProfile.id) {
+    if (!isOffline && isFirebaseConnected && isSuperAdminEmail(currentUser?.email) && currentUserProfile.id) {
       setDoc(doc(db, 'users', currentUserProfile.id), { adminData: updated.adminData }, { merge: true }).catch(err => {
         console.warn('Could not sync admin verification to Firestore:', err);
       });
@@ -5178,7 +5596,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return updatedList;
     });
 
-    if (!isOffline && isFirebaseConnected && currentUserProfile.id) {
+    if (!isOffline && isFirebaseConnected && isSuperAdminEmail(currentUser?.email) && currentUserProfile.id) {
       setDoc(doc(db, 'users', currentUserProfile.id), {
         adminData: updatedProfile.adminData
       }, { merge: true }).catch(err => {
@@ -5354,14 +5772,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return updated;
     });
 
-    if (!isOffline && isFirebaseConnected && studentId && studentId !== 'current' && studentId !== 'student_active') {
-      updateDoc(doc(db, 'students', studentId), {
-        isSubscribed,
-        subscriptionTier: isSubscribed ? tier : 'free',
-        subscribedUntil: isSubscribed ? expiresAt : null
-      }).catch(err => {
-        console.warn('Could not sync student subscription to Firestore:', err);
-      });
+    if (!isOffline && isSuperAdmin && studentId && studentId !== 'current' && studentId !== 'student_active') {
+      try {
+        const headers = await getFirebaseAuthHeaders();
+        if (headers.Authorization) {
+          await fetch('/api/admin/set-student-subscription', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...headers },
+            body: JSON.stringify({ studentId, isSubscribed, tier }),
+          });
+        }
+      } catch {}
+
+      if (isFirebaseConnected) {
+        updateDoc(doc(db, 'students', studentId), {
+          isSubscribed,
+          subscriptionTier: isSubscribed ? tier : 'free',
+          subscribedUntil: isSubscribed ? expiresAt : null
+        }).catch(err => {
+          console.warn('Could not sync student subscription to Firestore:', err);
+        });
+      }
     }
   };
 
@@ -5408,6 +5839,48 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const quote = getStudentTierPricing(plan, Boolean(activeRefCode), student.classLevel);
     const feeNaira = quote.finalPriceNaira;
 
+    if (paymentMethod === 'wallet' && feeNaira > 0 && currentUser && !isOffline) {
+      try {
+        const headers = await getFirebaseAuthHeaders();
+        if (headers.Authorization) {
+          const unlockRes = await fetch('/api/entitlements/unlock-with-wallet', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...headers },
+            body: JSON.stringify({
+              action: 'student_tier',
+              plan,
+              referralCode: activeRefCode || undefined,
+              classLevel: student.classLevel,
+            }),
+          });
+          const unlockData = await unlockRes.json().catch(() => null);
+          if (!unlockRes.ok || !unlockData?.success) {
+            return {
+              success: false,
+              error: unlockData?.error || 'Insufficient Parent Escrow Wallet balance verified by server.',
+            };
+          }
+          if (unlockData.wallet) {
+            authoritativeWalletOverlayRef.current = {
+              balanceNaira: unlockData.wallet.balanceNaira,
+              transactions: unlockData.wallet.transactions,
+            };
+          }
+          if (unlockData.entitlements) {
+            authoritativeStudentOverlayRef.current = {
+              ...(authoritativeStudentOverlayRef.current || {}),
+              isSubscribed: unlockData.entitlements.isSubscribed,
+              subscriptionPlan: unlockData.entitlements.subscriptionPlan,
+              subscriptionTier: unlockData.entitlements.subscriptionTier,
+              subscribedUntil: unlockData.entitlements.subscribedUntil,
+              termExpiresAt: unlockData.entitlements.termExpiresAt,
+              lastPaymentReference: unlockData.entitlements.lastPaymentReference,
+            };
+          }
+        }
+      } catch {}
+    }
+
     if (paymentMethod === 'wallet' && feeNaira > 0) {
       const currentBalance = parentWallet.balanceNaira;
       if (currentBalance < feeNaira) {
@@ -5417,7 +5890,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         };
       }
 
-      // Deduct from wallet
+      // Deduct from wallet locally after server ledger confirmation
       const txId = `TX_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
       const updatedBalance = currentBalance - feeNaira;
       const discountLabel = quote.promoApplied ? ` (${quote.discountPercent}% Referral Promo)` : '';
@@ -5496,6 +5969,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           isUnlocked: true,
           unlockedAt: new Date().toISOString(),
           paymentMethod: paymentMethod === 'wallet' ? ('escrow_wallet' as const) : ('direct_paystack' as const),
+          paymentReference: paystackRef || `WALLET_${Date.now()}`,
           tutorCreditsNaira: prev.tutorCreditsNaira + (plan === 'elite' ? 16000 : 0)
         };
         safeSetItem('sc_exam_prep', JSON.stringify(updated));
@@ -5531,25 +6005,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
     }
 
-    // Persist to Firestore (only when a real signed-in non-admin student document exists)
+    // Persist allowed referral binding on Firestore doc; authoritative paid tier is stored on server ledger
     if (
       !isOffline &&
       isFirebaseConnected &&
       currentUser?.uid &&
       !isSuperAdminEmail(currentUser.email) &&
-      effectiveStudentId === currentUser.uid
+      effectiveStudentId === currentUser.uid &&
+      (activeRefCode || student.referredByCode)
     ) {
       updateDoc(doc(db, 'students', effectiveStudentId), {
-        isSubscribed: plan !== 'free',
-        subscriptionPlan: plan,
-        subscriptionTier: plan,
-        termExpiresAt,
-        subscribedUntil: termExpiresAt,
-        referredByCode: activeRefCode || student.referredByCode || null,
-        lastSubscribedAt: new Date().toISOString(),
-        lastPaymentReference: paystackRef || `WALLET_${Date.now()}`
+        referredByCode: activeRefCode || student.referredByCode || null
       }).catch(err => {
-        console.warn('Could not sync student subscription to Firestore:', err);
+        console.warn('Could not sync student referral attribution to Firestore:', err);
       });
     }
 
@@ -5586,6 +6054,38 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     const feeNaira = prices[addon] || 1000;
+
+    if (paymentMethod === 'wallet' && currentUser && !isOffline) {
+      try {
+        const headers = await getFirebaseAuthHeaders();
+        if (headers.Authorization) {
+          const unlockRes = await fetch('/api/entitlements/unlock-with-wallet', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...headers },
+            body: JSON.stringify({ action: 'addon', addon, subject }),
+          });
+          const unlockData = await unlockRes.json().catch(() => null);
+          if (!unlockRes.ok || !unlockData?.success) {
+            return {
+              success: false,
+              error: unlockData?.error || 'Insufficient Parent Escrow Wallet balance verified by server.',
+            };
+          }
+          if (unlockData.wallet) {
+            authoritativeWalletOverlayRef.current = {
+              balanceNaira: unlockData.wallet.balanceNaira,
+              transactions: unlockData.wallet.transactions,
+            };
+          }
+          if (unlockData.entitlements?.addOns) {
+            authoritativeStudentOverlayRef.current = {
+              ...(authoritativeStudentOverlayRef.current || {}),
+              addOns: unlockData.entitlements.addOns,
+            };
+          }
+        }
+      } catch {}
+    }
 
     if (paymentMethod === 'wallet') {
       const currentBalance = parentWallet.balanceNaira;
@@ -5649,12 +6149,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const recordDailyGameAttempt = (gameId: string): { allowed: boolean; remainingAttempts: number } => {
+    if (effectiveGamesBypass) {
+      return { allowed: true, remainingAttempts: 999 };
+    }
+
     const plan = student.subscriptionPlan || (student.isSubscribed ? 'basic' : 'free');
     if (plan !== 'free') {
       return { allowed: true, remainingAttempts: 999 };
     }
 
-    const allowedFreeGames = ['maths_sprint', 'periodic_table', 'maths-sprint', 'periodic-table'];
+    const allowedFreeGames = ['math_sprint', 'maths_sprint', 'periodic_table', 'maths-sprint', 'periodic-table'];
     if (!allowedFreeGames.includes(gameId)) {
       return { allowed: false, remainingAttempts: 0 };
     }
@@ -5774,9 +6278,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     if (feature === 'games') {
+      if (effectiveGamesBypass) return { hasAccess: true };
+
       const gameId = options?.gameId || '';
       if (plan === 'free') {
-        const freeGames = ['maths_sprint', 'periodic_table', 'maths-sprint', 'periodic-table'];
+        const freeGames = ['math_sprint', 'maths_sprint', 'periodic_table', 'maths-sprint', 'periodic-table'];
         if (freeGames.includes(gameId)) {
           return { hasAccess: true };
         }
@@ -5789,9 +6295,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       if (plan === 'basic') {
         const basicGames = [
+          'math_sprint',
           'maths_sprint',
           'periodic_table',
           'speed_concord',
+          'nigerian_geo',
           'nigerian_geo_civic',
           'maths-sprint',
           'periodic-table',
@@ -5880,6 +6388,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     if (feature === 'ai_coach') {
+      if (effectiveAiCoachBypass) return { hasAccess: true };
       if (plan === 'elite') return { hasAccess: true };
       if (addOns.aiCoachUnlocked) return { hasAccess: true };
       return {
@@ -5949,19 +6458,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const signOutApp = () => {
+    setServerOTAAdminToken(null);
+    authoritativeStudentOverlayRef.current = null;
+    authoritativeWalletOverlayRef.current = null;
     setCurrentUserProfile(null);
     safeRemoveItem('sc_user_profile');
     safeRemoveItem('sc_student');
     safeRemoveItem('sc_wallet');
     safeRemoveItem('sc_bookings');
     safeRemoveItem('sc_chats');
+    safeRemoveItem('sc_exam_prep');
+    safeRemoveItem('sc_aspirant_goal');
+    safeRemoveItem('sc_aspirant_drills');
     setStudent(INITIAL_EMPTY_STUDENT);
+    setExamPrepState({ isUnlocked: false, tutorCreditsNaira: 0, completedBlockIds: [] });
     setParentWallet(INITIAL_EMPTY_WALLET);
     setTutorBookings([]);
     setChatMessages({});
     setExamResults([]);
     setIsParentPinUnlocked(false);
     setAdminTermLockOverride(false);
+    setAdminGamesUnlockOverride(false);
+    setAdminAiCoachUnlockOverride(false);
     setTargetSignUpRole(null);
     setIsOffline(false);
     setCurrentScreen('landing');
@@ -5969,6 +6487,171 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const resetDemoData = () => {
     signOutApp();
+  };
+
+  const purgeSimulatedSubscriptions = async (adminEmailOverride?: string) => {
+    const actorEmail = (adminEmailOverride || currentUserProfile?.email || currentUser?.email || '').toLowerCase().trim();
+    let resetStudentsCount = 0;
+    let resetUsersCount = 0;
+    let resetEnrollmentsCount = 0;
+
+    // 1. Always scrub unverified local simulated unlocks (Prepare For Exam, SC AI Coach, etc.)
+    safeRemoveItem('sc_exam_prep');
+    setExamPrepState({ isUnlocked: false, tutorCreditsNaira: 0, completedBlockIds: [] });
+
+    setStudent(prev => {
+      const cleaned = stripUnverifiedStudentUnlocks(prev) || INITIAL_EMPTY_STUDENT;
+      safeSetItem('sc_student', JSON.stringify(cleaned));
+      return cleaned;
+    });
+
+    setCurrentUserProfile(prev => {
+      if (!prev || !prev.studentData) return prev;
+      const updated = {
+        ...prev,
+        studentData: stripUnverifiedStudentUnlocks(prev.studentData)
+      };
+      safeSetItem('sc_user_profile', JSON.stringify(updated));
+      return updated;
+    });
+
+    setAllRegisteredUsers(prev => {
+      const cleaned = prev.map(u => {
+        if (isSuperAdminEmail(u.email) || u.isSuperAdmin || !u.studentData) return u;
+        const hadUnlock =
+          u.studentData.isSubscribed ||
+          (u.studentData.subscriptionPlan && u.studentData.subscriptionPlan !== 'free') ||
+          u.studentData.addOns?.aiCoachUnlocked ||
+          u.studentData.addOns?.termlyCompetitionUnlocked ||
+          u.studentData.addOns?.termlyDrillAllSubjects;
+        const stripped = stripUnverifiedStudentUnlocks(u.studentData);
+        if (hadUnlock && stripped && !stripped.isSubscribed) {
+          resetUsersCount++;
+        }
+        return { ...u, studentData: stripped };
+      });
+      safeSetItem('sc_all_users', JSON.stringify(cleaned));
+      return cleaned;
+    });
+
+    // 2. Authenticated Super Admin Firestore cleanup across students & schoolEnrollments collections
+    if (!isOffline && isFirebaseConnected && isSuperAdmin) {
+      const verifiedPaystackRefs = new Set<string>();
+      try {
+        const refsSnap = await getDocs(collection(db, 'processed_paystack_refs'));
+        refsSnap.forEach(d => {
+          const refVal = String(d.data()?.reference || d.id || '').trim();
+          if (refVal) verifiedPaystackRefs.add(refVal);
+        });
+      } catch {}
+
+      try {
+        const studentsSnap = await getDocs(collection(db, 'students'));
+        for (const d of studentsSnap.docs) {
+          const data = d.data() || {};
+          const plan = String(data.subscriptionPlan || data.subscriptionTier || 'free').toLowerCase();
+          const hasAnyUnlock =
+            data.isSubscribed === true ||
+            (plan && plan !== 'free') ||
+            Boolean(data.addOns?.aiCoachUnlocked) ||
+            Boolean(data.addOns?.termlyCompetitionUnlocked) ||
+            Boolean(data.addOns?.termlyDrillAllSubjects) ||
+            (Array.isArray(data.addOns?.termlyDrillSingleSubjects) && data.addOns.termlyDrillSingleSubjects.length > 0);
+          if (!hasAnyUnlock) continue;
+
+          const paymentRef = String(data.lastPaymentReference || '').trim();
+          const isRealVerified =
+            paymentRef &&
+            isVerifiedSubscriptionRef(paymentRef) &&
+            (verifiedPaystackRefs.size === 0 || verifiedPaystackRefs.has(paymentRef));
+
+          if (!isRealVerified) {
+            try {
+              await updateDoc(doc(db, 'students', d.id), {
+                isSubscribed: false,
+                subscriptionPlan: 'free',
+                subscriptionTier: 'free',
+                subscribedUntil: null,
+                termExpiresAt: null,
+                lastSubscribedAt: null,
+                lastPaymentReference: null,
+                addOns: {}
+              });
+              resetStudentsCount++;
+            } catch (err) {
+              console.warn('Could not reset simulated student subscription in Firestore:', err);
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('Could not scan students collection during simulated subscription purge:', err);
+      }
+
+      try {
+        const enrollSnap = await getDocs(collection(db, 'schoolEnrollments'));
+        for (const d of enrollSnap.docs) {
+          const data = d.data() || {};
+          const isPaid = data.isSubscribed === true || (data.subscriptionTier && data.subscriptionTier !== 'free');
+          if (!isPaid) continue;
+          try {
+            const stSnap = await getDoc(doc(db, 'students', String(data.studentId || '')));
+            const stData = stSnap.exists() ? stSnap.data() : null;
+            const stPaid = Boolean(stData?.isSubscribed && isVerifiedSubscriptionRef(stData?.lastPaymentReference));
+            if (!stPaid) {
+              await updateDoc(doc(db, 'schoolEnrollments', d.id), {
+                isSubscribed: false,
+                subscriptionTier: 'free',
+                subscribedUntil: null,
+                updatedAt: new Date().toISOString()
+              });
+              resetEnrollmentsCount++;
+            }
+          } catch {}
+        }
+      } catch {}
+    }
+
+    // 3. Server-side cleanup for in-memory usage caches & unauthenticated server stores
+    try {
+      const authHeaders = await getFirebaseAuthHeaders();
+      const res = await fetch('/api/admin/purge-simulated-subscriptions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
+        body: JSON.stringify({ adminEmail: actorEmail })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        resetStudentsCount = Math.max(resetStudentsCount, Number(data.resetStudentsCount) || 0);
+        resetUsersCount += Number(data.resetUsersCount) || 0;
+        resetEnrollmentsCount = Math.max(resetEnrollmentsCount, Number(data.resetEnrollmentsCount) || 0);
+      } else if (!res.ok) {
+        return {
+          success: false,
+          resetStudentsCount,
+          resetUsersCount,
+          resetEnrollmentsCount,
+          message: data.error || 'Server rejected simulated subscription purge.',
+          error: data.error || 'Server rejected simulated subscription purge.'
+        };
+      }
+    } catch (err: any) {
+      return {
+        success: false,
+        resetStudentsCount,
+        resetUsersCount,
+        resetEnrollmentsCount,
+        message: err?.message || 'Network error calling server purge.',
+        error: err?.message || 'Network error calling server purge.'
+      };
+    }
+
+    return {
+      success: true,
+      resetStudentsCount,
+      resetUsersCount,
+      resetEnrollmentsCount,
+      message: `Cleared simulated subscriptions (${resetStudentsCount} Firestore student(s), ${resetUsersCount} profile(s), ${resetEnrollmentsCount} enrollment(s)) and reset Prepare For Exam / SC AI Coach test unlocks.`
+    };
   };
 
   const purgeAllTestAccountsAndCredits = async (adminEmailOverride?: string) => {
@@ -6003,10 +6686,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       safeRemoveItem('sc_wallet');
     }
 
+    await purgeSimulatedSubscriptions(actorEmail);
+
     try {
+      const authHeaders = await getFirebaseAuthHeaders();
       const res = await fetch('/api/admin/purge-test-accounts', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
         body: JSON.stringify({ adminEmail: actorEmail })
       });
       const data = await res.json();
@@ -6025,7 +6711,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         purgedLocalCount,
         deletedFirestoreDocs: Number(data.deletedFirestoreDocs) || 0,
         purgedStoreEntries: Number(data.purgedStoreEntries) || 0,
-        message: data.message || 'Purged all test personas and synthetic wallet credits.'
+        message: data.message || 'Purged all test personas, simulated subscriptions, and synthetic wallet credits.'
       };
     } catch (err: any) {
       return {
@@ -6045,6 +6731,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return;
     }
     setAdminTermLockOverride(false);
+    setAdminGamesUnlockOverride(false);
+    setAdminAiCoachUnlockOverride(false);
     setImpersonatedUser(user);
     setCurrentRole(user.role);
     if (user.role === 'student' && user.studentData) {
@@ -6062,12 +6750,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const stopImpersonation = () => {
     setAdminTermLockOverride(false);
+    setAdminGamesUnlockOverride(false);
+    setAdminAiCoachUnlockOverride(false);
     setImpersonatedUser(null);
     setCurrentRole('admin');
   };
 
   const switchRole = (role: UserRole) => {
     setAdminTermLockOverride(false);
+    setAdminGamesUnlockOverride(false);
+    setAdminAiCoachUnlockOverride(false);
     setCurrentRole(role);
   };
 
@@ -6091,9 +6783,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     if (!isOffline && isFirebaseConnected) {
-      setDoc(doc(db, 'users', userId), updates, { merge: true }).catch(err => {
-        console.warn('Could not sync user update to Firestore:', err);
-      });
+      if (isSuperAdmin) {
+        setDoc(doc(db, 'users', userId), updates, { merge: true }).catch(err => {
+          console.warn('Could not sync user update to Firestore:', err);
+        });
+      } else {
+        const allowedOwnerKeys = ['fullName', 'avatarUrl', 'parentData', 'tutorData'] as const;
+        const safeOwnerUpdates: Partial<RegisteredUserProfile> = {};
+        for (const key of allowedOwnerKeys) {
+          if (updates[key] !== undefined) {
+            (safeOwnerUpdates as any)[key] = updates[key];
+          }
+        }
+        if (Object.keys(safeOwnerUpdates).length > 0) {
+          updateDoc(doc(db, 'users', userId), safeOwnerUpdates as any).catch(err => {
+            console.warn('Could not sync owner profile fields to Firestore:', err);
+          });
+        }
+      }
     }
   };
 
@@ -6119,10 +6826,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       String(reason || '').trim() || 'Account permanently closed by Super Admin for policy/security violation';
 
     try {
+      const authHeaders = await getFirebaseAuthHeaders();
       const res = await fetch('/api/security/action', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...authHeaders,
           ...getSecurityHeaders({ userEmail: adminEmail })
         },
         body: JSON.stringify({
@@ -6676,20 +7385,38 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (currentUser) {
           if (item.type === 'xp_award' && !isSuperAdminEmail(currentUser.email)) {
             await updateDoc(doc(db, 'students', currentUser.uid), {
-              xp: item.payload.xp,
-              rank: item.payload.rank,
-              streakDays: item.payload.streakDays,
               lastStudyDate: item.payload.lastStudyDate
-            });
+            }).catch(() => {});
+            const headers = await getFirebaseAuthHeaders();
+            if (headers.Authorization) {
+              await fetch('/api/students/sync-progress', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...headers },
+                body: JSON.stringify({
+                  deltaXP: Number(item.payload.deltaXP || 25),
+                  streakDays: item.payload.streakDays,
+                  reason: item.label || 'Offline XP sync',
+                }),
+              });
+            }
           } else if (item.type === 'lesson_read' && !isSuperAdminEmail(currentUser.email)) {
             await updateDoc(doc(db, 'students', currentUser.uid), {
-              xp: item.payload.xp,
-              rank: item.payload.rank,
-              streakDays: item.payload.streakDays,
               lastStudyDate: item.payload.lastStudyDate,
               completedReadNoteIds: item.payload.completedReadNoteIds,
               verifiedReadingLogs: item.payload.verifiedReadingLogs
             });
+            const headers = await getFirebaseAuthHeaders();
+            if (headers.Authorization) {
+              await fetch('/api/students/sync-progress', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...headers },
+                body: JSON.stringify({
+                  deltaXP: 60,
+                  streakDays: item.payload.streakDays,
+                  reason: item.label || 'Offline verified lesson read sync',
+                }),
+              });
+            }
           } else if (item.type === 'exam_result' && item.payload?.result) {
             const r = item.payload.result as CBTExamResult;
             await setDoc(doc(db, 'students', currentUser.uid, 'examResults', r.id), {
@@ -6910,6 +7637,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         adminTermLockOverride,
         effectiveTermBypass,
         setAdminTermLockOverride,
+        adminGamesUnlockOverride,
+        effectiveGamesBypass,
+        setAdminGamesUnlockOverride,
+        adminAiCoachUnlockOverride,
+        effectiveAiCoachBypass,
+        setAdminAiCoachUnlockOverride,
         impersonatedUser,
         allRegisteredUsers,
         startImpersonation,
@@ -6917,6 +7650,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateUserRecord,
         softDeleteUserRecord,
         purgeAllTestAccountsAndCredits,
+        purgeSimulatedSubscriptions,
         switchRole,
         loginAsDeveloper,
         schoolMaterials,

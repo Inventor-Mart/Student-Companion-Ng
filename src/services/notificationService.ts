@@ -132,7 +132,7 @@ export async function registerNotificationServiceWorker(): Promise<ServiceWorker
   }
   try {
     if (cachedRegistration) return cachedRegistration;
-    const reg = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+    const reg = await navigator.serviceWorker.register('/sw.js', { scope: '/', updateViaCache: 'none' });
     cachedRegistration = reg;
     return reg;
   } catch (err) {

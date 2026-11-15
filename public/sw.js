@@ -1,7 +1,7 @@
 // Student Companion Service Worker — Full Offline App Shell, Asset Runtime Caching, Sync & OTA Control
-const APP_SHELL_CACHE = 'sc-shell-v2';
-const RUNTIME_CACHE = 'sc-runtime-v2';
-const API_CACHE = 'sc-api-v2';
+const APP_SHELL_CACHE = 'sc-shell-v3';
+const RUNTIME_CACHE = 'sc-runtime-v3';
+const API_CACHE = 'sc-api-v3';
 
 const CORE_PRECACHE_URLS = [
   '/',
@@ -149,12 +149,19 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Never intercept Firebase auth or sensitive payment/auth callbacks
+  // Never intercept Firebase auth, sensitive payment/auth callbacks, or Vite dev-server module/dependency graphs
   if (
     isSameOrigin &&
     (url.pathname.startsWith('/__/') ||
       url.pathname.startsWith('/api/auth/') ||
-      url.pathname.startsWith('/api/paystack/'))
+      url.pathname.startsWith('/api/paystack/') ||
+      url.pathname.startsWith('/src/') ||
+      url.pathname.startsWith('/node_modules/') ||
+      url.pathname.startsWith('/@') ||
+      url.pathname === '/sw.js' ||
+      url.searchParams.has('v') ||
+      url.searchParams.has('t') ||
+      url.searchParams.has('import'))
   ) {
     return;
   }

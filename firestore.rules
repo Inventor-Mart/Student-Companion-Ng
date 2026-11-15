@@ -33,11 +33,16 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      return isSignedIn() && (
-        (request.auth.token.email == 'martorefe@gmail.com' && request.auth.token.email_verified == true) ||
-        (request.auth.token.email == 'wowrealities@gmail.com' && request.auth.token.email_verified == true) ||
-        (request.auth.token.email == 'martinnosaomorefe@gmail.com' && request.auth.token.email_verified == true) ||
+      return isVerified() && (
+        request.auth.token.email in ['martorefe@gmail.com', 'wowrealities@gmail.com', 'martinnosaomorefe@gmail.com'] ||
         exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    function isChatParticipant(chatId) {
+      return isVerified() && (
+        chatId.matches('^chat_' + request.auth.uid + '_[a-zA-Z0-9_-]+$') ||
+        chatId.matches('^chat_[a-zA-Z0-9_-]+_' + request.auth.uid + '$')
       );
     }
 
@@ -78,14 +83,50 @@ service cloud.firestore {
              (!('referredByCode' in data) || data.referredByCode == null || (data.referredByCode is string && data.referredByCode.size() <= 30)) &&
              (!('referredPartnerId' in data) || data.referredPartnerId == null || (data.referredPartnerId is string && data.referredPartnerId.size() <= 128)) &&
              (!('referredPartnerName' in data) || data.referredPartnerName == null || (data.referredPartnerName is string && data.referredPartnerName.size() <= 120)) &&
-             (!('lastSubscribedAt' in data) || (data.lastSubscribedAt is string && data.lastSubscribedAt.size() <= 50)) &&
-             (!('lastPaymentReference' in data) || (data.lastPaymentReference is string && data.lastPaymentReference.size() <= 128)) &&
+             (!('lastSubscribedAt' in data) || data.lastSubscribedAt == null || (data.lastSubscribedAt is string && data.lastSubscribedAt.size() <= 50)) &&
+             (!('lastPaymentReference' in data) || data.lastPaymentReference == null || (data.lastPaymentReference is string && data.lastPaymentReference.size() <= 128)) &&
              (!('aspirantRewardStatus' in data) || data.aspirantRewardStatus in ['not_eligible', 'eligible', 'claimed_cash_500', 'claimed_data_2gb']) &&
              (!('aspirantFirstPaidAt' in data) || data.aspirantFirstPaidAt == null || (data.aspirantFirstPaidAt is string && data.aspirantFirstPaidAt.size() <= 50)) &&
              (!('referralAttributedAt' in data) || data.referralAttributedAt == null || (data.referralAttributedAt is string && data.referralAttributedAt.size() <= 50)) &&
              (!('studentLinkCode' in data) || data.studentLinkCode == null || (data.studentLinkCode is string && data.studentLinkCode.size() <= 40)) &&
              (!('dailyExploration' in data) || data.dailyExploration is map) &&
              (!('addOns' in data) || data.addOns is map);
+    }
+
+    function isValidUserAccount(data) {
+      return data.keys().hasAll(['id', 'role', 'fullName', 'email', 'emailVerified', 'createdAt']) &&
+             data.keys().hasOnly([
+               'id', 'role', 'fullName', 'email', 'avatarUrl', 'emailVerified', 'verifiedAt', 'createdAt',
+               'studentData', 'parentData', 'tutorData', 'adminData', 'growthPartnerData',
+               'isSuperAdmin', 'isDeveloper', 'accountStatus', 'lockedUntil', 'lockReason',
+               'suspensionReason', 'suspendedAt', 'deletedAt', 'deletedBy', 'deletionReason',
+               'walletFrozen', 'walletFrozenReason'
+             ]) &&
+             data.id is string && isValidId(data.id) &&
+             data.role in ['student', 'parent', 'tutor', 'admin', 'growth_partner', 'school_admin'] &&
+             data.fullName is string && data.fullName.size() >= 1 && data.fullName.size() <= 120 &&
+             data.email is string && data.email.size() <= 150 &&
+             (!('avatarUrl' in data) || data.avatarUrl == null || (data.avatarUrl is string && data.avatarUrl.size() <= 500)) &&
+             data.emailVerified is bool &&
+             (!('verifiedAt' in data) || data.verifiedAt == null || (data.verifiedAt is string && data.verifiedAt.size() <= 50)) &&
+             data.createdAt is string && data.createdAt.size() <= 50 &&
+             (!('studentData' in data) || data.studentData is map) &&
+             (!('parentData' in data) || data.parentData is map) &&
+             (!('tutorData' in data) || data.tutorData is map) &&
+             (!('adminData' in data) || data.adminData is map) &&
+             (!('growthPartnerData' in data) || data.growthPartnerData is map) &&
+             (!('isSuperAdmin' in data) || data.isSuperAdmin is bool) &&
+             (!('isDeveloper' in data) || data.isDeveloper is bool) &&
+             (!('accountStatus' in data) || data.accountStatus in ['active', 'locked', 'suspended', 'deleted']) &&
+             (!('lockedUntil' in data) || data.lockedUntil == null || (data.lockedUntil is string && data.lockedUntil.size() <= 50)) &&
+             (!('lockReason' in data) || data.lockReason == null || (data.lockReason is string && data.lockReason.size() <= 300)) &&
+             (!('suspensionReason' in data) || data.suspensionReason == null || (data.suspensionReason is string && data.suspensionReason.size() <= 300)) &&
+             (!('suspendedAt' in data) || data.suspendedAt == null || (data.suspendedAt is string && data.suspendedAt.size() <= 50)) &&
+             (!('deletedAt' in data) || data.deletedAt == null || (data.deletedAt is string && data.deletedAt.size() <= 50)) &&
+             (!('deletedBy' in data) || data.deletedBy == null || (data.deletedBy is string && data.deletedBy.size() <= 150)) &&
+             (!('deletionReason' in data) || data.deletionReason == null || (data.deletionReason is string && data.deletionReason.size() <= 300)) &&
+             (!('walletFrozen' in data) || data.walletFrozen is bool) &&
+             (!('walletFrozenReason' in data) || data.walletFrozenReason == null || (data.walletFrozenReason is string && data.walletFrozenReason.size() <= 300));
     }
 
     function isValidExamResult(data) {
@@ -111,6 +152,38 @@ service cloud.firestore {
              data.balanceNaira is number && data.balanceNaira >= 0 &&
              (!('pin' in data) || (data.pin is string && data.pin.size() <= 10)) &&
              (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 50));
+    }
+
+    function isValidParentWalletLedger(data) {
+      return data.keys().hasAll(['id', 'parentId']) &&
+             data.keys().hasOnly(['id', 'parentId', 'balance', 'balanceNaira', 'totalFunded', 'lastFundedAt', 'lastPaymentReference', 'createdAt', 'updatedAt']) &&
+             data.id is string && isValidId(data.id) &&
+             data.parentId is string && isValidId(data.parentId) &&
+             (!('balance' in data) || (data.balance is number && data.balance >= 0)) &&
+             (!('balanceNaira' in data) || (data.balanceNaira is number && data.balanceNaira >= 0)) &&
+             (!('totalFunded' in data) || (data.totalFunded is number && data.totalFunded >= 0)) &&
+             (!('lastFundedAt' in data) || (data.lastFundedAt is string && data.lastFundedAt.size() <= 50)) &&
+             (!('lastPaymentReference' in data) || (data.lastPaymentReference is string && data.lastPaymentReference.size() <= 128)) &&
+             (!('createdAt' in data) || (data.createdAt is string && data.createdAt.size() <= 50)) &&
+             (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 50));
+    }
+
+    function isValidParentWalletTransaction(data) {
+      return data.keys().hasAll(['id', 'parentId', 'type', 'amount', 'status', 'createdAt']) &&
+             data.keys().hasOnly(['id', 'parentId', 'type', 'amount', 'channel', 'reference', 'status', 'purpose', 'wardName', 'description', 'board', 'subject', 'createdAt']) &&
+             data.id is string && isValidId(data.id) &&
+             data.parentId is string && isValidId(data.parentId) &&
+             data.type in ['fund', 'credit', 'debit'] &&
+             data.amount is number && data.amount >= 0 &&
+             data.status in ['success', 'successful', 'pending', 'failed'] &&
+             data.createdAt is string && data.createdAt.size() <= 50 &&
+             (!('channel' in data) || (data.channel is string && data.channel.size() <= 50)) &&
+             (!('reference' in data) || (data.reference is string && data.reference.size() <= 128)) &&
+             (!('purpose' in data) || (data.purpose is string && data.purpose.size() <= 100)) &&
+             (!('wardName' in data) || (data.wardName is string && data.wardName.size() <= 120)) &&
+             (!('description' in data) || (data.description is string && data.description.size() <= 300)) &&
+             (!('board' in data) || (data.board is string && data.board.size() <= 50)) &&
+             (!('subject' in data) || (data.subject is string && data.subject.size() <= 100));
     }
 
     function isValidTutorBooking(data) {
@@ -219,7 +292,11 @@ service cloud.firestore {
              data.id is string && isValidId(data.id) &&
              data.partnerId is string && isValidId(data.partnerId) &&
              data.studentId is string && isValidId(data.studentId) &&
+             data.studentName is string && data.studentName.size() <= 100 &&
+             data.paymentId is string && data.paymentId.size() <= 128 &&
+             data.subscriptionPlan is string && data.subscriptionPlan.size() <= 100 &&
              data.paymentAmountNaira is number && data.paymentAmountNaira >= 0 &&
+             data.commissionRatePercent is number && data.commissionRatePercent >= 0 && data.commissionRatePercent <= 100 &&
              data.commissionAmountNaira is number && data.commissionAmountNaira >= 0 &&
              data.status in ['credited', 'reversed'] &&
              data.createdAt is string && data.createdAt.size() <= 50 &&
@@ -231,6 +308,8 @@ service cloud.firestore {
              data.keys().hasOnly(['id', 'studentId', 'studentName', 'plan', 'amountNaira', 'paymentGateway', 'status', 'partnerId', 'partnerCommissionCredited', 'commissionAmountNaira', 'createdAt', 'updatedAt']) &&
              data.id is string && isValidId(data.id) &&
              data.studentId is string && isValidId(data.studentId) &&
+             data.studentName is string && data.studentName.size() <= 100 &&
+             data.plan is string && data.plan.size() <= 100 &&
              data.amountNaira is number && data.amountNaira >= 0 &&
              data.paymentGateway in ['Paystack', 'Flutterwave', 'Direct Escrow'] &&
              data.status in ['successful', 'pending', 'failed'] &&
@@ -243,30 +322,49 @@ service cloud.firestore {
 
     function isValidForumChannel(data) {
       return data.keys().hasAll(['id', 'title', 'audience', 'category']) &&
+             data.keys().hasOnly(['id', 'title', 'description', 'audience', 'category', 'iconName', 'messageCount', 'lastActivityAt']) &&
              data.id is string && isValidId(data.id) &&
              data.title is string && data.title.size() <= 100 &&
+             (!('description' in data) || (data.description is string && data.description.size() <= 300)) &&
              data.audience in ['student', 'parent'] &&
-             data.category in ['academics', 'competitions', 'general', 'parenting', 'exams'];
+             data.category in ['academics', 'competitions', 'general', 'parenting', 'exams'] &&
+             (!('iconName' in data) || (data.iconName is string && data.iconName.size() <= 50)) &&
+             (!('messageCount' in data) || (data.messageCount is number && data.messageCount >= 0)) &&
+             (!('lastActivityAt' in data) || (data.lastActivityAt is string && data.lastActivityAt.size() <= 50));
     }
 
     function isValidForumMessage(data) {
       return data.keys().hasAll(['id', 'channelId', 'senderId', 'senderName', 'senderRole', 'text']) &&
+             data.keys().hasOnly(['id', 'channelId', 'senderId', 'senderName', 'senderRole', 'senderClassLevel', 'senderRank', 'senderSchool', 'text', 'reactions', 'isReported', 'replyToId', 'replyToText', 'createdAt']) &&
              data.id is string && isValidId(data.id) &&
              data.channelId is string && isValidId(data.channelId) &&
              data.senderId is string && isValidId(data.senderId) &&
              data.senderName is string && data.senderName.size() <= 100 &&
              data.senderRole in ['student', 'parent', 'tutor', 'admin'] &&
-             data.text is string && data.text.size() >= 1 && data.text.size() <= 1000;
+             data.text is string && data.text.size() >= 1 && data.text.size() <= 1000 &&
+             (!('senderClassLevel' in data) || (data.senderClassLevel is string && data.senderClassLevel.size() <= 40)) &&
+             (!('senderRank' in data) || (data.senderRank is string && data.senderRank.size() <= 40)) &&
+             (!('senderSchool' in data) || (data.senderSchool is string && data.senderSchool.size() <= 150)) &&
+             (!('reactions' in data) || data.reactions is map) &&
+             (!('isReported' in data) || data.isReported is bool) &&
+             (!('replyToId' in data) || (data.replyToId is string && data.replyToId.size() <= 128)) &&
+             (!('replyToText' in data) || (data.replyToText is string && data.replyToText.size() <= 300)) &&
+             (!('createdAt' in data) || (data.createdAt is string && data.createdAt.size() <= 50));
     }
 
     function isValidForumReport(data) {
       return data.keys().hasAll(['id', 'messageId', 'channelId', 'reportedUserId', 'reporterUserId', 'messageText', 'reason', 'status']) &&
+             data.keys().hasOnly(['id', 'messageId', 'channelId', 'reportedUserId', 'reportedUserName', 'reporterUserId', 'messageText', 'reason', 'status', 'createdAt']) &&
              data.id is string && isValidId(data.id) &&
              data.messageId is string && isValidId(data.messageId) &&
+             data.channelId is string && isValidId(data.channelId) &&
              data.reportedUserId is string && isValidId(data.reportedUserId) &&
              data.reporterUserId is string && isValidId(data.reporterUserId) &&
+             data.messageText is string && data.messageText.size() <= 1000 &&
              data.reason in ['spam', 'bullying', 'inappropriate', 'contact_sharing', 'other'] &&
-             data.status in ['pending', 'resolved', 'dismissed'];
+             data.status in ['pending', 'resolved', 'dismissed'] &&
+             (!('reportedUserName' in data) || (data.reportedUserName is string && data.reportedUserName.size() <= 100)) &&
+             (!('createdAt' in data) || (data.createdAt is string && data.createdAt.size() <= 50));
     }
 
     function isValidPastQuestion(data) {
@@ -303,6 +401,17 @@ service cloud.firestore {
              (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 100));
     }
 
+    function isValidDrillDocument(data) {
+      return data.keys().hasAll(['id', 'subject', 'title', 'durationMinutes', 'totalQuestions', 'questions']) &&
+             data.id is string && isValidId(data.id) &&
+             data.subject is string && data.subject.size() <= 100 &&
+             data.title is string && data.title.size() <= 200 &&
+             data.durationMinutes is number && data.durationMinutes > 0 &&
+             data.totalQuestions is number && data.totalQuestions > 0 &&
+             data.questions is list && data.questions.size() <= 100 &&
+             (data.questions.size() == 0 || data.questions[0] is map);
+    }
+
     function isValidAdminLessonNote(data) {
       return data.keys().hasAll(['id', 'classLevel', 'stream', 'subject', 'term', 'weekNumber', 'topicTitle', 'subtopics', 'readingTimeMinutes', 'summary', 'contentMarkdown', 'keyTakeaways', 'associatedQuizId', 'uploadMode', 'uploadedBy', 'createdAt', 'updatedAt']) &&
              data.keys().hasOnly(['id', 'classLevel', 'stream', 'subject', 'term', 'weekNumber', 'topicTitle', 'subtopics', 'readingTimeMinutes', 'summary', 'contentMarkdown', 'keyTakeaways', 'associatedQuizId', 'uploadMode', 'attachmentName', 'attachmentDataUrl', 'uploadedBy', 'createdAt', 'updatedAt']) &&
@@ -325,6 +434,48 @@ service cloud.firestore {
              data.uploadedBy is string && data.uploadedBy.size() <= 150 &&
              data.createdAt is string && data.createdAt.size() <= 100 &&
              data.updatedAt is string && data.updatedAt.size() <= 100;
+    }
+
+    function isValidSchoolMaterial(data) {
+      return data.keys().hasAll(['id', 'schoolCode', 'schoolName', 'type', 'title', 'subject', 'classLevel', 'content', 'authorName', 'createdAt']) &&
+             data.keys().hasOnly([
+               'id', 'schoolCode', 'schoolName', 'type', 'title', 'subject', 'classLevel',
+               'term', 'week', 'content', 'attachmentUrl', 'attachmentName',
+               'dueDate', 'maxScore', 'examBoard', 'authorName', 'createdAt'
+             ]) &&
+             data.id is string && isValidId(data.id) &&
+             data.schoolCode is string && data.schoolCode.size() >= 4 && data.schoolCode.size() <= 40 && data.schoolCode.matches('^[A-Z0-9_\\-]+$') &&
+             data.schoolName is string && data.schoolName.size() >= 1 && data.schoolName.size() <= 150 &&
+             data.type in ['lesson_note', 'assignment', 'project', 'past_question'] &&
+             data.title is string && data.title.size() >= 2 && data.title.size() <= 200 &&
+             data.subject is string && data.subject.size() >= 1 && data.subject.size() <= 100 &&
+             data.classLevel is string && data.classLevel.size() <= 40 &&
+             (!('term' in data) || data.term in ['First Term', 'Second Term', 'Third Term']) &&
+             (!('week' in data) || (data.week is string && data.week.size() <= 40)) &&
+             data.content is string && data.content.size() >= 1 && data.content.size() <= 60000 &&
+             (!('attachmentUrl' in data) || (data.attachmentUrl is string && data.attachmentUrl.size() <= 500)) &&
+             (!('attachmentName' in data) || (data.attachmentName is string && data.attachmentName.size() <= 200)) &&
+             (!('dueDate' in data) || (data.dueDate is string && data.dueDate.size() <= 50)) &&
+             (!('maxScore' in data) || (data.maxScore is number && data.maxScore >= 0 && data.maxScore <= 1000)) &&
+             (!('examBoard' in data) || data.examBoard in ['WAEC', 'JAMB', 'NECO', 'BECE']) &&
+             data.authorName is string && data.authorName.size() <= 120 &&
+             data.createdAt is string && data.createdAt.size() <= 50;
+    }
+
+    function isValidSchoolSubscription(data) {
+      return data.keys().hasAll(['id', 'adminId', 'schoolName', 'plan', 'amountNaira', 'reference', 'paidAt', 'expiresAt', 'status']) &&
+             data.keys().hasOnly(['id', 'adminId', 'schoolName', 'schoolCode', 'plan', 'amountNaira', 'channel', 'reference', 'paidAt', 'expiresAt', 'status']) &&
+             data.id is string && isValidId(data.id) &&
+             data.adminId is string && isValidId(data.adminId) &&
+             data.schoolName is string && data.schoolName.size() <= 150 &&
+             (!('schoolCode' in data) || (data.schoolCode is string && data.schoolCode.size() <= 40)) &&
+             data.plan in ['monthly', 'termly'] &&
+             data.amountNaira is number && data.amountNaira >= 0 &&
+             (!('channel' in data) || (data.channel is string && data.channel.size() <= 50)) &&
+             data.reference is string && data.reference.size() <= 128 &&
+             data.paidAt is string && data.paidAt.size() <= 50 &&
+             data.expiresAt is string && data.expiresAt.size() <= 50 &&
+             data.status in ['active', 'expired'];
     }
 
     function isValidOtaFeatureFlags(flags) {
@@ -422,199 +573,9 @@ service cloud.firestore {
              data.createdBy is string && data.createdBy.size() <= 150;
     }
 
-    // --- COLLECTION RULES ---
-
-    // 1. Students Collection
-    match /students/{studentId} {
-      allow get: if isValidId(studentId) && (isOwner(studentId) || isAdmin());
-      allow list: if isAdmin();
-      allow create: if (isOwner(studentId) || isAdmin()) && isValidId(studentId) && incoming().id == studentId && isValidStudentProfile(incoming());
-      allow update: if isValidId(studentId) && (
-        isAdmin() ||
-        (isOwner(studentId) && isValidStudentProfile(incoming()) && incoming().id == existing().id)
-      );
-      allow delete: if isAdmin();
-
-      // Subcollection: Exam Results
-      match /examResults/{resultId} {
-        allow get: if isValidId(resultId) && (isOwner(studentId) || isAdmin());
-        allow list: if isOwner(studentId) || isAdmin();
-        allow create: if isOwner(studentId) && isValidId(resultId) && incoming().id == resultId && incoming().studentId == studentId && isValidExamResult(incoming()) && exists(/databases/$(database)/documents/students/$(studentId));
-        allow update, delete: if isAdmin();
-      }
-    }
-
-    // 2. Parent Wallets Collection
-    match /wallets/{userId} {
-      allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
-      allow list: if isAdmin();
-      allow create: if isOwner(userId) && isValidId(userId) && incoming().userId == userId && isValidParentWallet(incoming());
-      allow update: if isValidId(userId) && isValidParentWallet(incoming()) && incoming().userId == existing().userId && (
-        isAdmin() ||
-        (isOwner(userId) && (
-          incoming().diff(existing()).affectedKeys().hasOnly(['balanceNaira', 'updatedAt']) ||
-          incoming().diff(existing()).affectedKeys().hasOnly(['pin', 'updatedAt'])
-        ))
-      );
-      allow delete: if isAdmin();
-    }
-
-    // 3. Tutor Bookings Collection
-    match /tutorBookings/{bookingId} {
-      allow get: if isValidId(bookingId) && (
-        isAdmin() ||
-        (isVerified() && (resource.data.studentId == request.auth.uid || resource.data.tutorId == request.auth.uid))
-      );
-      allow list: if isVerified() && (
-        resource.data.studentId == request.auth.uid ||
-        resource.data.tutorId == request.auth.uid ||
-        isAdmin()
-      );
-      allow create: if isVerified() && isValidId(bookingId) && incoming().id == bookingId && incoming().studentId == request.auth.uid && isValidTutorBooking(incoming());
-      allow update: if isValidId(bookingId) && isValidTutorBooking(incoming()) && incoming().id == existing().id && incoming().studentId == existing().studentId && (
-        isAdmin() ||
-        (isVerified() && existing().status != 'completed' && (
-          incoming().diff(existing()).affectedKeys().hasOnly(['status', 'isParentApproved', 'parentApprovalDate', 'escrowStatus']) ||
-          incoming().diff(existing()).affectedKeys().hasOnly(['status', 'isTutorApproved', 'tutorApprovalDate', 'tutorRejectionReason', 'escrowStatus']) ||
-          incoming().diff(existing()).affectedKeys().hasOnly(['status', 'escrowStatus']) ||
-          incoming().diff(existing()).affectedKeys().hasOnly(['status'])
-        ))
-      );
-      allow delete: if isAdmin();
-    }
-
-    // 4. Tutoring Chats Collection
-    match /chats/{chatId}/messages/{messageId} {
-      allow get, list: if isVerified() && isValidId(chatId);
-      allow create: if isVerified() && isValidId(chatId) && isValidId(messageId) && incoming().id == messageId && incoming().senderId == request.auth.uid && isValidChatMessage(incoming());
-      allow update, delete: if isAdmin();
-    }
-
-    // 5. Admins Collection
-    match /admins/{adminId} {
-      allow get: if isValidId(adminId) && isVerified() && (request.auth.uid == adminId || isAdmin());
-      allow create, update: if isValidId(adminId) && isValidAdmin(incoming()) && (
-        isAdmin() || (
-          isVerified() &&
-          request.auth.uid == adminId &&
-          request.auth.token.email in ['martorefe@gmail.com', 'wowrealities@gmail.com', 'martinnosaomorefe@gmail.com']
-        )
-      );
-      allow list, delete: if isAdmin();
-    }
-
-    // 6. Growth Partners Collection
-    match /growthPartners/{partnerId} {
-      allow get, list: if true;
-      allow create: if isValidId(partnerId) && incoming().id == partnerId && isValidGrowthPartner(incoming());
-      allow update: if isValidId(partnerId) && isValidGrowthPartner(incoming()) && incoming().id == existing().id;
-      allow delete: if isAdmin();
-    }
-
-    // 7. Referrals Collection
-    match /referrals/{referralId} {
-      allow get, list: if true;
-      allow create: if isValidId(referralId) && isValidReferral(incoming());
-      allow update: if isValidId(referralId) && isValidReferral(incoming());
-      allow delete: if isAdmin();
-    }
-
-    // 8. Partner Wallets Collection
-    match /partnerWallets/{partnerId} {
-      allow get, list: if true;
-      allow create: if isValidId(partnerId) && incoming().partnerId == partnerId && isValidPartnerWallet(incoming());
-      allow update: if isValidId(partnerId) && isValidPartnerWallet(incoming()) && incoming().partnerId == existing().partnerId;
-      allow delete: if isAdmin();
-    }
-
-    // 9. Revenue Share Transactions Collection
-    match /revenueShareTransactions/{transactionId} {
-      allow get, list: if true;
-      allow create: if isValidId(transactionId) && isValidRevenueShareTx(incoming());
-      allow update, delete: if isAdmin();
-    }
-
-    // 10. Subscription Payments Collection
-    match /subscriptionPayments/{paymentId} {
-      allow get, list: if true;
-      allow create: if isValidId(paymentId) && isValidSubscriptionPayment(incoming());
-      allow update, delete: if isAdmin();
-    }
-
-    // 11. Forum Channels Collection
-    match /forumChannels/{channelId} {
-      allow get, list: if true;
-      allow create, update, delete: if isAdmin();
-    }
-
-    // 12. Forum Messages Collection
-    match /forumMessages/{messageId} {
-      allow get, list: if true;
-      allow create: if isVerified() && isValidId(messageId) && incoming().id == messageId && incoming().senderId == request.auth.uid && isValidForumMessage(incoming());
-      allow update: if isVerified() && isValidId(messageId) && (isAdmin() || (incoming().id == existing().id && incoming().senderId == existing().senderId));
-      allow delete: if isAdmin();
-    }
-
-    // 13. Forum Reports Collection
-    match /forumReports/{reportId} {
-      allow get, list: if isAdmin();
-      allow create: if isVerified() && isValidId(reportId) && incoming().id == reportId && incoming().reporterUserId == request.auth.uid && isValidForumReport(incoming());
-      allow update, delete: if isAdmin();
-    }
-
-    // 14. Connection Test Collection
-    match /test/{docId} {
-      allow read: if true;
-    }
-
-    // 15. Past Questions Collection (CBT Candidates read/stream; Admin/Educators manage)
-    match /pastQuestions/{questionId} {
-      allow get, list: if true;
-      allow create, update: if isValidId(questionId) && isValidPastQuestion(incoming());
-      allow delete: if isAdmin();
-    }
-
-    // 16. Past Question Papers Collection
-    match /pastQuestionPapers/{paperId} {
-      allow get, list: if true;
-      allow create, update: if isValidId(paperId) && isValidPastQuestionPaper(incoming());
-      allow delete: if isAdmin();
-    }
-
-    // 17. OTA Ticker Broadcasts (Public read; Admin publish & edit)
-    match /otaBroadcasts/{broadcastId} {
-      allow get, list: if true;
-      allow create, update, delete: if isAdmin();
-    }
-
-    // 18. OTA Pop-Up Image Announcements (Public read; Admin publish & edit)
-    match /otaAnnouncements/{announcementId} {
-      allow get, list: if true;
-      allow create, update, delete: if isAdmin();
-    }
-
-    // 19. OTA Student Competition Arena Configurations (Public read; Admin manage)
-    match /otaCompetitions/{competitionId} {
-      allow get, list: if true;
-      allow create, update, delete: if isAdmin();
-    }
-
-    // 20. Termly Drills Collection (CBT candidates read; server / authenticated users save & update)
-    match /termly_drills/{drillId} {
-      allow get, list: if true;
-      allow create, update: if true;
-      allow delete: if isAdmin();
-    }
-
-    // 21. Certificate Drills Collection (BECE, WAEC, NECO, JAMB)
-    match /certificate_drills/{drillId} {
-      allow get, list: if true;
-      allow create, update: if true;
-      allow delete: if isAdmin();
-    }
-
     function isValidSecurityIncident(data) {
       return data.keys().hasAll(['id', 'category', 'severity', 'status', 'source', 'title', 'description', 'createdAt']) &&
+             data.keys().hasOnly(['id', 'category', 'severity', 'status', 'source', 'title', 'description', 'actorUserId', 'actorEmail', 'actorRole', 'ipAddress', 'deviceFingerprint', 'endpoint', 'actionTaken', 'resolvedBy', 'resolvedAt', 'createdAt']) &&
              data.id is string && isValidId(data.id) &&
              data.category in ['fraud', 'spam', 'hacking', 'brute_force', 'unauthorized_probe', 'payment_replay', 'withdrawal_anomaly', 'xp_anomaly', 'phishing_link', 'rate_limit', 'tampered_payload', 'abuse'] &&
              data.severity in ['low', 'medium', 'high', 'critical'] &&
@@ -627,8 +588,9 @@ service cloud.firestore {
 
     function isValidSecurityReport(data) {
       return data.keys().hasAll(['id', 'reporterUserId', 'category', 'description', 'status', 'createdAt']) &&
+             data.keys().hasOnly(['id', 'reporterUserId', 'reporterEmail', 'reporterName', 'reporterRole', 'category', 'suspectIdentifier', 'description', 'evidenceContext', 'status', 'actionTaken', 'resolvedBy', 'resolvedAt', 'createdAt']) &&
              data.id is string && isValidId(data.id) &&
-             data.reporterUserId is string && data.reporterUserId.size() <= 128 &&
+             data.reporterUserId is string && isValidId(data.reporterUserId) &&
              data.category in ['fraud', 'spam', 'hacking', 'abuse', 'payment_anomaly'] &&
              data.description is string && data.description.size() >= 5 && data.description.size() <= 2000 &&
              data.status in ['pending', 'investigating', 'resolved', 'dismissed'] &&
@@ -637,17 +599,21 @@ service cloud.firestore {
 
     function isValidSecurityBlock(data) {
       return data.keys().hasAll(['id', 'blockType', 'targetValue', 'reason', 'active', 'createdBy', 'createdAt']) &&
+             data.keys().hasOnly(['id', 'blockType', 'targetValue', 'reason', 'active', 'createdBy', 'expiresAt', 'createdAt', 'updatedAt']) &&
              data.id is string && isValidId(data.id) &&
              data.blockType in ['ip', 'device_fingerprint', 'account_lock', 'account_suspend', 'wallet_freeze', 'account_delete'] &&
              data.targetValue is string && data.targetValue.size() >= 1 && data.targetValue.size() <= 200 &&
              data.reason is string && data.reason.size() >= 2 && data.reason.size() <= 500 &&
              data.active is bool &&
              data.createdBy is string && data.createdBy.size() <= 150 &&
-             data.createdAt is string && data.createdAt.size() <= 100;
+             data.createdAt is string && data.createdAt.size() <= 100 &&
+             (!('expiresAt' in data) || (data.expiresAt is string && data.expiresAt.size() <= 100)) &&
+             (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 100));
     }
 
     function isValidSecurityAutomationPolicy(data) {
       return data.keys().hasAll(['autoLockOnSpam', 'spamBurstThreshold', 'spamLockDurationMinutes', 'autoLockOnBruteForce', 'bruteForceLockDurationMinutes', 'autoSuspendOnFraud', 'autoFreezeWalletOnFraud', 'autoEnforceOnReports', 'reportAutoLockThreshold', 'reportAutoSuspendThreshold', 'updatedAt', 'updatedBy']) &&
+             data.keys().hasOnly(['autoLockOnSpam', 'spamBurstThreshold', 'spamLockDurationMinutes', 'autoLockOnBruteForce', 'bruteForceLockDurationMinutes', 'autoSuspendOnFraud', 'autoFreezeWalletOnFraud', 'autoEnforceOnReports', 'reportAutoLockThreshold', 'reportAutoSuspendThreshold', 'updatedAt', 'updatedBy']) &&
              data.autoLockOnSpam is bool &&
              data.spamBurstThreshold is number && data.spamBurstThreshold >= 1 && data.spamBurstThreshold <= 100 &&
              data.spamLockDurationMinutes is number && data.spamLockDurationMinutes >= 1 && data.spamLockDurationMinutes <= 43200 &&
@@ -664,53 +630,16 @@ service cloud.firestore {
 
     function isValidProcessedPaystackRef(data) {
       return data.keys().hasAll(['reference', 'amountNaira', 'purpose', 'processedAt']) &&
+             data.keys().hasOnly(['reference', 'amountNaira', 'purpose', 'userId', 'ipAddress', 'processedAt']) &&
              data.reference is string && data.reference.size() >= 3 && data.reference.size() <= 128 &&
              data.amountNaira is number && data.amountNaira > 0 &&
              data.purpose is string && data.purpose.size() <= 100 &&
              data.processedAt is string && data.processedAt.size() <= 100;
     }
 
-    // 22. Super Admin Uploaded Curriculum Lesson Notes (Public read; Admin only create/update/delete)
-    match /admin_lesson_notes/{noteId} {
-      allow get, list: if true;
-      allow create: if isAdmin() && isValidId(noteId) && incoming().id == noteId && isValidAdminLessonNote(incoming());
-      allow update: if isAdmin() && isValidId(noteId) && incoming().id == existing().id && incoming().createdAt == existing().createdAt && isValidAdminLessonNote(incoming());
-      allow delete: if isAdmin() && isValidId(noteId);
-    }
-
-    // 23. Security Incidents Collection (Automated & manual fraud/spam/hacking telemetry)
-    match /security_incidents/{incidentId} {
-      allow get, list: if true;
-      allow create: if isValidId(incidentId) && incoming().id == incidentId && isValidSecurityIncident(incoming());
-      allow update: if isValidId(incidentId) && incoming().id == existing().id && isValidSecurityIncident(incoming());
-      allow delete: if isAdmin();
-    }
-
-    // 24. Security Reports Collection (User-submitted fraud/spam/abuse reports)
-    match /security_reports/{reportId} {
-      allow get, list: if true;
-      allow create: if isValidId(reportId) && incoming().id == reportId && isValidSecurityReport(incoming());
-      allow update: if isValidId(reportId) && incoming().id == existing().id && isValidSecurityReport(incoming());
-      allow delete: if isAdmin();
-    }
-
-    // 25. Security Blocks Collection (IP, Device Fingerprint, Account Lock/Suspend/Delete, Wallet Freeze)
-    match /security_blocks/{blockId} {
-      allow get, list: if true;
-      allow create: if isValidId(blockId) && incoming().id == blockId && isValidSecurityBlock(incoming());
-      allow update: if isValidId(blockId) && incoming().id == existing().id && isValidSecurityBlock(incoming());
-      allow delete: if isAdmin();
-    }
-
-    // 25b. Automated Security Policy Configuration
-    match /security_policies/{policyId} {
-      allow get, list: if true;
-      allow create, update: if isAdmin() && isValidId(policyId) && isValidSecurityAutomationPolicy(incoming());
-      allow delete: if isAdmin();
-    }
-
     function isValidAspirantReferralReward(data) {
       return data.keys().hasAll(['id', 'studentId', 'referralCodeUsed', 'partnerId', 'tierPaid', 'rewardType', 'status', 'createdAt']) &&
+             data.keys().hasOnly(['id', 'studentId', 'studentName', 'studentEmail', 'referralCodeUsed', 'partnerId', 'paymentId', 'tierPaid', 'amountPaidNaira', 'rewardType', 'network', 'phoneNumber', 'amountNaira', 'status', 'createdAt', 'fulfilledAt', 'fulfilledBy']) &&
              data.id is string && isValidId(data.id) &&
              data.studentId is string && isValidId(data.studentId) &&
              data.referralCodeUsed is string && data.referralCodeUsed.size() <= 30 &&
@@ -719,37 +648,6 @@ service cloud.firestore {
              data.rewardType in ['data_2gb', 'cash_500'] &&
              data.status in ['credited', 'pending_fulfillment', 'fulfilled'] &&
              data.createdAt is string && data.createdAt.size() <= 100;
-    }
-
-    // 26. Processed Paystack References (Immutable payment replay prevention ledger)
-    match /processed_paystack_refs/{refId} {
-      allow get, list: if true;
-      allow create: if isValidId(refId) && isValidProcessedPaystackRef(incoming());
-      allow update, delete: if false;
-    }
-
-    // 27. University Aspirant First-Registration Referral Rewards (2GB Data or ₦500 Cashback)
-    match /aspirantReferralRewards/{rewardId} {
-      allow get, list: if true;
-      allow create: if isValidId(rewardId) && incoming().id == rewardId && isValidAspirantReferralReward(incoming());
-      allow update: if isValidId(rewardId) && incoming().id == existing().id && isValidAspirantReferralReward(incoming());
-      allow delete: if isAdmin();
-    }
-
-    // 28. OTA App Releases & Version Upgrades (Public read; Super Admin only write)
-    match /otaAppReleases/{releaseId} {
-      allow get, list: if true;
-      allow create: if isAdmin() && isValidId(releaseId) && incoming().id == releaseId && isValidOtaAppRelease(incoming());
-      allow update: if isAdmin() && isValidId(releaseId) && incoming().id == existing().id && isValidOtaAppRelease(incoming());
-      allow delete: if isAdmin() && isValidId(releaseId);
-    }
-
-    // 29. OTA Notification & Draw-Back Reminder Broadcasts (Public read; Super Admin only write)
-    match /otaNotifications/{notificationId} {
-      allow get, list: if true;
-      allow create: if isAdmin() && isValidId(notificationId) && incoming().id == notificationId && isValidOtaNotificationBroadcast(incoming());
-      allow update: if isAdmin() && isValidId(notificationId) && incoming().id == existing().id && isValidOtaNotificationBroadcast(incoming());
-      allow delete: if isAdmin() && isValidId(notificationId);
     }
 
     function isValidStudentLinkRegistry(data) {
@@ -818,27 +716,448 @@ service cloud.firestore {
              data.updatedAt is string && data.updatedAt.size() <= 50;
     }
 
-    // 30. Student Link Code Lookup Registry (PII-isolated: no raw email/phone/photos)
+    function isValidAICoachUsage(data) {
+      return data.keys().hasAll(['id', 'studentId', 'dateWat', 'planType', 'count', 'dailyLimit', 'updatedAt']) &&
+             data.keys().hasOnly(['id', 'studentId', 'dateWat', 'planType', 'count', 'dailyLimit', 'lastPromptAt', 'updatedAt']) &&
+             data.id is string && isValidId(data.id) &&
+             data.studentId is string && isValidId(data.studentId) &&
+             data.dateWat is string && data.dateWat.size() == 10 && data.dateWat.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') &&
+             data.planType in ['addon', 'elite', 'admin_bypass'] &&
+             data.count is number && data.count >= 0 && data.count <= 9999 &&
+             data.dailyLimit is number && data.dailyLimit >= 1 && data.dailyLimit <= 9999 &&
+             (!('lastPromptAt' in data) || data.lastPromptAt == null || (data.lastPromptAt is string && data.lastPromptAt.size() <= 50)) &&
+             data.updatedAt is string && data.updatedAt.size() <= 50;
+    }
+
+    // --- COLLECTION RULES ---
+
+    // 1. Students Collection (Paid subscriptions, addOns, XP & rank locked to Admin/Server)
+    match /students/{studentId} {
+      allow get: if isValidId(studentId) && (isOwner(studentId) || isAdmin());
+      allow list: if isAdmin();
+      allow create: if isValidId(studentId) && incoming().id == studentId && isValidStudentProfile(incoming()) && (
+        isAdmin() ||
+        (
+          isOwner(studentId) &&
+          (!('isSubscribed' in incoming()) || incoming().isSubscribed == false) &&
+          (!('subscriptionPlan' in incoming()) || incoming().subscriptionPlan == 'free') &&
+          (!('subscriptionTier' in incoming()) || incoming().subscriptionTier == 'free') &&
+          incoming().xp == 0 &&
+          incoming().rank == 'Fresher' &&
+          (!('addOns' in incoming()) || incoming().addOns.size() == 0)
+        )
+      );
+      allow update: if isValidId(studentId) && isValidStudentProfile(incoming()) && incoming().id == existing().id && (
+        isAdmin() ||
+        (
+          isOwner(studentId) &&
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'name', 'school', 'classLevel', 'stream', 'lastStudyDate',
+            'uniformVerified', 'uniformPhotoUrl', 'downloadedSubjectIds',
+            'completedQuizIds', 'completedReadNoteIds', 'verifiedReadingLogs',
+            'dailyExploration', 'studentLinkCode', 'schoolCode', 'referredByCode'
+          ])
+        )
+      );
+      allow delete: if isAdmin();
+
+      // Subcollection: Exam Results
+      match /examResults/{resultId} {
+        allow get: if isValidId(studentId) && isValidId(resultId) && (isOwner(studentId) || isAdmin());
+        allow list: if isOwner(studentId) || isAdmin();
+        allow create: if isOwner(studentId) && isValidId(studentId) && isValidId(resultId) && incoming().id == resultId && incoming().studentId == studentId && isValidExamResult(incoming()) && exists(/databases/$(database)/documents/students/$(studentId));
+        allow update, delete: if isAdmin();
+      }
+    }
+
+    // 2. User Accounts Collection (PII & RBAC isolated; non-admins cannot elevate role or enforcement flags)
+    match /users/{userId} {
+      allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
+      allow list: if isAdmin();
+      allow create: if isValidId(userId) && incoming().id == userId && isValidUserAccount(incoming()) && (
+        isAdmin() ||
+        (
+          isOwner(userId) &&
+          incoming().role != 'admin' &&
+          (!('isSuperAdmin' in incoming()) || incoming().isSuperAdmin == false) &&
+          (!('isDeveloper' in incoming()) || incoming().isDeveloper == false) &&
+          (!('accountStatus' in incoming()) || incoming().accountStatus == 'active') &&
+          (!('walletFrozen' in incoming()) || incoming().walletFrozen == false)
+        )
+      );
+      allow update: if isValidId(userId) && isValidUserAccount(incoming()) && incoming().id == existing().id && (
+        isAdmin() ||
+        (
+          isOwner(userId) &&
+          incoming().role == existing().role &&
+          incoming().email == existing().email &&
+          (!('isSuperAdmin' in incoming()) || incoming().isSuperAdmin == existing().isSuperAdmin) &&
+          (!('isDeveloper' in incoming()) || incoming().isDeveloper == existing().isDeveloper) &&
+          (!('accountStatus' in incoming()) || incoming().accountStatus == existing().accountStatus) &&
+          (!('walletFrozen' in incoming()) || incoming().walletFrozen == existing().walletFrozen) &&
+          incoming().diff(existing()).affectedKeys().hasOnly(['fullName', 'avatarUrl', 'parentData', 'tutorData'])
+        )
+      );
+      allow delete: if isAdmin();
+    }
+
+    // 3. Parent Wallets Collection (balanceNaira locked against client writes; PIN-only owner update)
+    match /wallets/{userId} {
+      allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
+      allow list: if isAdmin();
+      allow create: if isValidId(userId) && incoming().userId == userId && isValidParentWallet(incoming()) && (
+        isAdmin() ||
+        (isOwner(userId) && incoming().balanceNaira == 0)
+      );
+      allow update: if isValidId(userId) && isValidParentWallet(incoming()) && incoming().userId == existing().userId && (
+        isAdmin() ||
+        (
+          isOwner(userId) &&
+          incoming().balanceNaira == existing().balanceNaira &&
+          incoming().diff(existing()).affectedKeys().hasOnly(['pin', 'updatedAt'])
+        )
+      );
+      allow delete: if isAdmin();
+    }
+
+    // 3b. Authoritative Parent Escrow Wallets & Transactions (Admin/Server write only; owner read)
+    match /parentWallets/{userId} {
+      allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
+      allow list: if isAdmin();
+      allow create: if isAdmin() && isValidId(userId) && incoming().id == userId && isValidParentWalletLedger(incoming());
+      allow update: if isAdmin() && isValidId(userId) && incoming().id == existing().id && isValidParentWalletLedger(incoming());
+      allow delete: if isAdmin();
+
+      match /transactions/{txId} {
+        allow get: if isValidId(userId) && isValidId(txId) && (isOwner(userId) || isAdmin());
+        allow list: if isOwner(userId) || isAdmin();
+        allow create: if isAdmin() && isValidId(userId) && isValidId(txId) && incoming().id == txId && isValidParentWalletTransaction(incoming());
+        allow update, delete: if isAdmin();
+      }
+    }
+
+    // 4. Tutor Bookings Collection (Restricted strictly to booking participants & Super Admins)
+    match /tutorBookings/{bookingId} {
+      allow get: if isValidId(bookingId) && (
+        isAdmin() ||
+        (isVerified() && (existing().studentId == request.auth.uid || existing().tutorId == request.auth.uid))
+      );
+      allow list: if isAdmin() || (
+        isVerified() && (
+          resource.data.studentId == request.auth.uid ||
+          resource.data.tutorId == request.auth.uid
+        )
+      );
+      allow create: if isVerified() && isValidId(bookingId) && incoming().id == bookingId && incoming().studentId == request.auth.uid && isValidTutorBooking(incoming());
+      allow update: if isValidId(bookingId) && isValidTutorBooking(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().studentId == existing().studentId &&
+        incoming().tutorId == existing().tutorId &&
+        incoming().amountNaira == existing().amountNaira && (
+          isAdmin() ||
+          (
+            isVerified() && existing().status != 'completed' && existing().status != 'cancelled' && (
+              (existing().studentId == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'isParentApproved', 'parentApprovalDate', 'escrowStatus'])) ||
+              (existing().tutorId == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'isTutorApproved', 'tutorApprovalDate', 'tutorRejectionReason', 'escrowStatus'])) ||
+              (existing().studentId == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'escrowStatus'])) ||
+              (existing().studentId == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly(['status']))
+            )
+          )
+        );
+      allow delete: if isAdmin();
+    }
+
+    // 5. Tutoring Chats Collection (Participant-isolated via chatId participant check)
+    match /chats/{chatId}/messages/{messageId} {
+      allow get: if isValidId(chatId) && isValidId(messageId) && (isAdmin() || isChatParticipant(chatId));
+      allow list: if isValidId(chatId) && (isAdmin() || isChatParticipant(chatId));
+      allow create: if isValidId(chatId) && isValidId(messageId) && (isAdmin() || isChatParticipant(chatId)) && incoming().id == messageId && incoming().senderId == request.auth.uid && isValidChatMessage(incoming());
+      allow update, delete: if isAdmin();
+    }
+
+    // 6. Admins Collection
+    match /admins/{adminId} {
+      allow get: if isValidId(adminId) && isVerified() && (request.auth.uid == adminId || isAdmin());
+      allow create, update: if isValidId(adminId) && isValidAdmin(incoming()) && (
+        isAdmin() || (
+          isVerified() &&
+          request.auth.uid == adminId &&
+          request.auth.token.email in ['martorefe@gmail.com', 'wowrealities@gmail.com', 'martinnosaomorefe@gmail.com']
+        )
+      );
+      allow list, delete: if isAdmin();
+    }
+
+    // 7. Growth Partners, Referrals & Financial Ledgers (Strictly owner/Admin isolated — zero public reads/writes)
+    match /growthPartners/{partnerId} {
+      allow get: if isValidId(partnerId) && (isAdmin() || isOwner(partnerId));
+      allow list: if isAdmin();
+      allow create: if isAdmin() && isValidId(partnerId) && incoming().id == partnerId && isValidGrowthPartner(incoming());
+      allow update: if isAdmin() && isValidId(partnerId) && incoming().id == existing().id && isValidGrowthPartner(incoming());
+      allow delete: if isAdmin();
+    }
+
+    match /referrals/{referralId} {
+      allow get: if isValidId(referralId) && (isAdmin() || (isVerified() && existing().partnerId == request.auth.uid));
+      allow list: if isAdmin() || (isVerified() && resource.data.partnerId == request.auth.uid);
+      allow create: if isAdmin() && isValidId(referralId) && incoming().id == referralId && isValidReferral(incoming());
+      allow update: if isAdmin() && isValidId(referralId) && incoming().id == existing().id && isValidReferral(incoming());
+      allow delete: if isAdmin();
+    }
+
+    match /partnerWallets/{partnerId} {
+      allow get: if isValidId(partnerId) && (isAdmin() || isOwner(partnerId));
+      allow list: if isAdmin();
+      allow create: if isAdmin() && isValidId(partnerId) && incoming().partnerId == partnerId && isValidPartnerWallet(incoming());
+      allow update: if isAdmin() && isValidId(partnerId) && incoming().partnerId == existing().partnerId && isValidPartnerWallet(incoming());
+      allow delete: if isAdmin();
+    }
+
+    match /revenueShareTransactions/{transactionId} {
+      allow get: if isValidId(transactionId) && (isAdmin() || (isVerified() && existing().partnerId == request.auth.uid));
+      allow list: if isAdmin() || (isVerified() && resource.data.partnerId == request.auth.uid);
+      allow create: if isAdmin() && isValidId(transactionId) && incoming().id == transactionId && isValidRevenueShareTx(incoming());
+      allow update, delete: if isAdmin();
+    }
+
+    match /subscriptionPayments/{paymentId} {
+      allow get: if isValidId(paymentId) && (isAdmin() || (isVerified() && existing().studentId == request.auth.uid));
+      allow list: if isAdmin() || (isVerified() && resource.data.studentId == request.auth.uid);
+      allow create: if isAdmin() && isValidId(paymentId) && incoming().id == paymentId && isValidSubscriptionPayment(incoming());
+      allow update, delete: if isAdmin();
+    }
+
+    match /processed_paystack_refs/{refId} {
+      allow get: if isValidId(refId) && isAdmin();
+      allow list: if isAdmin();
+      allow create: if isAdmin() && isValidId(refId) && isValidProcessedPaystackRef(incoming());
+      allow update, delete: if false;
+    }
+
+    match /aspirantReferralRewards/{rewardId} {
+      allow get: if isValidId(rewardId) && (isAdmin() || (isVerified() && existing().studentId == request.auth.uid));
+      allow list: if isAdmin() || (isVerified() && resource.data.studentId == request.auth.uid);
+      allow create: if isAdmin() && isValidId(rewardId) && incoming().id == rewardId && isValidAspirantReferralReward(incoming());
+      allow update: if isAdmin() && isValidId(rewardId) && incoming().id == existing().id && isValidAspirantReferralReward(incoming());
+      allow delete: if isAdmin();
+    }
+
+    match /school_subscriptions/{subId} {
+      allow get: if isValidId(subId) && (isAdmin() || (isVerified() && existing().adminId == request.auth.uid));
+      allow list: if isAdmin() || (isVerified() && resource.data.adminId == request.auth.uid);
+      allow create: if isAdmin() && isValidId(subId) && incoming().id == subId && isValidSchoolSubscription(incoming());
+      allow update, delete: if isAdmin();
+    }
+
+    // 8. Community Forum Collections (Signed-in reads; author/reaction-isolated updates)
+    match /forumChannels/{channelId} {
+      allow get: if isValidId(channelId) && isSignedIn();
+      allow list: if isSignedIn();
+      allow create: if isAdmin() && isValidId(channelId) && incoming().id == channelId && isValidForumChannel(incoming());
+      allow update: if isAdmin() && isValidId(channelId) && incoming().id == existing().id && isValidForumChannel(incoming());
+      allow delete: if isAdmin();
+    }
+
+    match /forumMessages/{messageId} {
+      allow get: if isValidId(messageId) && isSignedIn();
+      allow list: if isSignedIn();
+      allow create: if isVerified() && isValidId(messageId) && incoming().id == messageId && incoming().senderId == request.auth.uid && isValidForumMessage(incoming());
+      allow update: if isVerified() && isValidId(messageId) && isValidForumMessage(incoming()) && (
+        isAdmin() ||
+        (
+          incoming().id == existing().id &&
+          incoming().senderId == existing().senderId &&
+          incoming().channelId == existing().channelId &&
+          (
+            (isOwner(existing().senderId) && incoming().diff(existing()).affectedKeys().hasOnly(['text'])) ||
+            incoming().diff(existing()).affectedKeys().hasOnly(['reactions'])
+          )
+        )
+      );
+      allow delete: if isAdmin();
+    }
+
+    match /forumReports/{reportId} {
+      allow get, list: if isAdmin();
+      allow create: if isVerified() && isValidId(reportId) && incoming().id == reportId && incoming().reporterUserId == request.auth.uid && incoming().status == 'pending' && isValidForumReport(incoming());
+      allow update, delete: if isAdmin();
+    }
+
+    // 9. Connection Test Collection (Read-only single-doc probe)
+    match /test/{docId} {
+      allow get: if isValidId(docId);
+      allow list, write: if false;
+    }
+
+    // 10. Curriculum & Examination Collections (Writes strictly locked to Super Admin)
+    match /pastQuestions/{questionId} {
+      allow get: if isValidId(questionId);
+      allow list: if true;
+      allow create: if isAdmin() && isValidId(questionId) && incoming().id == questionId && isValidPastQuestion(incoming());
+      allow update: if isAdmin() && isValidId(questionId) && incoming().id == existing().id && isValidPastQuestion(incoming());
+      allow delete: if isAdmin();
+    }
+
+    match /pastQuestionPapers/{paperId} {
+      allow get: if isValidId(paperId);
+      allow list: if true;
+      allow create: if isAdmin() && isValidId(paperId) && incoming().id == paperId && isValidPastQuestionPaper(incoming());
+      allow update: if isAdmin() && isValidId(paperId) && incoming().id == existing().id && isValidPastQuestionPaper(incoming());
+      allow delete: if isAdmin();
+    }
+
+    match /termly_drills/{drillId} {
+      allow get: if isValidId(drillId);
+      allow list: if true;
+      allow create: if isAdmin() && isValidId(drillId) && incoming().id == drillId && isValidDrillDocument(incoming());
+      allow update: if isAdmin() && isValidId(drillId) && incoming().id == existing().id && isValidDrillDocument(incoming());
+      allow delete: if isAdmin();
+    }
+
+    match /certificate_drills/{drillId} {
+      allow get: if isValidId(drillId);
+      allow list: if true;
+      allow create: if isAdmin() && isValidId(drillId) && incoming().id == drillId && isValidDrillDocument(incoming());
+      allow update: if isAdmin() && isValidId(drillId) && incoming().id == existing().id && isValidDrillDocument(incoming());
+      allow delete: if isAdmin();
+    }
+
+    match /admin_lesson_notes/{noteId} {
+      allow get: if isValidId(noteId);
+      allow list: if true;
+      allow create: if isAdmin() && isValidId(noteId) && incoming().id == noteId && isValidAdminLessonNote(incoming());
+      allow update: if isAdmin() && isValidId(noteId) && incoming().id == existing().id && incoming().createdAt == existing().createdAt && isValidAdminLessonNote(incoming());
+      allow delete: if isAdmin() && isValidId(noteId);
+    }
+
+    match /school_materials/{materialId} {
+      allow get: if isValidId(materialId) && isVerified();
+      allow list: if isVerified();
+      allow create: if isValidId(materialId) && incoming().id == materialId && isValidSchoolMaterial(incoming()) && (
+        isAdmin() ||
+        (
+          isVerified() &&
+          exists(/databases/$(database)/documents/schoolRegistry/$(incoming().schoolCode)) &&
+          get(/databases/$(database)/documents/schoolRegistry/$(incoming().schoolCode)).data.adminId == request.auth.uid
+        )
+      );
+      allow update: if isValidId(materialId) && incoming().id == existing().id && incoming().schoolCode == existing().schoolCode && isValidSchoolMaterial(incoming()) && (
+        isAdmin() ||
+        (
+          isVerified() &&
+          exists(/databases/$(database)/documents/schoolRegistry/$(existing().schoolCode)) &&
+          get(/databases/$(database)/documents/schoolRegistry/$(existing().schoolCode)).data.adminId == request.auth.uid
+        )
+      );
+      allow delete: if isValidId(materialId) && (
+        isAdmin() ||
+        (
+          isVerified() &&
+          exists(/databases/$(database)/documents/schoolRegistry/$(existing().schoolCode)) &&
+          get(/databases/$(database)/documents/schoolRegistry/$(existing().schoolCode)).data.adminId == request.auth.uid
+        )
+      );
+    }
+
+    // 11. OTA Broadcasts, Announcements, Competitions & App Releases
+    match /otaBroadcasts/{broadcastId} {
+      allow get: if isValidId(broadcastId);
+      allow list: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /otaAnnouncements/{announcementId} {
+      allow get: if isValidId(announcementId);
+      allow list: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /otaCompetitions/{competitionId} {
+      allow get: if isValidId(competitionId);
+      allow list: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /otaAppReleases/{releaseId} {
+      allow get: if isValidId(releaseId);
+      allow list: if true;
+      allow create: if isAdmin() && isValidId(releaseId) && incoming().id == releaseId && isValidOtaAppRelease(incoming());
+      allow update: if isAdmin() && isValidId(releaseId) && incoming().id == existing().id && isValidOtaAppRelease(incoming());
+      allow delete: if isAdmin() && isValidId(releaseId);
+    }
+
+    match /otaNotifications/{notificationId} {
+      allow get: if isValidId(notificationId);
+      allow list: if true;
+      allow create: if isAdmin() && isValidId(notificationId) && incoming().id == notificationId && isValidOtaNotificationBroadcast(incoming());
+      allow update: if isAdmin() && isValidId(notificationId) && incoming().id == existing().id && isValidOtaNotificationBroadcast(incoming());
+      allow delete: if isAdmin() && isValidId(notificationId);
+    }
+
+    // 12. Security Telemetry & Enforcement Collections (Zero public PII/log exposure)
+    match /security_incidents/{incidentId} {
+      allow get: if isValidId(incidentId) && isAdmin();
+      allow list: if isAdmin();
+      allow create: if isAdmin() && isValidId(incidentId) && incoming().id == incidentId && isValidSecurityIncident(incoming());
+      allow update: if isAdmin() && isValidId(incidentId) && incoming().id == existing().id && isValidSecurityIncident(incoming());
+      allow delete: if isAdmin();
+    }
+
+    match /security_reports/{reportId} {
+      allow get: if isValidId(reportId) && (isAdmin() || (isVerified() && existing().reporterUserId == request.auth.uid));
+      allow list: if isAdmin() || (isVerified() && resource.data.reporterUserId == request.auth.uid);
+      allow create: if isVerified() && isValidId(reportId) && incoming().id == reportId && incoming().reporterUserId == request.auth.uid && incoming().status == 'pending' && isValidSecurityReport(incoming());
+      allow update: if isAdmin() && isValidId(reportId) && incoming().id == existing().id && isValidSecurityReport(incoming());
+      allow delete: if isAdmin();
+    }
+
+    match /security_blocks/{blockId} {
+      allow get: if isValidId(blockId) && isAdmin();
+      allow list: if isAdmin();
+      allow create: if isAdmin() && isValidId(blockId) && incoming().id == blockId && isValidSecurityBlock(incoming());
+      allow update: if isAdmin() && isValidId(blockId) && incoming().id == existing().id && isValidSecurityBlock(incoming());
+      allow delete: if isAdmin();
+    }
+
+    match /security_policies/{policyId} {
+      allow get: if isValidId(policyId) && isAdmin();
+      allow list: if isAdmin();
+      allow create: if isAdmin() && isValidId(policyId) && isValidSecurityAutomationPolicy(incoming());
+      allow update: if isAdmin() && isValidId(policyId) && isValidSecurityAutomationPolicy(incoming());
+      allow delete: if isAdmin();
+    }
+
+    // 13. Student Link Code, School Registry & Enrollments (PII/roster list locked to owners & Super Admins)
     match /studentLinkRegistry/{code} {
-      allow get, list: if true;
-      allow create: if isValidId(code) && incoming().code == code && isValidStudentLinkRegistry(incoming());
-      allow update: if isValidId(code) && incoming().code == existing().code && incoming().studentId == existing().studentId && isValidStudentLinkRegistry(incoming());
+      allow get: if isValidId(code) && (isAdmin() || (isVerified() && existing().studentId == request.auth.uid));
+      allow list: if isAdmin() || (isVerified() && resource.data.studentId == request.auth.uid);
+      allow create: if isAdmin() && isValidId(code) && incoming().code == code && isValidStudentLinkRegistry(incoming());
+      allow update: if isAdmin() && isValidId(code) && incoming().code == existing().code && incoming().studentId == existing().studentId && isValidStudentLinkRegistry(incoming());
       allow delete: if isAdmin();
     }
 
-    // 31. Institutional School Registry (Live unique school codes)
     match /schoolRegistry/{schoolCode} {
-      allow get, list: if true;
-      allow create: if isValidId(schoolCode) && incoming().schoolCode == schoolCode && isValidSchoolRegistry(incoming());
-      allow update: if isValidId(schoolCode) && incoming().schoolCode == existing().schoolCode && isValidSchoolRegistry(incoming());
+      allow get: if isValidId(schoolCode) && isSignedIn();
+      allow list: if isAdmin();
+      allow create: if isAdmin() && isValidId(schoolCode) && incoming().schoolCode == schoolCode && isValidSchoolRegistry(incoming());
+      allow update: if isAdmin() && isValidId(schoolCode) && incoming().schoolCode == existing().schoolCode && isValidSchoolRegistry(incoming());
       allow delete: if isAdmin();
     }
 
-    // 32. Live School Student Enrollments (Cross-device roster & accreditation counts)
     match /schoolEnrollments/{enrollmentId} {
-      allow get, list: if true;
-      allow create: if isValidId(enrollmentId) && incoming().id == enrollmentId && isValidSchoolEnrollment(incoming());
-      allow update: if isValidId(enrollmentId) && incoming().id == existing().id && incoming().schoolCode == existing().schoolCode && incoming().studentId == existing().studentId && isValidSchoolEnrollment(incoming());
+      allow get: if isValidId(enrollmentId) && (isAdmin() || (isVerified() && existing().studentId == request.auth.uid));
+      allow list: if isAdmin() || (isVerified() && resource.data.studentId == request.auth.uid);
+      allow create: if isAdmin() && isValidId(enrollmentId) && incoming().id == enrollmentId && isValidSchoolEnrollment(incoming());
+      allow update: if isAdmin() && isValidId(enrollmentId) && incoming().id == existing().id && incoming().schoolCode == existing().schoolCode && incoming().studentId == existing().studentId && isValidSchoolEnrollment(incoming());
+      allow delete: if isAdmin();
+    }
+
+    // 14. SC AI Study Coach Daily Quota Ledger (Server-enforced; owner read only)
+    match /aiCoachUsage/{usageId} {
+      allow get: if isValidId(usageId) && (isAdmin() || (isVerified() && existing().studentId == request.auth.uid));
+      allow list: if isAdmin() || (isVerified() && resource.data.studentId == request.auth.uid);
+      allow create: if isAdmin() && isValidId(usageId) && incoming().id == usageId && isValidAICoachUsage(incoming());
+      allow update: if isAdmin() && isValidId(usageId) && isValidAICoachUsage(incoming());
       allow delete: if isAdmin();
     }
   }

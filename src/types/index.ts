@@ -105,6 +105,8 @@ export interface StudentProfile {
   subscriptionTier?: StudentSubscriptionTier;
   subscribedUntil?: string;
   termExpiresAt?: string;
+  lastSubscribedAt?: string;
+  lastPaymentReference?: string;
   addOns?: StudentAddOnEntitlements;
   studentLinkCode?: string;
   dailyExploration?: DailyExplorationState;
@@ -804,6 +806,7 @@ export interface ExamPrepState {
   tutorCreditsNaira: number; // Starts at 4,000 upon unlock
   tutorCreditsRemainingNaira?: number;
   paymentMethod?: 'escrow_wallet' | 'direct_paystack';
+  paymentReference?: string;
   diagnosticProfile?: DiagnosticProfile;
   activeCalendar?: StudyCalendar | null;
   completedBlockIds: string[];
@@ -1213,3 +1216,15 @@ export interface SecurityStatusSnapshot {
   blockType?: SecurityBlockType;
   blockReason?: string;
 }
+
+export interface AICoachQuotaStatus {
+  hasAccess: boolean;
+  isAdminBypass: boolean;
+  planType: 'locked' | 'addon' | 'elite' | 'admin_bypass';
+  usedToday: number;
+  dailyLimit: number;
+  remainingToday: number;
+  resetsAt: string;
+  dateWat: string;
+}
+

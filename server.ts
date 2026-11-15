@@ -44,6 +44,21 @@ import {
   normalizeNigerianPhone,
   ASPIRANT_FIRST_REG_CASH_NAIRA
 } from './src/utils/referralPromoPolicy';
+import {
+  getLedgerState,
+  saveAuthoritativeLedger,
+  getOrInitStudentLedger,
+  getOrInitWalletLedger,
+  creditWalletLedger,
+  debitWalletLedger,
+  refundEscrowInWalletLedger,
+  calculateLedgerRankFromXP,
+  resetUnverifiedSimulatedSubscriptionsInLedger,
+  getAiCoachQuotaStore,
+  saveAiCoachQuotaStore,
+  clearAiCoachQuotaStore,
+  verifyFirebaseBearerToken
+} from './serverLedger';
 
 dotenv.config();
 
@@ -56,6 +71,12 @@ const app = express();
 const PORT = 3000;
 
 app.use(express.json({ limit: '5mb' }));
+app.get(['/sw.js', '/sw-notifications.js'], (req, res) => {
+  const target = req.path === '/sw.js' ? 'sw.js' : 'sw-notifications.js';
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+  return res.sendFile(path.resolve(__dirname, 'public', target), { cacheControl: false });
+});
 app.use(express.static(path.resolve(__dirname, 'public')));
 app.use('/assets', express.static(path.resolve(__dirname, 'public/assets')));
 
@@ -65,6 +86,11 @@ const serverApps = getServerApps();
 const serverApp = serverApps.length > 0 ? serverApps[0] : initServerFirebase(firebaseConfig, 'companion-server');
 const serverDb = getServerFirestore(serverApp, (firebaseConfig as any).firestoreDatabaseId);
 const securityService = new SecurityService(serverDb);
+const isExpectedServerFirestoreLock = (err: any): boolean => {
+  const code = String(err?.code || '').toLowerCase();
+  const msg = String(err?.message || '').toLowerCase();
+  return code.includes('permission-denied') || msg.includes('missing or insufficient permissions');
+};
 
 // Health check endpoints for platform probes and control plane
 app.get('/health', (_req, res) => res.status(200).json({ status: 'ok', uptime: process.uptime() }));
@@ -84,7 +110,7 @@ app.use('/api', (req, res, next) => {
   return next();
 });
 app.use('/api', securityService.middleware());
-securityService.registerRoutes(app);
+securityService.registerRoutes(app, verifySuperAdminRequest);
 
 // Initialize GoogleGenAI server-side with required User-Agent
 let aiInstance: GoogleGenAI | null = null;
@@ -192,13 +218,364 @@ async function generateGeminiWithResilience(params: {
   }
 }
 
-// 1. Nigerian Secondary AI Study Coach & Exam Master
+// 1. Nigerian Secondary AI Study Coach & Exam Master (with Tiered Daily Usage Caps)
+const AI_COACH_LIMITS = {
+  addon: 15,
+  elite: 35,
+  admin_bypass: 9999,
+} as const;
+
+const AI_COACH_MAX_PROMPT_CHARS = 1200;
+const AI_COACH_MAX_HISTORY_TURNS = 6;
+const AI_COACH_COOLDOWN_MS = 4000;
+
+const aiCoachQuotaStore = getAiCoachQuotaStore();
+
+function getWatDateInfo() {
+  const now = new Date();
+  // West Africa Time (Africa/Lagos) is fixed UTC+1
+  const watMs = now.getTime() + 60 * 60 * 1000;
+  const watDateObj = new Date(watMs);
+  const dateWat = watDateObj.toISOString().slice(0, 10);
+  const nextMidnightWatUtcMs = Date.UTC(
+    watDateObj.getUTCFullYear(),
+    watDateObj.getUTCMonth(),
+    watDateObj.getUTCDate() + 1,
+    0,
+    0,
+    0,
+    0
+  ) - 60 * 60 * 1000;
+  const resetsAt = new Date(nextMidnightWatUtcMs).toISOString();
+  return { dateWat, resetsAt };
+}
+
+function sanitizeUsageKey(raw: string): string {
+  const clean = String(raw || '').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 96);
+  return clean || 'anonymous_student';
+}
+
+async function resolveAiCoachEntitlement(params: {
+  req: express.Request;
+  studentId?: string;
+  studentPlan?: string;
+  aiCoachUnlocked?: boolean;
+  adminEmail?: string;
+  adminBypass?: boolean;
+}) {
+  const cleanAdminEmail = String(params.adminEmail || '').toLowerCase().trim();
+  const wantsAdminBypass = Boolean(
+    params.adminBypass === true &&
+    cleanAdminEmail &&
+    AUTHORIZED_SUPER_ADMINS.includes(cleanAdminEmail)
+  );
+
+  if (wantsAdminBypass) {
+    const adminAuth = await verifySuperAdminRequest(params.req);
+    if (adminAuth.ok) {
+      return {
+        hasAccess: true,
+        isAdminBypass: true,
+        planType: 'admin_bypass' as const,
+        dailyLimit: AI_COACH_LIMITS.admin_bypass,
+      };
+    }
+  }
+
+  const verifiedUser = await verifyFirebaseBearerToken(params.req, verifyAdminHmacToken);
+  const resolvedStudentId = sanitizeUsageKey(verifiedUser?.uid || params.studentId || 'guest_student');
+
+  let effectivePlan = 'free';
+  let effectiveAddonUnlocked = false;
+
+  // 1. Check authoritative server ledger first
+  const ledgerEntry = getLedgerState().students[resolvedStudentId];
+  if (ledgerEntry) {
+    effectivePlan = String(
+      ledgerEntry.subscriptionPlan || ledgerEntry.subscriptionTier || (ledgerEntry.isSubscribed ? 'basic' : 'free')
+    ).toLowerCase();
+    effectiveAddonUnlocked = Boolean(ledgerEntry.addOns?.aiCoachUnlocked);
+  }
+
+  // 2. Also check Firestore student doc if readable
+  if (resolvedStudentId && /^[a-zA-Z0-9_-]{3,128}$/.test(resolvedStudentId)) {
+    try {
+      const snap = await getDoc(doc(serverDb, 'students', resolvedStudentId));
+      if (snap.exists()) {
+        const data = snap.data() || {};
+        const dbPlan = String(data.subscriptionPlan || data.subscriptionTier || (data.isSubscribed ? 'basic' : 'free')).toLowerCase();
+        if (dbPlan === 'elite' && effectivePlan !== 'elite') {
+          effectivePlan = 'elite';
+        } else if (effectivePlan === 'free' && dbPlan !== 'free') {
+          effectivePlan = dbPlan;
+        }
+        if (data.addOns?.aiCoachUnlocked) {
+          effectiveAddonUnlocked = true;
+        }
+      }
+    } catch {
+      // Locked Firestore read falls back to server ledger seamlessly
+    }
+  }
+
+  // Only verified Super Admin can pass simulated client overrides without ledger entitlement
+  if (verifiedUser?.isSuperAdmin && !effectiveAddonUnlocked && effectivePlan !== 'elite') {
+    const reqPlan = String(params.studentPlan || 'free').toLowerCase().trim();
+    if (reqPlan === 'elite') effectivePlan = 'elite';
+    if (params.aiCoachUnlocked) effectiveAddonUnlocked = true;
+  }
+
+  if (effectivePlan === 'elite') {
+    return {
+      hasAccess: true,
+      isAdminBypass: false,
+      planType: 'elite' as const,
+      dailyLimit: AI_COACH_LIMITS.elite,
+      resolvedStudentId,
+    };
+  }
+
+  if (effectiveAddonUnlocked) {
+    return {
+      hasAccess: true,
+      isAdminBypass: false,
+      planType: 'addon' as const,
+      dailyLimit: AI_COACH_LIMITS.addon,
+      resolvedStudentId,
+    };
+  }
+
+  return {
+    hasAccess: false,
+    isAdminBypass: false,
+    planType: 'locked' as const,
+    dailyLimit: 0,
+    resolvedStudentId,
+  };
+}
+
+async function getAiCoachUsageCount(studentId: string, dateWat: string): Promise<{ count: number; lastPromptAtMs: number }> {
+  const safeStudentId = sanitizeUsageKey(studentId);
+  const usageId = `${safeStudentId}_${dateWat}`;
+  const diskEntry = aiCoachQuotaStore[usageId];
+
+  try {
+    const snap = await getDoc(doc(serverDb, 'aiCoachUsage', usageId));
+    if (snap.exists()) {
+      const data = snap.data() || {};
+      const dbCount = Number(data.count || 0);
+      const dbLastMs = data.lastPromptAt ? Date.parse(String(data.lastPromptAt)) || 0 : 0;
+      const bestCount = Math.max(dbCount, diskEntry?.count || 0);
+      const bestLastMs = Math.max(dbLastMs, diskEntry?.lastPromptAtMs || 0);
+      return { count: bestCount, lastPromptAtMs: bestLastMs };
+    }
+  } catch {
+    // Fallback to durable disk store seamlessly
+  }
+
+  return { count: diskEntry?.count || 0, lastPromptAtMs: diskEntry?.lastPromptAtMs || 0 };
+}
+
+async function incrementAiCoachUsage(studentId: string, dateWat: string, planType: 'addon' | 'elite', dailyLimit: number): Promise<number> {
+  const safeStudentId = sanitizeUsageKey(studentId);
+  const usageId = `${safeStudentId}_${dateWat}`;
+  const prev = await getAiCoachUsageCount(safeStudentId, dateWat);
+  const nextCount = prev.count + 1;
+  const nowIso = new Date().toISOString();
+  const nowMs = Date.now();
+
+  aiCoachQuotaStore[usageId] = {
+    count: nextCount,
+    lastPromptAtMs: nowMs,
+    planType,
+    dateWat,
+    studentId: safeStudentId,
+  };
+  saveAiCoachQuotaStore();
+
+  try {
+    await setDoc(doc(serverDb, 'aiCoachUsage', usageId), {
+      id: usageId,
+      studentId: safeStudentId,
+      dateWat,
+      planType,
+      count: nextCount,
+      dailyLimit,
+      lastPromptAt: nowIso,
+      updatedAt: nowIso,
+    }, { merge: true });
+  } catch {
+    // Locked Firestore writes handled silently; disk store preserves authoritative count
+  }
+
+  return nextCount;
+}
+
+app.get('/api/ai/study-coach/quota', async (req, res) => {
+  try {
+    const studentId = String(req.query.studentId || 'guest_student');
+    const studentPlan = String(req.query.studentPlan || 'free');
+    const aiCoachUnlocked = req.query.aiCoachUnlocked === 'true';
+    const adminEmail = String(req.query.adminEmail || '');
+    const adminBypass = req.query.adminBypass === 'true';
+
+    const { dateWat, resetsAt } = getWatDateInfo();
+    const policy = await resolveAiCoachEntitlement({
+      req,
+      studentId,
+      studentPlan,
+      aiCoachUnlocked,
+      adminEmail,
+      adminBypass,
+    });
+
+    if (!policy.hasAccess) {
+      return res.json({
+        success: true,
+        quota: {
+          hasAccess: false,
+          isAdminBypass: false,
+          planType: 'locked',
+          usedToday: 0,
+          dailyLimit: 0,
+          remainingToday: 0,
+          resetsAt,
+          dateWat,
+        },
+      });
+    }
+
+    if (policy.isAdminBypass) {
+      return res.json({
+        success: true,
+        quota: {
+          hasAccess: true,
+          isAdminBypass: true,
+          planType: 'admin_bypass',
+          usedToday: 0,
+          dailyLimit: AI_COACH_LIMITS.admin_bypass,
+          remainingToday: AI_COACH_LIMITS.admin_bypass,
+          resetsAt,
+          dateWat,
+        },
+      });
+    }
+
+    const usage = await getAiCoachUsageCount(policy.resolvedStudentId || studentId, dateWat);
+    const remainingToday = Math.max(0, policy.dailyLimit - usage.count);
+
+    return res.json({
+      success: true,
+      quota: {
+        hasAccess: true,
+        isAdminBypass: false,
+        planType: policy.planType,
+        usedToday: usage.count,
+        dailyLimit: policy.dailyLimit,
+        remainingToday,
+        resetsAt,
+        dateWat,
+      },
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err?.message || 'Failed to check quota.' });
+  }
+});
+
 const handleStudyCoachRequest = async (req: express.Request, res: express.Response) => {
   try {
-    const { prompt, subject, examType, level, classLevel, studentName, history } = req.body;
+    const {
+      prompt,
+      subject,
+      examType,
+      level,
+      classLevel,
+      studentName,
+      history,
+      studentId,
+      studentPlan,
+      aiCoachUnlocked,
+      adminEmail,
+      adminBypass,
+    } = req.body || {};
 
-    if (!prompt) {
+    if (!prompt || typeof prompt !== 'string' || !prompt.trim()) {
       return res.status(400).json({ error: 'Prompt is required' });
+    }
+
+    const trimmedPrompt = prompt.trim();
+    if (trimmedPrompt.length > AI_COACH_MAX_PROMPT_CHARS) {
+      return res.status(400).json({
+        error: `Question is too long (${trimmedPrompt.length}/${AI_COACH_MAX_PROMPT_CHARS} characters). Please summarize your question clearly.`,
+      });
+    }
+
+    const { dateWat, resetsAt } = getWatDateInfo();
+    const rawStudentId = sanitizeUsageKey(String(studentId || req.ip || 'guest_student'));
+
+    const policy = await resolveAiCoachEntitlement({
+      req,
+      studentId: rawStudentId,
+      studentPlan,
+      aiCoachUnlocked: Boolean(aiCoachUnlocked),
+      adminEmail,
+      adminBypass: Boolean(adminBypass),
+    });
+    const effectiveStudentId = policy.resolvedStudentId || rawStudentId;
+
+    if (!policy.hasAccess) {
+      return res.status(403).json({
+        error: 'SC AI Study Coach is locked. Upgrade to the Elite Plan (35/day) or unlock the ₦10,000 SC AI Coach Add-on (15/day).',
+        quota: {
+          hasAccess: false,
+          isAdminBypass: false,
+          planType: 'locked',
+          usedToday: 0,
+          dailyLimit: 0,
+          remainingToday: 0,
+          resetsAt,
+          dateWat,
+        },
+      });
+    }
+
+    if (!policy.isAdminBypass) {
+      const usage = await getAiCoachUsageCount(effectiveStudentId, dateWat);
+      const nowMs = Date.now();
+      if (usage.lastPromptAtMs > 0 && nowMs - usage.lastPromptAtMs < AI_COACH_COOLDOWN_MS) {
+        return res.status(429).json({
+          error: 'Please wait a few seconds before asking another question.',
+          quota: {
+            hasAccess: true,
+            isAdminBypass: false,
+            planType: policy.planType,
+            usedToday: usage.count,
+            dailyLimit: policy.dailyLimit,
+            remainingToday: Math.max(0, policy.dailyLimit - usage.count),
+            resetsAt,
+            dateWat,
+          },
+        });
+      }
+
+      if (usage.count >= policy.dailyLimit) {
+        return res.status(429).json({
+          error:
+            policy.planType === 'addon'
+              ? `Daily SC AI Coach limit reached (${policy.dailyLimit}/${policy.dailyLimit} used today). Your quota resets at midnight WAT, or upgrade to Elite for 35 questions/day.`
+              : `Daily SC AI Coach limit reached (${policy.dailyLimit}/${policy.dailyLimit} used today). Your quota resets at midnight WAT.`,
+          quota: {
+            hasAccess: true,
+            isAdminBypass: false,
+            planType: policy.planType,
+            usedToday: usage.count,
+            dailyLimit: policy.dailyLimit,
+            remainingToday: 0,
+            resetsAt,
+            dateWat,
+          },
+        });
+      }
     }
 
     const resolvedLevel = level || classLevel || 'Senior Secondary (SS1 - SS3)';
@@ -226,11 +603,12 @@ Strict Pedagogical Guidelines:
 
     const contents: any[] = [];
     if (Array.isArray(history)) {
-      for (const msg of history) {
+      const recentHistory = history.slice(-AI_COACH_MAX_HISTORY_TURNS);
+      for (const msg of recentHistory) {
         if (msg.text && (msg.role === 'user' || msg.role === 'model')) {
           contents.push({
             role: msg.role,
-            parts: [{ text: String(msg.text) }],
+            parts: [{ text: String(msg.text).slice(0, 3000) }],
           });
         }
       }
@@ -238,7 +616,7 @@ Strict Pedagogical Guidelines:
 
     contents.push({
       role: 'user',
-      parts: [{ text: String(prompt) }],
+      parts: [{ text: trimmedPrompt }],
     });
 
     const response = await generateGeminiWithResilience({
@@ -253,7 +631,43 @@ Strict Pedagogical Guidelines:
     });
 
     const text = response.text || 'No response generated.';
-    return res.json({ text });
+
+    if (policy.isAdminBypass) {
+      return res.json({
+        text,
+        quota: {
+          hasAccess: true,
+          isAdminBypass: true,
+          planType: 'admin_bypass',
+          usedToday: 0,
+          dailyLimit: AI_COACH_LIMITS.admin_bypass,
+          remainingToday: AI_COACH_LIMITS.admin_bypass,
+          resetsAt,
+          dateWat,
+        },
+      });
+    }
+
+    const updatedCount = await incrementAiCoachUsage(
+      effectiveStudentId,
+      dateWat,
+      policy.planType === 'elite' ? 'elite' : 'addon',
+      policy.dailyLimit
+    );
+
+    return res.json({
+      text,
+      quota: {
+        hasAccess: true,
+        isAdminBypass: false,
+        planType: policy.planType,
+        usedToday: updatedCount,
+        dailyLimit: policy.dailyLimit,
+        remainingToday: Math.max(0, policy.dailyLimit - updatedCount),
+        resetsAt,
+        dateWat,
+      },
+    });
   } catch (error: any) {
     console.error('Gemini Study Tutor Error:', error);
     const status = typeof error?.status === 'number' && error.status >= 400 ? error.status : 500;
@@ -546,14 +960,25 @@ app.post('/api/gemini/generate-termly-drill', async (req, res) => {
 
     const drillDocRef = doc(serverDb, 'termly_drills', drillDocId);
 
-    // If not requesting a fresh generation, check Firestore cache first
+    // If not requesting a fresh generation, check server ledger cache then Firestore cache
     if (!forceFresh) {
+      const localCached = getLedgerState().termlyDrills[drillDocId];
+      if (localCached && localCached.drill && Array.isArray(localCached.drill.questions) && localCached.drill.questions.length >= 20) {
+        return res.json({
+          success: true,
+          cached: true,
+          drillId: drillDocId,
+          drill: localCached.drill,
+          generatedAt: localCached.generatedAt || new Date().toISOString()
+        });
+      }
       try {
         const snap = await getDoc(drillDocRef);
         if (snap.exists()) {
           const data = snap.data();
           if (data && data.drill && Array.isArray(data.drill.questions) && data.drill.questions.length >= 20) {
-            console.log(`[Firestore Cache Hit] Returning cached termly drill for ${drillDocId}`);
+            getLedgerState().termlyDrills[drillDocId] = data;
+            saveAuthoritativeLedger();
             return res.json({
               success: true,
               cached: true,
@@ -673,21 +1098,24 @@ STRICT EXAM REQUIREMENTS:
       questions: formattedQuestions
     };
 
-    // Cache to Firestore in termly_drills
+    const cachedDrillDoc = {
+      id: drillDocId,
+      classLevel: sanitizedClass,
+      term: sanitizedTerm,
+      subject: sanitizedSubject,
+      drill,
+      questionCount: formattedQuestions.length,
+      generatedAt: new Date().toISOString(),
+      lastRequestedBy: studentId || 'anonymous'
+    };
+    getLedgerState().termlyDrills[drillDocId] = cachedDrillDoc;
+    saveAuthoritativeLedger();
+
+    // Best-effort Firestore cache write
     try {
-      await setDoc(drillDocRef, {
-        id: drillDocId,
-        classLevel: sanitizedClass,
-        term: sanitizedTerm,
-        subject: sanitizedSubject,
-        drill,
-        questionCount: formattedQuestions.length,
-        generatedAt: new Date().toISOString(),
-        lastRequestedBy: studentId || 'anonymous'
-      });
-      console.log(`[Firestore Cache Write] Successfully cached 40-question drill in /termly_drills/${drillDocId}`);
-    } catch (saveErr) {
-      console.warn('Failed to cache drill in Firestore:', saveErr);
+      await setDoc(drillDocRef, cachedDrillDoc);
+    } catch {
+      // Ledger cache already persisted above
     }
 
     return res.json({
@@ -771,14 +1199,26 @@ app.post('/api/gemini/generate-certificate-drill', async (req, res) => {
       }
     }[boardKey];
 
-    // Check Firestore cache first if not requesting fresh compilation
+    // Check server ledger cache then Firestore cache if not requesting fresh compilation
     if (!forceFresh) {
+      const localCached = getLedgerState().certificateDrills[drillDocId];
+      if (localCached && localCached.drill && Array.isArray(localCached.drill.questions) && localCached.drill.questions.length >= 30) {
+        return res.json({
+          success: true,
+          cached: true,
+          drillId: drillDocId,
+          board: boardKey,
+          drill: localCached.drill,
+          generatedAt: localCached.generatedAt || new Date().toISOString()
+        });
+      }
       try {
         const snap = await getDoc(drillDocRef);
         if (snap.exists()) {
           const data = snap.data();
           if (data && data.drill && Array.isArray(data.drill.questions) && data.drill.questions.length >= 30) {
-            console.log(`[Firestore Certificate Cache Hit] Returning cached ${boardKey} drill for ${drillDocId}`);
+            getLedgerState().certificateDrills[drillDocId] = data;
+            saveAuthoritativeLedger();
             return res.json({
               success: true,
               cached: true,
@@ -892,22 +1332,25 @@ STRICT BOARD SPECIFICATIONS:
       questions: formattedQuestions
     };
 
-    // Cache to Firestore in certificate_drills
+    const cachedCertDoc = {
+      id: drillDocId,
+      board: boardKey,
+      classLevel: classLevel || (boardKey === 'BECE' ? 'JSS 3' : 'SS 3'),
+      subject: sanitizedSubject,
+      drill,
+      questionCount: formattedQuestions.length,
+      durationMinutes: boardConfig.durationMinutes,
+      generatedAt: new Date().toISOString(),
+      lastRequestedBy: studentId || 'anonymous'
+    };
+    getLedgerState().certificateDrills[drillDocId] = cachedCertDoc;
+    saveAuthoritativeLedger();
+
+    // Best-effort Firestore cache write
     try {
-      await setDoc(drillDocRef, {
-        id: drillDocId,
-        board: boardKey,
-        classLevel: classLevel || (boardKey === 'BECE' ? 'JSS 3' : 'SS 3'),
-        subject: sanitizedSubject,
-        drill,
-        questionCount: formattedQuestions.length,
-        durationMinutes: boardConfig.durationMinutes,
-        generatedAt: new Date().toISOString(),
-        lastRequestedBy: studentId || 'anonymous'
-      });
-      console.log(`[Firestore Certificate Write] Successfully cached ${formattedQuestions.length}-question ${boardKey} drill in /certificate_drills/${drillDocId}`);
-    } catch (saveErr) {
-      console.warn('Failed to cache certificate drill in Firestore:', saveErr);
+      await setDoc(drillDocRef, cachedCertDoc);
+    } catch {
+      // Ledger cache already persisted above
     }
 
     return res.json({
@@ -1488,7 +1931,9 @@ async function upsertSchoolEnrollmentRecord(params: {
   try {
     await setDoc(doc(serverDb, 'schoolEnrollments', enrollmentId), record);
   } catch (err) {
-    console.warn('Could not persist schoolEnrollment to Firestore:', err);
+    if (!isExpectedServerFirestoreLock(err)) {
+      console.warn('Could not persist schoolEnrollment to Firestore:', err);
+    }
   }
 
   return record;
@@ -1559,7 +2004,9 @@ app.post('/api/students/link-code/issue', async (req, res) => {
     try {
       await setDoc(doc(serverDb, 'studentLinkRegistry', code), record);
     } catch (err) {
-      console.warn('Could not persist studentLinkRegistry record to Firestore:', err);
+      if (!isExpectedServerFirestoreLock(err)) {
+        console.warn('Could not persist studentLinkRegistry record to Firestore:', err);
+      }
     }
 
     return res.json({
@@ -1656,7 +2103,9 @@ app.post('/api/students/link-code/sync', async (req, res) => {
     try {
       await setDoc(doc(serverDb, 'studentLinkRegistry', code), linkRecord);
     } catch (err) {
-      console.warn('Could not sync studentLinkRegistry to Firestore:', err);
+      if (!isExpectedServerFirestoreLock(err)) {
+        console.warn('Could not sync studentLinkRegistry to Firestore:', err);
+      }
     }
 
     if (cleanSchoolCode) {
@@ -1871,7 +2320,9 @@ app.post('/api/schools/code/issue', async (req, res) => {
     try {
       await setDoc(doc(serverDb, 'schoolRegistry', schoolCode), record);
     } catch (err) {
-      console.warn('Could not persist schoolRegistry record to Firestore:', err);
+      if (!isExpectedServerFirestoreLock(err)) {
+        console.warn('Could not persist schoolRegistry record to Firestore:', err);
+      }
     }
 
     return res.json({
@@ -2505,7 +2956,9 @@ async function processSubscriptionCommissionAndEligibility(params: {
       });
     });
   } catch (txErr) {
-    console.warn('[Revenue Share Notice] Firestore transaction skipped or partial:', (txErr as any)?.message);
+    if (!isExpectedServerFirestoreLock(txErr)) {
+      console.warn('[Revenue Share Notice] Firestore transaction skipped or partial:', (txErr as any)?.message);
+    }
   }
 
   // Track University Aspirant first-registration referral reward eligibility
@@ -3469,6 +3922,47 @@ app.post('/api/paystack/verify-payment', async (req, res) => {
       const expiresAt = new Date(now.getTime() + durationDays * 24 * 60 * 60 * 1000).toISOString();
       const planName = isTermly ? 'termly' : 'monthly';
 
+      const subRecordPayload = {
+        id: reference,
+        adminId: cleanAdminId,
+        schoolName: schoolName || 'Secondary School',
+        schoolCode: schoolCode || '',
+        plan: planName,
+        amountNaira,
+        channel: paymentChannel,
+        reference,
+        paidAt: now.toISOString(),
+        expiresAt,
+        status: 'active'
+      };
+      getLedgerState().schoolSubscriptions[cleanAdminId] = subRecordPayload;
+      saveAuthoritativeLedger();
+
+      // Update live schoolRegistry accreditation status if schoolCode is present
+      const cleanSubSchoolCode = normalizeRegistryCode(schoolCode);
+      if (cleanSubSchoolCode) {
+        const existingReg = await resolveSchoolByCode(cleanSubSchoolCode);
+        const updatedSchoolReg: SchoolRegistryRecord = {
+          schoolCode: cleanSubSchoolCode,
+          adminId: sanitizeDocId(cleanAdminId, 'adm'),
+          schoolName: String(schoolName || existingReg?.schoolName || 'Secondary School').slice(0, 150),
+          schoolType: existingReg?.schoolType || 'College',
+          ...(existingReg?.state ? { state: existingReg.state } : {}),
+          ...(existingReg?.lga ? { lga: existingReg.lga } : {}),
+          verificationStatus: existingReg?.verificationStatus || 'verified',
+          hasActiveDirectSubscription: true,
+          directSubscriptionExpiresAt: expiresAt,
+          active: true,
+          createdAt: existingReg?.createdAt || now.toISOString(),
+          updatedAt: now.toISOString()
+        };
+        linkingMemoryStore.schools[cleanSubSchoolCode] = updatedSchoolReg;
+        saveLinkingStore();
+        try {
+          await setDoc(doc(serverDb, 'schoolRegistry', cleanSubSchoolCode), updatedSchoolReg);
+        } catch {}
+      }
+
       try {
         const userRef = doc(serverDb, 'users', cleanAdminId);
         await setDoc(userRef, {
@@ -3486,46 +3980,11 @@ app.post('/api/paystack/verify-payment', async (req, res) => {
           }
         }, { merge: true });
 
-        // Record in school_subscriptions collection
-        const subRecordRef = doc(serverDb, 'school_subscriptions', reference);
-        await setDoc(subRecordRef, {
-          id: reference,
-          adminId: cleanAdminId,
-          schoolName: schoolName || 'Secondary School',
-          schoolCode: schoolCode || '',
-          plan: planName,
-          amountNaira,
-          channel: paymentChannel,
-          reference,
-          paidAt: now.toISOString(),
-          expiresAt,
-          status: 'active'
-        });
-
-        // Also update live schoolRegistry accreditation status if schoolCode is present
-        const cleanSubSchoolCode = normalizeRegistryCode(schoolCode);
-        if (cleanSubSchoolCode) {
-          const existingReg = await resolveSchoolByCode(cleanSubSchoolCode);
-          const updatedSchoolReg: SchoolRegistryRecord = {
-            schoolCode: cleanSubSchoolCode,
-            adminId: sanitizeDocId(cleanAdminId, 'adm'),
-            schoolName: String(schoolName || existingReg?.schoolName || 'Secondary School').slice(0, 150),
-            schoolType: existingReg?.schoolType || 'College',
-            ...(existingReg?.state ? { state: existingReg.state } : {}),
-            ...(existingReg?.lga ? { lga: existingReg.lga } : {}),
-            verificationStatus: existingReg?.verificationStatus || 'verified',
-            hasActiveDirectSubscription: true,
-            directSubscriptionExpiresAt: expiresAt,
-            active: true,
-            createdAt: existingReg?.createdAt || now.toISOString(),
-            updatedAt: now.toISOString()
-          };
-          linkingMemoryStore.schools[cleanSubSchoolCode] = updatedSchoolReg;
-          saveLinkingStore();
-          await setDoc(doc(serverDb, 'schoolRegistry', cleanSubSchoolCode), updatedSchoolReg);
-        }
+        await setDoc(doc(serverDb, 'school_subscriptions', reference), subRecordPayload);
       } catch (dbErr) {
-        console.warn('Could not persist school subscription to Firestore:', dbErr);
+        if (!isExpectedServerFirestoreLock(dbErr)) {
+          console.warn('Could not persist school subscription to Firestore:', dbErr);
+        }
       }
 
       return res.json({
@@ -3586,6 +4045,41 @@ app.post('/api/paystack/verify-payment', async (req, res) => {
         isAspirant: false
       });
 
+      // Persist verified student tier subscription in authoritative server ledger
+      const nowSubIso = new Date().toISOString();
+      const studentEntry = getOrInitStudentLedger(cleanStudentId);
+      studentEntry.isSubscribed = planName !== 'free';
+      studentEntry.subscriptionPlan = planName;
+      studentEntry.subscriptionTier = planName;
+      studentEntry.subscribedUntil = termExpiresAt;
+      studentEntry.termExpiresAt = termExpiresAt;
+      studentEntry.lastSubscribedAt = nowSubIso;
+      studentEntry.lastPaymentReference = reference;
+      if (planName === 'standard' || planName === 'elite') {
+        studentEntry.examPrepState = {
+          ...studentEntry.examPrepState,
+          isUnlocked: true,
+          unlockedAt: nowSubIso,
+          paymentMethod: 'direct_paystack',
+          paymentReference: reference,
+          tutorCreditsNaira: (studentEntry.examPrepState?.tutorCreditsNaira || 0) + (planName === 'elite' ? 16000 : 0),
+        };
+      }
+      studentEntry.updatedAt = nowSubIso;
+      saveAuthoritativeLedger();
+
+      if (planName === 'elite') {
+        creditWalletLedger({
+          userId: cleanParentId,
+          amountNaira: 16000,
+          description: '₦16,000 Pre-paid Tutor Booking Credits (Elite Tier Package)',
+          reference: `BONUS_${reference}`,
+          purpose: 'elite_tier_tutor_credit',
+          channel: 'tier_benefit',
+          type: 'fund',
+        });
+      }
+
       try {
         const studentRef = doc(serverDb, 'students', cleanStudentId);
         await setDoc(studentRef, {
@@ -3594,7 +4088,7 @@ app.post('/api/paystack/verify-payment', async (req, res) => {
           subscriptionTier: planName,
           termExpiresAt,
           subscribedUntil: termExpiresAt,
-          lastSubscribedAt: new Date().toISOString(),
+          lastSubscribedAt: nowSubIso,
           lastPaymentReference: reference
         }, { merge: true });
 
@@ -3620,7 +4114,7 @@ app.post('/api/paystack/verify-payment', async (req, res) => {
             if (wSnap.exists()) {
               tx.update(walletRef, {
                 balance: newBal,
-                lastFundedAt: new Date().toISOString(),
+                lastFundedAt: nowSubIso,
                 lastPaymentReference: reference
               });
             } else {
@@ -3629,7 +4123,7 @@ app.post('/api/paystack/verify-payment', async (req, res) => {
                 parentId: cleanParentId,
                 balance: newBal,
                 totalFunded: 16000,
-                createdAt: new Date().toISOString(),
+                createdAt: nowSubIso,
                 lastPaymentReference: reference
               });
             }
@@ -3646,12 +4140,14 @@ app.post('/api/paystack/verify-payment', async (req, res) => {
               purpose: 'elite_tier_tutor_credit',
               wardName: studentName || 'Enrolled Scholar',
               description: '₦16,000 Pre-paid Tutor Booking Credits (Elite Tier Package)',
-              createdAt: new Date().toISOString()
+              createdAt: nowSubIso
             });
           });
         }
       } catch (dbErr) {
-        console.warn('Could not persist student tier subscription to Firestore:', dbErr);
+        if (!isExpectedServerFirestoreLock(dbErr)) {
+          console.warn('Could not persist student tier subscription to Firestore:', dbErr);
+        }
       }
 
       return res.json({
@@ -3696,6 +4192,16 @@ app.post('/api/paystack/verify-payment', async (req, res) => {
         isAspirant: true
       });
 
+      const aspirantEntry = getOrInitStudentLedger(cleanStudentId);
+      aspirantEntry.isSubscribed = true;
+      aspirantEntry.subscriptionPlan = rawTier;
+      aspirantEntry.subscriptionTier = rawTier;
+      aspirantEntry.subscribedUntil = subscribedUntil;
+      aspirantEntry.lastSubscribedAt = new Date().toISOString();
+      aspirantEntry.lastPaymentReference = reference;
+      aspirantEntry.updatedAt = new Date().toISOString();
+      saveAuthoritativeLedger();
+
       try {
         await setDoc(
           doc(serverDb, 'students', cleanStudentId),
@@ -3728,7 +4234,29 @@ app.post('/api/paystack/verify-payment', async (req, res) => {
     }
 
     if (purpose === 'tutor_booking_payment' || purpose === 'exam_prep_unlock') {
-      const { tutorId, bookingId, subject } = req.body;
+      const { tutorId, bookingId, subject, studentId } = req.body;
+      if (purpose === 'exam_prep_unlock' && studentId) {
+        const entry = getOrInitStudentLedger(String(studentId));
+        if (subject) {
+          entry.examPrepState = {
+            ...entry.examPrepState,
+            unlockedSubjectExams: Array.from(new Set([...(entry.examPrepState?.unlockedSubjectExams || []), String(subject)])),
+            paymentReference: reference,
+            paymentMethod: 'direct_paystack',
+          };
+        } else {
+          entry.examPrepState = {
+            ...entry.examPrepState,
+            isUnlocked: true,
+            unlockedAt: new Date().toISOString(),
+            paymentMethod: 'direct_paystack',
+            paymentReference: reference,
+            tutorCreditsNaira: (entry.examPrepState?.tutorCreditsNaira || 0) + 4000,
+          };
+        }
+        entry.updatedAt = new Date().toISOString();
+        saveAuthoritativeLedger();
+      }
       return res.json({
         success: true,
         reference,
@@ -3747,7 +4275,7 @@ app.post('/api/paystack/verify-payment', async (req, res) => {
     }
 
     if (purpose === 'drill_regeneration' || purpose === 'certificate_drill_regeneration') {
-      const { studentId, subject, board } = req.body;
+      const { subject, board } = req.body;
       return res.json({
         success: true,
         reference,
@@ -3761,6 +4289,25 @@ app.post('/api/paystack/verify-payment', async (req, res) => {
     if (purpose === 'ai_coach_unlock' || purpose === 'termly_competition_unlock' || purpose === 'termly_drill_unlock') {
       const { studentId, subject } = req.body;
       const cleanStudentId = studentId || (email ? email.replace(/[^a-zA-Z0-9_-]/g, '_') : 'student_default');
+
+      const ledgerEntry = getOrInitStudentLedger(cleanStudentId);
+      if (purpose === 'ai_coach_unlock') {
+        ledgerEntry.addOns = { ...ledgerEntry.addOns, aiCoachUnlocked: true };
+      } else if (purpose === 'termly_competition_unlock') {
+        ledgerEntry.addOns = { ...ledgerEntry.addOns, termlyCompetitionUnlocked: true };
+      } else if (purpose === 'termly_drill_unlock') {
+        if (subject) {
+          ledgerEntry.addOns = {
+            ...ledgerEntry.addOns,
+            termlyDrillSingleSubjects: Array.from(new Set([...(ledgerEntry.addOns?.termlyDrillSingleSubjects || []), String(subject)])),
+          };
+        } else {
+          ledgerEntry.addOns = { ...ledgerEntry.addOns, termlyDrillAllSubjects: true };
+        }
+      }
+      ledgerEntry.lastPaymentReference = reference;
+      ledgerEntry.updatedAt = new Date().toISOString();
+      saveAuthoritativeLedger();
 
       try {
         const studentRef = doc(serverDb, 'students', cleanStudentId);
@@ -3779,7 +4326,9 @@ app.post('/api/paystack/verify-payment', async (req, res) => {
 
         await setDoc(studentRef, updateData, { merge: true });
       } catch (dbErr) {
-        console.warn('Could not persist student add-on unlock to Firestore:', dbErr);
+        if (!isExpectedServerFirestoreLock(dbErr)) {
+          console.warn('Could not persist student add-on unlock to Firestore:', dbErr);
+        }
       }
 
       return res.json({
@@ -3793,54 +4342,66 @@ app.post('/api/paystack/verify-payment', async (req, res) => {
     }
 
     const cleanParentId = parentId || (email ? email.replace(/[^a-zA-Z0-9_-]/g, '_') : 'parent_default');
+    const walletLedger = creditWalletLedger({
+      userId: cleanParentId,
+      amountNaira: Number(amountNaira),
+      description: `Wallet Top-up via Paystack (${wardName || 'Registered Ward'})`,
+      reference: String(reference),
+      purpose: String(purpose),
+      channel: paymentChannel,
+      type: 'fund',
+    });
+
     const transactionId = `TX_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
 
-    // Perform atomic wallet update in Firestore
-    const walletRef = doc(serverDb, 'parentWallets', cleanParentId);
-    let updatedBalance = amountNaira;
+    // Best-effort atomic wallet sync to Firestore (fails gracefully when unauthenticated serverDb is locked by rules)
+    let updatedBalance = walletLedger.balanceNaira;
+    try {
+      const walletRef = doc(serverDb, 'parentWallets', cleanParentId);
+      await runTransaction(serverDb, async (tx) => {
+        const walletSnap = await tx.get(walletRef);
+        if (walletSnap.exists()) {
+          const currentBal = walletSnap.data().balance || 0;
+          updatedBalance = Math.max(walletLedger.balanceNaira, currentBal + amountNaira);
+          tx.update(walletRef, {
+            balance: updatedBalance,
+            lastFundedAt: new Date().toISOString(),
+            lastPaymentReference: reference,
+          });
+        } else {
+          tx.set(walletRef, {
+            id: cleanParentId,
+            parentId: cleanParentId,
+            balance: walletLedger.balanceNaira,
+            totalFunded: amountNaira,
+            createdAt: new Date().toISOString(),
+            lastPaymentReference: reference,
+          });
+        }
 
-    await runTransaction(serverDb, async (tx) => {
-      const walletSnap = await tx.get(walletRef);
-      if (walletSnap.exists()) {
-        const currentBal = walletSnap.data().balance || 0;
-        updatedBalance = currentBal + amountNaira;
-        tx.update(walletRef, {
-          balance: updatedBalance,
-          lastFundedAt: new Date().toISOString(),
-          lastPaymentReference: reference,
-        });
-      } else {
-        tx.set(walletRef, {
-          id: cleanParentId,
+        const txRef = doc(serverDb, 'parentWallets', cleanParentId, 'transactions', transactionId);
+        tx.set(txRef, {
+          id: transactionId,
           parentId: cleanParentId,
-          balance: amountNaira,
-          totalFunded: amountNaira,
+          type: 'fund',
+          amount: amountNaira,
+          channel: paymentChannel,
+          reference,
+          status: 'success',
+          purpose,
+          wardName: wardName || 'Registered Ward',
           createdAt: new Date().toISOString(),
-          lastPaymentReference: reference,
         });
-      }
-
-      // Record transaction ledger entry
-      const txRef = doc(serverDb, 'parentWallets', cleanParentId, 'transactions', transactionId);
-      tx.set(txRef, {
-        id: transactionId,
-        parentId: cleanParentId,
-        type: 'fund',
-        amount: amountNaira,
-        channel: paymentChannel,
-        reference,
-        status: 'success',
-        purpose,
-        wardName: wardName || 'Registered Ward',
-        createdAt: new Date().toISOString(),
       });
-    });
+    } catch {
+      // Authoritative disk ledger already persisted above
+    }
 
     return res.json({
       success: true,
       reference,
       amountNaira,
-      newBalance: updatedBalance,
+      newBalance: walletLedger.balanceNaira,
       channel: paymentChannel,
       message: `₦${amountNaira.toLocaleString()} successfully verified and credited to Parent Escrow Wallet.`,
     });
@@ -3851,6 +4412,378 @@ app.post('/api/paystack/verify-payment', async (req, res) => {
       error: error?.message || 'Internal error verifying payment',
     });
   }
+});
+
+// ==========================================
+// AUTHORITATIVE LEDGER & ENTITLEMENTS API (Zero-Trust Client Guard)
+// ==========================================
+
+app.get('/api/entitlements/me', async (req, res) => {
+  const verifiedUser = await verifyFirebaseBearerToken(req, verifyAdminHmacToken);
+  if (!verifiedUser) {
+    return res.status(401).json({ success: false, error: 'Authentication required to fetch verified entitlements.' });
+  }
+  const entry = getOrInitStudentLedger(verifiedUser.uid);
+  const schoolSub = getLedgerState().schoolSubscriptions[verifiedUser.uid] || null;
+  return res.json({
+    success: true,
+    entitlements: entry,
+    schoolSubscription: schoolSub,
+  });
+});
+
+app.get('/api/wallet/me', async (req, res) => {
+  const verifiedUser = await verifyFirebaseBearerToken(req, verifyAdminHmacToken);
+  if (!verifiedUser) {
+    return res.status(401).json({ success: false, error: 'Authentication required to read escrow wallet ledger.' });
+  }
+  const wallet = getOrInitWalletLedger(verifiedUser.uid);
+  return res.json({
+    success: true,
+    wallet,
+  });
+});
+
+app.post('/api/wallet/debit', async (req, res) => {
+  const verifiedUser = await verifyFirebaseBearerToken(req, verifyAdminHmacToken);
+  if (!verifiedUser) {
+    return res.status(401).json({ success: false, error: 'Authentication required to authorize wallet debit.' });
+  }
+
+  const block = findActiveBlock({
+    userId: verifiedUser.uid,
+    email: verifiedUser.email,
+    blockTypes: ['wallet_freeze', 'account_suspend', 'account_lock', 'account_delete'],
+  });
+  if (block) {
+    return res.status(403).json({ success: false, error: `Wallet blocked: ${block.reason}` });
+  }
+
+  const { amountNaira, purpose, description, bookingId, reference } = req.body || {};
+  const cleanPurpose = String(purpose || 'wallet_debit').trim();
+  let authoritativeAmount = Number(amountNaira);
+
+  if (cleanPurpose === 'drill_regeneration' || cleanPurpose === 'certificate_drill_regeneration') {
+    authoritativeAmount = 500;
+  } else if (cleanPurpose === 'championship_entry') {
+    authoritativeAmount = 10000;
+  } else if (!Number.isFinite(authoritativeAmount) || authoritativeAmount <= 0 || authoritativeAmount > 500000) {
+    return res.status(400).json({ success: false, error: 'Valid debit amountNaira (1 - 500,000) is required.' });
+  }
+
+  const result = debitWalletLedger({
+    userId: verifiedUser.uid,
+    amountNaira: authoritativeAmount,
+    description: String(description || `Escrow Debit (${cleanPurpose})`).slice(0, 200),
+    reference: String(reference || (bookingId ? `ESCROW_${bookingId}` : `WALLET_VERIFIED_${Date.now()}`)).slice(0, 128),
+    purpose: cleanPurpose,
+    bookingId: bookingId ? String(bookingId).slice(0, 128) : undefined,
+  });
+
+  if (!result.ok) {
+    return res.status(400).json({ success: false, error: result.error, wallet: result.wallet });
+  }
+
+  return res.json({
+    success: true,
+    wallet: result.wallet,
+    transaction: result.transaction,
+  });
+});
+
+app.post('/api/wallet/refund-escrow', async (req, res) => {
+  const verifiedUser = await verifyFirebaseBearerToken(req, verifyAdminHmacToken);
+  if (!verifiedUser) {
+    return res.status(401).json({ success: false, error: 'Authentication required to refund escrow hold.' });
+  }
+
+  const { bookingId, reason } = req.body || {};
+  if (!bookingId) {
+    return res.status(400).json({ success: false, error: 'bookingId is required.' });
+  }
+
+  const result = refundEscrowInWalletLedger({
+    userId: verifiedUser.uid,
+    bookingId: String(bookingId),
+    reason: reason ? String(reason).slice(0, 160) : undefined,
+  });
+
+  if (!result.ok) {
+    return res.status(400).json({ success: false, error: result.error, wallet: result.wallet });
+  }
+
+  return res.json({
+    success: true,
+    refundedAmount: result.refundedAmount,
+    wallet: result.wallet,
+  });
+});
+
+app.post('/api/entitlements/unlock-with-wallet', async (req, res) => {
+  const verifiedUser = await verifyFirebaseBearerToken(req, verifyAdminHmacToken);
+  if (!verifiedUser) {
+    return res.status(401).json({ success: false, error: 'Authentication required to unlock with wallet.' });
+  }
+
+  const block = findActiveBlock({
+    userId: verifiedUser.uid,
+    email: verifiedUser.email,
+    blockTypes: ['wallet_freeze', 'account_suspend', 'account_lock', 'account_delete'],
+  });
+  if (block) {
+    return res.status(403).json({ success: false, error: `Wallet blocked: ${block.reason}` });
+  }
+
+  const { action, plan, addon, subject, referralCode, classLevel } = req.body || {};
+  const studentEntry = getOrInitStudentLedger(verifiedUser.uid);
+  const verifiedRef = `WALLET_VERIFIED_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+  const nowIso = new Date().toISOString();
+
+  if (action === 'student_tier') {
+    const cleanPlan = String(plan || 'free').toLowerCase() as 'free' | 'basic' | 'standard' | 'elite';
+    if (!['free', 'basic', 'standard', 'elite'].includes(cleanPlan)) {
+      return res.status(400).json({ success: false, error: 'Invalid subscription tier.' });
+    }
+    if (cleanPlan !== 'free') {
+      const hasRef = Boolean(referralCode || referralMemoryStore.bindings[verifiedUser.uid]);
+      const quote = getStudentTierPricing(cleanPlan, hasRef, classLevel);
+      const debitRes = debitWalletLedger({
+        userId: verifiedUser.uid,
+        amountNaira: quote.finalPriceNaira,
+        description: `Subscribed to ${cleanPlan.toUpperCase()} Tier Pass`,
+        reference: verifiedRef,
+        purpose: 'student_tier_subscription',
+      });
+      if (!debitRes.ok) {
+        return res.status(400).json({ success: false, error: debitRes.error });
+      }
+      if (cleanPlan === 'elite') {
+        creditWalletLedger({
+          userId: verifiedUser.uid,
+          amountNaira: 16000,
+          description: '₦16,000 Pre-paid Tutor Booking Credits (Elite Scholar Tier)',
+          reference: `BONUS_${verifiedRef}`,
+          purpose: 'elite_tier_tutor_credit',
+          type: 'credit',
+        });
+      }
+    }
+
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = now.getMonth();
+    const endDate =
+      m <= 3
+        ? new Date(y, 3, 20, 23, 59, 59)
+        : m <= 7
+        ? new Date(y, 6, 31, 23, 59, 59)
+        : new Date(y, 11, 20, 23, 59, 59);
+    const termExpiresAt = (now >= endDate ? new Date(y + 1, 3, 20, 23, 59, 59) : endDate).toISOString();
+
+    studentEntry.isSubscribed = cleanPlan !== 'free';
+    studentEntry.subscriptionPlan = cleanPlan;
+    studentEntry.subscriptionTier = cleanPlan;
+    studentEntry.subscribedUntil = cleanPlan === 'free' ? null : termExpiresAt;
+    studentEntry.termExpiresAt = cleanPlan === 'free' ? null : termExpiresAt;
+    studentEntry.lastSubscribedAt = nowIso;
+    studentEntry.lastPaymentReference = verifiedRef;
+    if (cleanPlan === 'standard' || cleanPlan === 'elite') {
+      studentEntry.examPrepState = {
+        ...studentEntry.examPrepState,
+        isUnlocked: true,
+        unlockedAt: nowIso,
+        paymentMethod: 'escrow_wallet',
+        paymentReference: verifiedRef,
+        tutorCreditsNaira: (studentEntry.examPrepState?.tutorCreditsNaira || 0) + (cleanPlan === 'elite' ? 16000 : 0),
+      };
+    }
+    studentEntry.updatedAt = nowIso;
+    saveAuthoritativeLedger();
+
+    return res.json({
+      success: true,
+      entitlements: studentEntry,
+      wallet: getOrInitWalletLedger(verifiedUser.uid),
+      reference: verifiedRef,
+    });
+  }
+
+  if (action === 'addon') {
+    const prices: Record<string, number> = {
+      ai_coach: 10000,
+      termly_competition: 10000,
+      termly_drill_all: 5000,
+      termly_drill_single: 1000,
+    };
+    const cleanAddon = String(addon || '');
+    const fee = prices[cleanAddon];
+    if (!fee) {
+      return res.status(400).json({ success: false, error: 'Unsupported add-on identifier.' });
+    }
+    const debitRes = debitWalletLedger({
+      userId: verifiedUser.uid,
+      amountNaira: fee,
+      description: `Unlocked Add-On: ${cleanAddon.replace(/_/g, ' ').toUpperCase()}${subject ? ` (${subject})` : ''}`,
+      reference: verifiedRef,
+      purpose: cleanAddon,
+    });
+    if (!debitRes.ok) {
+      return res.status(400).json({ success: false, error: debitRes.error });
+    }
+    if (cleanAddon === 'ai_coach') {
+      studentEntry.addOns = { ...studentEntry.addOns, aiCoachUnlocked: true };
+    } else if (cleanAddon === 'termly_competition') {
+      studentEntry.addOns = { ...studentEntry.addOns, termlyCompetitionUnlocked: true };
+    } else if (cleanAddon === 'termly_drill_all') {
+      studentEntry.addOns = { ...studentEntry.addOns, termlyDrillAllSubjects: true };
+    } else if (cleanAddon === 'termly_drill_single' && subject) {
+      studentEntry.addOns = {
+        ...studentEntry.addOns,
+        termlyDrillSingleSubjects: Array.from(new Set([...(studentEntry.addOns?.termlyDrillSingleSubjects || []), String(subject)])),
+      };
+    }
+    studentEntry.lastPaymentReference = verifiedRef;
+    studentEntry.updatedAt = nowIso;
+    saveAuthoritativeLedger();
+
+    return res.json({
+      success: true,
+      entitlements: studentEntry,
+      wallet: debitRes.wallet,
+      reference: verifiedRef,
+    });
+  }
+
+  if (action === 'exam_prep_full' || action === 'exam_prep_single') {
+    const isSingle = action === 'exam_prep_single';
+    const fee = isSingle ? 2500 : 20000;
+    const debitRes = debitWalletLedger({
+      userId: verifiedUser.uid,
+      amountNaira: fee,
+      description: isSingle ? `Unlocked '${subject || 'Subject'}' CBT Exam Pass` : `Unlocked 'Prepare For Exam' + ₦4,000 Tutor Credits`,
+      reference: verifiedRef,
+      purpose: action,
+    });
+    if (!debitRes.ok) {
+      return res.status(400).json({ success: false, error: debitRes.error });
+    }
+    if (isSingle && subject) {
+      studentEntry.examPrepState = {
+        ...studentEntry.examPrepState,
+        unlockedSubjectExams: Array.from(new Set([...(studentEntry.examPrepState?.unlockedSubjectExams || []), String(subject)])),
+        paymentReference: verifiedRef,
+        paymentMethod: 'escrow_wallet',
+      };
+    } else {
+      studentEntry.examPrepState = {
+        ...studentEntry.examPrepState,
+        isUnlocked: true,
+        unlockedAt: nowIso,
+        paymentMethod: 'escrow_wallet',
+        paymentReference: verifiedRef,
+        tutorCreditsNaira: (studentEntry.examPrepState?.tutorCreditsNaira || 0) + 4000,
+      };
+    }
+    studentEntry.updatedAt = nowIso;
+    saveAuthoritativeLedger();
+
+    return res.json({
+      success: true,
+      entitlements: studentEntry,
+      wallet: debitRes.wallet,
+      reference: verifiedRef,
+    });
+  }
+
+  return res.status(400).json({ success: false, error: 'Unsupported wallet unlock action.' });
+});
+
+app.post('/api/students/sync-progress', async (req, res) => {
+  const verifiedUser = await verifyFirebaseBearerToken(req, verifyAdminHmacToken);
+  if (!verifiedUser) {
+    return res.status(401).json({ success: false, error: 'Authentication required to sync XP progress.' });
+  }
+
+  const { deltaXP, reason, uniformVerified, streakDays } = req.body || {};
+  const studentEntry = getOrInitStudentLedger(verifiedUser.uid);
+  const rawDelta = Math.round(Number(deltaXP) || 0);
+
+  if (rawDelta > 500) {
+    await securityService.recordIncident({
+      category: 'xp_anomaly',
+      severity: 'high',
+      status: 'open',
+      source: 'server_guard',
+      title: 'Clamped Abnormal Student XP Request',
+      description: `Student ${verifiedUser.uid} requested abnormal deltaXP=${rawDelta}. Clamped to 250.`,
+      actorUserId: verifiedUser.uid,
+      actorEmail: verifiedUser.email,
+      ipAddress: extractClientIp(req),
+      deviceFingerprint: extractDeviceFingerprint(req),
+      endpoint: '/api/students/sync-progress',
+      actionTaken: 'Clamped to 250 XP',
+    });
+  }
+
+  const safeDelta = Math.min(500, Math.max(0, rawDelta));
+  let finalDelta = safeDelta;
+  if (uniformVerified && !studentEntry.uniformVerified) {
+    studentEntry.uniformVerified = true;
+    if (finalDelta === 0) finalDelta = 500;
+  }
+
+  studentEntry.xp = Math.max(0, (studentEntry.xp || 0) + finalDelta);
+  studentEntry.rank = calculateLedgerRankFromXP(studentEntry.xp);
+  if (typeof streakDays === 'number' && streakDays >= studentEntry.streakDays && streakDays <= studentEntry.streakDays + 2) {
+    studentEntry.streakDays = streakDays;
+  }
+  studentEntry.lastStudyDate = new Date().toISOString().split('T')[0];
+  studentEntry.updatedAt = new Date().toISOString();
+  saveAuthoritativeLedger();
+
+  return res.json({
+    success: true,
+    xp: studentEntry.xp,
+    rank: studentEntry.rank,
+    streakDays: studentEntry.streakDays,
+    uniformVerified: Boolean(studentEntry.uniformVerified),
+    reason: reason ? String(reason).slice(0, 120) : undefined,
+  });
+});
+
+app.post('/api/admin/set-student-subscription', async (req, res) => {
+  const authCheck = await verifySuperAdminRequest(req);
+  if (!authCheck.ok) {
+    await securityService.logUnauthorizedProbe(req, '/api/admin/set-student-subscription', authCheck.email || 'anonymous');
+    return res.status(403).json({ success: false, error: authCheck.error });
+  }
+
+  const { studentId, isSubscribed, tier } = req.body || {};
+  if (!studentId) {
+    return res.status(400).json({ success: false, error: 'studentId is required.' });
+  }
+
+  const cleanTier = (isSubscribed ? String(tier || 'standard').toLowerCase() : 'free') as 'free' | 'basic' | 'standard' | 'elite';
+  const expiresAt = isSubscribed ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() : null;
+  const entry = getOrInitStudentLedger(String(studentId));
+  entry.isSubscribed = Boolean(isSubscribed);
+  entry.subscriptionPlan = cleanTier;
+  entry.subscriptionTier = cleanTier;
+  entry.subscribedUntil = expiresAt;
+  entry.termExpiresAt = expiresAt;
+  entry.updatedAt = new Date().toISOString();
+  saveAuthoritativeLedger();
+
+  try {
+    await setDoc(doc(serverDb, 'students', String(studentId)), {
+      isSubscribed: Boolean(isSubscribed),
+      subscriptionPlan: cleanTier,
+      subscriptionTier: cleanTier,
+      subscribedUntil: expiresAt,
+    }, { merge: true });
+  } catch {}
+
+  return res.json({ success: true, entitlements: entry });
 });
 
 // =========================================================================
@@ -3895,13 +4828,179 @@ function isSamplePurgeTarget(docId: string, data: any): boolean {
   return false;
 }
 
+function hasVerifiedSubscriptionPaymentRef(ref: unknown, verifiedPaystackRefs: Set<string>): boolean {
+  const cleanRef = String(ref || '').trim();
+  if (!cleanRef) return false;
+  const upper = cleanRef.toUpperCase();
+  if (
+    upper.startsWith('SIM_') ||
+    upper.startsWith('TEST_') ||
+    upper.startsWith('DEMO_') ||
+    upper.startsWith('MOCK_') ||
+    upper.startsWith('WALLET_EXAM_') ||
+    upper.startsWith('WALLET_SUBJ_')
+  ) {
+    return false;
+  }
+  return verifiedPaystackRefs.has(cleanRef);
+}
+
+function hasAnyUnlockedStudentEntitlements(studentData: any): boolean {
+  if (!studentData || typeof studentData !== 'object') return false;
+  const plan = String(studentData.subscriptionPlan || studentData.subscriptionTier || 'free').toLowerCase();
+  if (studentData.isSubscribed === true || (plan && plan !== 'free')) return true;
+  const addOns = studentData.addOns || {};
+  if (
+    addOns.aiCoachUnlocked === true ||
+    addOns.termlyCompetitionUnlocked === true ||
+    addOns.termlyDrillAllSubjects === true ||
+    (Array.isArray(addOns.termlyDrillSingleSubjects) && addOns.termlyDrillSingleSubjects.length > 0)
+  ) {
+    return true;
+  }
+  if (studentData.examPrepState?.isUnlocked === true || (studentData.examPrepState?.unlockedSubjectExams?.length || 0) > 0) {
+    return true;
+  }
+  return false;
+}
+
+async function purgeSimulatedSubscriptionsAcrossFirestore() {
+  let resetStudentsCount = 0;
+  let resetUsersCount = 0;
+  let resetEnrollmentsCount = 0;
+  const verifiedPaystackRefs = new Set<string>();
+  const resetStudentIds = new Set<string>();
+
+  try {
+    const refsSnap = await getDocs(collection(serverDb, 'processed_paystack_refs'));
+    for (const d of refsSnap.docs) {
+      const refVal = String(d.data()?.reference || d.id || '').trim();
+      if (refVal) verifiedPaystackRefs.add(refVal);
+    }
+  } catch {
+    // Proceed even if processed_paystack_refs collection is empty/unreadable
+  }
+
+  // 1. Reset simulated / unverified student subscriptions & add-ons
+  try {
+    const studentsSnap = await getDocs(collection(serverDb, 'students'));
+    for (const d of studentsSnap.docs) {
+      const data = d.data() || {};
+      if (!hasAnyUnlockedStudentEntitlements(data)) continue;
+      if (hasVerifiedSubscriptionPaymentRef(data.lastPaymentReference, verifiedPaystackRefs)) continue;
+
+      try {
+        await updateDoc(doc(serverDb, 'students', d.id), {
+          isSubscribed: false,
+          subscriptionPlan: 'free',
+          subscriptionTier: 'free',
+          subscribedUntil: null,
+          termExpiresAt: null,
+          lastSubscribedAt: null,
+          lastPaymentReference: null,
+          addOns: {},
+        });
+        resetStudentsCount++;
+        resetStudentIds.add(d.id);
+      } catch {
+        // Ignore individual rule restriction
+      }
+    }
+  } catch {}
+
+  // 2. Reset embedded studentData subscriptions on non-Super-Admin users docs
+  try {
+    const usersSnap = await getDocs(collection(serverDb, 'users'));
+    for (const d of usersSnap.docs) {
+      const data = d.data() || {};
+      const email = String(data.email || '').toLowerCase().trim();
+      if (AUTHORIZED_SUPER_ADMINS.includes(email) || data.isSuperAdmin === true) continue;
+      const sd = data.studentData;
+      if (!hasAnyUnlockedStudentEntitlements(sd)) continue;
+      if (hasVerifiedSubscriptionPaymentRef(sd?.lastPaymentReference, verifiedPaystackRefs)) continue;
+
+      try {
+        await updateDoc(doc(serverDb, 'users', d.id), {
+          'studentData.isSubscribed': false,
+          'studentData.subscriptionPlan': 'free',
+          'studentData.subscriptionTier': 'free',
+          'studentData.subscribedUntil': null,
+          'studentData.termExpiresAt': null,
+          'studentData.lastPaymentReference': null,
+          'studentData.addOns': {},
+        });
+        resetUsersCount++;
+        resetStudentIds.add(d.id);
+      } catch {}
+    }
+  } catch {}
+
+  // 3. Sync schoolEnrollments so accredited school dashboards reflect reset students cleanly
+  try {
+    const enrollSnap = await getDocs(collection(serverDb, 'schoolEnrollments'));
+    for (const d of enrollSnap.docs) {
+      const data = d.data() || {};
+      const isPaid = data.isSubscribed === true || (data.subscriptionTier && data.subscriptionTier !== 'free');
+      if (!isPaid) continue;
+      if (!resetStudentIds.has(data.studentId) && verifiedPaystackRefs.size > 0) {
+        // Also check if student doc no longer exists or is unverified
+        try {
+          const stSnap = await getDoc(doc(serverDb, 'students', String(data.studentId || '')));
+          if (stSnap.exists() && hasVerifiedSubscriptionPaymentRef(stSnap.data()?.lastPaymentReference, verifiedPaystackRefs)) {
+            continue;
+          }
+        } catch {}
+      }
+
+      try {
+        await updateDoc(doc(serverDb, 'schoolEnrollments', d.id), {
+          isSubscribed: false,
+          subscriptionTier: 'free',
+          subscribedUntil: null,
+          updatedAt: new Date().toISOString(),
+        });
+        resetEnrollmentsCount++;
+      } catch {}
+    }
+  } catch {}
+
+  const ledgerResetCount = resetUnverifiedSimulatedSubscriptionsInLedger(verifiedPaystackRefs);
+  clearAiCoachQuotaStore();
+
+  return {
+    resetStudentsCount: Math.max(resetStudentsCount, ledgerResetCount),
+    resetUsersCount,
+    resetEnrollmentsCount,
+  };
+}
+
+app.post('/api/admin/purge-simulated-subscriptions', async (req, res) => {
+  const authCheck = await verifySuperAdminRequest(req);
+  const adminEmail = String(req.body?.adminEmail || authCheck.email || '').toLowerCase().trim();
+  if (!authCheck.ok || !adminEmail || !AUTHORIZED_SUPER_ADMINS.includes(adminEmail)) {
+    await securityService.logUnauthorizedProbe(req, '/api/admin/purge-simulated-subscriptions', adminEmail);
+    return res.status(403).json({
+      success: false,
+      error: authCheck.error || 'Unauthorized: Super Admin privileges required to purge simulated subscriptions.',
+    });
+  }
+
+  const summary = await purgeSimulatedSubscriptionsAcrossFirestore();
+  return res.json({
+    success: true,
+    ...summary,
+    message: `Cleared ${summary.resetStudentsCount} student subscription(s), ${summary.resetUsersCount} user profile(s), and ${summary.resetEnrollmentsCount} school enrollment(s) unlocked by test simulation.`,
+  });
+});
+
 app.post('/api/admin/purge-test-accounts', async (req, res) => {
-  const adminEmail = String(req.body?.adminEmail || '').toLowerCase().trim();
-  if (!adminEmail || !AUTHORIZED_SUPER_ADMINS.includes(adminEmail)) {
+  const authCheck = await verifySuperAdminRequest(req);
+  const adminEmail = String(req.body?.adminEmail || authCheck.email || '').toLowerCase().trim();
+  if (!authCheck.ok || !adminEmail || !AUTHORIZED_SUPER_ADMINS.includes(adminEmail)) {
     await securityService.logUnauthorizedProbe(req, '/api/admin/purge-test-accounts', adminEmail);
     return res.status(403).json({
       success: false,
-      error: 'Unauthorized: Super Admin privileges required to purge test accounts and credits.'
+      error: authCheck.error || 'Unauthorized: Super Admin privileges required to purge test accounts and credits.'
     });
   }
 
@@ -3966,12 +5065,16 @@ app.post('/api/admin/purge-test-accounts', async (req, res) => {
     }
   }
 
+  // 3. Also purge any simulated / unverified student subscriptions (Exam Prep, AI Coach, Tier Plans)
+  const simSummary = await purgeSimulatedSubscriptionsAcrossFirestore();
+
   return res.json({
     success: true,
     purgedStoreEntries,
     deletedFirestoreDocs,
+    ...simSummary,
     preservedSuperAdmins: AUTHORIZED_SUPER_ADMINS,
-    message: `Purged ${deletedFirestoreDocs} Firestore test record(s) and ${purgedStoreEntries} in-memory sample record(s). Super Admin accounts preserved.`
+    message: `Purged ${deletedFirestoreDocs} test record(s), ${purgedStoreEntries} memory entry(ies), and ${simSummary.resetStudentsCount} simulated subscription(s). Super Admin accounts preserved.`
   });
 });
 
@@ -5357,6 +6460,36 @@ function issueSuperAdminSessionToken(email: string): string {
   return `scadmin.${payload}.${sig}`;
 }
 
+function verifyAdminHmacToken(token: string): { ok: boolean; email?: string; error?: string } {
+  const parts = token.split('.');
+  if (parts.length !== 3) {
+    return { ok: false, error: 'Malformed Super Admin session token.' };
+  }
+  const [, payloadB64, sigB64] = parts;
+  const expectedSig = crypto
+    .createHmac('sha256', SERVER_OTA_HMAC_SECRET)
+    .update(payloadB64)
+    .digest('base64url');
+  const a = Buffer.from(sigB64, 'utf8');
+  const b = Buffer.from(expectedSig, 'utf8');
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+    return { ok: false, error: 'Invalid Super Admin session signature.' };
+  }
+  try {
+    const parsed = JSON.parse(Buffer.from(payloadB64, 'base64url').toString('utf8'));
+    const cleanEmail = String(parsed?.email || '').toLowerCase().trim();
+    if (!parsed?.exp || Number(parsed.exp) < Date.now()) {
+      return { ok: false, error: 'Super Admin session expired. Please sign in again.' };
+    }
+    if (!AUTHORIZED_SUPER_ADMINS.includes(cleanEmail)) {
+      return { ok: false, error: 'Account is not authorized for Super Admin OTA mutations.' };
+    }
+    return { ok: true, email: cleanEmail };
+  } catch {
+    return { ok: false, error: 'Corrupted Super Admin session payload.' };
+  }
+}
+
 async function verifySuperAdminRequest(
   req: express.Request
 ): Promise<{ ok: boolean; email?: string; error?: string }> {
@@ -5374,33 +6507,7 @@ async function verifySuperAdminRequest(
 
   // 1. Check signed server Super Admin session token (issued via /api/auth/login)
   if (token.startsWith('scadmin.')) {
-    const parts = token.split('.');
-    if (parts.length !== 3) {
-      return { ok: false, error: 'Malformed Super Admin session token.' };
-    }
-    const [, payloadB64, sigB64] = parts;
-    const expectedSig = crypto
-      .createHmac('sha256', SERVER_OTA_HMAC_SECRET)
-      .update(payloadB64)
-      .digest('base64url');
-    const a = Buffer.from(sigB64, 'utf8');
-    const b = Buffer.from(expectedSig, 'utf8');
-    if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
-      return { ok: false, error: 'Invalid Super Admin session signature.' };
-    }
-    try {
-      const parsed = JSON.parse(Buffer.from(payloadB64, 'base64url').toString('utf8'));
-      const cleanEmail = String(parsed?.email || '').toLowerCase().trim();
-      if (!parsed?.exp || Number(parsed.exp) < Date.now()) {
-        return { ok: false, error: 'Super Admin session expired. Please sign in again.' };
-      }
-      if (!AUTHORIZED_SUPER_ADMINS.includes(cleanEmail)) {
-        return { ok: false, error: 'Account is not authorized for Super Admin OTA mutations.' };
-      }
-      return { ok: true, email: cleanEmail };
-    } catch {
-      return { ok: false, error: 'Corrupted Super Admin session payload.' };
-    }
+    return verifyAdminHmacToken(token);
   }
 
   // 2. Verify live Firebase ID token via Identity Toolkit

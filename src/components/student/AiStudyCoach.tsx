@@ -1,24 +1,21 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useApp } from '../../context/AppContext';
+import { AICoachQuotaStatus } from '../../types';
 import {
   Sparkles,
-  Send,
-  BookOpen,
-  Brain,
   CheckCircle,
-  HelpCircle,
   RefreshCw,
   Lightbulb,
   Copy,
-  ChevronRight,
-  Flame,
-  Award,
   Lock,
-  Radio,
-  Bot
+  Unlock,
+  Bot,
+  Clock,
+  ArrowRight
 } from 'lucide-react';
 import { playSound } from '../../utils/audioSynthesis';
 import { RichMathMarkdown } from '../common/RichMathMarkdown';
+import { getFirebaseAuthHeaders } from '../../lib/firebase';
 
 interface AiStudyCoachProps {
   initialSubject?: string;
@@ -128,7 +125,21 @@ export const AiStudyCoach: React.FC<AiStudyCoachProps> = ({
   initialSubject,
   initialTopic
 }) => {
-  const { student, addStudentXP, checkStudentFeatureAccess, openStudentSubscriptionModal } = useApp();
+  const {
+    student,
+    currentUserProfile,
+    addStudentXP,
+    checkStudentFeatureAccess,
+    openStudentSubscriptionModal,
+    isSuperAdmin,
+    adminAiCoachUnlockOverride,
+    setAdminAiCoachUnlockOverride,
+    effectiveAiCoachBypass
+  } = useApp();
+
+  const coachAccess = checkStudentFeatureAccess('ai_coach');
+  const studentPlan = student.subscriptionPlan || (student.isSubscribed ? 'basic' : 'free');
+  const aiCoachUnlocked = Boolean(student.addOns?.aiCoachUnlocked);
 
   const isSS3 = student.classLevel === 'SS 3';
   const isJSS3 = student.classLevel === 'JSS 3';
@@ -147,8 +158,35 @@ export const AiStudyCoach: React.FC<AiStudyCoachProps> = ({
   const [responseMarkdown, setResponseMarkdown] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [quota, setQuota] = useState<AICoachQuotaStatus | null>(null);
 
   const [conversationHistory, setConversationHistory] = useState<Array<{ role: 'user' | 'model'; text: string }>>([]);
+
+  const refreshQuota = useCallback(async () => {
+    try {
+      const qs = new URLSearchParams({
+        studentId: student.id || currentUserProfile?.id || 'guest_student',
+        studentPlan,
+        aiCoachUnlocked: String(aiCoachUnlocked),
+        adminEmail: isSuperAdmin ? (currentUserProfile?.email || '') : '',
+        adminBypass: String(effectiveAiCoachBypass)
+      });
+      const authHeaders = await getFirebaseAuthHeaders();
+      const res = await fetch(`/api/ai/study-coach/quota?${qs.toString()}`, {
+        headers: authHeaders
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.quota) setQuota(data.quota);
+      }
+    } catch {
+      // Leave prior state intact when offline
+    }
+  }, [student.id, currentUserProfile?.id, currentUserProfile?.email, studentPlan, aiCoachUnlocked, isSuperAdmin, effectiveAiCoachBypass]);
+
+  useEffect(() => {
+    void refreshQuota();
+  }, [refreshQuota]);
 
   const subjectsList = [
     'Mathematics',
@@ -168,18 +206,40 @@ export const AiStudyCoach: React.FC<AiStudyCoachProps> = ({
     'Business Studies'
   ];
 
+  const isDailyLimitReached = Boolean(
+    !effectiveAiCoachBypass &&
+    quota &&
+    quota.hasAccess &&
+    !quota.isAdminBypass &&
+    quota.remainingToday <= 0
+  );
+
   const handleSendPrompt = async (customPrompt?: string) => {
     playSound.tileTap();
+    if (!coachAccess.hasAccess) {
+      openStudentSubscriptionModal('elite');
+      return;
+    }
     const promptToSend = customPrompt || userPrompt;
     if (!promptToSend.trim() || loading) return;
+
+    if (isDailyLimitReached) {
+      setErrorMessage(
+        quota?.planType === 'addon'
+          ? `Daily limit reached (${quota.dailyLimit}/${quota.dailyLimit} prompts used today). Resets at midnight WAT, or upgrade to Elite for 35/day.`
+          : `Daily limit reached (${quota?.dailyLimit || 35} prompts used today). Your allowance resets at midnight WAT.`
+      );
+      return;
+    }
 
     setLoading(true);
     setErrorMessage(null);
 
     try {
+      const authHeaders = await getFirebaseAuthHeaders();
       const res = await fetch('/api/gemini/study-tutor', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
         body: JSON.stringify({
           prompt: promptToSend,
           subject,
@@ -187,17 +247,25 @@ export const AiStudyCoach: React.FC<AiStudyCoachProps> = ({
           level: classLevel,
           classLevel,
           studentName: student.name || 'Scholar',
+          studentId: student.id || currentUserProfile?.id || 'guest_student',
+          studentPlan,
+          aiCoachUnlocked,
+          adminEmail: isSuperAdmin ? (currentUserProfile?.email || '') : '',
+          adminBypass: effectiveAiCoachBypass,
           history: conversationHistory
         })
       });
 
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.error || `Server responded with status ${res.status}`);
+      const payload = await res.json().catch(() => ({}));
+      if (payload?.quota) {
+        setQuota(payload.quota);
       }
 
-      const data = await res.json();
-      const reply = data.text || data.response || 'No response generated.';
+      if (!res.ok) {
+        throw new Error(payload.error || `Server responded with status ${res.status}`);
+      }
+
+      const reply = payload.text || payload.response || 'No response generated.';
 
       setResponseMarkdown(reply);
       setConversationHistory((prev) => [
@@ -234,19 +302,77 @@ export const AiStudyCoach: React.FC<AiStudyCoachProps> = ({
     setTimeout(() => setCopied(false), 2000);
   };
 
+  if (!coachAccess.hasAccess) {
+    return (
+      <div className="flex-1 min-h-0 h-full w-full overflow-y-auto px-4 pt-6 pb-24 flex flex-col items-center justify-center text-slate-100 bg-[#101C34]">
+        <div className="max-w-md w-full bg-[#14203D] border-2 border-[#84CC16]/40 rounded-3xl p-6 text-center space-y-4 shadow-2xl">
+          <div className="w-14 h-14 mx-auto rounded-2xl bg-[#FF5B00]/15 border border-[#FF5B00]/40 text-[#FF5B00] flex items-center justify-center">
+            <Lock className="w-7 h-7" />
+          </div>
+          <div>
+            <h2 className="text-xl font-black text-white tracking-tight">SC AI Study Coach is Locked</h2>
+            <p className="text-xs text-slate-300 mt-1.5 leading-relaxed">
+              Get 24/7 step-by-step WAEC, NECO, BECE, and JAMB UTME problem solving with crisp KaTeX math solutions.
+            </p>
+          </div>
+
+          <div className="bg-[#101C34] border border-slate-800 rounded-2xl p-3.5 text-left space-y-2 text-xs text-slate-300">
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-white">SC AI Coach Add-on (₦10,000)</span>
+              <span className="font-mono tabular-nums text-[#84CC16] font-bold">15 questions / day</span>
+            </div>
+            <div className="flex items-center justify-between pt-1.5 border-t border-slate-800">
+              <span className="font-bold text-white">Elite Scholar Tier (₦60,000)</span>
+              <span className="font-mono tabular-nums text-[#84CC16] font-bold">35 questions / day</span>
+            </div>
+            <p className="text-[11px] text-slate-400 pt-1">
+              Daily prompt allowances reset every night at 00:00 WAT (Nigeria time).
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              playSound.tileTap();
+              openStudentSubscriptionModal('elite');
+            }}
+            className="w-full py-3 px-5 rounded-2xl bg-gradient-to-r from-[#FF5B00] to-[#FF7A18] hover:from-[#E04800] hover:to-[#FF5B00] text-white text-xs font-black flex items-center justify-center gap-2 shadow-lg shadow-[#FF5B00]/30 transition-all cursor-pointer whitespace-nowrap"
+          >
+            <span>Unlock SC AI Study Coach</span>
+            <ArrowRight className="w-4 h-4 shrink-0" />
+          </button>
+
+          {isSuperAdmin && (
+            <button
+              type="button"
+              onClick={() => {
+                playSound.tileTap();
+                setAdminAiCoachUnlockOverride(true);
+              }}
+              className="w-full py-2.5 px-4 rounded-2xl bg-emerald-950/90 hover:bg-emerald-900 border border-emerald-500/60 text-emerald-300 text-xs font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer whitespace-nowrap"
+            >
+              <Unlock className="w-4 h-4 shrink-0" />
+              <span>Super Admin: Unlock AI Coach Preview</span>
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex-1 min-h-0 h-full w-full overflow-y-auto px-4 pt-4 pb-24 space-y-4 touch-pan-y text-slate-100 bg-[#101C34]">
       {/* =========================================================================
-          COACH HERO: Vibrant Deep Navy, Electric Orange & Lime Green Theme
+          COACH HERO: Deep Navy, Electric Orange & Lime Green Theme
          ========================================================================= */}
       <div className="bg-gradient-to-r from-[#18264A] via-[#12241C] to-[#18264A] border-2 border-[#84CC16]/40 rounded-3xl p-5 shadow-2xl relative overflow-hidden">
-        <div className="flex items-center justify-between relative z-10">
+        <div className="flex flex-wrap items-center justify-between gap-3 relative z-10">
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#84CC16] to-[#65A30D] text-slate-950 flex items-center justify-center shadow-lg shadow-[#84CC16]/30">
+            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#84CC16] to-[#65A30D] text-slate-950 flex items-center justify-center shadow-lg shadow-[#84CC16]/30 shrink-0">
               <Bot className="w-7 h-7 stroke-[2.2]" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <h2 className="text-base font-black text-white tracking-tight">
                   SC AI Study Coach
                 </h2>
@@ -255,9 +381,55 @@ export const AiStudyCoach: React.FC<AiStudyCoachProps> = ({
                 </span>
               </div>
               <p className="text-xs text-slate-300 mt-0.5 font-medium">
-                WAEC, JAMB UTME, NECO & NERDC Syllabus Step-by-Step Problem Solver
+                WAEC, JAMB UTME, NECO &amp; NERDC Syllabus Step-by-Step Problem Solver
               </p>
             </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {effectiveAiCoachBypass ? (
+              <div className="flex items-center gap-1.5 text-[11px] font-bold font-mono text-emerald-300 bg-emerald-950/80 border border-emerald-600/50 px-3 py-1.5 rounded-xl whitespace-nowrap">
+                <Unlock className="w-3.5 h-3.5 shrink-0" />
+                <span>Super Admin Preview · Unlimited</span>
+              </div>
+            ) : quota && quota.hasAccess ? (
+              <div
+                className={`flex items-center gap-1.5 text-[11px] font-bold font-mono tabular-nums px-3 py-1.5 rounded-xl border whitespace-nowrap ${
+                  quota.remainingToday === 0
+                    ? 'bg-rose-950/80 text-rose-200 border-rose-700/60'
+                    : quota.remainingToday <= 3
+                    ? 'bg-amber-950/80 text-amber-200 border-amber-700/60'
+                    : 'bg-[#101C34] text-[#84CC16] border-[#84CC16]/40'
+                }`}
+              >
+                <Clock className="w-3.5 h-3.5 shrink-0" />
+                <span>
+                  {quota.remainingToday} / {quota.dailyLimit} Left Today · Resets Midnight WAT
+                </span>
+              </div>
+            ) : null}
+
+            {isSuperAdmin && (
+              <button
+                type="button"
+                onClick={() => {
+                  playSound.tileTap();
+                  setAdminAiCoachUnlockOverride(!adminAiCoachUnlockOverride);
+                }}
+                className={`flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-xl border transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                  adminAiCoachUnlockOverride
+                    ? 'bg-emerald-950/90 text-emerald-300 border-emerald-500/60 hover:bg-emerald-900'
+                    : 'bg-amber-950/90 text-amber-300 border-amber-500/60 hover:bg-amber-900'
+                }`}
+              >
+                {adminAiCoachUnlockOverride ? (
+                  <Unlock className="w-3.5 h-3.5 shrink-0" />
+                ) : (
+                  <Lock className="w-3.5 h-3.5 shrink-0" />
+                )}
+                <span>{adminAiCoachUnlockOverride ? 'Super Admin: Unlocked' : 'Super Admin: Lock View'}</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -395,10 +567,16 @@ export const AiStudyCoach: React.FC<AiStudyCoachProps> = ({
       <div className="bg-[#14203D] border-2 border-slate-800 focus-within:border-[#84CC16] rounded-3xl p-4 space-y-3 shadow-xl transition-colors">
         <textarea
           rows={3}
+          maxLength={1200}
           value={userPrompt}
           onChange={(e) => setUserPrompt(e.target.value)}
-          placeholder={`Type a past question or formula to solve (e.g., "Solve 3x + 2y = 12 and x - y = 1", or "Explain the law of diminishing returns with Nigerian market examples")...`}
-          className="w-full bg-transparent text-xs text-white placeholder-slate-400 focus:outline-none resize-none leading-relaxed"
+          disabled={isDailyLimitReached}
+          placeholder={
+            isDailyLimitReached
+              ? 'Daily prompt allowance reached. Resets at midnight WAT.'
+              : `Type a past question or formula to solve (e.g., "Solve 3x + 2y = 12 and x - y = 1", or "Explain the law of diminishing returns with Nigerian market examples")...`
+          }
+          className="w-full bg-transparent text-xs text-white placeholder-slate-400 focus:outline-none resize-none leading-relaxed disabled:opacity-60"
           onKeyDown={(e) => {
             if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
               e.preventDefault();
@@ -407,26 +585,45 @@ export const AiStudyCoach: React.FC<AiStudyCoachProps> = ({
           }}
         />
 
-        <div className="flex items-center justify-between pt-2 border-t border-slate-700/80">
-          <span className="text-[10px] text-slate-400 font-medium">Press Ctrl+Enter or tap Ask</span>
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-700/80">
+          <span className="text-[10px] text-slate-400 font-medium font-mono tabular-nums">
+            {userPrompt.length}/1200 chars · Ctrl+Enter to send
+          </span>
 
-          <button
-            onClick={() => handleSendPrompt()}
-            disabled={loading || !userPrompt.trim()}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-gradient-to-r from-[#FF5B00] to-[#FF7A18] hover:from-[#E04800] hover:to-[#FF5B00] disabled:opacity-50 text-white text-xs font-black transition-all cursor-pointer shadow-md shadow-[#FF5B00]/30 active:scale-95"
-          >
-            {loading ? (
-              <>
-                <RefreshCw className="w-4 h-4 animate-spin" />
-                <span>Analyzing Question...</span>
-              </>
-            ) : (
-              <>
-                <Sparkles className="w-4 h-4 text-white" />
-                <span>Ask SC AI Coach</span>
-              </>
+          <div className="flex items-center gap-2">
+            {isDailyLimitReached && quota?.planType === 'addon' && (
+              <button
+                type="button"
+                onClick={() => openStudentSubscriptionModal('elite')}
+                className="px-3 py-2 rounded-xl bg-emerald-950/90 hover:bg-emerald-900 border border-emerald-500/60 text-emerald-300 text-xs font-bold whitespace-nowrap cursor-pointer"
+              >
+                Upgrade Elite (35/day)
+              </button>
             )}
-          </button>
+
+            <button
+              onClick={() => handleSendPrompt()}
+              disabled={loading || !userPrompt.trim() || isDailyLimitReached}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-gradient-to-r from-[#FF5B00] to-[#FF7A18] hover:from-[#E04800] hover:to-[#FF5B00] disabled:opacity-50 text-white text-xs font-black transition-all cursor-pointer shadow-md shadow-[#FF5B00]/30 active:scale-95 whitespace-nowrap"
+            >
+              {loading ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  <span>Analyzing Question...</span>
+                </>
+              ) : isDailyLimitReached ? (
+                <>
+                  <Lock className="w-4 h-4" />
+                  <span>Daily Cap Reached</span>
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-4 h-4 text-white" />
+                  <span>Ask SC AI Coach</span>
+                </>
+              )}
+            </button>
+          </div>
         </div>
       </div>
 

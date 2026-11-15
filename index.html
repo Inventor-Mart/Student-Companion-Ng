@@ -25,6 +25,26 @@
   </head>
   <body class="bg-[#101C34] text-slate-100 antialiased selection:bg-[#FF5B00] selection:text-white">
     <div id="root"></div>
+    <script>
+      (function () {
+        try {
+          if ('caches' in window) {
+            caches.keys().then(function (names) {
+              names.forEach(function (name) {
+                if (name === 'sc-shell-v2' || name === 'sc-runtime-v2' || name === 'sc-api-v2') {
+                  caches.delete(name);
+                }
+              });
+            });
+          }
+          if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.getRegistration().then(function (reg) {
+              if (reg) reg.update().catch(function () {});
+            });
+          }
+        } catch (_) {}
+      })();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
