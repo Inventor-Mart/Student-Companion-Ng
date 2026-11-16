@@ -1547,7 +1547,7 @@ export const SuperAdminPortal: React.FC = () => {
                     className="px-3 py-2 min-h-[44px] rounded-xl bg-sky-500/10 hover:bg-sky-500/20 border border-sky-500/35 text-sky-200 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap shrink-0 self-start sm:self-auto"
                   >
                     <Globe className="w-3.5 h-3.5 shrink-0" />
-                    <span>{showRenderGuide ? 'Hide Cloud Host Setup' : 'Free Render + APK Setup'}</span>
+                    <span>{showRenderGuide ? 'Hide Cloud Host Setup' : 'Netlify + Render & APK Setup'}</span>
                     {showRenderGuide ? (
                       <ChevronUp className="w-3.5 h-3.5 shrink-0" />
                     ) : (
@@ -1558,7 +1558,7 @@ export const SuperAdminPortal: React.FC = () => {
 
                 {isPreviewCookieOrigin && !integrationsStatus?.renderHosted && (
                   <p className="text-[11px] text-amber-300/90 leading-relaxed border-t border-slate-800/80 pt-2">
-                    AI Studio preview URLs redirect external APK requests to an interactive login check. Deploy this repo on <strong className="text-amber-200">Render Free Tier</strong> (zero card required) and save your <code className="font-mono text-amber-200">https://...onrender.com</code> URL as <code className="font-mono text-amber-200">VITE_API_ORIGIN</code> in GitHub Secrets before clicking <strong className="text-amber-200">Build APK on GitHub</strong>.
+                    AI Studio preview URLs redirect external requests to a login check. Host the backend free on <strong className="text-amber-200">Render</strong> (and optionally host the static frontend on <strong className="text-amber-200">Netlify</strong> to save bandwidth), then set <code className="font-mono text-amber-200">VITE_API_ORIGIN</code> to your <code className="font-mono text-amber-200">https://...onrender.com</code> URL in Netlify &amp; GitHub Secrets.
                   </p>
                 )}
 
@@ -1566,19 +1566,19 @@ export const SuperAdminPortal: React.FC = () => {
                   <div className="border-t border-slate-800 pt-3 space-y-3 text-xs text-slate-300">
                     <ol className="space-y-2 text-[11px] text-slate-300 leading-relaxed list-decimal list-inside">
                       <li>
-                        Click <strong className="text-white">Sync to GitHub (main)</strong> below so the included Render Blueprint (<code className="font-mono text-sky-300">render.yaml</code>) is pushed to your repository.
+                        Click <strong className="text-white">Sync to GitHub (main)</strong> below so the updated <code className="font-mono text-sky-300">render.yaml</code> and <code className="font-mono text-sky-300">netlify.toml</code> files are pushed.
                       </li>
                       <li>
-                        On <strong className="text-white">dashboard.render.com</strong>, choose <strong className="text-white">New → Blueprint</strong>, connect <code className="font-mono text-slate-200">Inventor-Mart/Student-Companion-Ng</code>, and enter your server secrets (<code className="font-mono text-slate-200">GEMINI_API_KEY</code>, <code className="font-mono text-slate-200">PAYSTACK_SECRET_KEY</code>, <code className="font-mono text-slate-200">RESEND_API_KEY</code>, <code className="font-mono text-slate-200">SUPER_ADMIN_PASSWORD</code>, plus public keys).
+                        <strong className="text-white">Render Backend (Node API):</strong> On <strong className="text-white">dashboard.render.com</strong>, choose <strong className="text-white">New → Blueprint</strong> on <code className="font-mono text-slate-200">Inventor-Mart/Student-Companion-Ng</code> and paste your 7 core secrets (<code className="font-mono text-slate-200">OTA_SESSION_SECRET</code> is auto-generated).
                       </li>
                       <li>
-                        Copy your live <code className="font-mono text-emerald-300">https://your-service.onrender.com</code> URL and add it to <strong className="text-white">Firebase Console → Authentication → Settings → Authorized domains</strong> (and ensure <strong className="text-white">Email/Password</strong> sign-in is enabled).
+                        <strong className="text-white">Netlify Frontend (High-Bandwidth PWA):</strong> Connect the same GitHub repo on <strong className="text-white">app.netlify.com</strong> and set the 3 <code className="font-mono text-slate-200">VITE_*</code> variables below in Netlify Environment Variables so static pages load in 0s and ~95% of bandwidth stays off Render.
                       </li>
                       <li>
-                        In GitHub <strong className="text-white">Settings → Secrets and variables → Actions</strong>, save the three APK build secrets below, then click <strong className="text-white">Build APK on GitHub</strong>.
+                        <strong className="text-white">Firebase &amp; GitHub APK:</strong> Add both your <code className="font-mono text-emerald-300">*.onrender.com</code> and <code className="font-mono text-emerald-300">*.netlify.app</code> domains in <strong className="text-white">Firebase Console → Authentication → Settings → Authorized domains</strong>, save the same 3 <code className="font-mono text-slate-200">VITE_*</code> variables in GitHub Actions Secrets, then click <strong className="text-white">Build APK on GitHub</strong>.
                       </li>
                       <li>
-                        <strong className="text-white">Prevent Idle Sleep (Free Uptime Monitor):</strong> Add an HTTP monitor on <strong className="text-white">uptimerobot.com</strong> or <strong className="text-white">cron-job.org</strong> targeting your Render <code className="font-mono text-sky-300">/api/health</code> URL every <strong className="text-white">5–10 minutes</strong> so students do not wait for cold starts.
+                        <strong className="text-white">Eliminate 50s Idle Sleep (Free 24/7 Uptime Ping):</strong> Add an HTTP monitor on <strong className="text-white">uptimerobot.com</strong> or <strong className="text-white">cron-job.org</strong> targeting your Render <code className="font-mono text-sky-300">/api/health</code> URL every <strong className="text-white">5–10 minutes</strong> (uses &lt;1 MB bandwidth and stays within Render&apos;s 750 free hours/month).
                       </li>
                     </ol>
 

@@ -121,6 +121,7 @@ app.use('/api', (req, res, next) => {
     origin === 'https://localhost' ||
     origin === 'capacitor://localhost' ||
     /^https:\/\/[a-z0-9-]+\.onrender\.com$/i.test(origin) ||
+    /^https:\/\/[a-z0-9-]+(?:--[a-z0-9-]+)?\.netlify\.app$/i.test(origin) ||
     extraConfiguredOrigins.includes(origin);
 
   if (isAllowedOrigin) {
@@ -6670,6 +6671,7 @@ app.post('/api/git/push', async (req, res) => {
 const OTA_STATE_FILE = path.resolve(__dirname, '.ota-runtime-state.json');
 const SERVER_OTA_HMAC_SECRET =
   process.env.OTA_SESSION_SECRET ||
+  process.env.OTA_ADMIN_SIGNING_SECRET ||
   process.env.PAYSTACK_SECRET_KEY ||
   process.env.GITHUB_TOKEN ||
   crypto.randomBytes(32).toString('hex');

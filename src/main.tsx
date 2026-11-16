@@ -10,12 +10,14 @@ const REMOTE_API_ORIGIN = (
 ).replace(/\/+$/, '');
 const isBundledAndroidApk =
   typeof window !== 'undefined' && window.location.hostname === 'appassets.androidplatform.net';
+const shouldRouteApiToRemoteOrigin = Boolean(EXPLICIT_API_ORIGIN) || isBundledAndroidApk;
 
 if (typeof window !== 'undefined') {
   (window as any).__SC_RUNTIME_META__ = {
     apiOrigin: REMOTE_API_ORIGIN,
     hasExplicitApiOrigin: Boolean(EXPLICIT_API_ORIGIN),
     isBundledAndroidApk,
+    shouldRouteApiToRemoteOrigin,
   };
   (window as any).__SC_CLOUD_WAKING__ = false;
 }
@@ -46,14 +48,14 @@ if (typeof window !== 'undefined' && typeof window.fetch === 'function') {
       Boolean(REMOTE_API_ORIGIN) && rawUrl.startsWith(`${REMOTE_API_ORIGIN}/api/`);
     const isApiCall = isRelativeApi || isRemoteConfiguredApi;
     const targetInput =
-      isBundledAndroidApk && isRelativeApi
+      shouldRouteApiToRemoteOrigin && isRelativeApi
         ? `${REMOTE_API_ORIGIN}${rawUrl}`
         : input;
     const method = String(
       init?.method || (input instanceof Request ? input.method : 'GET')
     ).toUpperCase();
     const canRetryColdStart =
-      isBundledAndroidApk && isRelativeApi && (method === 'GET' || method === 'HEAD');
+      shouldRouteApiToRemoteOrigin && isRelativeApi && (method === 'GET' || method === 'HEAD');
 
     let markedSlow = false;
     let slowTimer: number | null = null;
@@ -65,7 +67,7 @@ if (typeof window !== 'undefined' && typeof window.fetch === 'function') {
       notifyCloudWakeState();
     };
 
-    if (isApiCall) {
+    if (isApiCall && !rawUrl.includes('prewarm=1')) {
       slowTimer = window.setTimeout(markSlowNow, 2200);
     }
 
@@ -113,6 +115,16 @@ if (typeof window !== 'undefined' && typeof window.fetch === 'function') {
     } catch {
       // Ignore if environment locks window.fetch with non-configurable getter
     }
+  }
+
+  // Silently wake external Render backend in the background as soon as Netlify/APK shell mounts online
+  if (
+    shouldRouteApiToRemoteOrigin &&
+    !REMOTE_API_ORIGIN.includes('ais-pre-') &&
+    typeof navigator !== 'undefined' &&
+    navigator.onLine !== false
+  ) {
+    nativeFetch(`${REMOTE_API_ORIGIN}/api/health?prewarm=1`, { cache: 'no-store' }).catch(() => {});
   }
 }
 

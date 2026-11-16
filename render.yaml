@@ -14,6 +14,10 @@ services:
         value: production
       - key: NODE_VERSION
         value: "20"
+      - key: OTA_SESSION_SECRET
+        generateValue: true
+      - key: RESEND_FROM_EMAIL
+        value: Student Companion <onboarding@resend.dev>
       - key: GEMINI_API_KEY
         sync: false
       - key: VITE_GOOGLE_MAPS_API_KEY
@@ -24,19 +28,7 @@ services:
         sync: false
       - key: RESEND_API_KEY
         sync: false
-      - key: RESEND_FROM_EMAIL
-        sync: false
-      - key: GMAIL_USER
-        sync: false
-      - key: GMAIL_APP_PASSWORD
-        sync: false
       - key: GITHUB_TOKEN
         sync: false
       - key: SUPER_ADMIN_PASSWORD
-        sync: false
-      - key: PAYSTACK_CONFIG_SECRET
-        sync: false
-      - key: OTA_ADMIN_SIGNING_SECRET
-        sync: false
-      - key: SHARED_APP_URL
         sync: false
