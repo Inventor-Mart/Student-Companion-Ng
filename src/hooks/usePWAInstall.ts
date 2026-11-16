@@ -11,7 +11,7 @@ declare global {
   }
 }
 
-const FALLBACK_SHARED_APP_URL = 'https://ais-pre-6kneqjoxpjhkhbumgktpro-896173298722.europe-west2.run.app';
+const FALLBACK_SHARED_APP_URL = 'https://student-companion-api-b373.onrender.com';
 
 function resolveClientStandaloneUrl(): { url: string; isDevPreview: boolean } {
   if (typeof window === 'undefined') {

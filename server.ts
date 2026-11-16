@@ -5743,7 +5743,7 @@ function resolveStandalonePwaUrl(req?: express.Request): string {
   if (reqHost && !reqHost.startsWith('localhost') && !reqHost.startsWith('127.0.0.1')) {
     return `https://${reqHost}`;
   }
-  return 'https://ais-pre-6kneqjoxpjhkhbumgktpro-896173298722.europe-west2.run.app';
+  return 'https://student-companion-api-b373.onrender.com';
 }
 
 app.get('/api/pwa/config', (req, res) => {
@@ -6007,7 +6007,7 @@ app.get('/api/download/offline-pwa-bundle', (_req, res) => {
     '  - apple-touch-icon.png    (180x180 iOS Safari)',
     '',
     'To install the live PWA on Android 6.0+:',
-    '  1. Open https://ais-pre-6kneqjoxpjhkhbumgktpro-896173298722.europe-west2.run.app in Chrome or Edge.',
+    '  1. Open https://student-companion-api-b373.onrender.com in Chrome or Edge.',
     '  2. Tap "Install" in the top bar or browser menu -> "Install app".',
   ].join('\n');
   entries.push({ name: 'README.txt', content: Buffer.from(readme, 'utf-8') });

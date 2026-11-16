@@ -60,7 +60,8 @@ jobs:
           VITE_GOOGLE_MAPS_API_KEY: ${{ secrets.VITE_GOOGLE_MAPS_API_KEY }}
           VITE_PAYSTACK_PUBLIC_KEY: ${{ secrets.VITE_PAYSTACK_PUBLIC_KEY }}
         run: |
-          echo "APK Build Secret Presence -> VITE_API_ORIGIN=$([ -n \"$VITE_API_ORIGIN\" ] && echo set || echo unset), VITE_GOOGLE_MAPS_API_KEY=$([ -n \"$VITE_GOOGLE_MAPS_API_KEY\" ] && echo set || echo unset), VITE_PAYSTACK_PUBLIC_KEY=$([ -n \"$VITE_PAYSTACK_PUBLIC_KEY\" ] && echo set || echo unset)"
+          export VITE_API_ORIGIN="${VITE_API_ORIGIN:-https://student-companion-api-b373.onrender.com}"
+          echo "APK Build Secret Presence -> VITE_API_ORIGIN=${VITE_API_ORIGIN}, VITE_GOOGLE_MAPS_API_KEY=$([ -n \"$VITE_GOOGLE_MAPS_API_KEY\" ] && echo set || echo unset), VITE_PAYSTACK_PUBLIC_KEY=$([ -n \"$VITE_PAYSTACK_PUBLIC_KEY\" ] && echo set || echo unset)"
           npm install --legacy-peer-deps
           npm run build
           rm -rf android-project/app/src/main/assets/www

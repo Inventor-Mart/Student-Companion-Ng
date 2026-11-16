@@ -3,20 +3,24 @@ import App from './App.tsx';
 import './index.css';
 import 'katex/dist/katex.min.css';
 
+const DEFAULT_LIVE_BACKEND_ORIGIN = 'https://student-companion-api-b373.onrender.com';
 const EXPLICIT_API_ORIGIN = String(import.meta.env.VITE_API_ORIGIN || '').trim().replace(/\/+$/, '');
 const REMOTE_API_ORIGIN = (
-  EXPLICIT_API_ORIGIN ||
-  'https://ais-pre-6kneqjoxpjhkhbumgktpro-896173298722.europe-west2.run.app'
+  EXPLICIT_API_ORIGIN || DEFAULT_LIVE_BACKEND_ORIGIN
 ).replace(/\/+$/, '');
 const isBundledAndroidApk =
   typeof window !== 'undefined' && window.location.hostname === 'appassets.androidplatform.net';
-const shouldRouteApiToRemoteOrigin = Boolean(EXPLICIT_API_ORIGIN) || isBundledAndroidApk;
+const isNetlifyHosted =
+  typeof window !== 'undefined' && window.location.hostname.toLowerCase().endsWith('.netlify.app');
+const shouldRouteApiToRemoteOrigin =
+  Boolean(EXPLICIT_API_ORIGIN) || isBundledAndroidApk || isNetlifyHosted;
 
 if (typeof window !== 'undefined') {
   (window as any).__SC_RUNTIME_META__ = {
     apiOrigin: REMOTE_API_ORIGIN,
     hasExplicitApiOrigin: Boolean(EXPLICIT_API_ORIGIN),
     isBundledAndroidApk,
+    isNetlifyHosted,
     shouldRouteApiToRemoteOrigin,
   };
   (window as any).__SC_CLOUD_WAKING__ = false;

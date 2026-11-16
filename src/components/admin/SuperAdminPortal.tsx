@@ -1566,27 +1566,35 @@ export const SuperAdminPortal: React.FC = () => {
                   <div className="border-t border-slate-800 pt-3 space-y-3 text-xs text-slate-300">
                     <ol className="space-y-2 text-[11px] text-slate-300 leading-relaxed list-decimal list-inside">
                       <li>
-                        Click <strong className="text-white">Sync to GitHub (main)</strong> below so the updated <code className="font-mono text-sky-300">render.yaml</code> and <code className="font-mono text-sky-300">netlify.toml</code> files are pushed.
+                        Click <strong className="text-white">Sync to GitHub (main)</strong> below so the automated <code className="font-mono text-sky-300">deploy-netlify.yml</code> workflow and <code className="font-mono text-emerald-300">https://student-companion-api-b373.onrender.com</code> default backend origin are pushed to GitHub.
                       </li>
                       <li>
-                        <strong className="text-white">Render Backend (Node API):</strong> On <strong className="text-white">dashboard.render.com</strong>, choose <strong className="text-white">New → Blueprint</strong> on <code className="font-mono text-slate-200">Inventor-Mart/Student-Companion-Ng</code> and paste your 7 core secrets (<code className="font-mono text-slate-200">OTA_SESSION_SECRET</code> is auto-generated).
+                        <strong className="text-white">Bypass Netlify GitHub Picker:</strong> On <strong className="text-white">app.netlify.com</strong>, create a site via <strong className="text-white">Add new site → Deploy manually</strong> (drop any placeholder folder or wait for CLI deploy), then copy its <strong className="text-white">Site ID</strong> (<code className="font-mono text-slate-200">Site configuration → General</code>) and create a <strong className="text-white">Personal access token</strong> (<code className="font-mono text-slate-200">User settings → Applications</code>).
                       </li>
                       <li>
-                        <strong className="text-white">Netlify Frontend (High-Bandwidth PWA):</strong> Connect the same GitHub repo on <strong className="text-white">app.netlify.com</strong> and set the 3 <code className="font-mono text-slate-200">VITE_*</code> variables below in Netlify Environment Variables so static pages load in 0s and ~95% of bandwidth stays off Render.
+                        <strong className="text-white">Save GitHub Repository Secrets:</strong> In GitHub <strong className="text-white">Settings → Secrets and variables → Actions</strong>, save <code className="font-mono text-sky-300">NETLIFY_AUTH_TOKEN</code> and <code className="font-mono text-sky-300">NETLIFY_SITE_ID</code> (for auto Netlify deploys), plus <code className="font-mono text-slate-200">VITE_API_ORIGIN</code>, <code className="font-mono text-slate-200">VITE_GOOGLE_MAPS_API_KEY</code>, and <code className="font-mono text-slate-200">VITE_PAYSTACK_PUBLIC_KEY</code>.
                       </li>
                       <li>
-                        <strong className="text-white">Firebase &amp; GitHub APK:</strong> Add both your <code className="font-mono text-emerald-300">*.onrender.com</code> and <code className="font-mono text-emerald-300">*.netlify.app</code> domains in <strong className="text-white">Firebase Console → Authentication → Settings → Authorized domains</strong>, save the same 3 <code className="font-mono text-slate-200">VITE_*</code> variables in GitHub Actions Secrets, then click <strong className="text-white">Build APK on GitHub</strong>.
+                        <strong className="text-white">Firebase &amp; Build APK:</strong> Ensure <code className="font-mono text-emerald-300">student-companion-api-b373.onrender.com</code> and your <code className="font-mono text-emerald-300">*.netlify.app</code> domain are added in <strong className="text-white">Firebase Console → Authentication → Settings → Authorized domains</strong>, then click <strong className="text-white">Build APK on GitHub</strong>.
                       </li>
                       <li>
-                        <strong className="text-white">Eliminate 50s Idle Sleep (Free 24/7 Uptime Ping):</strong> Add an HTTP monitor on <strong className="text-white">uptimerobot.com</strong> or <strong className="text-white">cron-job.org</strong> targeting your Render <code className="font-mono text-sky-300">/api/health</code> URL every <strong className="text-white">5–10 minutes</strong> (uses &lt;1 MB bandwidth and stays within Render&apos;s 750 free hours/month).
+                        <strong className="text-white">Eliminate 50s Idle Sleep (Free 24/7 Uptime Ping):</strong> Add an HTTP monitor on <strong className="text-white">uptimerobot.com</strong> or <strong className="text-white">cron-job.org</strong> targeting the health URL below every <strong className="text-white">5–10 minutes</strong> (uses &lt;1 MB bandwidth and stays within Render&apos;s 750 free hours/month).
                       </li>
                     </ol>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                       {[
                         {
+                          key: 'NETLIFY_AUTH_TOKEN',
+                          desc: 'Netlify Personal access token'
+                        },
+                        {
+                          key: 'NETLIFY_SITE_ID',
+                          desc: 'Netlify manual site API ID'
+                        },
+                        {
                           key: 'VITE_API_ORIGIN',
-                          desc: 'Your https://<service>.onrender.com URL'
+                          desc: 'https://student-companion-api-b373.onrender.com'
                         },
                         {
                           key: 'VITE_GOOGLE_MAPS_API_KEY',
@@ -1595,6 +1603,10 @@ export const SuperAdminPortal: React.FC = () => {
                         {
                           key: 'VITE_PAYSTACK_PUBLIC_KEY',
                           desc: 'Live pk_live_... Paystack public key'
+                        },
+                        {
+                          key: 'https://student-companion-api-b373.onrender.com',
+                          desc: 'Copy exact Render Backend URL'
                         }
                       ].map((secretItem) => (
                         <button
@@ -1624,7 +1636,7 @@ export const SuperAdminPortal: React.FC = () => {
                       const healthPingTarget =
                         activeOrigin && !isPreviewCookieOrigin
                           ? `${activeOrigin.replace(/\/+$/, '')}/api/health`
-                          : 'https://your-service.onrender.com/api/health';
+                          : 'https://student-companion-api-b373.onrender.com/api/health';
                       return (
                         <div className="border-t border-slate-800 pt-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                           <div className="min-w-0">
