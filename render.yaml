@@ -1,0 +1,42 @@
+services:
+  - type: web
+    name: student-companion-api
+    runtime: node
+    plan: free
+    region: frankfurt
+    branch: main
+    autoDeploy: true
+    buildCommand: npm install --include=dev --legacy-peer-deps && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "20"
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: VITE_GOOGLE_MAPS_API_KEY
+        sync: false
+      - key: VITE_PAYSTACK_PUBLIC_KEY
+        sync: false
+      - key: PAYSTACK_SECRET_KEY
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM_EMAIL
+        sync: false
+      - key: GMAIL_USER
+        sync: false
+      - key: GMAIL_APP_PASSWORD
+        sync: false
+      - key: GITHUB_TOKEN
+        sync: false
+      - key: SUPER_ADMIN_PASSWORD
+        sync: false
+      - key: PAYSTACK_CONFIG_SECRET
+        sync: false
+      - key: OTA_ADMIN_SIGNING_SECRET
+        sync: false
+      - key: SHARED_APP_URL
+        sync: false

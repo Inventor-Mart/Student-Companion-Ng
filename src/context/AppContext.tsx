@@ -2104,15 +2104,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     if (isSuperAdminEmail(cleanInput)) {
       let firebaseIdToken = '';
+      let verifiedSuperAdminViaFirebase = false;
+      let firebaseAuthCode = '';
       try {
         const cred = await signInWithEmailAndPassword(auth, cleanInput, password);
-        firebaseIdToken = await cred.user.getIdToken();
-      } catch {
-        // If Firebase email/password account is not set up, server will verify SUPER_ADMIN_PASSWORD strictly
+        const signedInEmail = (cred.user?.email || '').toLowerCase().trim();
+        if (cred.user && (!signedInEmail || signedInEmail === cleanInput)) {
+          firebaseIdToken = await cred.user.getIdToken();
+          verifiedSuperAdminViaFirebase = true;
+        }
+      } catch (err: any) {
+        firebaseAuthCode = String(err?.code || '');
       }
 
-      try {
-        const res = await fetch('/api/auth/login', {
+      if (verifiedSuperAdminViaFirebase) {
+        resetLoginFailures(cleanInput);
+        const devProfile = loginAsDeveloper(cleanInput, { skipNavigate: true });
+        void fetch('/api/auth/login', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -2127,15 +2135,48 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             hasLocalProfile: true,
             firebaseIdToken
           })
+        })
+          .then(async (res) => {
+            const data = await res.json().catch(() => ({}));
+            if (res.ok && typeof data?.otaAdminToken === 'string') {
+              setServerOTAAdminToken(data.otaAdminToken);
+            }
+          })
+          .catch(() => {
+            // Backend offline or waking from sleep; Firebase credential already verified Super Admin
+          });
+        return { success: true, profile: devProfile };
+      }
+
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...getSecurityHeaders({ userEmail: cleanInput })
+          },
+          body: JSON.stringify({
+            identifier: cleanInput,
+            password,
+            method: 'super_admin',
+            email: cleanInput,
+            hasLocalProfile: true,
+            firebaseIdToken: ''
+          })
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok || data?.authenticated !== true) {
           recordLoginFailure(cleanInput);
+          const explicitWrongFirebase =
+            firebaseAuthCode === 'auth/wrong-password' ||
+            firebaseAuthCode === 'auth/invalid-credential';
           return {
             success: false,
             error:
               data?.error ||
-              'Incorrect Super Admin password. Please verify your password or tap "Continue with Google".'
+              (explicitWrongFirebase
+                ? 'Incorrect Super Admin password. Please verify your password or tap "Continue with Google".'
+                : 'Super Admin verification failed. Please check your password or tap "Continue with Google".')
           };
         }
         if (typeof data?.otaAdminToken === 'string') {
@@ -2145,10 +2186,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const devProfile = loginAsDeveloper(cleanInput, { skipNavigate: true });
         return { success: true, profile: devProfile };
       } catch {
+        recordLoginFailure(cleanInput);
         return {
           success: false,
           error:
-            'Unable to reach verification server for Super Admin sign-in. Check your internet connection or tap "Continue with Google".'
+            firebaseAuthCode === 'auth/wrong-password' ||
+            firebaseAuthCode === 'auth/invalid-credential'
+              ? 'Incorrect Super Admin password.'
+              : 'Unable to reach verification server for Super Admin fallback sign-in. Enable Email/Password in Firebase Auth, check your connection, or tap "Continue with Google".'
         };
       }
     }

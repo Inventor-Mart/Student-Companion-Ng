@@ -42,7 +42,13 @@ import {
   UserX,
   Snowflake,
   Layers,
-  Download
+  Download,
+  Copy,
+  Check,
+  ChevronDown,
+  ChevronUp,
+  Server,
+  Globe
 } from 'lucide-react';
 import { SchoolAdminPortal } from './SchoolAdminPortal';
 import { OTACompetitionManager } from './OTACompetitionManager';
@@ -382,9 +388,23 @@ export const SuperAdminPortal: React.FC = () => {
     googleMapsConfigured: boolean;
     githubTokenConfigured: boolean;
     superAdminPasswordConfigured: boolean;
+    renderHosted?: boolean;
+    hostingPlatform?: 'render' | 'aistudio';
     backendUrl: string;
   } | null>(null);
   const [isCheckingIntegrations, setIsCheckingIntegrations] = useState(false);
+  const [showRenderGuide, setShowRenderGuide] = useState(false);
+  const [copiedSecretKey, setCopiedSecretKey] = useState<string | null>(null);
+
+  const handleCopySecretKey = (keyName: string) => {
+    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+      void navigator.clipboard.writeText(keyName).catch(() => {});
+    }
+    setCopiedSecretKey(keyName);
+    window.setTimeout(() => {
+      setCopiedSecretKey((curr) => (curr === keyName ? null : curr));
+    }, 1800);
+  };
 
   const fetchIntegrationsStatus = React.useCallback(async () => {
     setIsCheckingIntegrations(true);
@@ -1375,94 +1395,272 @@ export const SuperAdminPortal: React.FC = () => {
 
       {/* Live Integrations & Secrets Readiness Diagnostic */}
       <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 space-y-3">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 border-b border-slate-800 pb-3">
-          <div className="min-w-0">
-            <h2 className="text-sm font-bold text-white tracking-tight">
-              Live Services &amp; Secrets Readiness
-            </h2>
-            <p className="text-[11px] text-slate-400 mt-0.5">
-              Private server keys stay in <strong className="text-slate-200">AI Studio → Settings → Secrets</strong> (never bundled in APKs or GitHub). Public client keys go in Secrets and optional GitHub Repo Secrets.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => void fetchIntegrationsStatus()}
-            disabled={isCheckingIntegrations}
-            className="px-3 py-2 min-h-[40px] rounded-xl bg-slate-950 hover:bg-slate-800 border border-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50 whitespace-nowrap shrink-0 self-start sm:self-auto"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${isCheckingIntegrations ? 'animate-spin' : ''}`} />
-            <span>{isCheckingIntegrations ? 'Checking...' : 'Check Integrations'}</span>
-          </button>
-        </div>
+        {(() => {
+          const readinessItems = integrationsStatus
+            ? [
+                {
+                  label: 'SC AI Study Coach',
+                  secretName: 'GEMINI_API_KEY',
+                  where: 'Render Env Vars & AI Studio Secrets',
+                  ready: integrationsStatus.geminiConfigured
+                },
+                {
+                  label: 'Paystack Live Gateway',
+                  secretName: 'VITE_PAYSTACK_PUBLIC_KEY + PAYSTACK_SECRET_KEY',
+                  where: 'Render Env Vars / GitHub Secrets (Public Key)',
+                  ready: integrationsStatus.paystackLiveReady
+                },
+                {
+                  label: 'Email Delivery (Resend / Gmail)',
+                  secretName: 'RESEND_API_KEY or GMAIL_APP_PASSWORD',
+                  where: 'Render Env Vars & AI Studio Secrets',
+                  ready: integrationsStatus.emailReady
+                },
+                {
+                  label: 'Google Maps Tutor Locator',
+                  secretName: 'VITE_GOOGLE_MAPS_API_KEY',
+                  where: 'Render Env Vars & GitHub Secrets',
+                  ready: integrationsStatus.googleMapsConfigured
+                },
+                {
+                  label: 'GitHub Repo Sync & APK Trigger',
+                  secretName: 'GITHUB_TOKEN',
+                  where: 'Render Env Vars & AI Studio Secrets',
+                  ready: integrationsStatus.githubTokenConfigured
+                },
+                {
+                  label: 'Admin Password Fallback',
+                  secretName: 'SUPER_ADMIN_PASSWORD',
+                  where: 'Render Env Vars & AI Studio (or Firebase Auth)',
+                  ready: integrationsStatus.superAdminPasswordConfigured
+                }
+              ]
+            : [];
+          const readyCount = readinessItems.filter((item) => item.ready).length;
+          const allReady = readinessItems.length > 0 && readyCount === readinessItems.length;
+          const runtimeMeta =
+            typeof window !== 'undefined' ? (window as any).__SC_RUNTIME_META__ : null;
+          const activeOrigin = String(
+            integrationsStatus?.backendUrl || runtimeMeta?.apiOrigin || ''
+          );
+          const isPreviewCookieOrigin = activeOrigin.includes('ais-pre-');
 
-        {integrationsStatus && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 text-xs">
-            {[
-              {
-                label: 'SC AI Study Coach',
-                secretName: 'GEMINI_API_KEY',
-                where: 'AI Studio Secrets',
-                ready: integrationsStatus.geminiConfigured
-              },
-              {
-                label: 'Paystack Live Gateway',
-                secretName: 'VITE_PAYSTACK_PUBLIC_KEY + PAYSTACK_SECRET_KEY',
-                where: 'AI Studio Secrets / Gateway Save',
-                ready: integrationsStatus.paystackLiveReady
-              },
-              {
-                label: 'Email Delivery (Resend / Gmail)',
-                secretName: 'RESEND_API_KEY or GMAIL_APP_PASSWORD',
-                where: 'AI Studio Secrets',
-                ready: integrationsStatus.emailReady
-              },
-              {
-                label: 'Google Maps Tutor Locator',
-                secretName: 'VITE_GOOGLE_MAPS_API_KEY',
-                where: 'AI Studio Secrets & GitHub Secrets',
-                ready: integrationsStatus.googleMapsConfigured
-              },
-              {
-                label: 'GitHub Repo Sync & APK Trigger',
-                secretName: 'GITHUB_TOKEN',
-                where: 'AI Studio Secrets',
-                ready: integrationsStatus.githubTokenConfigured
-              },
-              {
-                label: 'Admin Password Fallback',
-                secretName: 'SUPER_ADMIN_PASSWORD',
-                where: 'AI Studio Secrets (or Firebase Auth)',
-                ready: integrationsStatus.superAdminPasswordConfigured
-              }
-            ].map((item) => (
-              <div
-                key={item.label}
-                className="bg-slate-950 border border-slate-800 rounded-xl p-3 flex flex-col justify-between gap-1.5"
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="font-bold text-white truncate">{item.label}</span>
-                  <span
-                    className={`text-[11px] font-bold shrink-0 ${
-                      item.ready ? 'text-[#84E000]' : 'text-amber-400'
-                    }`}
-                  >
-                    {item.ready ? 'Ready' : 'Needs Secret'}
-                  </span>
+          return (
+            <>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 border-b border-slate-800 pb-3">
+                <div className="min-w-0 space-y-1">
+                  <div className="flex items-center flex-wrap gap-2">
+                    <h2 className="text-sm font-bold text-white tracking-tight">
+                      Live Services &amp; Secrets Readiness
+                    </h2>
+                    {integrationsStatus && (
+                      <span
+                        className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md border text-[11px] font-bold tabular-nums ${
+                          allReady
+                            ? 'bg-emerald-500/15 border-emerald-500/40 text-[#84E000]'
+                            : 'bg-amber-500/15 border-amber-500/40 text-amber-300'
+                        }`}
+                      >
+                        {allReady ? (
+                          <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                        ) : (
+                          <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                        )}
+                        <span>
+                          {readyCount} / {readinessItems.length} Ready
+                        </span>
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-slate-400">
+                    Private keys stay strictly on your server host (AI Studio &amp; Render Env Vars). Public client keys &amp; your Render URL go into GitHub Repo Secrets for standalone APKs.
+                  </p>
                 </div>
-                <div className="text-[11px] font-mono text-slate-400 truncate">
-                  {item.secretName}
-                </div>
-                <div className="text-[10px] text-slate-500">{item.where}</div>
+                <button
+                  type="button"
+                  onClick={() => void fetchIntegrationsStatus()}
+                  disabled={isCheckingIntegrations}
+                  className="px-3.5 py-2 min-h-[44px] rounded-xl bg-slate-950 hover:bg-slate-800 border border-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50 whitespace-nowrap shrink-0 self-start sm:self-auto"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isCheckingIntegrations ? 'animate-spin' : ''}`} />
+                  <span>{isCheckingIntegrations ? 'Checking...' : 'Check Integrations'}</span>
+                </button>
               </div>
-            ))}
-          </div>
-        )}
 
-        {integrationsStatus?.backendUrl && (
-          <div className="text-[11px] text-slate-400 font-mono truncate">
-            Active APK Backend URL: <span className="text-emerald-300">{integrationsStatus.backendUrl}</span>
-          </div>
-        )}
+              {integrationsStatus && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 text-xs">
+                  {readinessItems.map((item) => (
+                    <div
+                      key={item.label}
+                      className="bg-slate-950 border border-slate-800 rounded-xl p-3 flex flex-col justify-between gap-1.5"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-bold text-white truncate">{item.label}</span>
+                        <span
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-[11px] font-bold shrink-0 ${
+                            item.ready
+                              ? 'bg-emerald-500/15 border-emerald-500/35 text-[#84E000]'
+                              : 'bg-amber-500/15 border-amber-500/35 text-amber-300'
+                          }`}
+                        >
+                          {item.ready ? (
+                            <CheckCircle2 className="w-3 h-3 shrink-0" />
+                          ) : (
+                            <AlertTriangle className="w-3 h-3 shrink-0" />
+                          )}
+                          <span>{item.ready ? 'Ready' : 'Needs Secret'}</span>
+                        </span>
+                      </div>
+                      <div className="text-[11px] font-mono text-slate-300 truncate">
+                        {item.secretName}
+                      </div>
+                      <div className="text-[10px] text-slate-500">{item.where}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Active Backend Origin + Render Free Tier Setup Accordion */}
+              <div className="bg-slate-950 border border-slate-800 rounded-xl p-3 space-y-2.5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="min-w-0 space-y-0.5">
+                    <div className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-300">
+                      <Server className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                      <span>
+                        {integrationsStatus?.renderHosted
+                          ? 'Hosted Publicly on Render Free Tier'
+                          : 'AI Studio Dev Preview Backend (Requires Public Render Host for APK)'}
+                      </span>
+                    </div>
+                    {activeOrigin && (
+                      <div className="text-[11px] font-mono text-slate-400 truncate">
+                        Active Backend URL:{' '}
+                        <span className={isPreviewCookieOrigin ? 'text-amber-300' : 'text-emerald-300'}>
+                          {activeOrigin}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowRenderGuide((prev) => !prev)}
+                    className="px-3 py-2 min-h-[44px] rounded-xl bg-sky-500/10 hover:bg-sky-500/20 border border-sky-500/35 text-sky-200 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap shrink-0 self-start sm:self-auto"
+                  >
+                    <Globe className="w-3.5 h-3.5 shrink-0" />
+                    <span>{showRenderGuide ? 'Hide Cloud Host Setup' : 'Free Render + APK Setup'}</span>
+                    {showRenderGuide ? (
+                      <ChevronUp className="w-3.5 h-3.5 shrink-0" />
+                    ) : (
+                      <ChevronDown className="w-3.5 h-3.5 shrink-0" />
+                    )}
+                  </button>
+                </div>
+
+                {isPreviewCookieOrigin && !integrationsStatus?.renderHosted && (
+                  <p className="text-[11px] text-amber-300/90 leading-relaxed border-t border-slate-800/80 pt-2">
+                    AI Studio preview URLs redirect external APK requests to an interactive login check. Deploy this repo on <strong className="text-amber-200">Render Free Tier</strong> (zero card required) and save your <code className="font-mono text-amber-200">https://...onrender.com</code> URL as <code className="font-mono text-amber-200">VITE_API_ORIGIN</code> in GitHub Secrets before clicking <strong className="text-amber-200">Build APK on GitHub</strong>.
+                  </p>
+                )}
+
+                {showRenderGuide && (
+                  <div className="border-t border-slate-800 pt-3 space-y-3 text-xs text-slate-300">
+                    <ol className="space-y-2 text-[11px] text-slate-300 leading-relaxed list-decimal list-inside">
+                      <li>
+                        Click <strong className="text-white">Sync to GitHub (main)</strong> below so the included Render Blueprint (<code className="font-mono text-sky-300">render.yaml</code>) is pushed to your repository.
+                      </li>
+                      <li>
+                        On <strong className="text-white">dashboard.render.com</strong>, choose <strong className="text-white">New → Blueprint</strong>, connect <code className="font-mono text-slate-200">Inventor-Mart/Student-Companion-Ng</code>, and enter your server secrets (<code className="font-mono text-slate-200">GEMINI_API_KEY</code>, <code className="font-mono text-slate-200">PAYSTACK_SECRET_KEY</code>, <code className="font-mono text-slate-200">RESEND_API_KEY</code>, <code className="font-mono text-slate-200">SUPER_ADMIN_PASSWORD</code>, plus public keys).
+                      </li>
+                      <li>
+                        Copy your live <code className="font-mono text-emerald-300">https://your-service.onrender.com</code> URL and add it to <strong className="text-white">Firebase Console → Authentication → Settings → Authorized domains</strong> (and ensure <strong className="text-white">Email/Password</strong> sign-in is enabled).
+                      </li>
+                      <li>
+                        In GitHub <strong className="text-white">Settings → Secrets and variables → Actions</strong>, save the three APK build secrets below, then click <strong className="text-white">Build APK on GitHub</strong>.
+                      </li>
+                      <li>
+                        <strong className="text-white">Prevent Idle Sleep (Free Uptime Monitor):</strong> Add an HTTP monitor on <strong className="text-white">uptimerobot.com</strong> or <strong className="text-white">cron-job.org</strong> targeting your Render <code className="font-mono text-sky-300">/api/health</code> URL every <strong className="text-white">5–10 minutes</strong> so students do not wait for cold starts.
+                      </li>
+                    </ol>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      {[
+                        {
+                          key: 'VITE_API_ORIGIN',
+                          desc: 'Your https://<service>.onrender.com URL'
+                        },
+                        {
+                          key: 'VITE_GOOGLE_MAPS_API_KEY',
+                          desc: 'Public Google Maps browser key'
+                        },
+                        {
+                          key: 'VITE_PAYSTACK_PUBLIC_KEY',
+                          desc: 'Live pk_live_... Paystack public key'
+                        }
+                      ].map((secretItem) => (
+                        <button
+                          key={secretItem.key}
+                          type="button"
+                          onClick={() => handleCopySecretKey(secretItem.key)}
+                          className="min-h-[44px] bg-slate-900 hover:bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-left flex items-center justify-between gap-2 transition-colors cursor-pointer"
+                        >
+                          <div className="min-w-0">
+                            <div className="font-mono text-[11px] font-bold text-white truncate">
+                              {secretItem.key}
+                            </div>
+                            <div className="text-[10px] text-slate-400 truncate">
+                              {secretItem.desc}
+                            </div>
+                          </div>
+                          {copiedSecretKey === secretItem.key ? (
+                            <Check className="w-4 h-4 text-[#84E000] shrink-0" />
+                          ) : (
+                            <Copy className="w-4 h-4 text-slate-400 shrink-0" />
+                          )}
+                        </button>
+                      ))}
+                    </div>
+
+                    {(() => {
+                      const healthPingTarget =
+                        activeOrigin && !isPreviewCookieOrigin
+                          ? `${activeOrigin.replace(/\/+$/, '')}/api/health`
+                          : 'https://your-service.onrender.com/api/health';
+                      return (
+                        <div className="border-t border-slate-800 pt-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="text-[11px] font-semibold text-sky-200">
+                              Health Check Ping Endpoint (GET every 5–10 min)
+                            </div>
+                            <div className="text-[11px] font-mono text-slate-400 truncate">
+                              {healthPingTarget}
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleCopySecretKey(healthPingTarget)}
+                            className="min-h-[44px] px-3 py-2 bg-slate-900 hover:bg-slate-800 border border-slate-700 rounded-xl text-[11px] font-semibold text-white flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap shrink-0 self-start sm:self-auto"
+                          >
+                            {copiedSecretKey === healthPingTarget ? (
+                              <>
+                                <Check className="w-3.5 h-3.5 text-[#84E000] shrink-0" />
+                                <span className="text-[#84E000]">Copied Ping URL</span>
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="w-3.5 h-3.5 text-slate-300 shrink-0" />
+                                <span>Copy Health URL</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
+              </div>
+            </>
+          );
+        })()}
       </div>
 
       {/* GitHub Repository Sync Panel */}

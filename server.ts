@@ -66,9 +66,16 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-// Environment constraint: Dev server must always run on port 3000.
-// Cloud Run injects PORT=8080 where nginx runs; binding to 8080 causes EADDRINUSE.
-const PORT = 3000;
+const isExternalPaasHost = Boolean(
+  process.env.RENDER ||
+  process.env.RENDER_EXTERNAL_URL ||
+  process.env.RAILWAY_ENVIRONMENT ||
+  process.env.KOYEB_PUBLIC_DOMAIN ||
+  process.env.FLY_APP_NAME
+);
+// Environment constraint: Inside AI Studio Cloud Run (PORT=8080 for nginx), keep port 3000.
+// On external PaaS hosts like Render free tier, bind the host-injected PORT (e.g. 10000).
+const PORT = isExternalPaasHost ? Number(process.env.PORT) || 3000 : 3000;
 
 app.use(express.json({ limit: '5mb' }));
 app.get(['/sw.js', '/sw-notifications.js'], (req, res) => {
@@ -98,12 +105,25 @@ app.get('/api/health', (_req, res) => res.status(200).json({ status: 'ok', uptim
 
 // Global Security Middleware (IP / Device Fingerprint Blocking & Sliding-Window Rate Limiting)
 app.use('/api', (req, res, next) => {
-  const origin = String(req.headers.origin || '');
-  const isAllowedApkOrigin =
+  const origin = String(req.headers.origin || '').trim();
+  const extraConfiguredOrigins = [
+    process.env.SHARED_APP_URL,
+    process.env.RENDER_EXTERNAL_URL,
+    process.env.APP_URL,
+    ...(process.env.ALLOWED_CORS_ORIGINS || '').split(',')
+  ]
+    .map((v) => String(v || '').trim().replace(/\/+$/, ''))
+    .filter(Boolean);
+
+  const isAllowedOrigin =
     origin === 'https://appassets.androidplatform.net' ||
     origin === 'http://localhost' ||
-    origin === 'https://localhost';
-  if (isAllowedApkOrigin) {
+    origin === 'https://localhost' ||
+    origin === 'capacitor://localhost' ||
+    /^https:\/\/[a-z0-9-]+\.onrender\.com$/i.test(origin) ||
+    extraConfiguredOrigins.includes(origin);
+
+  if (isAllowedOrigin) {
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
     res.setHeader(
@@ -5704,6 +5724,10 @@ function resolveStandalonePwaUrl(req?: express.Request): string {
   if (explicitShared) {
     return explicitShared.replace(/\/+$/, '');
   }
+  const renderUrl = (process.env.RENDER_EXTERNAL_URL || '').trim();
+  if (renderUrl && /^https?:\/\//i.test(renderUrl)) {
+    return renderUrl.replace(/\/+$/, '');
+  }
   const appUrl = (process.env.APP_URL || '').trim();
   if (appUrl && /^https?:\/\//i.test(appUrl)) {
     return appUrl.replace('://ais-dev-', '://ais-pre-').replace(/\/+$/, '');
@@ -5712,7 +5736,10 @@ function resolveStandalonePwaUrl(req?: express.Request): string {
   if (reqHost.startsWith('ais-dev-')) {
     return `https://${reqHost.replace(/^ais-dev-/, 'ais-pre-')}`;
   }
-  if (reqHost.startsWith('ais-pre-')) {
+  if (reqHost.startsWith('ais-pre-') || /\.onrender\.com$/i.test(reqHost)) {
+    return `https://${reqHost}`;
+  }
+  if (reqHost && !reqHost.startsWith('localhost') && !reqHost.startsWith('127.0.0.1')) {
     return `https://${reqHost}`;
   }
   return 'https://ais-pre-6kneqjoxpjhkhbumgktpro-896173298722.europe-west2.run.app';
@@ -5751,6 +5778,7 @@ app.get('/api/system/integrations-status', (req, res) => {
   const googleMapsConfigured = Boolean(mapsKey && mapsKey !== 'MY_GOOGLE_MAPS_API_KEY');
   const githubTokenConfigured = Boolean((process.env.GITHUB_TOKEN || process.env.GH_TOKEN || '').trim());
   const superAdminPasswordConfigured = Boolean((process.env.SUPER_ADMIN_PASSWORD || '').trim());
+  const renderHosted = Boolean(process.env.RENDER || process.env.RENDER_EXTERNAL_URL);
 
   return res.json({
     success: true,
@@ -5764,6 +5792,8 @@ app.get('/api/system/integrations-status', (req, res) => {
     googleMapsConfigured,
     githubTokenConfigured,
     superAdminPasswordConfigured,
+    renderHosted,
+    hostingPlatform: renderHosted ? 'render' : 'aistudio',
     backendUrl: resolveStandalonePwaUrl(req),
   });
 });
@@ -7282,6 +7312,9 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
+    app.use('/api/*', (_req, res) => {
+      return res.status(404).json({ success: false, error: 'API endpoint not found.' });
+    });
     app.use(express.static(path.resolve(__dirname, 'dist')));
     app.get('*', (_req, res) => {
       res.sendFile(path.resolve(__dirname, 'dist', 'index.html'));

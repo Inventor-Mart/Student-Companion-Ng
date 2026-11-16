@@ -15,14 +15,46 @@ export const OfflineIndicator: React.FC = () => {
     currentScreen
   } = useApp();
 
+  const [isWakingCloud, setIsWakingCloud] = React.useState<boolean>(() =>
+    typeof window !== 'undefined' ? Boolean((window as any).__SC_CLOUD_WAKING__) : false
+  );
+  const [wakeDismissed, setWakeDismissed] = React.useState(false);
+  const [wakeElapsedSec, setWakeElapsedSec] = React.useState(0);
+
+  React.useEffect(() => {
+    const handleWakeChange = (evt: Event) => {
+      const waking = Boolean((evt as CustomEvent<{ waking?: boolean }>)?.detail?.waking);
+      setIsWakingCloud(waking);
+      if (!waking) {
+        setWakeDismissed(false);
+        setWakeElapsedSec(0);
+      }
+    };
+    window.addEventListener('sc:cloud-wake-change', handleWakeChange);
+    return () => window.removeEventListener('sc:cloud-wake-change', handleWakeChange);
+  }, []);
+
+  React.useEffect(() => {
+    if (!isWakingCloud) {
+      setWakeElapsedSec(0);
+      return;
+    }
+    setWakeElapsedSec(2);
+    const id = window.setInterval(() => {
+      setWakeElapsedSec((sec) => sec + 1);
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [isWakingCloud]);
+
   if (currentScreen === 'splash') return null;
 
   const showOffline = isOffline || !browserOnline;
-  const showPendingWhileOnline = !showOffline && pendingSyncCount > 0 && !isSyncingOfflineQueue;
   const showSyncing = isSyncingOfflineQueue;
-  const showSyncedNotice = !showOffline && !showSyncing && Boolean(offlineSyncNotice);
+  const showWakingCloud = !showOffline && !showSyncing && isWakingCloud && !wakeDismissed;
+  const showPendingWhileOnline = !showOffline && !showWakingCloud && pendingSyncCount > 0 && !isSyncingOfflineQueue;
+  const showSyncedNotice = !showOffline && !showSyncing && !showWakingCloud && Boolean(offlineSyncNotice);
 
-  if (!showOffline && !showPendingWhileOnline && !showSyncing && !showSyncedNotice) {
+  if (!showOffline && !showPendingWhileOnline && !showSyncing && !showWakingCloud && !showSyncedNotice) {
     return null;
   }
 
@@ -57,6 +89,30 @@ export const OfflineIndicator: React.FC = () => {
           <span className="font-semibold whitespace-nowrap">
             Syncing <span className="font-mono tabular-nums">{pendingSyncCount}</span> queued item{pendingSyncCount === 1 ? '' : 's'}...
           </span>
+        </div>
+      ) : showWakingCloud ? (
+        <div className="flex items-center gap-2 pl-3.5 pr-1.5 py-1.5 rounded-xl bg-[#0B1526]/95 backdrop-blur-md border border-sky-500/60 shadow-xl text-xs text-sky-100">
+          <RefreshCw className="w-4 h-4 text-sky-400 animate-spin shrink-0" />
+          <span className="font-semibold whitespace-nowrap">
+            Waking cloud server…
+          </span>
+          <span className="text-slate-400 hidden sm:inline whitespace-nowrap">·</span>
+          <span className="text-slate-300 hidden sm:inline whitespace-nowrap">
+            Usually 15–30s
+          </span>
+          {wakeElapsedSec > 0 && (
+            <span className="font-mono tabular-nums text-sky-300 font-semibold whitespace-nowrap">
+              {wakeElapsedSec}s
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={() => setWakeDismissed(true)}
+            className="min-h-[40px] min-w-[40px] -my-1 flex items-center justify-center text-slate-400 hover:text-white rounded-lg cursor-pointer"
+            aria-label="Dismiss cloud wake notice"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
         </div>
       ) : showPendingWhileOnline ? (
         <div className="flex items-center gap-2.5 px-3.5 py-1.5 rounded-xl bg-[#0B1526]/95 backdrop-blur-md border border-[#1E304F] shadow-xl text-xs text-slate-200">

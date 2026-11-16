@@ -56,9 +56,11 @@ jobs:
 
       - name: Install dependencies & build offline web bundle
         env:
+          VITE_API_ORIGIN: ${{ secrets.VITE_API_ORIGIN }}
           VITE_GOOGLE_MAPS_API_KEY: ${{ secrets.VITE_GOOGLE_MAPS_API_KEY }}
           VITE_PAYSTACK_PUBLIC_KEY: ${{ secrets.VITE_PAYSTACK_PUBLIC_KEY }}
         run: |
+          echo "APK Build Secret Presence -> VITE_API_ORIGIN=$([ -n \"$VITE_API_ORIGIN\" ] && echo set || echo unset), VITE_GOOGLE_MAPS_API_KEY=$([ -n \"$VITE_GOOGLE_MAPS_API_KEY\" ] && echo set || echo unset), VITE_PAYSTACK_PUBLIC_KEY=$([ -n \"$VITE_PAYSTACK_PUBLIC_KEY\" ] && echo set || echo unset)"
           npm install --legacy-peer-deps
           npm run build
           rm -rf android-project/app/src/main/assets/www
