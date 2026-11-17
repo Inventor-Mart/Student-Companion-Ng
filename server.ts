@@ -7305,7 +7305,24 @@ async function startServer() {
     app.use('/api/*', (_req, res) => {
       return res.status(404).json({ success: false, error: 'API endpoint not found.' });
     });
-    app.use(express.static(path.resolve(__dirname, 'dist')));
+    app.use(
+      express.static(path.resolve(__dirname, 'dist'), {
+        setHeaders(res, filePath) {
+          const normalized = filePath.replace(/\\/g, '/');
+          if (normalized.endsWith('/manifest.webmanifest') || normalized.endsWith('.webmanifest')) {
+            res.setHeader('Content-Type', 'application/manifest+json; charset=utf-8');
+            res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+          } else if (
+            normalized.endsWith('/sw.js') ||
+            normalized.endsWith('/sw-notifications.js')
+          ) {
+            res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+            res.setHeader('Service-Worker-Allowed', '/');
+            res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+          }
+        },
+      })
+    );
     app.get('*', (_req, res) => {
       res.sendFile(path.resolve(__dirname, 'dist', 'index.html'));
     });

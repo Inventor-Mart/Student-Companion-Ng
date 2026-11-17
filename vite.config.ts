@@ -19,6 +19,7 @@ export default defineConfig(({ command }) => {
         ? [
             VitePWA({
               registerType: 'autoUpdate',
+              injectRegister: false,
               includeAssets: [
                 'icon.svg',
                 'apple-touch-icon.png',
@@ -62,7 +63,9 @@ export default defineConfig(({ command }) => {
         workbox: {
           maximumFileSizeToCacheInBytes: 15 * 1024 * 1024,
           globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
+          globIgnores: ['assets/aistudio/**'],
           navigateFallback: '/index.html',
+          navigateFallbackDenylist: [/^\/api\//, /^\/__\//, /^\/manifest\.webmanifest$/],
           importScripts: ['/sw-notifications.js'],
           runtimeCaching: [
             {

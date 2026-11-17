@@ -9,7 +9,9 @@ import {
   Check,
   X,
   Smartphone,
-  Info
+  Info,
+  AlertTriangle,
+  ChevronDown
 } from 'lucide-react';
 import { usePWAInstall } from '../../hooks/usePWAInstall';
 
@@ -26,6 +28,7 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
 }) => {
   const { isInstallable, isInstalled, isIOS, isEmbedded, standaloneUrl, install } = usePWAInstall();
   const [showGuideModal, setShowGuideModal] = useState(false);
+  const [showRecoveryGuide, setShowRecoveryGuide] = useState(false);
   const [copied, setCopied] = useState(false);
 
   const resolvedVariant = variant || (compact ? 'compact' : 'header');
@@ -213,10 +216,53 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
                     <span>Install via Browser Menu</span>
                   </div>
                   <p className="text-xs text-slate-300 leading-relaxed">
-                    Tap the install icon in your browser address bar or choose <strong>Add to Home screen</strong> in your browser menu.
+                    Tap the install icon in your browser address bar or choose <strong>Install app</strong> / <strong>Add to Home screen</strong> in your Chrome menu.
                   </p>
                 </div>
               ) : null}
+
+              {!isIOS && (
+                <div className="rounded-xl bg-[#101C34] border border-[#1E304F] overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => setShowRecoveryGuide((prev) => !prev)}
+                    className="w-full min-h-[44px] px-4 py-2.5 flex items-center justify-between gap-2 text-left text-xs font-semibold text-amber-300 hover:bg-slate-900/60 transition-colors cursor-pointer"
+                    aria-expanded={showRecoveryGuide}
+                  >
+                    <span className="flex items-center gap-2 min-w-0">
+                      <AlertTriangle className="w-4 h-4 shrink-0 text-amber-400" />
+                      <span className="truncate">Android icon keeps stopping on launch?</span>
+                    </span>
+                    <ChevronDown
+                      className={`w-4 h-4 shrink-0 transition-transform duration-200 ${
+                        showRecoveryGuide ? 'rotate-180' : ''
+                      }`}
+                    />
+                  </button>
+                  {showRecoveryGuide && (
+                    <ol className="px-4 pb-4 pt-1 space-y-2 text-xs text-slate-300 leading-relaxed border-t border-[#1E304F]">
+                      <li className="flex items-start gap-2 pt-2">
+                        <span className="font-mono text-[11px] font-bold text-[#84E000]">1.</span>
+                        <span>
+                          Long-press the broken <strong>StudentComp</strong> home icon, tap <strong>App info</strong>, and choose <strong>Uninstall</strong>.
+                        </span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="font-mono text-[11px] font-bold text-[#84E000]">2.</span>
+                        <span>
+                          Update <strong>Google Chrome</strong> and <strong>Android System WebView</strong> in Play Store, then clear Chrome&apos;s cache in Settings &rarr; Apps &rarr; Chrome &rarr; Storage.
+                        </span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="font-mono text-[11px] font-bold text-[#84E000]">3.</span>
+                        <span>
+                          Reopen this page in Chrome and tap <strong>Menu (&vellip;) &rarr; Install app</strong> so Android builds a fresh launcher package.
+                        </span>
+                      </li>
+                    </ol>
+                  )}
+                </div>
+              )}
 
               <button
                 type="button"
