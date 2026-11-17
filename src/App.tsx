@@ -19,6 +19,7 @@ import { LandingPage } from './components/landing/LandingPage';
 import { KnowMorePage } from './components/landing/KnowMorePage';
 import { SignInPage } from './components/auth/SignInPage';
 import { SignUpPage } from './components/auth/SignUpPage';
+import { ApkGoogleAuthBridge } from './components/auth/ApkGoogleAuthBridge';
 import { AiStudyCoach } from './components/student/AiStudyCoach';
 import { StudentCommunityForum } from './components/student/StudentCommunityForum';
 import { GrowthPartnerPortal } from './components/partner/GrowthPartnerPortal';
@@ -691,6 +692,14 @@ const AppContent: React.FC = () => {
 };
 
 export default function App() {
+  const isApkGoogleAuthBridge =
+    typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).get('apk_auth') === '1';
+
+  if (isApkGoogleAuthBridge) {
+    return <ApkGoogleAuthBridge />;
+  }
+
   return (
     <AppProvider>
       <AppContent />

@@ -10,8 +10,11 @@ import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.webkit.CookieManager;
 import android.webkit.GeolocationPermissions;
+import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
@@ -21,23 +24,60 @@ import android.webkit.WebViewClient;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.browser.customtabs.CustomTabColorSchemeParams;
+import androidx.browser.customtabs.CustomTabsClient;
+import androidx.browser.customtabs.CustomTabsIntent;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import androidx.webkit.WebViewAssetLoader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Locale;
+import org.json.JSONObject;
 
 public class MainActivity extends AppCompatActivity {
     private static final String VIRTUAL_ORIGIN = "https://appassets.androidplatform.net";
     private static final String START_URL = VIRTUAL_ORIGIN + "/index.html";
+    private static final String AUTH_SCHEME = "studentcompanion";
+    private static final String AUTH_HOST = "auth-callback";
     private static final int LOCATION_PERMISSION_REQUEST_CODE = 1001;
+
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private WebView webView;
     private WebViewAssetLoader assetLoader;
+    private boolean pageFinished = false;
+    private boolean pendingCustomTabAuth = false;
+    @Nullable
+    private String pendingAuthCallbackJson = null;
+    @Nullable
+    private Runnable cancelCheckRunnable = null;
     @Nullable
     private GeolocationPermissions.Callback pendingGeoCallback;
     @Nullable
     private String pendingGeoOrigin;
+
+    private class AndroidAuthBridge {
+        @JavascriptInterface
+        public boolean isAvailable() {
+            return true;
+        }
+
+        @JavascriptInterface
+        public void startGoogleSignIn(String authUrl) {
+            mainHandler.post(() -> launchGoogleAuthCustomTab(authUrl));
+        }
+
+        @JavascriptInterface
+        public void cancelGoogleSignIn() {
+            mainHandler.post(() -> {
+                pendingCustomTabAuth = false;
+                if (cancelCheckRunnable != null) {
+                    mainHandler.removeCallbacks(cancelCheckRunnable);
+                    cancelCheckRunnable = null;
+                }
+            });
+        }
+    }
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
@@ -68,6 +108,8 @@ public class MainActivity extends AppCompatActivity {
 
         CookieManager.getInstance().setAcceptCookie(true);
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true);
+
+        webView.addJavascriptInterface(new AndroidAuthBridge(), "StudentCompanionAndroid");
 
         webView.setWebChromeClient(new WebChromeClient() {
             @Override
@@ -100,14 +142,34 @@ public class MainActivity extends AppCompatActivity {
             }
 
             @Override
+            public void onPageFinished(WebView view, String url) {
+                super.onPageFinished(view, url);
+                pageFinished = true;
+                if (pendingAuthCallbackJson != null) {
+                    String payload = pendingAuthCallbackJson;
+                    pendingAuthCallbackJson = null;
+                    deliverAuthCallbackToWebView(payload);
+                }
+            }
+
+            @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 Uri uri = request.getUrl();
+                String scheme = uri.getScheme();
                 String host = uri.getHost();
+                if (AUTH_SCHEME.equalsIgnoreCase(scheme) && AUTH_HOST.equalsIgnoreCase(host)) {
+                    handleAuthCallbackUri(uri);
+                    return true;
+                }
                 if ("appassets.androidplatform.net".equalsIgnoreCase(host)) {
                     return false;
                 }
-                if (host != null && (host.contains("paystack") || host.contains("firebaseapp.com") || host.contains("accounts.google.com"))) {
+                if (host != null && host.contains("paystack")) {
                     return false;
+                }
+                if (host != null && (host.contains("accounts.google.com") || host.contains("firebaseapp.com"))) {
+                    launchGoogleAuthCustomTab(uri.toString());
+                    return true;
                 }
                 try {
                     startActivity(new Intent(Intent.ACTION_VIEW, uri));
@@ -118,7 +180,130 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
+        handleIntent(getIntent());
         webView.loadUrl(START_URL);
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        handleIntent(intent);
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (pendingCustomTabAuth) {
+            if (cancelCheckRunnable != null) {
+                mainHandler.removeCallbacks(cancelCheckRunnable);
+            }
+            cancelCheckRunnable = () -> {
+                if (pendingCustomTabAuth) {
+                    pendingCustomTabAuth = false;
+                    if (webView != null && pageFinished) {
+                        webView.evaluateJavascript(
+                            "window.__handleApkGoogleAuthCancelled && window.__handleApkGoogleAuthCancelled();",
+                            null
+                        );
+                    }
+                }
+            };
+            mainHandler.postDelayed(cancelCheckRunnable, 650);
+        }
+    }
+
+    private void launchGoogleAuthCustomTab(String rawUrl) {
+        if (rawUrl == null || rawUrl.trim().isEmpty()) {
+            return;
+        }
+        Uri authUri = Uri.parse(rawUrl);
+        pendingCustomTabAuth = true;
+        if (cancelCheckRunnable != null) {
+            mainHandler.removeCallbacks(cancelCheckRunnable);
+            cancelCheckRunnable = null;
+        }
+
+        try {
+            CustomTabColorSchemeParams colorParams = new CustomTabColorSchemeParams.Builder()
+                .setToolbarColor(Color.parseColor("#101C34"))
+                .setSecondaryToolbarColor(Color.parseColor("#0C172B"))
+                .build();
+
+            CustomTabsIntent.Builder builder = new CustomTabsIntent.Builder()
+                .setDefaultColorSchemeParams(colorParams)
+                .setShowTitle(true);
+
+            CustomTabsIntent customTabsIntent = builder.build();
+            String customTabsPkg = CustomTabsClient.getPackageName(this, null);
+            if (customTabsPkg != null && !customTabsPkg.isEmpty()) {
+                customTabsIntent.intent.setPackage(customTabsPkg);
+            }
+            customTabsIntent.launchUrl(this, authUri);
+        } catch (Exception customTabError) {
+            try {
+                Intent browserIntent = new Intent(Intent.ACTION_VIEW, authUri);
+                browserIntent.addCategory(Intent.CATEGORY_BROWSABLE);
+                startActivity(browserIntent);
+            } catch (Exception browserError) {
+                pendingCustomTabAuth = false;
+                try {
+                    JSONObject errJson = new JSONObject();
+                    errJson.put("error", "Unable to launch Chrome browser for Google Sign-In.");
+                    deliverAuthCallbackToWebView(errJson.toString());
+                } catch (Exception ignored) {
+                }
+            }
+        }
+    }
+
+    private void handleIntent(@Nullable Intent intent) {
+        if (intent == null) return;
+        Uri data = intent.getData();
+        if (data != null && AUTH_SCHEME.equalsIgnoreCase(data.getScheme()) && AUTH_HOST.equalsIgnoreCase(data.getHost())) {
+            handleAuthCallbackUri(data);
+        }
+    }
+
+    private void handleAuthCallbackUri(@NonNull Uri uri) {
+        pendingCustomTabAuth = false;
+        if (cancelCheckRunnable != null) {
+            mainHandler.removeCallbacks(cancelCheckRunnable);
+            cancelCheckRunnable = null;
+        }
+
+        String idToken = uri.getQueryParameter("id_token");
+        String state = uri.getQueryParameter("state");
+        String error = uri.getQueryParameter("error");
+
+        if ((idToken == null || idToken.isEmpty()) && uri.getFragment() != null) {
+            Uri fragmentUri = Uri.parse("https://localhost/?" + uri.getFragment());
+            if (idToken == null || idToken.isEmpty()) idToken = fragmentUri.getQueryParameter("id_token");
+            if (state == null || state.isEmpty()) state = fragmentUri.getQueryParameter("state");
+            if (error == null || error.isEmpty()) error = fragmentUri.getQueryParameter("error");
+        }
+
+        try {
+            JSONObject payload = new JSONObject();
+            if (idToken != null) payload.put("idToken", idToken);
+            if (state != null) payload.put("state", state);
+            if (error != null) payload.put("error", error);
+            deliverAuthCallbackToWebView(payload.toString());
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void deliverAuthCallbackToWebView(@NonNull String jsonPayload) {
+        mainHandler.post(() -> {
+            if (webView == null || !pageFinished) {
+                pendingAuthCallbackJson = jsonPayload;
+                return;
+            }
+            webView.evaluateJavascript(
+                "window.__handleApkGoogleAuthCallback && window.__handleApkGoogleAuthCallback(" + jsonPayload + ");",
+                null
+            );
+        });
     }
 
     @Override

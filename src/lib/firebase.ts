@@ -4,6 +4,7 @@ import {
   GoogleAuthProvider,
   signInWithPopup,
   signInWithRedirect,
+  signInWithCredential,
   getRedirectResult,
   signOut,
   User
@@ -223,6 +224,73 @@ if (typeof window !== 'undefined') {
   }, 1200);
 }
 
+export const FIREBASE_PROJECT_ID = String((firebaseConfig as any).projectId || '').trim();
+export const FIREBASE_AUTH_CONSOLE_URL = FIREBASE_PROJECT_ID
+  ? `https://console.firebase.google.com/project/${FIREBASE_PROJECT_ID}/authentication/settings`
+  : 'https://console.firebase.google.com';
+
+const DEFAULT_APK_WEB_AUTH_ORIGIN = 'https://studentcompanionng.netlify.app';
+const APK_AUTH_STATE_KEY = 'sc_apk_custom_tab_oauth_state';
+
+declare global {
+  interface Window {
+    StudentCompanionAndroid?: {
+      isAvailable?: () => boolean;
+      startGoogleSignIn?: (authUrl: string) => void;
+      cancelGoogleSignIn?: () => void;
+    };
+    __handleApkGoogleAuthCallback?: (payload: {
+      idToken?: string;
+      state?: string;
+      error?: string;
+    }) => void;
+    __handleApkGoogleAuthCancelled?: () => void;
+  }
+}
+
+export function isBundledAndroidApkEnvironment(): boolean {
+  if (typeof window === 'undefined') return false;
+  return (
+    window.location.hostname === 'appassets.androidplatform.net' ||
+    Boolean(window.StudentCompanionAndroid?.isAvailable?.())
+  );
+}
+
+export function hasAndroidCustomTabBridge(): boolean {
+  if (typeof window === 'undefined') return false;
+  return Boolean(
+    window.StudentCompanionAndroid?.isAvailable?.() &&
+      typeof window.StudentCompanionAndroid?.startGoogleSignIn === 'function'
+  );
+}
+
+function generateOAuthStateNonce(): string {
+  try {
+    if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+      const bytes = new Uint8Array(16);
+      crypto.getRandomValues(bytes);
+      return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+    }
+  } catch {
+    // Fallback below
+  }
+  return `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 12)}`;
+}
+
+function resolveApkWebAuthOrigin(): string {
+  if (typeof window !== 'undefined') {
+    try {
+      const override = window.localStorage.getItem('sc_apk_web_auth_origin')?.trim();
+      if (override && /^https:\/\/[a-z0-9.-]+$/i.test(override)) {
+        return override.replace(/\/+$/, '');
+      }
+    } catch {
+      // Ignore storage error
+    }
+  }
+  return DEFAULT_APK_WEB_AUTH_ORIGIN;
+}
+
 function normalizeFirebaseAuthError(error: any): Error {
   const hostname = typeof window !== 'undefined' ? window.location.hostname : '';
   const code =
@@ -234,6 +302,149 @@ function normalizeFirebaseAuthError(error: any): Error {
   (wrapped as any).code = code;
   (wrapped as any).domain = hostname;
   return wrapped;
+}
+
+export async function signInWithApkCustomTab(): Promise<User> {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    const err = new Error('Internet connection is required for Google Sign-In. Connect online or sign in with your saved Email & Password.');
+    (err as any).code = 'auth/network-request-failed';
+    throw err;
+  }
+
+  if (!hasAndroidCustomTabBridge()) {
+    const err = new Error('Android Chrome Custom Tab bridge is unavailable on this build.');
+    (err as any).code = 'auth/custom-tab-unavailable';
+    throw err;
+  }
+
+  const expectedState = generateOAuthStateNonce();
+  try {
+    window.sessionStorage.setItem(APK_AUTH_STATE_KEY, expectedState);
+  } catch {
+    // Non-fatal if sessionStorage unavailable; expectedState remains in closure
+  }
+
+  const authBridgeUrl = `${resolveApkWebAuthOrigin()}/?apk_auth=1&state=${encodeURIComponent(expectedState)}`;
+
+  return await new Promise<User>((resolve, reject) => {
+    let settled = false;
+    const cleanup = () => {
+      window.__handleApkGoogleAuthCallback = undefined;
+      window.__handleApkGoogleAuthCancelled = undefined;
+      window.clearTimeout(timeoutId);
+      try {
+        window.sessionStorage.removeItem(APK_AUTH_STATE_KEY);
+      } catch {
+        // Ignore storage error
+      }
+    };
+
+    const failWith = (code: string, message: string) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      window.StudentCompanionAndroid?.cancelGoogleSignIn?.();
+      const err = new Error(message);
+      (err as any).code = code;
+      (err as any).domain = resolveApkWebAuthOrigin().replace(/^https?:\/\//, '');
+      reject(err);
+    };
+
+    const timeoutId = window.setTimeout(() => {
+      failWith('auth/popup-closed-by-user', 'Google Sign-In in Chrome timed out before completing.');
+    }, 180_000);
+
+    window.__handleApkGoogleAuthCancelled = () => {
+      failWith(
+        'auth/popup-closed-by-user',
+        'Chrome Sign-In was closed before finishing. Tap "Continue with Google" to try again, or use Email & Password.'
+      );
+    };
+
+    window.__handleApkGoogleAuthCallback = async (payload) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+
+      const storedState = (() => {
+        try {
+          return window.sessionStorage.getItem(APK_AUTH_STATE_KEY) || expectedState;
+        } catch {
+          return expectedState;
+        }
+      })();
+
+      if (payload?.error) {
+        const err = new Error(payload.error);
+        (err as any).code = payload.error.includes('unauthorized-domain')
+          ? 'auth/unauthorized-domain'
+          : 'auth/custom-tab-failed';
+        (err as any).domain = resolveApkWebAuthOrigin().replace(/^https?:\/\//, '');
+        reject(err);
+        return;
+      }
+
+      if (!payload?.idToken) {
+        const err = new Error('Google Sign-In did not return a verification token.');
+        (err as any).code = 'auth/missing-credential';
+        reject(err);
+        return;
+      }
+
+      if (payload.state && payload.state !== expectedState && payload.state !== storedState) {
+        const err = new Error('Google Sign-In verification state mismatch. Please retry.');
+        (err as any).code = 'auth/invalid-credential';
+        reject(err);
+        return;
+      }
+
+      try {
+        const credential = GoogleAuthProvider.credential(payload.idToken);
+        const result = await signInWithCredential(auth, credential);
+        resolve(result.user);
+      } catch (credErr: any) {
+        reject(normalizeFirebaseAuthError(credErr));
+      }
+    };
+
+    try {
+      window.StudentCompanionAndroid?.startGoogleSignIn?.(authBridgeUrl);
+    } catch (launchErr: any) {
+      failWith('auth/custom-tab-failed', launchErr?.message || 'Unable to open Chrome Custom Tab for Google Sign-In.');
+    }
+  });
+}
+
+export async function signInGoogleInCustomTabBridge(): Promise<{ idToken: string }> {
+  try {
+    const result = await signInWithPopup(auth, googleProvider);
+    const credential = GoogleAuthProvider.credentialFromResult(result);
+    const idToken = credential?.idToken || '';
+    if (!idToken) {
+      throw new Error('Google OAuth credential ID token was not returned.');
+    }
+    return { idToken };
+  } catch (error: any) {
+    const normalized = normalizeFirebaseAuthError(error);
+    if ((normalized as any).code === 'auth/popup-blocked') {
+      await signInWithRedirect(auth, googleProvider);
+      return await new Promise(() => {
+        // Redirecting current Custom Tab window
+      });
+    }
+    throw normalized;
+  }
+}
+
+export async function consumeApkBridgeRedirectIdToken(): Promise<string | null> {
+  try {
+    const result = await getRedirectResult(auth);
+    if (!result) return null;
+    const credential = GoogleAuthProvider.credentialFromResult(result);
+    return credential?.idToken || null;
+  } catch (error: any) {
+    throw normalizeFirebaseAuthError(error);
+  }
 }
 
 export async function signInWithGoogle(): Promise<User> {

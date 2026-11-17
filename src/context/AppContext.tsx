@@ -128,6 +128,10 @@ import { INITIAL_USER_DIRECTORY } from '../data/mockUsersData';
 import {
   auth,
   db,
+  FIREBASE_PROJECT_ID,
+  hasAndroidCustomTabBridge,
+  isBundledAndroidApkEnvironment,
+  signInWithApkCustomTab,
   signInWithGoogle,
   signInWithGoogleRedirect,
   consumeGoogleRedirectResult,
@@ -1959,6 +1963,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     returnTarget: GoogleAuthReturnTarget = 'app'
   ): Promise<{ success: boolean; redirecting?: boolean; error?: string; code?: string }> => {
     setGoogleAuthError(null);
+    if (hasAndroidCustomTabBridge()) {
+      try {
+        const user = await signInWithApkCustomTab();
+        const finalized = await finalizeGoogleUserSession(user, {
+          skipNavigate: returnTarget === 'ota_app_updates'
+        });
+        return { success: finalized.success, error: finalized.error, code: finalized.code };
+      } catch (error: any) {
+        const code = error?.code || 'auth/custom-tab-failed';
+        const msg = error?.message || 'Unable to complete Google Sign-In in Chrome Custom Tab.';
+        setGoogleAuthError(msg);
+        return { success: false, error: msg, code };
+      }
+    }
     try {
       await signInWithGoogleRedirect(returnTarget);
       return { success: true, redirecting: true };
@@ -1967,7 +1985,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const domain = error?.domain || (typeof window !== 'undefined' ? window.location.hostname : '');
       const msg =
         code === 'auth/unauthorized-domain'
-          ? `Firebase Auth rejected domain "${domain}" (${code}). Add "${domain}" in Firebase Console → Authentication → Settings → Authorized domains.`
+          ? `Firebase Auth (${FIREBASE_PROJECT_ID}) rejected domain "${domain}" (${code}). Add "${domain}" in Firebase Console → Authentication → Settings → Authorized domains.`
           : error?.message || `Unable to launch Google redirect sign-in (${code}).`;
       setGoogleAuthError(msg);
       return { success: false, error: msg, code };
@@ -1995,8 +2013,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       returnTarget?: GoogleAuthReturnTarget;
     }) : {};
     const skipNavigate = Boolean(opts.skipNavigate);
-    const isBundledAndroidApk =
-      typeof window !== 'undefined' && window.location.hostname === 'appassets.androidplatform.net';
+    const isBundledAndroidApk = isBundledAndroidApkEnvironment();
     const allowRedirectFallback = opts.allowRedirectFallback !== undefined
       ? Boolean(opts.allowRedirectFallback)
       : isBundledAndroidApk;
@@ -2004,6 +2021,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const returnTarget: GoogleAuthReturnTarget = opts.returnTarget || (skipNavigate ? 'ota_app_updates' : 'app');
 
     setGoogleAuthError(null);
+
+    if (hasAndroidCustomTabBridge()) {
+      try {
+        const user = await signInWithApkCustomTab();
+        return await finalizeGoogleUserSession(user, { skipNavigate });
+      } catch (error: any) {
+        const code: string = error?.code || 'auth/custom-tab-failed';
+        const domain: string = error?.domain || 'studentcompanionng.netlify.app';
+        const msg =
+          code === 'auth/unauthorized-domain'
+            ? `Firebase Auth (${FIREBASE_PROJECT_ID}) rejected "${domain}" (${code}). Add "${domain}" under Authorized domains in project ${FIREBASE_PROJECT_ID}, then retry.`
+            : error?.message || `Google Sign-In in Chrome failed (${code}). You can retry or sign in with Email & Password.`;
+        setGoogleAuthError(msg);
+        return {
+          success: false,
+          code,
+          domain,
+          canRetryRedirect: false,
+          error: msg
+        };
+      }
+    }
 
     if (forceRedirect) {
       const redirRes = await loginWithGoogleRedirect(returnTarget);
@@ -2024,7 +2063,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       console.warn('Google Sign In:', code, error?.message || error);
 
       if (code === 'auth/unauthorized-domain') {
-        const msg = `Firebase Auth rejected domain "${domain}" (${code}). Add "${domain}" under Firebase Console → Authentication → Settings → Authorized domains, then retry.`;
+        const msg =
+          isBundledAndroidApk
+            ? `Firebase Auth (${FIREBASE_PROJECT_ID}) rejected "${domain}" (${code}). Google also restricts OAuth inside embedded WebViews — update to the latest APK for Chrome Custom Tab sign-in or use Email & Password.`
+            : `Firebase Auth (${FIREBASE_PROJECT_ID}) rejected domain "${domain}" (${code}). Add "${domain}" under Firebase Console (${FIREBASE_PROJECT_ID}) → Authentication → Settings → Authorized domains, then retry.`;
         setGoogleAuthError(msg);
         return {
           success: false,
