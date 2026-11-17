@@ -94,11 +94,11 @@ export const OfflineIndicator: React.FC = () => {
         <div className="flex items-center gap-2 pl-3.5 pr-1.5 py-1.5 rounded-xl bg-[#0B1526]/95 backdrop-blur-md border border-sky-500/60 shadow-xl text-xs text-sky-100">
           <RefreshCw className="w-4 h-4 text-sky-400 animate-spin shrink-0" />
           <span className="font-semibold whitespace-nowrap">
-            Waking cloud server…
+            Getting Student Companion ready…
           </span>
-          <span className="text-slate-400 hidden sm:inline whitespace-nowrap">·</span>
-          <span className="text-slate-300 hidden sm:inline whitespace-nowrap">
-            Usually 15–30s
+          <span className="text-slate-400 whitespace-nowrap">·</span>
+          <span className="text-slate-300 whitespace-nowrap">
+            15–30s
           </span>
           {wakeElapsedSec > 0 && (
             <span className="font-mono tabular-nums text-sky-300 font-semibold whitespace-nowrap">
@@ -109,7 +109,7 @@ export const OfflineIndicator: React.FC = () => {
             type="button"
             onClick={() => setWakeDismissed(true)}
             className="min-h-[40px] min-w-[40px] -my-1 flex items-center justify-center text-slate-400 hover:text-white rounded-lg cursor-pointer"
-            aria-label="Dismiss cloud wake notice"
+            aria-label="Dismiss readiness notice"
           >
             <X className="w-3.5 h-3.5" />
           </button>

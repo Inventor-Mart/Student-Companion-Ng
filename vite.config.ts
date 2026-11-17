@@ -7,7 +7,7 @@ import { VitePWA } from 'vite-plugin-pwa';
 
 const pkgJson = JSON.parse(fs.readFileSync(path.resolve(import.meta.dirname, 'package.json'), 'utf8'));
 
-export default defineConfig(() => {
+export default defineConfig(({ command }) => {
   return {
     define: {
       __APP_VERSION__: JSON.stringify(pkgJson.version || '2.4.0'),
@@ -15,17 +15,19 @@ export default defineConfig(() => {
     plugins: [
       react(),
       tailwindcss(),
-      VitePWA({
-        registerType: 'autoUpdate',
-        includeAssets: [
-          'icon.svg',
-          'apple-touch-icon.png',
-          'pwa-192x192.png',
-          'pwa-512x512.png',
-          'pwa-maskable-512x512.png',
-          'ios-icon-1024x1024.png',
-          'sw-notifications.js',
-        ],
+      ...(command === 'build'
+        ? [
+            VitePWA({
+              registerType: 'autoUpdate',
+              includeAssets: [
+                'icon.svg',
+                'apple-touch-icon.png',
+                'pwa-192x192.png',
+                'pwa-512x512.png',
+                'pwa-maskable-512x512.png',
+                'ios-icon-1024x1024.png',
+                'sw-notifications.js',
+              ],
         manifest: {
           id: '/',
           name: 'Student Companion',
@@ -114,7 +116,9 @@ export default defineConfig(() => {
           enabled: false,
           type: 'module',
         },
-      }),
+            }),
+          ]
+        : []),
     ],
     resolve: {
       alias: {

@@ -1019,14 +1019,18 @@ export async function fetchLatestGitHubApkRelease(): Promise<GitHubApkReleaseInf
  */
 export async function fetchLiveOTAAppRelease(): Promise<OTAAppReleaseConfig | null> {
   const docRef = doc(db, 'otaAppReleases', 'active_release');
+  const boundedFirestoreRead = Promise.race([
+    getDocFromServer(docRef).catch(() => null),
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), 6000)),
+  ]);
 
   const [firestoreRes, serverRes] = await Promise.allSettled([
-    getDocFromServer(docRef),
+    boundedFirestoreRead,
     fetch('/api/ota/state', { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)),
   ]);
 
   let fsRelease: OTAAppReleaseConfig | null = null;
-  if (firestoreRes.status === 'fulfilled' && firestoreRes.value.exists()) {
+  if (firestoreRes.status === 'fulfilled' && firestoreRes.value && firestoreRes.value.exists()) {
     fsRelease = sanitizeReleaseConfig(
       firestoreRes.value.data() as Partial<OTAAppReleaseConfig>
     );

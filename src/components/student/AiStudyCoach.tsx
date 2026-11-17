@@ -16,6 +16,7 @@ import {
 import { playSound } from '../../utils/audioSynthesis';
 import { RichMathMarkdown } from '../common/RichMathMarkdown';
 import { getFirebaseAuthHeaders } from '../../lib/firebase';
+import { getSecurityHeaders } from '../../utils/securityGuard';
 
 interface AiStudyCoachProps {
   initialSubject?: string;
@@ -155,10 +156,21 @@ export const AiStudyCoach: React.FC<AiStudyCoachProps> = ({
     initialTopic ? `Explain ${initialTopic} step-by-step according to the NERDC curriculum with practice questions and exam tips.` : ''
   );
   const [loading, setLoading] = useState(false);
+  const [isWakingCloud, setIsWakingCloud] = useState<boolean>(() =>
+    typeof window !== 'undefined' ? Boolean((window as any).__SC_CLOUD_WAKING__) : false
+  );
   const [responseMarkdown, setResponseMarkdown] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [quota, setQuota] = useState<AICoachQuotaStatus | null>(null);
+
+  useEffect(() => {
+    const handleWakeChange = (evt: Event) => {
+      setIsWakingCloud(Boolean((evt as CustomEvent<{ waking?: boolean }>)?.detail?.waking));
+    };
+    window.addEventListener('sc:cloud-wake-change', handleWakeChange);
+    return () => window.removeEventListener('sc:cloud-wake-change', handleWakeChange);
+  }, []);
 
   const [conversationHistory, setConversationHistory] = useState<Array<{ role: 'user' | 'model'; text: string }>>([]);
 
@@ -173,7 +185,13 @@ export const AiStudyCoach: React.FC<AiStudyCoachProps> = ({
       });
       const authHeaders = await getFirebaseAuthHeaders();
       const res = await fetch(`/api/ai/study-coach/quota?${qs.toString()}`, {
-        headers: authHeaders
+        headers: {
+          ...getSecurityHeaders({
+            userId: student.id || currentUserProfile?.id,
+            userEmail: currentUserProfile?.email,
+          }),
+          ...authHeaders,
+        },
       });
       if (res.ok) {
         const data = await res.json();
@@ -232,14 +250,32 @@ export const AiStudyCoach: React.FC<AiStudyCoachProps> = ({
       return;
     }
 
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      setErrorMessage(
+        'You appear to be offline. Reconnect to the internet to ask SC AI Study Coach.'
+      );
+      return;
+    }
+
     setLoading(true);
     setErrorMessage(null);
+
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const timeoutId = controller ? window.setTimeout(() => controller.abort(), 75000) : null;
 
     try {
       const authHeaders = await getFirebaseAuthHeaders();
       const res = await fetch('/api/gemini/study-tutor', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...authHeaders },
+        headers: {
+          'Content-Type': 'application/json',
+          ...getSecurityHeaders({
+            userId: student.id || currentUserProfile?.id,
+            userEmail: currentUserProfile?.email,
+          }),
+          ...authHeaders,
+        },
+        ...(controller ? { signal: controller.signal } : {}),
         body: JSON.stringify({
           prompt: promptToSend,
           subject,
@@ -285,11 +321,31 @@ export const AiStudyCoach: React.FC<AiStudyCoachProps> = ({
         reason: `SC AI Study Guidance (${subject})`
       });
     } catch (err: any) {
-      console.error('Study Coach Error:', err);
-      setErrorMessage(
-        err.message || 'Unable to reach the study coach. Please check your network connection.'
-      );
+      const rawMsg = String(err?.message || '');
+      const isNetworkDrop =
+        err?.name === 'TypeError' ||
+        rawMsg.toLowerCase().includes('failed to fetch') ||
+        rawMsg.toLowerCase().includes('networkerror') ||
+        rawMsg.toLowerCase().includes('load failed');
+      const isTimeout = err?.name === 'AbortError';
+      console.warn('Study Coach notice:', rawMsg || err);
+      if (isTimeout) {
+        setErrorMessage(
+          'Your Study Coach is taking a little longer than usual. Please tap Retry.'
+        );
+      } else if (isNetworkDrop) {
+        setErrorMessage(
+          "We couldn't reach your Study Coach just now. Please check your internet connection and tap Retry."
+        );
+      } else {
+        setErrorMessage(
+          rawMsg || 'Unable to reach the study coach. Please check your network connection.'
+        );
+      }
     } finally {
+      if (timeoutId !== null) {
+        window.clearTimeout(timeoutId);
+      }
       setLoading(false);
     }
   };
@@ -609,7 +665,7 @@ export const AiStudyCoach: React.FC<AiStudyCoachProps> = ({
               {loading ? (
                 <>
                   <RefreshCw className="w-4 h-4 animate-spin" />
-                  <span>Analyzing Question...</span>
+                  <span>{isWakingCloud ? 'Getting your Study Coach ready...' : 'Analyzing your question...'}</span>
                 </>
               ) : isDailyLimitReached ? (
                 <>
@@ -629,8 +685,19 @@ export const AiStudyCoach: React.FC<AiStudyCoachProps> = ({
 
       {/* Error Banner */}
       {errorMessage && (
-        <div className="bg-red-950/80 border-2 border-red-800 rounded-2xl p-3 text-xs text-red-200">
-          <strong>Error: </strong> {errorMessage}
+        <div className="bg-red-950/80 border-2 border-red-800 rounded-2xl p-3 text-xs text-red-200 flex items-center justify-between gap-3">
+          <div>
+            <strong>Notice: </strong> {errorMessage}
+          </div>
+          {userPrompt.trim() && !loading && (
+            <button
+              type="button"
+              onClick={() => handleSendPrompt()}
+              className="px-3 py-1.5 rounded-xl bg-red-900 hover:bg-red-800 text-white font-bold text-xs whitespace-nowrap shrink-0 cursor-pointer"
+            >
+              Retry
+            </button>
+          )}
         </div>
       )}
 

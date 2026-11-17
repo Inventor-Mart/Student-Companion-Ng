@@ -8,20 +8,53 @@ import {
   signOut,
   User
 } from 'firebase/auth';
-import { initializeFirestore, getFirestore, doc, getDocFromServer } from 'firebase/firestore';
+import {
+  initializeFirestore,
+  getFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+  memoryLocalCache,
+  doc,
+  getDocFromServer,
+  type Firestore
+} from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
+const firestoreDbId = (firebaseConfig as any).firestoreDatabaseId;
+let firestoreDb: Firestore;
 try {
-  initializeFirestore(
+  firestoreDb = initializeFirestore(
     app,
-    { experimentalAutoDetectLongPolling: true, ignoreUndefinedProperties: true },
-    (firebaseConfig as any).firestoreDatabaseId
+    {
+      experimentalForceLongPolling: true,
+      experimentalLongPollingOptions: { timeoutSeconds: 20 },
+      ignoreUndefinedProperties: true,
+      localCache:
+        typeof window !== 'undefined' && typeof indexedDB !== 'undefined'
+          ? persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+          : memoryLocalCache()
+    },
+    firestoreDbId
   );
 } catch {
-  // Ignore if Firestore was already initialized during hot reload
+  try {
+    firestoreDb = initializeFirestore(
+      app,
+      {
+        experimentalForceLongPolling: true,
+        experimentalLongPollingOptions: { timeoutSeconds: 20 },
+        ignoreUndefinedProperties: true,
+        localCache: memoryLocalCache()
+      },
+      firestoreDbId
+    );
+  } catch {
+    // Fallback if Firestore was already initialized during hot reload
+    firestoreDb = getFirestore(app, firestoreDbId); /* CRITICAL: The app will break without this line */
+  }
 }
-export const db = getFirestore(app, (firebaseConfig as any).firestoreDatabaseId); /* CRITICAL: The app will break without this line */
+export const db = firestoreDb;
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: 'select_account' });
@@ -107,6 +140,47 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   throw new Error(JSON.stringify(errInfo));
 }
 
+async function verifyFirestoreConfigViaRest(): Promise<'ok' | 'invalid_config' | 'network_unreachable'> {
+  const projectId = String((firebaseConfig as any).projectId || '').trim();
+  const apiKey = String((firebaseConfig as any).apiKey || '').trim();
+  const databaseId = String(firestoreDbId || '(default)').trim();
+  if (!projectId || !apiKey || projectId === 'remixed-project-id') {
+    return 'invalid_config';
+  }
+  if (typeof fetch !== 'function') {
+    return 'network_unreachable';
+  }
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timer = controller ? setTimeout(() => controller.abort(), 5000) : null;
+  try {
+    const url = `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/${encodeURIComponent(databaseId)}/documents/test/connection?key=${encodeURIComponent(apiKey)}`;
+    const response = await fetch(url, {
+      method: 'GET',
+      cache: 'no-store',
+      ...(controller ? { signal: controller.signal } : {}),
+    });
+    if (response.status === 200) return 'ok';
+    if (response.status === 404) {
+      const bodyText = await response.text().catch(() => '');
+      if (bodyText.toLowerCase().includes('database') && bodyText.toLowerCase().includes('does not exist')) {
+        return 'invalid_config';
+      }
+      return 'ok';
+    }
+    if (response.status === 400 || response.status === 403) {
+      const bodyText = await response.text().catch(() => '');
+      if (bodyText.toLowerCase().includes('api key') || bodyText.toLowerCase().includes('project')) {
+        return 'invalid_config';
+      }
+    }
+    return 'network_unreachable';
+  } catch {
+    return 'network_unreachable';
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 export async function testConnection(): Promise<void> {
   // If browser is in offline mode, skip server probe to allow smooth offline operations
   if (typeof navigator !== 'undefined' && !navigator.onLine) {
@@ -115,17 +189,28 @@ export async function testConnection(): Promise<void> {
   try {
     await getDocFromServer(doc(db, 'test', 'connection'));
   } catch (error) {
-    const errMessage = error instanceof Error ? error.message : String(error);
-    // Transient backend timeouts or network latency should not trigger false-alarm configuration errors
-    if (
+    const errCode = String((error as any)?.code || '').toLowerCase();
+    const errMessage = (error instanceof Error ? error.message : String(error)).toLowerCase();
+    const isTransientOfflineOrTimeout =
+      errCode === 'unavailable' ||
+      errCode === 'deadline-exceeded' ||
+      errCode === 'aborted' ||
       errMessage.includes("didn't respond within") ||
       errMessage.includes('timeout') ||
-      errMessage.includes('unavailable')
-    ) {
-      console.warn("Firestore backend delayed; operating in offline persistence mode.");
+      errMessage.includes('unavailable') ||
+      errMessage.includes('the client is offline');
+
+    if (isTransientOfflineOrTimeout) {
+      const restStatus = await verifyFirestoreConfigViaRest();
+      if (restStatus === 'invalid_config') {
+        console.error("Please check your Firebase configuration.");
+      } else {
+        console.warn("Firestore realtime channel delayed; operating in offline persistence mode.");
+      }
       return;
     }
-    if (error instanceof Error && error.message.includes('the client is offline') && (typeof navigator === 'undefined' || navigator.onLine)) {
+
+    if (errMessage.includes('not found') || errMessage.includes('invalid')) {
       console.error("Please check your Firebase configuration.");
     }
   }
@@ -135,7 +220,7 @@ export async function testConnection(): Promise<void> {
 if (typeof window !== 'undefined') {
   setTimeout(() => {
     testConnection().catch(() => {});
-  }, 1000);
+  }, 1200);
 }
 
 function normalizeFirebaseAuthError(error: any): Error {

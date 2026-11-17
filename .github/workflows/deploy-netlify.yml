@@ -18,7 +18,6 @@ jobs:
   deploy-netlify:
     name: Build & Deploy PWA Frontend to Netlify
     runs-on: ubuntu-latest
-
     steps:
       - name: Check Netlify Secrets Configuration
         id: cfg

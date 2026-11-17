@@ -354,6 +354,38 @@ export class SecurityService {
         };
       }
 
+      // Clean up any accidental auto-blocks triggered by an authorized Super Admin email
+      const ownerProbeIps = new Set(
+        memoryStore.incidents
+          .filter(
+            inc =>
+              inc.category === 'unauthorized_probe' &&
+              inc.ipAddress &&
+              isAuthorizedSuperAdmin(inc.actorEmail)
+          )
+          .map(inc => inc.ipAddress as string)
+      );
+      let clearedOwnerBlocks = false;
+      for (const blk of memoryStore.blocks) {
+        if (
+          blk.active &&
+          blk.createdBy === 'auto_shield' &&
+          ((blk.blockType === 'ip' && ownerProbeIps.has(blk.targetValue)) ||
+            isAuthorizedSuperAdmin(blk.targetValue))
+        ) {
+          blk.active = false;
+          blk.reason = `${blk.reason} (Cleared: verified owner exemption)`;
+          blk.updatedAt = new Date().toISOString();
+          clearedOwnerBlocks = true;
+          if (this.firestoreSecurityRulesAvailable) {
+            void setDoc(doc(this.db, 'security_blocks', blk.id), blk, { merge: true }).catch(() => {});
+          }
+        }
+      }
+      if (clearedOwnerBlocks) {
+        saveDiskStore();
+      }
+
       saveDiskStore();
     } catch (err) {
       // Non-fatal if Firestore security rules aren't deployed yet; disk/memory store continues working
@@ -857,6 +889,26 @@ export class SecurityService {
   async logUnauthorizedProbe(req: Request, endpoint: string, attemptedEmail?: string): Promise<void> {
     const ip = extractClientIp(req);
     const fp = extractDeviceFingerprint(req);
+    const isOwnerAttempt = Boolean(attemptedEmail && isAuthorizedSuperAdmin(attemptedEmail));
+
+    // Never auto-block the platform owner's IP/device when a transient auth verification token misses/times out
+    if (isOwnerAttempt) {
+      await this.recordIncident({
+        category: 'unauthorized_probe',
+        severity: 'medium',
+        status: 'open',
+        source: 'server_guard',
+        title: `Super Admin Auth Verification Notice on ${endpoint}`,
+        description: `Super Admin caller (${attemptedEmail}) reached ${endpoint} without a verified bearer session. Rejected cleanly without auto-blocking owner IP.`,
+        actorEmail: attemptedEmail || undefined,
+        ipAddress: ip,
+        deviceFingerprint: fp,
+        endpoint,
+        actionTaken: '403 Rejected (Owner IP Exempt from Auto-Block)'
+      });
+      return;
+    }
+
     const probeKey = `${ip}:${fp}`;
     const count = (probeCountMap.get(probeKey) || 0) + 1;
     probeCountMap.set(probeKey, count);
@@ -1016,11 +1068,11 @@ export class SecurityService {
       const headerUserId = req.headers['x-user-id'] ? String(req.headers['x-user-id']) : undefined;
       const headerEmail = req.headers['x-user-email'] ? String(req.headers['x-user-email']) : undefined;
 
-      // Never lock out verified Super Admins
+      // Never lock out verified Super Admins across any platform service endpoint
       const reqAdminEmail = String(req.query?.adminEmail || req.body?.adminEmail || headerEmail || '')
         .toLowerCase()
         .trim();
-      if (isAuthorizedSuperAdmin(reqAdminEmail) && (path.startsWith('/security/') || path.startsWith('/git/'))) {
+      if (isAuthorizedSuperAdmin(reqAdminEmail)) {
         return next();
       }
 

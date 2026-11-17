@@ -40,6 +40,46 @@ if (typeof window !== 'undefined' && typeof window.fetch === 'function') {
     );
   };
 
+  const waitWithSignal = (ms: number, signal?: AbortSignal | null): Promise<boolean> => {
+    if (signal?.aborted) return Promise.resolve(false);
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return Promise.resolve(false);
+    return new Promise((resolve) => {
+      let settled = false;
+      const onAbort = () => {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(timer);
+        signal?.removeEventListener('abort', onAbort);
+        resolve(false);
+      };
+      const timer = window.setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        signal?.removeEventListener('abort', onAbort);
+        resolve(true);
+      }, ms);
+      signal?.addEventListener('abort', onAbort, { once: true });
+    });
+  };
+
+  const probeHealthReady = async (healthUrl: string, timeoutMs = 4500): Promise<boolean> => {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return false;
+    const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const timer = ctrl ? window.setTimeout(() => ctrl.abort(), timeoutMs) : null;
+    try {
+      const res = await nativeFetch(healthUrl, {
+        method: 'GET',
+        cache: 'no-store',
+        ...(ctrl ? { signal: ctrl.signal } : {}),
+      });
+      return res.ok;
+    } catch {
+      return false;
+    } finally {
+      if (timer !== null) window.clearTimeout(timer);
+    }
+  };
+
   const wrappedFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const rawUrl =
       typeof input === 'string'
@@ -58,8 +98,21 @@ if (typeof window !== 'undefined' && typeof window.fetch === 'function') {
     const method = String(
       init?.method || (input instanceof Request ? input.method : 'GET')
     ).toUpperCase();
-    const canRetryColdStart =
-      shouldRouteApiToRemoteOrigin && isRelativeApi && (method === 'GET' || method === 'HEAD');
+    const isIdempotentAiCoachPost =
+      method === 'POST' &&
+      (rawUrl.startsWith('/api/gemini/study-tutor') || rawUrl.startsWith('/api/ai/study-coach'));
+    const canRetryTransient =
+      (typeof navigator === 'undefined' || navigator.onLine !== false) &&
+      (isRelativeApi || isRemoteConfiguredApi) &&
+      !rawUrl.includes('prewarm=1') &&
+      (method === 'GET' || method === 'HEAD' || isIdempotentAiCoachPost);
+    const retryDelaysMs =
+      shouldRouteApiToRemoteOrigin || isIdempotentAiCoachPost
+        ? [2500, 4500, 6500, 8500, 10000]
+        : [2000, 3500, 5500, 7500];
+    const healthUrl = shouldRouteApiToRemoteOrigin
+      ? `${REMOTE_API_ORIGIN}/api/health?wake=1`
+      : '/api/health?wake=1';
 
     let markedSlow = false;
     let slowTimer: number | null = null;
@@ -76,20 +129,33 @@ if (typeof window !== 'undefined' && typeof window.fetch === 'function') {
     }
 
     try {
-      const response = await nativeFetch(targetInput, init);
-      if (canRetryColdStart && (response.status === 502 || response.status === 503 || response.status === 504)) {
-        markSlowNow();
-        await new Promise((r) => window.setTimeout(r, 2500));
-        return nativeFetch(targetInput, init);
+      const maxAttempts = canRetryTransient ? retryDelaysMs.length + 1 : 1;
+      for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        try {
+          const response = await nativeFetch(targetInput, init);
+          const isGatewayColdStart =
+            response.status === 502 || response.status === 503 || response.status === 504;
+          if (canRetryTransient && isGatewayColdStart && attempt < maxAttempts - 1) {
+            markSlowNow();
+            const okToContinue = await waitWithSignal(retryDelaysMs[attempt], init?.signal);
+            if (!okToContinue) return response;
+            await probeHealthReady(healthUrl, 4500);
+            continue;
+          }
+          return response;
+        } catch (err) {
+          const isAbort = (err as any)?.name === 'AbortError' || init?.signal?.aborted;
+          if (canRetryTransient && !isAbort && attempt < maxAttempts - 1) {
+            markSlowNow();
+            const okToContinue = await waitWithSignal(retryDelaysMs[attempt], init?.signal);
+            if (!okToContinue) throw err;
+            await probeHealthReady(healthUrl, 4500);
+            continue;
+          }
+          throw err;
+        }
       }
-      return response;
-    } catch (err) {
-      if (canRetryColdStart) {
-        markSlowNow();
-        await new Promise((r) => window.setTimeout(r, 2500));
-        return nativeFetch(targetInput, init);
-      }
-      throw err;
+      return await nativeFetch(targetInput, init);
     } finally {
       if (slowTimer !== null) {
         window.clearTimeout(slowTimer);

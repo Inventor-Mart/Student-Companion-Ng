@@ -122,6 +122,7 @@ app.use('/api', (req, res, next) => {
     origin === 'capacitor://localhost' ||
     /^https:\/\/[a-z0-9-]+\.onrender\.com$/i.test(origin) ||
     /^https:\/\/[a-z0-9-]+(?:--[a-z0-9-]+)?\.netlify\.app$/i.test(origin) ||
+    /^https:\/\/[a-z0-9-]+\.run\.app$/i.test(origin) ||
     extraConfiguredOrigins.includes(origin);
 
   if (isAllowedOrigin) {
@@ -5312,31 +5313,34 @@ async function verifyGithubTokenAccess(token: string): Promise<{
       repoData?.permissions?.maintain
     );
 
-    let githubUser: string | undefined;
-    try {
-      const userRes = await fetch('https://api.github.com/user', {
+    const [userResResult, branchResResult] = await Promise.all([
+      fetch('https://api.github.com/user', {
         headers,
-        signal: AbortSignal.timeout(5000)
-      });
-      if (userRes.ok) {
-        const userData: any = await userRes.json();
+        signal: AbortSignal.timeout(6000)
+      }).catch(() => null),
+      fetch(
+        `https://api.github.com/repos/${TARGET_GITHUB_OWNER}/${TARGET_GITHUB_REPO}/branches/${TARGET_GITHUB_BRANCH}`,
+        { headers, signal: AbortSignal.timeout(6000) }
+      ).catch(() => null)
+    ]);
+
+    let githubUser: string | undefined;
+    if (userResResult && userResResult.ok) {
+      try {
+        const userData: any = await userResResult.json();
         githubUser = userData?.login;
-      }
-    } catch {}
+      } catch {}
+    }
 
     let remoteLatestCommit: string | undefined;
-    try {
-      const branchRes = await fetch(
-        `https://api.github.com/repos/${TARGET_GITHUB_OWNER}/${TARGET_GITHUB_REPO}/branches/${TARGET_GITHUB_BRANCH}`,
-        { headers, signal: AbortSignal.timeout(5000) }
-      );
-      if (branchRes.ok) {
-        const branchData: any = await branchRes.json();
+    if (branchResResult && branchResResult.ok) {
+      try {
+        const branchData: any = await branchResResult.json();
         if (branchData?.commit?.sha) {
           remoteLatestCommit = String(branchData.commit.sha).slice(0, 7);
         }
-      }
-    } catch {}
+      } catch {}
+    }
 
     if (!canPush) {
       return {
@@ -6034,6 +6038,8 @@ app.get('/api/git/status', async (req, res) => {
   let gitInitialized = fs.existsSync(path.join(__dirname, '.git'));
   let lastError: string | undefined;
 
+  const tokenCheckPromise = verifyGithubTokenAccess(token);
+
   if (shouldFetch && !gitInitialized) {
     try {
       await ensureGitWorkspace(adminEmail);
@@ -6066,7 +6072,10 @@ app.get('/api/git/status', async (req, res) => {
 
     try {
       const branchOut = await runGit(['rev-parse', '--abbrev-ref', 'HEAD'], { tokenToScrub: token });
-      if (branchOut.stdout.trim()) branch = branchOut.stdout.trim();
+      const rawBranch = branchOut.stdout.trim();
+      if (rawBranch && rawBranch !== 'HEAD') {
+        branch = rawBranch;
+      }
     } catch {}
 
     try {
@@ -6173,7 +6182,7 @@ app.get('/api/git/status', async (req, res) => {
     }
   }
 
-  const tokenCheck = await verifyGithubTokenAccess(token);
+  const tokenCheck = await tokenCheckPromise;
 
   return res.json({
     success: true,
@@ -6749,7 +6758,7 @@ async function verifySuperAdminRequest(
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ idToken: token }),
-        signal: AbortSignal.timeout(5000),
+        signal: AbortSignal.timeout(10000),
       }
     );
     if (!verifyRes.ok) {
@@ -7241,6 +7250,11 @@ app.post('/api/auth/login', async (req, res) => {
 // Vite Middleware for Dev or Static Files for Prod
 async function startServer() {
   const isProduction = process.env.NODE_ENV === 'production';
+  let cachedViteMiddleware: ((req: express.Request, res: express.Response, next: express.NextFunction) => void) | null = null;
+  let viteInitError: Error | null = null;
+  let viteReadyPromise: Promise<((req: express.Request, res: express.Response, next: express.NextFunction) => void) | null> =
+    Promise.resolve(null);
+
   if (!isProduction) {
     app.get('/manifest.webmanifest', (_req, res) => {
       res.setHeader('Content-Type', 'application/manifest+json');
@@ -7277,42 +7291,16 @@ async function startServer() {
       });
     });
 
-    const { createServer: createViteServer } = await import('vite');
-    const vite = await createViteServer({
-      server: {
-        middlewareMode: true,
-        hmr: false,
-        ws: false,
-      },
-      plugins: [
-        {
-          name: 'disable-hmr-websocket-connect',
-          enforce: 'post',
-          transform(code, id) {
-            const cleanId = id.split('?')[0].replace(/\\/g, '/');
-            if (cleanId.endsWith('/dist/client/client.mjs') || cleanId === '/@vite/client') {
-              return {
-                code: code
-                  .replace(/new WebSocket\([^)]*\)/g, 'null')
-                  .replace(/ws\.send\(/g, 'ws?.send(')
-                  .replace(/async connect\(handlers\)\s*\{/g, 'async connect(handlers) { return;')
-                  .replace(/send\(data\)\s*\{/g, 'send(data) { return;')
-                  .replace(/throw new SendBeforeConnectError\([^)]*\);/g, 'return;'),
-                map: null,
-              };
-            }
-          },
-          transformIndexHtml(html) {
-            if (!html.includes('rel="manifest"')) {
-              return html.replace('</head>', '  <link rel="manifest" href="/manifest.webmanifest" />\n  </head>');
-            }
-            return html;
-          },
-        },
-      ],
-      appType: 'spa',
+    app.use(async (req, res, next) => {
+      const handler = cachedViteMiddleware || (await viteReadyPromise);
+      if (handler) {
+        return handler(req, res, next);
+      }
+      if (viteInitError) {
+        return res.status(500).send(`Dev frontend middleware failed to initialize: ${viteInitError.message}`);
+      }
+      return next();
     });
-    app.use(vite.middlewares);
   } else {
     app.use('/api/*', (_req, res) => {
       return res.status(404).json({ success: false, error: 'API endpoint not found.' });
@@ -7323,9 +7311,63 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
+  // Bind HTTP listener immediately so health checks (/health, /api/health) succeed right away
+  // while Vite initializes its module graph asynchronously in dev mode.
+  const httpServer = app.listen(PORT, '0.0.0.0', () => {
     console.log(`Student Companion full-stack server running on http://0.0.0.0:${PORT}`);
   });
+  httpServer.on('error', (err) => {
+    console.error('HTTP server failed to bind port:', err);
+  });
+
+  if (!isProduction) {
+    viteReadyPromise = (async () => {
+      try {
+        const { createServer: createViteServer } = await import('vite');
+        const vite = await createViteServer({
+          server: {
+            middlewareMode: true,
+            hmr: false,
+            ws: false,
+          },
+          plugins: [
+            {
+              name: 'disable-hmr-websocket-connect',
+              enforce: 'post',
+              transform(code, id) {
+                const cleanId = id.split('?')[0].replace(/\\/g, '/');
+                if (cleanId.endsWith('/dist/client/client.mjs') || cleanId === '/@vite/client') {
+                  return {
+                    code: code
+                      .replace(/new WebSocket\([^)]*\)/g, 'null')
+                      .replace(/ws\.send\(/g, 'ws?.send(')
+                      .replace(/async connect\(handlers\)\s*\{/g, 'async connect(handlers) { return;')
+                      .replace(/send\(data\)\s*\{/g, 'send(data) { return;')
+                      .replace(/throw new SendBeforeConnectError\([^)]*\);/g, 'return;'),
+                    map: null,
+                  };
+                }
+              },
+              transformIndexHtml(html) {
+                if (!html.includes('rel="manifest"')) {
+                  return html.replace('</head>', '  <link rel="manifest" href="/manifest.webmanifest" />\n  </head>');
+                }
+                return html;
+              },
+            },
+          ],
+          appType: 'spa',
+        });
+        cachedViteMiddleware = vite.middlewares;
+        console.log('Vite dev middleware ready.');
+        return vite.middlewares;
+      } catch (err: any) {
+        viteInitError = err instanceof Error ? err : new Error(String(err));
+        console.error('Vite dev middleware initialization failed:', viteInitError);
+        return null;
+      }
+    })();
+  }
 }
 
 startServer();

@@ -135,13 +135,45 @@ export const SuperAdminPortal: React.FC = () => {
 
   const authorizedAdminEmail = currentUserProfile?.email || (isSuperAdmin ? 'martorefe@gmail.com' : '');
 
+  const buildAdminHeaders = React.useCallback(async (includeJsonContentType = false): Promise<Record<string, string>> => {
+    const authHeaders = await getFirebaseAuthHeaders().catch(() => ({}));
+    return {
+      ...(includeJsonContentType ? { 'Content-Type': 'application/json' } : {}),
+      ...getSecurityHeaders({
+        userId: currentUserProfile?.id,
+        userEmail: authorizedAdminEmail || undefined,
+      }),
+      ...authHeaders,
+    };
+  }, [currentUserProfile?.id, authorizedAdminEmail]);
+
+  const safeParseApiJson = async (res: Response): Promise<{ data: any; nonJsonError?: string }> => {
+    const rawText = await res.text().catch(() => '');
+    if (!rawText) {
+      return { data: {} };
+    }
+    try {
+      return { data: JSON.parse(rawText) };
+    } catch {
+      const trimmed = rawText.trim().toLowerCase();
+      const isHtml = trimmed.startsWith('<!doctype') || trimmed.startsWith('<html') || trimmed.startsWith('<');
+      return {
+        data: null,
+        nonJsonError: isHtml
+          ? `Student Companion services are still getting ready (HTTP ${res.status || 503}). Please tap Retry in a moment.`
+          : `Unexpected response from server (HTTP ${res.status || 500}).`,
+      };
+    }
+  };
+
   const fetchAspirantRewards = React.useCallback(async () => {
     if (!authorizedAdminEmail) return;
     setIsLoadingAspirantRewards(true);
     try {
-      const res = await fetch(`/api/admin/aspirant-rewards?adminEmail=${encodeURIComponent(authorizedAdminEmail)}`);
-      const data = await res.json();
-      if (res.ok && Array.isArray(data.rewards)) {
+      const headers = await buildAdminHeaders(false);
+      const res = await fetch(`/api/admin/aspirant-rewards?adminEmail=${encodeURIComponent(authorizedAdminEmail)}`, { headers });
+      const { data } = await safeParseApiJson(res);
+      if (res.ok && data && Array.isArray(data.rewards)) {
         setAspirantRewardsList(data.rewards);
       }
     } catch {
@@ -149,7 +181,7 @@ export const SuperAdminPortal: React.FC = () => {
     } finally {
       setIsLoadingAspirantRewards(false);
     }
-  }, [authorizedAdminEmail]);
+  }, [authorizedAdminEmail, buildAdminHeaders]);
 
   const hydratedSchoolCodesRef = React.useRef<Set<string>>(new Set());
   React.useEffect(() => {
@@ -176,17 +208,18 @@ export const SuperAdminPortal: React.FC = () => {
     setFulfillingRewardId(rewardId);
     setRewardActionNotice(null);
     try {
+      const headers = await buildAdminHeaders(true);
       const res = await fetch('/api/admin/aspirant-rewards/fulfill', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ adminEmail: authorizedAdminEmail, rewardId })
       });
-      const data = await res.json();
-      if (res.ok && data.success) {
+      const { data, nonJsonError } = await safeParseApiJson(res);
+      if (res.ok && data?.success) {
         setRewardActionNotice(`Marked ${rewardId} as 2GB Data Fulfilled.`);
         await fetchAspirantRewards();
       } else {
-        setRewardActionNotice(data.error || 'Could not mark reward fulfilled.');
+        setRewardActionNotice(data?.error || nonJsonError || 'Could not mark reward fulfilled.');
       }
     } catch (err: any) {
       setRewardActionNotice(err?.message || 'Network error fulfilling reward.');
@@ -203,10 +236,19 @@ export const SuperAdminPortal: React.FC = () => {
       setIsLoadingGitStatus(true);
     }
     try {
+      const headers = await buildAdminHeaders(false);
       const res = await fetch(
-        `/api/git/status?adminEmail=${encodeURIComponent(authorizedAdminEmail)}${fetchRemote ? '&fetch=1' : ''}`
+        `/api/git/status?adminEmail=${encodeURIComponent(authorizedAdminEmail)}${fetchRemote ? '&fetch=1' : ''}`,
+        { headers, cache: 'no-store' }
       );
-      const data = await res.json();
+      const { data, nonJsonError } = await safeParseApiJson(res);
+      if (nonJsonError || !data) {
+        setGitSyncFeedback({
+          type: 'error',
+          message: nonJsonError || 'Unable to inspect GitHub repository sync status.'
+        });
+        return;
+      }
       if (res.ok && data.success) {
         setGitStatus({
           configured: Boolean(data.configured),
@@ -240,6 +282,8 @@ export const SuperAdminPortal: React.FC = () => {
               message: `Checked GitHub ${data.branch}: no new remote commits ahead of local workspace.`
             });
           }
+        } else {
+          setGitSyncFeedback((prev) => (prev?.type === 'error' ? null : prev));
         }
       } else {
         setGitSyncFeedback({
@@ -250,13 +294,18 @@ export const SuperAdminPortal: React.FC = () => {
     } catch (err: any) {
       setGitSyncFeedback({
         type: 'error',
-        message: err?.message || 'Network error checking GitHub repository status.'
+        message:
+          typeof navigator !== 'undefined' && navigator.onLine === false
+            ? 'You appear to be offline. Reconnect and tap Check Updates.'
+            : err?.message === 'Failed to fetch'
+            ? 'Could not reach Student Companion GitHub Sync right now. Wait a moment for the service to finish waking up and tap Check Updates.'
+            : err?.message || 'Network error checking GitHub repository status.'
       });
     } finally {
       setIsLoadingGitStatus(false);
       setIsCheckingUpdates(false);
     }
-  }, [authorizedAdminEmail]);
+  }, [authorizedAdminEmail, buildAdminHeaders]);
 
   React.useEffect(() => {
     void fetchGitStatus(false);
@@ -267,13 +316,14 @@ export const SuperAdminPortal: React.FC = () => {
     setIsPullingGit(true);
     setGitSyncFeedback(null);
     try {
+      const headers = await buildAdminHeaders(true);
       const res = await fetch('/api/git/pull', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ adminEmail: authorizedAdminEmail })
       });
-      const data = await res.json();
-      if (res.ok && data.success) {
+      const { data, nonJsonError } = await safeParseApiJson(res);
+      if (res.ok && data?.success) {
         setGitSyncFeedback({
           type: 'success',
           message: data.message || `Pulled ${data.pulledCommits ?? 0} commit(s) from GitHub.`
@@ -282,7 +332,7 @@ export const SuperAdminPortal: React.FC = () => {
       } else {
         setGitSyncFeedback({
           type: 'error',
-          message: data.error || 'Failed to pull updates from GitHub.'
+          message: data?.error || nonJsonError || 'Failed to pull updates from GitHub.'
         });
       }
     } catch (err: any) {
@@ -300,16 +350,17 @@ export const SuperAdminPortal: React.FC = () => {
     setIsPushingGit(true);
     setGitSyncFeedback(null);
     try {
+      const headers = await buildAdminHeaders(true);
       const res = await fetch('/api/git/push', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           adminEmail: authorizedAdminEmail,
           commitMessage: gitCommitMessage.trim() || undefined
         })
       });
-      const data = await res.json();
-      if (res.ok && data.success) {
+      const { data, nonJsonError } = await safeParseApiJson(res);
+      if (res.ok && data?.success) {
         setGitSyncFeedback({
           type: 'success',
           message: data.message || `Synced commits to ${data.repo} (${data.branch}).`
@@ -319,7 +370,7 @@ export const SuperAdminPortal: React.FC = () => {
       } else {
         setGitSyncFeedback({
           type: 'error',
-          message: data.error || 'Failed to push updates to GitHub.'
+          message: data?.error || nonJsonError || 'Failed to push updates to GitHub.'
         });
       }
     } catch (err: any) {
@@ -359,23 +410,32 @@ export const SuperAdminPortal: React.FC = () => {
     releasesPageUrl?: string;
   } | null>(null);
   const [isCheckingApkStatus, setIsCheckingApkStatus] = useState(false);
+  const [apkStatusError, setApkStatusError] = useState<string | null>(null);
   const [isTriggeringApkBuild, setIsTriggeringApkBuild] = useState(false);
   const [apkBuildFeedback, setApkBuildFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   const fetchApkCloudStatus = React.useCallback(async () => {
     setIsCheckingApkStatus(true);
+    setApkStatusError(null);
     try {
-      const res = await fetch('/api/android/apk-status');
-      const data = await res.json();
-      if (res.ok && data.success) {
+      const headers = await buildAdminHeaders(false);
+      const res = await fetch('/api/android/apk-status', { headers, cache: 'no-store' });
+      const { data, nonJsonError } = await safeParseApiJson(res);
+      if (res.ok && data?.success) {
         setApkCloudStatus(data);
+      } else {
+        setApkStatusError(data?.error || nonJsonError || `Unable to verify APK build status (HTTP ${res.status}).`);
       }
-    } catch {
-      // ignore transient errors
+    } catch (err: any) {
+      setApkStatusError(
+        err?.message === 'Failed to fetch'
+          ? 'Connection to APK build service was interrupted while waking up. Tap Check Build to retry.'
+          : err?.message || 'Network error checking APK build status.'
+      );
     } finally {
       setIsCheckingApkStatus(false);
     }
-  }, []);
+  }, [buildAdminHeaders]);
 
   const [integrationsStatus, setIntegrationsStatus] = useState<{
     geminiConfigured: boolean;
@@ -393,6 +453,7 @@ export const SuperAdminPortal: React.FC = () => {
     backendUrl: string;
   } | null>(null);
   const [isCheckingIntegrations, setIsCheckingIntegrations] = useState(false);
+  const [integrationsError, setIntegrationsError] = useState<string | null>(null);
   const [showRenderGuide, setShowRenderGuide] = useState(false);
   const [copiedSecretKey, setCopiedSecretKey] = useState<string | null>(null);
 
@@ -408,18 +469,28 @@ export const SuperAdminPortal: React.FC = () => {
 
   const fetchIntegrationsStatus = React.useCallback(async () => {
     setIsCheckingIntegrations(true);
+    setIntegrationsError(null);
     try {
-      const res = await fetch('/api/system/integrations-status');
-      const data = await res.json();
+      const headers = await buildAdminHeaders(false);
+      const res = await fetch('/api/system/integrations-status', { headers, cache: 'no-store' });
+      const { data, nonJsonError } = await safeParseApiJson(res);
       if (res.ok && data?.success) {
         setIntegrationsStatus(data);
+      } else {
+        setIntegrationsError(
+          data?.error || nonJsonError || `Unable to check live services status (HTTP ${res.status}).`
+        );
       }
-    } catch {
-      // ignore transient errors
+    } catch (err: any) {
+      setIntegrationsError(
+        err?.message === 'Failed to fetch'
+          ? 'Still connecting to Student Companion backend services. Tap Check Integrations to retry.'
+          : err?.message || 'Network error checking live services.'
+      );
     } finally {
       setIsCheckingIntegrations(false);
     }
-  }, []);
+  }, [buildAdminHeaders]);
 
   React.useEffect(() => {
     void fetchApkCloudStatus();
@@ -431,22 +502,23 @@ export const SuperAdminPortal: React.FC = () => {
     setIsTriggeringApkBuild(true);
     setApkBuildFeedback(null);
     try {
+      const headers = await buildAdminHeaders(true);
       const res = await fetch('/api/android/trigger-github-apk-build', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ adminEmail: authorizedAdminEmail }),
       });
-      const data = await res.json();
-      if (res.ok && data.success) {
+      const { data, nonJsonError } = await safeParseApiJson(res);
+      if (res.ok && data?.success) {
         setApkBuildFeedback({
           type: 'success',
-          message: data.message || 'GitHub Cloud APK build triggered!',
+          message: data.message || 'GitHub cloud APK build triggered!',
         });
         await fetchApkCloudStatus();
       } else {
         setApkBuildFeedback({
           type: 'error',
-          message: data.error || 'Could not trigger GitHub Actions APK build.',
+          message: data?.error || nonJsonError || 'Could not trigger GitHub Actions APK build.',
         });
       }
     } catch (err: any) {
@@ -1487,6 +1559,23 @@ export const SuperAdminPortal: React.FC = () => {
                 </button>
               </div>
 
+              {integrationsError && (
+                <div className="p-2.5 rounded-xl border border-rose-700/70 bg-rose-950/50 text-rose-200 text-xs flex items-center justify-between gap-2">
+                  <div className="flex items-start gap-2 min-w-0">
+                    <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                    <span className="break-words">{integrationsError}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void fetchIntegrationsStatus()}
+                    disabled={isCheckingIntegrations}
+                    className="px-2.5 py-1.5 min-h-[36px] rounded-lg bg-rose-900/60 hover:bg-rose-800/70 border border-rose-700 text-rose-100 text-[11px] font-semibold whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-50"
+                  >
+                    Retry
+                  </button>
+                </div>
+              )}
+
               {integrationsStatus && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 text-xs">
                   {readinessItems.map((item) => (
@@ -1566,13 +1655,10 @@ export const SuperAdminPortal: React.FC = () => {
                   <div className="border-t border-slate-800 pt-3 space-y-3 text-xs text-slate-300">
                     <ol className="space-y-2 text-[11px] text-slate-300 leading-relaxed list-decimal list-inside">
                       <li>
-                        Click <strong className="text-white">Sync to GitHub (main)</strong> below so the automated <code className="font-mono text-sky-300">deploy-netlify.yml</code> workflow and <code className="font-mono text-emerald-300">https://student-companion-api-b373.onrender.com</code> default backend origin are pushed to GitHub.
+                        Click <strong className="text-white">Sync to GitHub (main)</strong> below so <code className="font-mono text-sky-300">netlify.toml</code>, <code className="font-mono text-sky-300">render.yaml</code>, and your live <code className="font-mono text-emerald-300">https://student-companion-api-b373.onrender.com</code> default backend origin are synced to GitHub—Netlify will build automatically on push.
                       </li>
                       <li>
-                        <strong className="text-white">Bypass Netlify GitHub Picker:</strong> On <strong className="text-white">app.netlify.com</strong>, create a site via <strong className="text-white">Add new site → Deploy manually</strong> (drop any placeholder folder or wait for CLI deploy), then copy its <strong className="text-white">Site ID</strong> (<code className="font-mono text-slate-200">Site configuration → General</code>) and create a <strong className="text-white">Personal access token</strong> (<code className="font-mono text-slate-200">User settings → Applications</code>).
-                      </li>
-                      <li>
-                        <strong className="text-white">Save GitHub Repository Secrets:</strong> In GitHub <strong className="text-white">Settings → Secrets and variables → Actions</strong>, save <code className="font-mono text-sky-300">NETLIFY_AUTH_TOKEN</code> and <code className="font-mono text-sky-300">NETLIFY_SITE_ID</code> (for auto Netlify deploys), plus <code className="font-mono text-slate-200">VITE_API_ORIGIN</code>, <code className="font-mono text-slate-200">VITE_GOOGLE_MAPS_API_KEY</code>, and <code className="font-mono text-slate-200">VITE_PAYSTACK_PUBLIC_KEY</code>.
+                        <strong className="text-white">Netlify &amp; GitHub Variables:</strong> In your connected Netlify project (<code className="font-mono text-slate-200">Site configuration → Environment variables</code>) and GitHub (<code className="font-mono text-slate-200">Settings → Secrets and variables → Actions</code>), add <code className="font-mono text-slate-200">VITE_API_ORIGIN</code>, <code className="font-mono text-slate-200">VITE_GOOGLE_MAPS_API_KEY</code>, and <code className="font-mono text-slate-200">VITE_PAYSTACK_PUBLIC_KEY</code>.
                       </li>
                       <li>
                         <strong className="text-white">Firebase &amp; Build APK:</strong> Ensure <code className="font-mono text-emerald-300">student-companion-api-b373.onrender.com</code> and your <code className="font-mono text-emerald-300">*.netlify.app</code> domain are added in <strong className="text-white">Firebase Console → Authentication → Settings → Authorized domains</strong>, then click <strong className="text-white">Build APK on GitHub</strong>.
@@ -1582,16 +1668,8 @@ export const SuperAdminPortal: React.FC = () => {
                       </li>
                     </ol>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       {[
-                        {
-                          key: 'NETLIFY_AUTH_TOKEN',
-                          desc: 'Netlify Personal access token'
-                        },
-                        {
-                          key: 'NETLIFY_SITE_ID',
-                          desc: 'Netlify manual site API ID'
-                        },
                         {
                           key: 'VITE_API_ORIGIN',
                           desc: 'https://student-companion-api-b373.onrender.com'
@@ -1952,6 +2030,23 @@ export const SuperAdminPortal: React.FC = () => {
             </a>
           </div>
         </div>
+
+        {apkStatusError && (
+          <div className="p-2.5 rounded-xl border border-rose-700/70 bg-rose-950/50 text-rose-200 text-xs flex items-center justify-between gap-2">
+            <div className="flex items-start gap-2 min-w-0">
+              <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+              <span className="break-words">{apkStatusError}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => void fetchApkCloudStatus()}
+              disabled={isCheckingApkStatus}
+              className="px-2.5 py-1.5 min-h-[36px] rounded-lg bg-rose-900/60 hover:bg-rose-800/70 border border-rose-700 text-rose-100 text-[11px] font-semibold whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-50"
+            >
+              Retry
+            </button>
+          </div>
+        )}
 
         {/* Live GitHub APK Build & Release Status Strip */}
         {apkCloudStatus && (
