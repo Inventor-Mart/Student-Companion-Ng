@@ -6,6 +6,7 @@ import {
 } from '../../services/otaService';
 import { OTAPopupAnnouncement } from '../../types';
 import { useApp } from '../../context/AppContext';
+import { useBackHandler } from '../../lib/backNavigation';
 import {
   X,
   ArrowRight,
@@ -28,6 +29,8 @@ export const PopupAnnouncementModal: React.FC<PopupAnnouncementModalProps> = ({ 
   const [dontShowToday, setDontShowToday] = useState<boolean>(false);
   const [imgError, setImgError] = useState<boolean>(false);
   const [showDetails, setShowDetails] = useState<boolean>(false);
+
+  useBackHandler(isOpen && Boolean(popup), () => setIsOpen(false), 'popup-announcement');
 
   useEffect(() => {
     const unsub = subscribeToOTAPopup((item) => {

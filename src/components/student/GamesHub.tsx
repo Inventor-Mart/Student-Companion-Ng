@@ -39,6 +39,7 @@ import { Match3Game } from './games/Match3Game';
 import { SnakeGame } from './games/SnakeGame';
 import { getSoundMuted, toggleSoundMuted, playSound } from '../../utils/audioSynthesis';
 import { motion } from 'motion/react';
+import { useBackHandler } from '../../lib/backNavigation';
 
 type GameId =
   | 'hub'
@@ -70,6 +71,8 @@ export const GamesHub: React.FC = () => {
   const [activeGame, setActiveGame] = useState<GameId>('hub');
   const [filterCategory, setFilterCategory] = useState<'ALL' | 'RELAX' | 'STEM' | 'ARTS' | 'CIVICS'>('ALL');
   const [isMuted, setIsMuted] = useState<boolean>(getSoundMuted());
+
+  useBackHandler(activeGame !== 'hub', () => setActiveGame('hub'), 'games-hub-game');
 
   const handleToggleSound = () => {
     const nextMuted = toggleSoundMuted();

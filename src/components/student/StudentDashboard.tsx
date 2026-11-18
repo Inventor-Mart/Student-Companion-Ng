@@ -54,6 +54,7 @@ import {
   getRankTierDefinition,
   RANK_LADDER
 } from '../../utils/xpEconomy';
+import { useBackHandler } from '../../lib/backNavigation';
 
 export const StudentDashboard: React.FC = () => {
   const {
@@ -88,6 +89,11 @@ export const StudentDashboard: React.FC = () => {
   const [isCopiedLinkCode, setIsCopiedLinkCode] = useState(false);
   const [isParentLinkInfoOpen, setIsParentLinkInfoOpen] = useState(false);
   const [isRankRoadmapOpen, setIsRankRoadmapOpen] = useState(false);
+
+  useBackHandler(isLinkSchoolModalOpen, () => setIsLinkSchoolModalOpen(false), 'dashboard-link-school');
+  useBackHandler(isExamPrepModalOpen, () => setIsExamPrepModalOpen(false), 'dashboard-exam-prep');
+  useBackHandler(isParentLinkInfoOpen, () => setIsParentLinkInfoOpen(false), 'dashboard-parent-link-info');
+  useBackHandler(isRankRoadmapOpen, () => setIsRankRoadmapOpen(false), 'dashboard-rank-roadmap');
   const [audioScrubProgress, setAudioScrubProgress] = useState(42);
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
   const [boardClockMs, setBoardClockMs] = useState<number>(() => Date.now());

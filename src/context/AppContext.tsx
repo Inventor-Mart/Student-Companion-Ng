@@ -161,6 +161,13 @@ import {
   warmOfflineAppCache,
   OfflineSyncQueueItem
 } from '../services/offlineSyncService';
+import {
+  dispatchTopBackHandler,
+  ensureNavSentinel,
+  getActiveExamBackGuard,
+  hasNativeAndroidBackBridge,
+  hasNavSentinelState
+} from '../lib/backNavigation';
 
 // Run cleanup immediately on load to recover quota from any oversized blobs
 cleanupBloatedStorage();
@@ -261,6 +268,10 @@ interface AppContextType {
   activeExam: CBTExam | null;
   startExam: (exam: CBTExam) => void;
   closeExam: () => void;
+  pendingExamExitPrompt: { title: string } | null;
+  cancelExamExitPrompt: () => void;
+  confirmExamExitPrompt: () => void;
+  showExitBackToast: boolean;
   fetchOrGenerateTermlyDrill: (params: {
     classLevel: string;
     term: string;
@@ -974,19 +985,88 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [offlineSyncNotice, setOfflineSyncNotice] = useState<string | null>(null);
   const dismissOfflineSyncNotice = useCallback(() => setOfflineSyncNotice(null), []);
   const [isLandingView, setIsLandingView] = useState<boolean>(false);
-  const [currentScreen, setCurrentScreen] = useState<'splash' | 'landing' | 'signin' | 'signup' | 'know_more' | 'app'>(() => {
+  type AppScreenType = 'splash' | 'landing' | 'signin' | 'signup' | 'know_more' | 'app';
+  type StudentTabType = 'dashboard' | 'syllabus' | 'cbt' | 'competitions' | 'formulas' | 'tutors' | 'games' | 'ai-coach' | 'community' | 'exam-prep' | 'aspirant-cbt' | 'admission-guide' | 'mock-tournaments' | 'educator-importer';
+
+  const [currentScreen, setCurrentScreenRaw] = useState<AppScreenType>(() => {
     const returnTarget = peekGoogleAuthReturnTarget();
     if (returnTarget) {
       return 'app';
     }
     return 'splash';
   });
+  const screenHistoryRef = React.useRef<AppScreenType[]>(
+    currentScreen === 'app' ? ['app'] : ['landing']
+  );
+
   const [googleAuthError, setGoogleAuthError] = useState<string | null>(null);
   const clearGoogleAuthError = useCallback(() => setGoogleAuthError(null), []);
-  const [activeStudentTab, setActiveStudentTab] = useState<'dashboard' | 'syllabus' | 'cbt' | 'competitions' | 'formulas' | 'tutors' | 'games' | 'ai-coach' | 'community' | 'exam-prep' | 'aspirant-cbt' | 'admission-guide' | 'mock-tournaments' | 'educator-importer'>('dashboard');
+  const [activeStudentTab, setActiveStudentTabRaw] = useState<StudentTabType>('dashboard');
+  const studentTabHistoryRef = React.useRef<StudentTabType[]>(['dashboard']);
   const [activeReadingNote, setActiveReadingNote] = useState<CurriculumTopic | null>(null);
   const [activeExam, setActiveExam] = useState<CBTExam | null>(null);
   const [isUniformModalOpen, setUniformModalOpenState] = useState<boolean>(false);
+  const [pendingExamExit, setPendingExamExit] = useState<{ title: string; onConfirm: () => void } | null>(null);
+  const [showExitBackToast, setShowExitBackToast] = useState<boolean>(false);
+
+  const setCurrentScreen = useCallback((nextScreen: AppScreenType) => {
+    setCurrentScreenRaw((prev) => {
+      if (nextScreen === 'splash' || nextScreen === 'landing' || nextScreen === 'app') {
+        screenHistoryRef.current = [nextScreen];
+        if (nextScreen === 'landing') {
+          studentTabHistoryRef.current = ['dashboard'];
+          setActiveStudentTabRaw('dashboard');
+        }
+      } else {
+        const currentStack = screenHistoryRef.current.filter((s) => s !== nextScreen && s !== 'splash');
+        if (currentStack.length === 0) {
+          currentStack.push('landing');
+        }
+        currentStack.push(nextScreen);
+        screenHistoryRef.current = currentStack;
+        ensureNavSentinel();
+      }
+      if (prev !== nextScreen) {
+        setPendingExamExit(null);
+      }
+      return nextScreen;
+    });
+  }, []);
+
+  const setActiveStudentTab = useCallback((nextTab: StudentTabType) => {
+    setActiveStudentTabRaw((prev) => {
+      if (nextTab === 'dashboard') {
+        studentTabHistoryRef.current = ['dashboard'];
+      } else {
+        const filtered = studentTabHistoryRef.current.filter((t) => t !== nextTab);
+        if (filtered.length === 0 || filtered[0] !== 'dashboard') {
+          filtered.unshift('dashboard');
+        }
+        filtered.push(nextTab);
+        studentTabHistoryRef.current = filtered.slice(-15);
+        ensureNavSentinel();
+      }
+      if (prev !== nextTab) {
+        setPendingExamExit(null);
+      }
+      return nextTab;
+    });
+  }, []);
+
+  const cancelExamExitPrompt = useCallback(() => {
+    setPendingExamExit(null);
+  }, []);
+
+  const confirmExamExitPrompt = useCallback(() => {
+    setPendingExamExit((current) => {
+      if (current?.onConfirm) {
+        try {
+          current.onConfirm();
+        } catch {}
+      }
+      return null;
+    });
+  }, []);
 
   // Prepare For Exam (AI Daily Study Calendar & ₦4,000 Tutor Credits)
   const [examPrepState, setExamPrepState] = useState<ExamPrepState>(() => {
@@ -8679,6 +8759,177 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [browserOnline, manualOffline, currentUser, pendingSyncCount, syncOfflineQueue]);
 
+  // Unified Hardware & Browser Back Button Controller (Android APK, Web, Standalone PWA)
+  const navSnapshotRef = React.useRef({
+    currentScreen,
+    currentRole,
+    activeStudentTab,
+    activeReadingNote,
+    activeExam,
+    pendingExamExit
+  });
+  navSnapshotRef.current = {
+    currentScreen,
+    currentRole,
+    activeStudentTab,
+    activeReadingNote,
+    activeExam,
+    pendingExamExit
+  };
+
+  const exitArmedRef = React.useRef<boolean>(false);
+  const exitTimerRef = React.useRef<number | null>(null);
+
+  const clearExitArm = useCallback(() => {
+    exitArmedRef.current = false;
+    setShowExitBackToast(false);
+    if (exitTimerRef.current !== null && typeof window !== 'undefined') {
+      window.clearTimeout(exitTimerRef.current);
+      exitTimerRef.current = null;
+    }
+  }, []);
+
+  const handleUnifiedBackPress = useCallback((): 'handled' | 'armed_exit' | 'allow_exit' => {
+    const snap = navSnapshotRef.current;
+
+    // 0. If CBT Exit Confirmation modal is open, pressing Back dismisses it safely (keeps user in exam)
+    if (snap.pendingExamExit) {
+      setPendingExamExit(null);
+      clearExitArm();
+      return 'handled';
+    }
+
+    // 1. LIFO Registered Modals, Drawers, Sub-views & Results
+    if (dispatchTopBackHandler()) {
+      clearExitArm();
+      return 'handled';
+    }
+
+    // 2. Active Lesson Note Reader closes immediately
+    if (snap.activeReadingNote) {
+      setActiveReadingNote(null);
+      clearExitArm();
+      return 'handled';
+    }
+
+    // 3. Active Unsubmitted CBT / Aspirant Exam triggers confirmation prompt
+    const examGuard = getActiveExamBackGuard();
+    if (examGuard) {
+      setPendingExamExit({
+        title: examGuard.title,
+        onConfirm: examGuard.onConfirmExit
+      });
+      clearExitArm();
+      return 'handled';
+    }
+
+    if (snap.activeExam) {
+      setActiveExam(null);
+      clearExitArm();
+      return 'handled';
+    }
+
+    // 4. Active App Screen & Student Visited-Tab Stack
+    if (snap.currentScreen === 'app') {
+      if (snap.currentRole === 'student') {
+        if (studentTabHistoryRef.current.length > 1) {
+          studentTabHistoryRef.current.pop();
+          const prevTab = studentTabHistoryRef.current[studentTabHistoryRef.current.length - 1] || 'dashboard';
+          setActiveStudentTabRaw(prevTab);
+          clearExitArm();
+          return 'handled';
+        }
+        if (snap.activeStudentTab !== 'dashboard') {
+          studentTabHistoryRef.current = ['dashboard'];
+          setActiveStudentTabRaw('dashboard');
+          clearExitArm();
+          return 'handled';
+        }
+      }
+    }
+
+    // 5. Auth & Info sub-screens step back toward Landing
+    if (snap.currentScreen === 'know_more' || snap.currentScreen === 'signin' || snap.currentScreen === 'signup') {
+      if (screenHistoryRef.current.length > 1) {
+        screenHistoryRef.current.pop();
+        const prevScreen = screenHistoryRef.current[screenHistoryRef.current.length - 1] || 'landing';
+        setCurrentScreenRaw(prevScreen);
+      } else {
+        screenHistoryRef.current = ['landing'];
+        setCurrentScreenRaw('landing');
+      }
+      clearExitArm();
+      return 'handled';
+    }
+
+    // 6. Protect initial 3-second boot splash
+    if (snap.currentScreen === 'splash') {
+      return 'handled';
+    }
+
+    // 7. Root Screen (Home Dashboard / Portal Root / Landing) -> Press Back Twice to Exit
+    if (exitArmedRef.current) {
+      clearExitArm();
+      return 'allow_exit';
+    }
+
+    exitArmedRef.current = true;
+    setShowExitBackToast(true);
+    if (typeof window !== 'undefined') {
+      if (exitTimerRef.current !== null) {
+        window.clearTimeout(exitTimerRef.current);
+      }
+      exitTimerRef.current = window.setTimeout(() => {
+        exitArmedRef.current = false;
+        setShowExitBackToast(false);
+        exitTimerRef.current = null;
+        ensureNavSentinel();
+      }, 2200);
+    }
+    return 'armed_exit';
+  }, [clearExitArm]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const win = window as unknown as {
+      __scHandleNativeBack?: () => 'handled' | 'armed_exit' | 'allow_exit';
+    };
+    win.__scHandleNativeBack = () => handleUnifiedBackPress();
+
+    const handlePopState = () => {
+      if (hasNativeAndroidBackBridge()) return;
+      const outcome = handleUnifiedBackPress();
+      if (outcome === 'handled') {
+        ensureNavSentinel();
+      }
+      // If outcome === 'armed_exit', leave the sentinel popped during the 2s window
+      // so pressing Back a second time exits the PWA / leaves the page natively.
+    };
+
+    const handleUserGesture = () => {
+      if (hasNativeAndroidBackBridge()) return;
+      if (exitArmedRef.current) {
+        clearExitArm();
+      }
+      if (!hasNavSentinelState()) {
+        ensureNavSentinel();
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    window.addEventListener('pointerdown', handleUserGesture, { passive: true });
+    window.addEventListener('keydown', handleUserGesture, { passive: true });
+
+    return () => {
+      delete win.__scHandleNativeBack;
+      window.removeEventListener('popstate', handlePopState);
+      window.removeEventListener('pointerdown', handleUserGesture);
+      window.removeEventListener('keydown', handleUserGesture);
+      clearExitArm();
+    };
+  }, [handleUnifiedBackPress, clearExitArm]);
+
   return (
     <AppContext.Provider
       value={{
@@ -8730,6 +8981,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         activeExam,
         startExam,
         closeExam,
+        pendingExamExitPrompt: pendingExamExit ? { title: pendingExamExit.title } : null,
+        cancelExamExitPrompt,
+        confirmExamExitPrompt,
+        showExitBackToast,
         fetchOrGenerateTermlyDrill,
         fetchOrGenerateCertificateDrill,
         deductWalletForFreshDrill,

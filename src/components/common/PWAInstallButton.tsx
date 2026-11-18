@@ -14,6 +14,7 @@ import {
   ChevronDown
 } from 'lucide-react';
 import { usePWAInstall } from '../../hooks/usePWAInstall';
+import { useBackHandler } from '../../lib/backNavigation';
 
 interface PWAInstallButtonProps {
   compact?: boolean;
@@ -30,6 +31,9 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
   const [showGuideModal, setShowGuideModal] = useState(false);
   const [showRecoveryGuide, setShowRecoveryGuide] = useState(false);
   const [copied, setCopied] = useState(false);
+
+  useBackHandler(showGuideModal, () => setShowGuideModal(false), 'pwa-ios-guide');
+  useBackHandler(showRecoveryGuide, () => setShowRecoveryGuide(false), 'pwa-recovery-guide');
 
   const resolvedVariant = variant || (compact ? 'compact' : 'header');
 

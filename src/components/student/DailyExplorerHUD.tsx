@@ -2,10 +2,13 @@ import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { getExplorerStatus, ALL_APP_FEATURES } from '../../utils/xpEconomy';
 import { Compass, Sparkles, TrendingUp, Info, ChevronRight, X, Award, Flame, Zap } from 'lucide-react';
+import { useBackHandler } from '../../lib/backNavigation';
 
 export const DailyExplorerHUD: React.FC = () => {
   const { student, setActiveStudentTab } = useApp();
   const [isGuideOpen, setIsGuideOpen] = useState(false);
+
+  useBackHandler(isGuideOpen, () => setIsGuideOpen(false), 'daily-explorer-guide');
 
   const status = getExplorerStatus(student.dailyExploration);
 

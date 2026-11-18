@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { RegisteredUserProfile, UserRole, NigerianClassLevel, AspirantReferralReward } from '../../types';
 import { PersonaAvatar } from '../common/PersonaAvatar';
+import { useBackHandler } from '../../lib/backNavigation';
 import {
   Users,
   ShieldCheck,
@@ -109,6 +110,10 @@ export const SuperAdminPortal: React.FC = () => {
   const [isPurgingTestAccounts, setIsPurgingTestAccounts] = useState<boolean>(false);
   const [isPurgingSimSubs, setIsPurgingSimSubs] = useState<boolean>(false);
   const [deleteModalTarget, setDeleteModalTarget] = useState<{ user: RegisteredUserProfile; reason: string } | null>(null);
+
+  useBackHandler(portalView !== 'directory', () => setPortalView('directory'), 'superadmin-portal-view');
+  useBackHandler(Boolean(selectedUserForEdit), () => setSelectedUserForEdit(null), 'superadmin-edit-user');
+  useBackHandler(Boolean(deleteModalTarget), () => setDeleteModalTarget(null), 'superadmin-delete-user');
 
   // Aspirant Referral Rewards Queue State
   const [aspirantRewardsList, setAspirantRewardsList] = useState<AspirantReferralReward[]>([]);

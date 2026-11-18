@@ -5,6 +5,7 @@ import { NairaText } from '../../../utils/currency';
 import { ExamPrepUnlockModal } from './ExamPrepUnlockModal';
 import { DiagnosticQuizModal } from './DiagnosticQuizModal';
 import { DailyStudyCalendarView } from './DailyStudyCalendarView';
+import { useBackHandler } from '../../../lib/backNavigation';
 import {
   Lock,
   Unlock,
@@ -28,6 +29,9 @@ export const PrepareForExamHub: React.FC = () => {
   const [isUnlockModalOpen, setIsUnlockModalOpen] = useState(false);
   const [modalInitialPlanType, setModalInitialPlanType] = useState<'full' | 'single_subject'>('full');
   const [isDiagnosticModalOpen, setIsDiagnosticModalOpen] = useState(false);
+
+  useBackHandler(isUnlockModalOpen, () => setIsUnlockModalOpen(false), 'exam-prep-unlock-modal');
+  useBackHandler(isDiagnosticModalOpen, () => setIsDiagnosticModalOpen(false), 'exam-prep-diagnostic-modal');
 
   const isUnlocked = examPrepState?.isUnlocked || false;
   const activeCalendar = examPrepState?.activeCalendar;

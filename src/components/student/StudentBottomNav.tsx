@@ -20,11 +20,14 @@ import { OTAFeatureKey } from '../../types';
 import { PausedBadge } from '../common/AppUpdateGate';
 import { playSound, toggleSoundMuted, getSoundMuted } from '../../utils/audioSynthesis';
 import { motion, AnimatePresence } from 'motion/react';
+import { useBackHandler } from '../../lib/backNavigation';
 
 export const StudentBottomNav: React.FC = () => {
   const { activeStudentTab, setActiveStudentTab, student, isFeatureEnabled } = useApp();
   const [isMoreDrawerOpen, setIsMoreDrawerOpen] = useState(false);
   const [isMuted, setIsMuted] = useState(getSoundMuted());
+
+  useBackHandler(isMoreDrawerOpen, () => setIsMoreDrawerOpen(false), 'student-more-drawer');
 
   const handleTabClick = (tabId: any) => {
     playSound.tileTap();

@@ -7,6 +7,7 @@ import { streamQuestionsBySubjectAndYear, fetchAvailableCloudPapers } from '../.
 import { CBTExam, CBTExamResult, CBTQuestion } from '../../../types';
 import { playSound, triggerHaptic } from '../../../utils/audioSynthesis';
 import { AspirantSubscriptionModal } from './AspirantSubscriptionModal';
+import { useActiveExamBackGuard, useBackHandler } from '../../../lib/backNavigation';
 import {
   Timer,
   CheckCircle2,
@@ -43,6 +44,30 @@ export const AspirantCBTSimulator: React.FC = () => {
   const [lastExamResult, setLastExamResult] = useState<{ scaledScore: number; rawScore: number; totalQuestions: number } | null>(null);
   const [secondsRemaining, setSecondsRemaining] = useState<number>(7200); // 2 hours for full JAMB UTME
   const [isSubscriptionModalOpen, setIsSubscriptionModalOpen] = useState<boolean>(false);
+
+  useBackHandler(
+    isSubscriptionModalOpen,
+    () => setIsSubscriptionModalOpen(false),
+    'aspirant-subscription-modal'
+  );
+  useBackHandler(
+    isSubmitted,
+    () => {
+      setIsSubmitted(false);
+      setIsTestActive(false);
+      setIsReviewMode(false);
+    },
+    'aspirant-cbt-results'
+  );
+  useActiveExamBackGuard(
+    isTestActive && !isSubmitted,
+    `${selectedYear} ${selectedExamType.replace('_', ' ')} Simulator`,
+    () => {
+      setIsTestActive(false);
+      setIsSubmitted(false);
+      setIsReviewMode(false);
+    }
+  );
 
   // Cloud Firestore Streaming State
   const [streamedQuestionsMap, setStreamedQuestionsMap] = useState<Record<string, CBTQuestion[]>>({});

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { PersonaAvatar } from '../common/PersonaAvatar';
 import { motion, AnimatePresence } from 'motion/react';
+import { useBackHandler } from '../../lib/backNavigation';
 import {
   ShieldCheck,
   Lock,
@@ -98,6 +99,13 @@ export const ParentPortal: React.FC = () => {
   const [isLinkingWard, setIsLinkingWard] = useState(false);
   const [linkWardFeedback, setLinkWardFeedback] = useState<{ success: boolean; message?: string; ward?: LinkedWard } | null>(null);
   const [confirmUnlinkWard, setConfirmUnlinkWard] = useState<LinkedWard | null>(null);
+
+  useBackHandler(parentTab !== 'overview', () => setParentTab('overview'), 'parent-portal-tab');
+  useBackHandler(Boolean(activeDetailSheet), () => setActiveDetailSheet(null), 'parent-detail-sheet');
+  useBackHandler(isTopUpModalOpen, () => setIsTopUpModalOpen(false), 'parent-topup-modal');
+  useBackHandler(isExamPrepModalOpen, () => setIsExamPrepModalOpen(false), 'parent-exam-prep-modal');
+  useBackHandler(isLinkWardModalOpen, () => setIsLinkWardModalOpen(false), 'parent-link-ward-modal');
+  useBackHandler(Boolean(confirmUnlinkWard), () => setConfirmUnlinkWard(null), 'parent-unlink-ward-modal');
 
   const currentActiveWard = linkedWards.find(w => w.studentId === activeWardId) || linkedWards[0];
   const wardStudentProfile =

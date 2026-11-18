@@ -4,6 +4,7 @@ import { StudyCalendar, StudyBlock } from '../../../types';
 import { CBT_EXAMS_DATABASE } from '../../../data/cbtExamData';
 import { NairaText } from '../../../utils/currency';
 import { TutorCreditBookingModal } from './TutorCreditBookingModal';
+import { useBackHandler } from '../../../lib/backNavigation';
 import {
   Calendar,
   CheckCircle2,
@@ -39,6 +40,12 @@ export const DailyStudyCalendarView: React.FC<DailyStudyCalendarViewProps> = ({
 
   const [selectedDayNumber, setSelectedDayNumber] = useState<number>(1);
   const [activeBookingBlock, setActiveBookingBlock] = useState<StudyBlock | null>(null);
+
+  useBackHandler(
+    Boolean(activeBookingBlock),
+    () => setActiveBookingBlock(null),
+    'study-calendar-booking-modal'
+  );
 
   const completedBlockIds = examPrepState.completedBlockIds || [];
   const tutorCredits = examPrepState.tutorCreditsNaira || 0;

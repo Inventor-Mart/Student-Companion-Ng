@@ -27,6 +27,7 @@ import { TutorProfileView } from './TutorProfileView';
 import { NairaText } from '../../utils/currency';
 import { playSound } from '../../utils/audioSynthesis';
 import { motion } from 'motion/react';
+import { useBackHandler } from '../../lib/backNavigation';
 
 interface ScheduledSlotOption {
   id: string;
@@ -109,6 +110,22 @@ export const TutorDiscovery: React.FC = () => {
   const [selectedSubject, setSelectedSubject] = useState<string>('All');
   const [selectedTutorForBooking, setSelectedTutorForBooking] = useState<Tutor | null>(null);
   const [selectedTutorForProfile, setSelectedTutorForProfile] = useState<Tutor | null>(null);
+
+  useBackHandler(
+    Boolean(selectedTutorForProfile),
+    () => setSelectedTutorForProfile(null),
+    'tutor-profile-view'
+  );
+  useBackHandler(
+    Boolean(selectedTutorForBooking),
+    () => setSelectedTutorForBooking(null),
+    'tutor-booking-modal'
+  );
+  useBackHandler(
+    isAddressModalOpen,
+    () => setIsAddressModalOpen(false),
+    'tutor-address-modal'
+  );
 
   // Booking Form State
   const [bookingType, setBookingType] = useState<BookingType>('online');

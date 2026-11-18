@@ -21,6 +21,7 @@ import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import androidx.activity.OnBackPressedCallback;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
@@ -55,6 +56,8 @@ public class MainActivity extends AppCompatActivity {
     private GeolocationPermissions.Callback pendingGeoCallback;
     @Nullable
     private String pendingGeoOrigin;
+    @Nullable
+    private OnBackPressedCallback backPressedCallback;
 
     private class AndroidAuthBridge {
         @JavascriptInterface
@@ -179,6 +182,14 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
         });
+
+        backPressedCallback = new OnBackPressedCallback(true) {
+            @Override
+            public void handleOnBackPressed() {
+                handleNativeBackPress();
+            }
+        };
+        getOnBackPressedDispatcher().addCallback(this, backPressedCallback);
 
         handleIntent(getIntent());
         webView.loadUrl(START_URL);
@@ -391,13 +402,32 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    @SuppressWarnings("deprecation")
-    @Override
-    public void onBackPressed() {
-        if (webView != null && webView.canGoBack()) {
-            webView.goBack();
-        } else {
-            super.onBackPressed();
+    private void handleNativeBackPress() {
+        if (webView == null || !pageFinished) {
+            performNativeExit();
+            return;
         }
+
+        webView.evaluateJavascript(
+            "(function(){ try { return window.__scHandleNativeBack ? window.__scHandleNativeBack() : 'allow_exit'; } catch (e) { return 'allow_exit'; } })();",
+            value -> {
+                String normalized = value == null ? "" : value.replace("\"", "").trim();
+                if ("handled".equals(normalized) || "armed_exit".equals(normalized)) {
+                    return;
+                }
+                if (webView != null && webView.canGoBack()) {
+                    webView.goBack();
+                    return;
+                }
+                performNativeExit();
+            }
+        );
+    }
+
+    private void performNativeExit() {
+        if (backPressedCallback != null) {
+            backPressedCallback.setEnabled(false);
+        }
+        getOnBackPressedDispatcher().onBackPressed();
     }
 }

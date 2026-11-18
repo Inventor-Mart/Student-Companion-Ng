@@ -34,9 +34,10 @@ import { PopupAnnouncementModal } from './components/student/PopupAnnouncementMo
 import { StudentSubscriptionModal } from './components/student/StudentSubscriptionModal';
 import { XPAwardNotification } from './components/student/XPAwardNotification';
 import { SplashScreen } from './components/common/SplashScreen';
-import { ShieldAlert, LogOut, X, Clock, Trash2 } from 'lucide-react';
+import { ShieldAlert, LogOut, X, Clock, Trash2, AlertTriangle } from 'lucide-react';
 import { AppUpdateGate, OTAModulePausedCard, PausedFeatureModal } from './components/common/AppUpdateGate';
 import { OfflineIndicator } from './components/common/OfflineIndicator';
+import { useBackHandler } from './lib/backNavigation';
 
 const AppContent: React.FC = () => {
   const [quotaExceeded, setQuotaExceeded] = React.useState(false);
@@ -75,8 +76,39 @@ const AppContent: React.FC = () => {
     securityStatus,
     refreshSecurityStatus,
     lastSecurityAlert,
-    dismissSecurityAlert
+    dismissSecurityAlert,
+    isNotificationDrawerOpen,
+    setIsNotificationDrawerOpen,
+    pausedFeatureNotice,
+    closePausedFeatureNotice
   } = useApp();
+
+  // Global LIFO Back Handlers for App-level Modals & Drawers
+  useBackHandler(
+    Boolean(pausedFeatureNotice),
+    closePausedFeatureNotice,
+    'paused-feature-modal'
+  );
+  useBackHandler(
+    Boolean(activeClassroomSession),
+    closeVirtualClassroom,
+    'virtual-classroom-modal'
+  );
+  useBackHandler(
+    isStudentSubscriptionModalOpen,
+    closeStudentSubscriptionModal,
+    'student-subscription-modal'
+  );
+  useBackHandler(
+    isUniformModalOpen,
+    () => setIsUniformModalOpen(false),
+    'uniform-verification-modal'
+  );
+  useBackHandler(
+    isNotificationDrawerOpen,
+    () => setIsNotificationDrawerOpen(false),
+    'notification-drawer'
+  );
 
   const expiredLockRefreshRef = React.useRef<string | null>(null);
 
@@ -691,6 +723,73 @@ const AppContent: React.FC = () => {
   );
 };
 
+const BackNavigationOverlays: React.FC = () => {
+  const {
+    pendingExamExitPrompt,
+    cancelExamExitPrompt,
+    confirmExamExitPrompt,
+    showExitBackToast
+  } = useApp();
+
+  return (
+    <>
+      {/* In-App CBT Exit Confirmation Modal (no native window.confirm) */}
+      {pendingExamExitPrompt && (
+        <div
+          className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-150"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="cbt-exit-confirm-title"
+        >
+          <div className="w-full max-w-sm rounded-3xl bg-slate-900 border border-slate-700/80 p-5 shadow-2xl text-slate-100 space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="w-11 h-11 rounded-2xl bg-amber-500/15 border border-amber-500/40 flex items-center justify-center text-amber-400 shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div className="space-y-1 min-w-0">
+                <h2 id="cbt-exit-confirm-title" className="text-base font-bold text-white leading-snug">
+                  Exit Active Exam?
+                </h2>
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  You are currently taking <span className="font-semibold text-white">{pendingExamExitPrompt.title}</span>. Leaving now will end this unsubmitted attempt without recording a score.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center gap-2.5 pt-1">
+              <button
+                type="button"
+                onClick={confirmExamExitPrompt}
+                className="flex-1 min-h-[44px] px-4 py-2.5 rounded-xl bg-rose-950/70 hover:bg-rose-900/80 border border-rose-700/60 text-rose-200 text-xs font-bold transition-all active:scale-[0.98] cursor-pointer"
+              >
+                Exit Exam
+              </button>
+              <button
+                type="button"
+                onClick={cancelExamExitPrompt}
+                className="flex-1 min-h-[44px] px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-lg shadow-emerald-950/50 transition-all active:scale-[0.98] cursor-pointer"
+              >
+                Continue Exam
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Root 2x-Back Exit Toast */}
+      {showExitBackToast && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed bottom-20 sm:bottom-6 left-1/2 -translate-x-1/2 z-[120] px-4 py-2.5 rounded-2xl bg-slate-900/95 border border-slate-700/80 text-slate-100 text-xs font-medium shadow-2xl backdrop-blur-md whitespace-nowrap pointer-events-none animate-in fade-in duration-150"
+        >
+          Press back again to exit
+        </div>
+      )}
+    </>
+  );
+};
+
 export default function App() {
   const isApkGoogleAuthBridge =
     typeof window !== 'undefined' &&
@@ -704,6 +803,7 @@ export default function App() {
     <AppProvider>
       <AppContent />
       <OfflineIndicator />
+      <BackNavigationOverlays />
     </AppProvider>
   );
 }

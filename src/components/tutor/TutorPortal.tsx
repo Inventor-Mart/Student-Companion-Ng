@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { motion, AnimatePresence } from 'motion/react';
+import { useBackHandler } from '../../lib/backNavigation';
 import {
   LayoutDashboard,
   Calendar,
@@ -82,6 +83,10 @@ export const TutorPortal: React.FC = () => {
   }, [pendingPortalTab, clearPendingPortalTab]);
   const [activeSheet, setActiveSheet] = useState<TutorSheet>(null);
   const [isVerificationModalOpen, setIsVerificationModalOpen] = useState(false);
+
+  useBackHandler(activeTab !== 'overview', () => setActiveTab('overview'), 'tutor-portal-tab');
+  useBackHandler(Boolean(activeSheet), () => setActiveSheet(null), 'tutor-detail-sheet');
+  useBackHandler(isVerificationModalOpen, () => setIsVerificationModalOpen(false), 'tutor-verification-modal');
   const [payoutStatusMessage, setPayoutStatusMessage] = useState<string>('');
   const [profileSaveSuccess, setProfileSaveSuccess] = useState<boolean>(false);
   const [isMuted, setIsMuted] = useState<boolean>(getSoundMuted());

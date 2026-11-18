@@ -6,6 +6,7 @@ import { DeviceImageUploader } from './DeviceImageUploader';
 import { PersonaAvatar } from '../common/PersonaAvatar';
 import { motion, AnimatePresence } from 'motion/react';
 import { playSound, toggleSoundMuted, getSoundMuted } from '../../utils/audioSynthesis';
+import { useBackHandler } from '../../lib/backNavigation';
 import {
   LayoutDashboard,
   Trophy,
@@ -88,6 +89,10 @@ export const SchoolAdminPortal: React.FC = () => {
   const [attachmentName, setAttachmentName] = useState<string>('');
   const [publishSuccess, setPublishSuccess] = useState<boolean>(false);
   const [previewMaterial, setPreviewMaterial] = useState<SchoolMaterial | null>(null);
+
+  useBackHandler(activeTab !== 'overview', () => setActiveTab('overview'), 'school-portal-tab');
+  useBackHandler(Boolean(activeSheet), () => setActiveSheet(null), 'school-detail-sheet');
+  useBackHandler(Boolean(previewMaterial), () => setPreviewMaterial(null), 'school-material-preview');
 
   // Materials filter
   const [materialFilter, setMaterialFilter] = useState<'all' | 'lesson_note' | 'assignment' | 'project' | 'past_question'>('all');

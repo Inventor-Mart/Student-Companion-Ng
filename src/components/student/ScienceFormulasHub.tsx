@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
+import { useBackHandler } from '../../lib/backNavigation';
 import {
   MATH_FORMULA_CATEGORIES,
   PHYSICS_FORMULA_CATEGORIES,
@@ -41,6 +42,12 @@ export const ScienceFormulasHub: React.FC = () => {
   const [copiedFormulaId, setCopiedFormulaId] = useState<string | null>(null);
   const [selectedElement, setSelectedElement] = useState<PeriodicElement | null>(null);
   const [elementCategoryFilter, setElementCategoryFilter] = useState<string>('all');
+
+  useBackHandler(
+    Boolean(selectedElement),
+    () => setSelectedElement(null),
+    'formulas-periodic-element'
+  );
 
   // Interactive Solver States
   // 1. Quadratic Solver

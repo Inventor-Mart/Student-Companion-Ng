@@ -5,6 +5,7 @@ import { CBTExam, CBTExamResult } from '../../types';
 import { renderFormattedSpan } from '../../utils/mathFormatter';
 import { ExamPrepUnlockModal } from './exam-prep/ExamPrepUnlockModal';
 import { TermlyDrillHub } from './TermlyDrillHub';
+import { useActiveExamBackGuard, useBackHandler } from '../../lib/backNavigation';
 import {
   Timer,
   Flag,
@@ -52,6 +53,8 @@ const CBTExamCatalog: React.FC<{ onSelectExam: (exam: CBTExam) => void; onOpenFo
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [unlockModalOpen, setUnlockModalOpen] = useState(false);
   const [targetSubjectToUnlock, setTargetSubjectToUnlock] = useState<string | undefined>(undefined);
+
+  useBackHandler(unlockModalOpen, () => setUnlockModalOpen(false), 'cbt-unlock-modal');
 
   const enrolledClass =
     student?.classLevel === 'University Aspirant' ? 'SS 3' : (student?.classLevel || 'JSS 1');
@@ -375,6 +378,10 @@ const ActiveCBTRunner: React.FC<ActiveCBTRunnerProps> = ({ exam, onExit, onSaveR
   const [isSubmitModalOpen, setIsSubmitModalOpen] = useState<boolean>(false);
   const [examResult, setExamResult] = useState<CBTExamResult | null>(null);
   const [showReviewMode, setShowReviewMode] = useState<boolean>(false);
+
+  useBackHandler(isSubmitModalOpen, () => setIsSubmitModalOpen(false), 'cbt-submit-modal');
+  useBackHandler(Boolean(examResult), onExit, 'cbt-results-exit');
+  useActiveExamBackGuard(!examResult, exam.title || `${exam.subject} CBT`, onExit);
 
   const answersRef = React.useRef(answers);
   answersRef.current = answers;

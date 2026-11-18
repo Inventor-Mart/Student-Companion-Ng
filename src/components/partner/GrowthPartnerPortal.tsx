@@ -3,6 +3,7 @@ import { useApp } from '../../context/AppContext';
 import { NairaText, NairaSign } from '../../utils/currency';
 import { motion, AnimatePresence } from 'motion/react';
 import { playSound, toggleSoundMuted, getSoundMuted } from '../../utils/audioSynthesis';
+import { useBackHandler } from '../../lib/backNavigation';
 import {
   LayoutDashboard,
   TrendingUp,
@@ -121,6 +122,10 @@ export const GrowthPartnerPortal: React.FC = () => {
   const [withdrawLoading, setWithdrawLoading] = useState<boolean>(false);
   const [withdrawSuccessMsg, setWithdrawSuccessMsg] = useState<string | null>(null);
   const [withdrawErrorMsg, setWithdrawErrorMsg] = useState<string | null>(null);
+
+  useBackHandler(activeTab !== 'overview', () => setActiveTab('overview'), 'partner-portal-tab');
+  useBackHandler(Boolean(activeSheet), () => setActiveSheet(null), 'partner-detail-sheet');
+  useBackHandler(showWithdrawModal, () => setShowWithdrawModal(false), 'partner-withdraw-modal');
 
   // Fetch or onboard partner
   const fetchPartnerData = async (isSilent = false) => {
