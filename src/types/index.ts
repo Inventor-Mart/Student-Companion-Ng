@@ -360,6 +360,22 @@ export interface TutorDigitalReadiness {
   comfortableWithTools: boolean;
 }
 
+export type NigerianHighestEducation =
+  | 'NCE'
+  | 'OND'
+  | 'HND'
+  | 'B.A.'
+  | 'B.Sc.'
+  | 'B.Ed.'
+  | 'B.Eng.'
+  | 'B.Tech.'
+  | 'PGDE'
+  | 'M.A.'
+  | 'M.Ed.'
+  | 'M.Sc.'
+  | 'Ph.D.'
+  | 'Other';
+
 export interface RegisteredTutorData {
   subjectSpecialization: string;
   qualification: string;
@@ -368,7 +384,7 @@ export interface RegisteredTutorData {
   verification?: TutorVerificationDetails;
   phone?: string;
   gender?: 'Male' | 'Female' | 'Prefer not to say';
-  highestEducation?: 'NCE' | 'B.Sc.' | 'B.Ed.' | 'M.Sc.' | 'Ph.D.' | 'Other';
+  highestEducation?: NigerianHighestEducation;
   institution?: string;
   courseOfStudy?: string;
   experienceYearsRange?: '0-1 years' | '1-3 years' | '3-5 years' | '5+ years';
@@ -390,7 +406,9 @@ export interface RegisteredTutorData {
   timetable?: TimetableSlot[];
   onboardingStage?: 1 | 2 | 3;
   manualSubjectOverrideAt?: string;
+  manualProfileOverrideAt?: string;
   subjectRepairVersion?: string;
+  profileRepairVersion?: string;
 }
 
 export type ParentRelationship = 'Father' | 'Mother' | 'Guardian' | 'Sibling' | 'Relative' | 'Other';

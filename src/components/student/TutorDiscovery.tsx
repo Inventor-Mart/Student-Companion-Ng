@@ -25,6 +25,7 @@ import { TutorMapLocator } from '../tutors/TutorMapLocator';
 import { PersonaAvatar } from '../common/PersonaAvatar';
 import { TutorProfileView } from './TutorProfileView';
 import { NairaText } from '../../utils/currency';
+import { formatPrimaryDegreeSummary, formatTutorLocation } from '../../utils/nigerianSubjects';
 import { playSound } from '../../utils/audioSynthesis';
 import { motion } from 'motion/react';
 import { useBackHandler } from '../../lib/backNavigation';
@@ -178,17 +179,30 @@ export const TutorDiscovery: React.FC = () => {
         rating: 5.0,
         reviewCount: 0,
         hourlyRateNaira: td.hourlyRate || 3500,
-        location: `${td.city || 'Lagos'}, ${td.state || 'Nigeria'}`,
+        location: formatTutorLocation(td.city, td.state),
         state: td.state || 'Lagos',
         isNinVerified: Boolean(td.nin || td.verification?.isVerified),
-        education: td.qualification || `${td.highestEducation || 'B.Sc.'} (${td.institution || 'Registered Educator'})`,
+        education:
+          td.qualification && !/^other$/i.test(td.qualification)
+            ? td.qualification
+            : `${td.highestEducation || 'B.Sc.'}${td.institution ? ` (${td.institution})` : ''}`,
         avatarUrl: currentUserProfile.avatarUrl || '',
         bio: td.bio || 'Registered educator available for 1-on-1 tutoring.',
         availableDays: ['Mondays', 'Wednesdays', 'Saturdays'],
         lat: 6.6018,
         lng: 3.3515,
         experienceYears: td.experienceYearsRange === '5+ years' ? 6 : td.experienceYearsRange === '3-5 years' ? 4 : 2,
-        degrees: td.degrees || [`${td.highestEducation || 'B.Sc.'} in ${td.courseOfStudy || 'Education'}`],
+        degrees:
+          td.degrees && td.degrees.length > 0
+            ? td.degrees
+            : [
+                formatPrimaryDegreeSummary({
+                  highestEducation: td.highestEducation,
+                  qualification: td.qualification,
+                  courseOfStudy: td.courseOfStudy,
+                  institution: td.institution
+                })
+              ],
         certifications: td.certifications || ['Registered Educator'],
         examSpecializations: td.examSpecializations || ['WAEC Prep', 'JAMB Prep'],
         curriculumHighlights: td.curriculumHighlights || ['Interactive Whiteboard Drills'],

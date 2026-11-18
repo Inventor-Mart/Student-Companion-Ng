@@ -14,7 +14,12 @@ import {
   type ServerSecurityBlock
 } from './serverSecurity';
 import type { AuthoritativeLedgerState } from './serverLedger';
-import { mergeTutorDataSafely, repairSpecificTutorRecord } from './src/utils/nigerianSubjects';
+import {
+  REPAIRED_TUTOR_PROFILE_VERSION,
+  SUBJECT_REPAIR_VERSION,
+  mergeTutorDataSafely,
+  repairSpecificTutorRecord
+} from './src/utils/nigerianSubjects';
 
 const USER_DIRECTORY_PATH = '/tmp/sc-user-directory.json';
 const OTP_CHALLENGES_PATH = '/tmp/sc-otp-challenges.json';
@@ -524,13 +529,28 @@ export function applyAdminUpdateToServerUser(
 
   if (!existing) return null;
 
+  const existingProfileTs = Math.max(
+    Date.parse(String(existing.tutorData?.manualProfileOverrideAt || '')) || 0,
+    Date.parse(String(existing.tutorData?.manualSubjectOverrideAt || '')) || 0
+  );
+  const incomingProfileTs =
+    Date.parse(String((updates.tutorData as any)?.manualProfileOverrideAt || '')) || 0;
+  const authoritativeOverrideIso = new Date(
+    Math.max(existingProfileTs + 1, incomingProfileTs, Date.now())
+  ).toISOString();
+
   const incomingTutorData =
     updates.tutorData && typeof updates.tutorData === 'object'
       ? {
           ...(existing.tutorData || {}),
           ...updates.tutorData,
+          manualProfileOverrideAt: authoritativeOverrideIso,
+          profileRepairVersion: REPAIRED_TUTOR_PROFILE_VERSION,
           ...(updates.tutorData.proficientSubjects !== undefined || updates.tutorData.subjectSpecialization !== undefined
-            ? { manualSubjectOverrideAt: updates.tutorData.manualSubjectOverrideAt || new Date().toISOString() }
+            ? {
+                manualSubjectOverrideAt: authoritativeOverrideIso,
+                subjectRepairVersion: SUBJECT_REPAIR_VERSION
+              }
             : {})
         }
       : updates.tutorData;

@@ -9,16 +9,22 @@ import {
   ParentNotificationChannel,
   GrowthPartner,
   RegisteredTutorData,
+  NigerianHighestEducation,
   AspirantReferralReward,
   ForumReport
 } from '../../types';
 import { PersonaAvatar } from '../common/PersonaAvatar';
 import { SubjectMultiSelector } from '../common/SubjectMultiSelector';
 import {
+  NIGERIAN_HIGHER_EDUCATION_OPTIONS,
+  REPAIRED_TUTOR_PROFILE_VERSION,
   SUBJECT_REPAIR_VERSION,
   dedupeSubjects,
+  formatPrimaryDegreeSummary,
   formatSubjectSpecialization,
-  parseSubjectString
+  normalizeHighestEducation,
+  parseSubjectString,
+  rebuildTutorDegrees
 } from '../../utils/nigerianSubjects';
 import { calculateRank as calculateRankFromXP } from '../../utils/xpEconomy';
 import { useBackHandler } from '../../lib/backNavigation';
@@ -729,9 +735,10 @@ export const SuperAdminPortal: React.FC = () => {
   const [editTutorTeachingMode, setEditTutorTeachingMode] = useState<'both' | 'online' | 'physical'>('both');
   const [editTutorQualification, setEditTutorQualification] = useState<string>('');
   const [editTutorHighestEducation, setEditTutorHighestEducation] =
-    useState<NonNullable<RegisteredTutorData['highestEducation']>>('B.Sc.');
+    useState<NigerianHighestEducation>('B.Sc.');
   const [editTutorInstitution, setEditTutorInstitution] = useState<string>('');
   const [editTutorCourseOfStudy, setEditTutorCourseOfStudy] = useState<string>('');
+  const [editTutorDegreesText, setEditTutorDegreesText] = useState<string>('');
   const [editTutorExperienceRange, setEditTutorExperienceRange] =
     useState<NonNullable<RegisteredTutorData['experienceYearsRange']>>('1-3 years');
   const [editTutorPhone, setEditTutorPhone] = useState<string>('');
@@ -860,10 +867,28 @@ export const SuperAdminPortal: React.FC = () => {
     );
     setEditHourlyRate(Number(td?.hourlyRate || 3500));
     setEditTutorTeachingMode(td?.teachingMode || 'both');
-    setEditTutorQualification(td?.qualification || '');
-    setEditTutorHighestEducation(td?.highestEducation || 'B.Sc.');
+    const normalizedEd = normalizeHighestEducation(td?.highestEducation, td?.qualification);
+    const resolvedQual =
+      normalizedEd === 'Other'
+        ? td?.qualification || ''
+        : td?.qualification && !/^other$/i.test(td.qualification)
+          ? td.qualification
+          : normalizedEd;
+    const cleanedDegrees = rebuildTutorDegrees(
+      Array.isArray(td?.degrees) ? td.degrees : [],
+      {
+        highestEducation: normalizedEd,
+        qualification: resolvedQual,
+        courseOfStudy: td?.courseOfStudy || '',
+        institution: td?.institution || ''
+      },
+      td
+    );
+    setEditTutorQualification(resolvedQual);
+    setEditTutorHighestEducation(normalizedEd);
     setEditTutorInstitution(td?.institution || '');
     setEditTutorCourseOfStudy(td?.courseOfStudy || '');
+    setEditTutorDegreesText(cleanedDegrees.join('\n'));
     setEditTutorExperienceRange(td?.experienceYearsRange || '1-3 years');
     setEditTutorPhone(td?.phone || '');
     setEditTutorCity(td?.city || '');
@@ -1105,11 +1130,38 @@ export const SuperAdminPortal: React.FC = () => {
         editTutorSpecialization.trim() ||
         formatSubjectSpecialization(cleanSubjects, 'General Subjects');
       const existingTd = selectedUserForEdit.tutorData;
+      const resolvedHighestEd = normalizeHighestEducation(
+        editTutorHighestEducation,
+        editTutorQualification
+      );
+      const resolvedQualification =
+        resolvedHighestEd === 'Other'
+          ? editTutorQualification.trim() || 'Other Higher Degree'
+          : editTutorQualification.trim() && !/^other$/i.test(editTutorQualification.trim())
+            ? editTutorQualification.trim()
+            : resolvedHighestEd;
+      const cleanInstitution = editTutorInstitution.trim();
+      const cleanCourseOfStudy = editTutorCourseOfStudy.trim();
+      const parsedDegreesFromInput = editTutorDegreesText
+        .split('\n')
+        .map(line => line.trim())
+        .filter(Boolean);
+      const resolvedDegrees = rebuildTutorDegrees(
+        parsedDegreesFromInput.length > 0 ? parsedDegreesFromInput : existingTd?.degrees,
+        {
+          highestEducation: resolvedHighestEd,
+          qualification: resolvedQualification,
+          courseOfStudy: cleanCourseOfStudy,
+          institution: cleanInstitution
+        },
+        existingTd
+      );
+      const nowIso = new Date().toISOString();
 
       updates.tutorData = {
         ...(existingTd || {
           subjectSpecialization: resolvedSpec,
-          qualification: 'B.Sc.',
+          qualification: resolvedQualification,
           hourlyRate: 3500,
           teachingMode: 'both'
         }),
@@ -1117,10 +1169,11 @@ export const SuperAdminPortal: React.FC = () => {
         subjectSpecialization: resolvedSpec,
         hourlyRate: Math.max(0, Number(editHourlyRate) || 3500),
         teachingMode: editTutorTeachingMode,
-        qualification: editTutorQualification.trim() || editTutorHighestEducation,
-        highestEducation: editTutorHighestEducation,
-        institution: editTutorInstitution.trim(),
-        courseOfStudy: editTutorCourseOfStudy.trim(),
+        qualification: resolvedQualification,
+        highestEducation: resolvedHighestEd,
+        institution: cleanInstitution,
+        courseOfStudy: cleanCourseOfStudy,
+        degrees: resolvedDegrees,
         experienceYearsRange: editTutorExperienceRange,
         phone: editTutorPhone.trim(),
         city: editTutorCity.trim(),
@@ -1141,8 +1194,10 @@ export const SuperAdminPortal: React.FC = () => {
           accountName: cleanName.toUpperCase(),
           isVerified: editTutorVerified
         },
-        manualSubjectOverrideAt: new Date().toISOString(),
-        subjectRepairVersion: SUBJECT_REPAIR_VERSION
+        manualSubjectOverrideAt: nowIso,
+        manualProfileOverrideAt: nowIso,
+        subjectRepairVersion: SUBJECT_REPAIR_VERSION,
+        profileRepairVersion: REPAIRED_TUTOR_PROFILE_VERSION
       };
     } else if (selectedUserForEdit.role === 'admin' || selectedUserForEdit.role === 'school_admin') {
       updates.adminData = {
@@ -3619,22 +3674,110 @@ export const SuperAdminPortal: React.FC = () => {
                       <label className="text-slate-300 font-semibold block mb-1">Highest Education</label>
                       <select
                         value={editTutorHighestEducation}
-                        onChange={e => setEditTutorHighestEducation(e.target.value as any)}
+                        onChange={e => {
+                          const nextEd = e.target.value as NigerianHighestEducation;
+                          const prevSummary = formatPrimaryDegreeSummary({
+                            highestEducation: editTutorHighestEducation,
+                            qualification: editTutorQualification,
+                            courseOfStudy: editTutorCourseOfStudy,
+                            institution: editTutorInstitution
+                          });
+                          let nextQual = editTutorQualification;
+                          if (nextEd === 'Other') {
+                            if (
+                              NIGERIAN_HIGHER_EDUCATION_OPTIONS.some(
+                                opt => opt.value.toLowerCase() === editTutorQualification.trim().toLowerCase()
+                              )
+                            ) {
+                              nextQual = '';
+                            }
+                          } else {
+                            nextQual = nextEd;
+                          }
+                          setEditTutorHighestEducation(nextEd);
+                          setEditTutorQualification(nextQual);
+                          const currentLines = editTutorDegreesText
+                            .split('\n')
+                            .map(l => l.trim())
+                            .filter(Boolean);
+                          const rebuilt = rebuildTutorDegrees(
+                            currentLines,
+                            {
+                              highestEducation: nextEd,
+                              qualification: nextQual,
+                              courseOfStudy: editTutorCourseOfStudy,
+                              institution: editTutorInstitution
+                            },
+                            {
+                              highestEducation: editTutorHighestEducation,
+                              qualification: editTutorQualification,
+                              courseOfStudy: editTutorCourseOfStudy,
+                              institution: editTutorInstitution
+                            }
+                          );
+                          if (
+                            currentLines.length === 0 ||
+                            currentLines[0].toLowerCase() === prevSummary.toLowerCase() ||
+                            rebuilt.length > 0
+                          ) {
+                            setEditTutorDegreesText(rebuilt.join('\n'));
+                          }
+                        }}
                         className="w-full min-h-[44px] bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
                       >
-                        {['NCE', 'B.Sc.', 'B.Ed.', 'M.Sc.', 'Ph.D.', 'Other'].map(ed => (
-                          <option key={ed} value={ed}>{ed}</option>
+                        {NIGERIAN_HIGHER_EDUCATION_OPTIONS.map(ed => (
+                          <option key={ed.value} value={ed.value}>
+                            {ed.label}
+                          </option>
                         ))}
                       </select>
                     </div>
 
                     <div>
-                      <label className="text-slate-300 font-semibold block mb-1">Qualification Title</label>
+                      <label className="text-slate-300 font-semibold block mb-1">
+                        {editTutorHighestEducation === 'Other'
+                          ? 'Custom Qualification Title *'
+                          : 'Qualification Title (Honors / Optional)'}
+                      </label>
                       <input
                         type="text"
                         value={editTutorQualification}
-                        onChange={e => setEditTutorQualification(e.target.value)}
-                        placeholder="e.g. B.Ed. (First Class Honours)"
+                        onChange={e => {
+                          const nextQual = e.target.value;
+                          const prevSummary = formatPrimaryDegreeSummary({
+                            highestEducation: editTutorHighestEducation,
+                            qualification: editTutorQualification,
+                            courseOfStudy: editTutorCourseOfStudy,
+                            institution: editTutorInstitution
+                          });
+                          setEditTutorQualification(nextQual);
+                          const currentLines = editTutorDegreesText
+                            .split('\n')
+                            .map(l => l.trim())
+                            .filter(Boolean);
+                          if (
+                            currentLines.length === 0 ||
+                            currentLines[0].toLowerCase() === prevSummary.toLowerCase()
+                          ) {
+                            const rebuilt = rebuildTutorDegrees(currentLines, {
+                              highestEducation: editTutorHighestEducation,
+                              qualification: nextQual,
+                              courseOfStudy: editTutorCourseOfStudy,
+                              institution: editTutorInstitution
+                            }, {
+                              highestEducation: editTutorHighestEducation,
+                              qualification: editTutorQualification,
+                              courseOfStudy: editTutorCourseOfStudy,
+                              institution: editTutorInstitution
+                            });
+                            setEditTutorDegreesText(rebuilt.join('\n'));
+                          }
+                        }}
+                        placeholder={
+                          editTutorHighestEducation === 'Other'
+                            ? 'Enter custom title (e.g. PGD, B.Agric., LL.B.)'
+                            : 'e.g. B.A. (Second Class Upper)'
+                        }
                         className="w-full min-h-[44px] bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
                       />
                     </div>
@@ -3644,7 +3787,37 @@ export const SuperAdminPortal: React.FC = () => {
                       <input
                         type="text"
                         value={editTutorInstitution}
-                        onChange={e => setEditTutorInstitution(e.target.value)}
+                        onChange={e => {
+                          const nextInst = e.target.value;
+                          const prevSummary = formatPrimaryDegreeSummary({
+                            highestEducation: editTutorHighestEducation,
+                            qualification: editTutorQualification,
+                            courseOfStudy: editTutorCourseOfStudy,
+                            institution: editTutorInstitution
+                          });
+                          setEditTutorInstitution(nextInst);
+                          const currentLines = editTutorDegreesText
+                            .split('\n')
+                            .map(l => l.trim())
+                            .filter(Boolean);
+                          if (
+                            currentLines.length === 0 ||
+                            currentLines[0].toLowerCase() === prevSummary.toLowerCase()
+                          ) {
+                            const rebuilt = rebuildTutorDegrees(currentLines, {
+                              highestEducation: editTutorHighestEducation,
+                              qualification: editTutorQualification,
+                              courseOfStudy: editTutorCourseOfStudy,
+                              institution: nextInst
+                            }, {
+                              highestEducation: editTutorHighestEducation,
+                              qualification: editTutorQualification,
+                              courseOfStudy: editTutorCourseOfStudy,
+                              institution: editTutorInstitution
+                            });
+                            setEditTutorDegreesText(rebuilt.join('\n'));
+                          }
+                        }}
                         className="w-full min-h-[44px] bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
                       />
                     </div>
@@ -3654,8 +3827,72 @@ export const SuperAdminPortal: React.FC = () => {
                       <input
                         type="text"
                         value={editTutorCourseOfStudy}
-                        onChange={e => setEditTutorCourseOfStudy(e.target.value)}
+                        onChange={e => {
+                          const nextCourse = e.target.value;
+                          const prevSummary = formatPrimaryDegreeSummary({
+                            highestEducation: editTutorHighestEducation,
+                            qualification: editTutorQualification,
+                            courseOfStudy: editTutorCourseOfStudy,
+                            institution: editTutorInstitution
+                          });
+                          setEditTutorCourseOfStudy(nextCourse);
+                          const currentLines = editTutorDegreesText
+                            .split('\n')
+                            .map(l => l.trim())
+                            .filter(Boolean);
+                          if (
+                            currentLines.length === 0 ||
+                            currentLines[0].toLowerCase() === prevSummary.toLowerCase()
+                          ) {
+                            const rebuilt = rebuildTutorDegrees(currentLines, {
+                              highestEducation: editTutorHighestEducation,
+                              qualification: editTutorQualification,
+                              courseOfStudy: nextCourse,
+                              institution: editTutorInstitution
+                            }, {
+                              highestEducation: editTutorHighestEducation,
+                              qualification: editTutorQualification,
+                              courseOfStudy: editTutorCourseOfStudy,
+                              institution: editTutorInstitution
+                            });
+                            setEditTutorDegreesText(rebuilt.join('\n'));
+                          }
+                        }}
                         className="w-full min-h-[44px] bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
+                      />
+                    </div>
+
+                    <div className="sm:col-span-2">
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-slate-300 font-semibold">
+                          University Degrees &amp; Honors Card (One per line)
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const currentLines = editTutorDegreesText
+                              .split('\n')
+                              .map(l => l.trim())
+                              .filter(Boolean);
+                            const rebuilt = rebuildTutorDegrees(currentLines, {
+                              highestEducation: editTutorHighestEducation,
+                              qualification: editTutorQualification,
+                              courseOfStudy: editTutorCourseOfStudy,
+                              institution: editTutorInstitution
+                            });
+                            setEditTutorDegreesText(rebuilt.join('\n'));
+                          }}
+                          className="text-[11px] font-bold text-emerald-400 hover:text-emerald-300 cursor-pointer"
+                        >
+                          Sync from Qualification &amp; Alma Mater
+                        </button>
+                      </div>
+                      <textarea
+                        rows={2}
+                        value={editTutorDegreesText}
+                        onChange={e => setEditTutorDegreesText(e.target.value)}
+                        placeholder="e.g. B.A. French Language, University of Benin"
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white text-xs focus:outline-none focus:border-emerald-500"
                       />
                     </div>
 

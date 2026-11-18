@@ -127,10 +127,15 @@ import {
 } from '../data/competitionPrizesData';
 import { INITIAL_USER_DIRECTORY } from '../data/mockUsersData';
 import {
+  REPAIRED_TUTOR_PROFILE_VERSION,
   SUBJECT_REPAIR_VERSION,
   dedupeSubjects,
+  formatPrimaryDegreeSummary,
   formatSubjectSpecialization,
+  formatTutorLocation,
   mergeTutorDataSafely,
+  normalizeHighestEducation,
+  rebuildTutorDegrees,
   repairSpecificTutorRecord
 } from '../utils/nigerianSubjects';
 import {
@@ -764,16 +769,34 @@ const mergeUserProfiles = (
   const existingIsStub = existing.directorySource === 'recovered' || isPlaceholderRecoveredEmail(existingEmail);
   const incomingIsStub = incoming.directorySource === 'recovered' || isPlaceholderRecoveredEmail(incomingEmail);
 
+  const exTutorOverrideTs = Math.max(
+    Date.parse(String(existing.tutorData?.manualProfileOverrideAt || '')) || 0,
+    Date.parse(String(existing.tutorData?.manualSubjectOverrideAt || '')) || 0
+  );
+  const incTutorOverrideTs = Math.max(
+    Date.parse(String(incoming.tutorData?.manualProfileOverrideAt || '')) || 0,
+    Date.parse(String(incoming.tutorData?.manualSubjectOverrideAt || '')) || 0
+  );
+  const preferExistingOverStaleIncoming =
+    exTutorOverrideTs > 0 && (incTutorOverrideTs <= 0 || exTutorOverrideTs > incTutorOverrideTs);
+
+  const resolvedTutorData = mergeTutorDataSafely(existing.tutorData, incoming.tutorData);
+
   return {
     ...existing,
     ...incoming,
     id: existing.id || incoming.id,
     role: !incomingIsStub && incoming.role ? incoming.role : existing.role || incoming.role,
-    fullName:
-      !incomingIsStub && incoming.fullName && incoming.fullName !== 'Student Scholar'
+    fullName: preferExistingOverStaleIncoming
+      ? existing.fullName || incoming.fullName
+      : !incomingIsStub && incoming.fullName && incoming.fullName !== 'Student Scholar'
         ? incoming.fullName
         : existing.fullName || incoming.fullName,
-    email: resolvedEmail,
+    email: preferExistingOverStaleIncoming
+      ? !isPlaceholderRecoveredEmail(existingEmail)
+        ? existingEmail
+        : resolvedEmail
+      : resolvedEmail,
     emailVerified: Boolean(existing.emailVerified || incoming.emailVerified),
     createdAt:
       existing.createdAt && incoming.createdAt
@@ -806,7 +829,7 @@ const mergeUserProfiles = (
             ...(incoming.parentData || {})
           }
         : undefined,
-    tutorData: mergeTutorDataSafely(existing.tutorData, incoming.tutorData),
+    tutorData: resolvedTutorData,
     adminData:
       existing.adminData || incoming.adminData
         ? { ...(existing.adminData || ({ schoolName: '', schoolType: '' })), ...(incoming.adminData || {}) }
@@ -5162,6 +5185,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       )
       .map(u => {
         const td = u.tutorData;
+        const fallbackDegree = formatPrimaryDegreeSummary({
+          highestEducation: td?.highestEducation,
+          qualification: td?.qualification,
+          courseOfStudy: td?.courseOfStudy,
+          institution: td?.institution
+        });
         return {
           id: u.id,
           name: u.fullName,
@@ -5173,12 +5202,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           rating: 5.0,
           reviewCount: 0,
           hourlyRateNaira: td?.hourlyRate || 3500,
-          location: `${td?.city || 'Lagos'}, ${td?.state || 'Nigeria'}`,
+          location: formatTutorLocation(td?.city, td?.state),
           state: td?.state || 'Lagos',
           isNinVerified: Boolean(td?.nin || td?.verification?.isVerified),
           education:
-            td?.qualification ||
-            `${td?.highestEducation || 'B.Sc.'} (${td?.institution || 'Nigerian University'})`,
+            td?.qualification && !/^other$/i.test(td.qualification)
+              ? td.qualification
+              : `${td?.highestEducation || 'B.Sc.'}${td?.institution ? ` (${td.institution})` : ''}`,
           avatarUrl: u.avatarUrl || '',
           bio:
             td?.bio ||
@@ -5192,7 +5222,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               : td?.experienceYearsRange === '3-5 years'
               ? 4
               : 2,
-          degrees: td?.degrees || [],
+          degrees: td?.degrees && td.degrees.length > 0 ? td.degrees : [fallbackDegree],
           certifications: td?.certifications || [],
           examSpecializations: td?.examSpecializations || [],
           curriculumHighlights: td?.curriculumHighlights || [],
@@ -5947,16 +5977,42 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         String(profileData.subjectSpecialization || '').trim() ||
         formatSubjectSpecialization(cleanTutorSubjects, 'General Subjects');
 
+      const normalizedHighestEd = normalizeHighestEducation(
+        profileData.highestEducation,
+        profileData.qualification
+      );
+      const rawCustomQual = String(profileData.qualification || '').trim();
+      const resolvedQualification =
+        normalizedHighestEd === 'Other'
+          ? rawCustomQual || 'Other Higher Degree'
+          : rawCustomQual && !/^other$/i.test(rawCustomQual)
+            ? rawCustomQual
+            : normalizedHighestEd;
+      const resolvedInstitution = String(profileData.institution || '').trim();
+      const resolvedCourseOfStudy = String(profileData.courseOfStudy || '').trim();
+      const resolvedDegrees =
+        Array.isArray(profileData.degrees) && profileData.degrees.length > 0
+          ? profileData.degrees
+          : [
+              formatPrimaryDegreeSummary({
+                highestEducation: normalizedHighestEd,
+                qualification: resolvedQualification,
+                courseOfStudy: resolvedCourseOfStudy,
+                institution: resolvedInstitution
+              })
+            ];
+      const nowIso = new Date().toISOString();
+
       newProfile.tutorData = {
         subjectSpecialization: resolvedTutorSpec,
-        qualification: profileData.qualification || profileData.highestEducation || 'B.Sc. (First Class Honours)',
+        qualification: resolvedQualification,
         hourlyRate: Number(profileData.hourlyRate) || Number(profileData.hourlyRateNaira) || 3500,
         teachingMode: profileData.teachingMode || 'both',
         phone: profileData.phone || '',
         gender: profileData.gender || 'Prefer not to say',
-        highestEducation: profileData.highestEducation || 'B.Sc.',
-        institution: profileData.institution || 'University of Lagos',
-        courseOfStudy: profileData.courseOfStudy || 'Education & Arts / Sciences',
+        highestEducation: normalizedHighestEd,
+        institution: resolvedInstitution,
+        courseOfStudy: resolvedCourseOfStudy,
         experienceYearsRange: profileData.experienceYearsRange || '3-5 years',
         targetClasses: profileData.targetClasses || ['JSS 3', 'SS 3', 'WAEC/NECO Prep', 'JAMB Prep'],
         proficientSubjects: cleanTutorSubjects,
@@ -5964,8 +6020,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           profileData.bio ||
           `${resolvedTutorSpec} educator specializing in WAEC distinctions, JAMB drills, and student-centered conceptual learning.`,
         tagline: profileData.tagline || `${resolvedTutorSpec} Specialist Educator`,
-        city: profileData.city || 'Ikeja',
-        state: profileData.state || 'Lagos',
+        city: String(profileData.city || 'Lagos').trim(),
+        state: String(profileData.state || 'Lagos').trim(),
         nin: profileData.nin || '',
         idDocumentUrl: profileData.idDocumentUrl || '',
         cvResumeUrl: profileData.cvResumeUrl || '',
@@ -5978,9 +6034,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           hasInternet: true,
           comfortableWithTools: true
         },
-        degrees: profileData.degrees || [
-          `${profileData.highestEducation || 'B.Sc.'} ${profileData.courseOfStudy || 'Education'}, ${profileData.institution || 'University of Lagos'}`
-        ],
+        degrees: resolvedDegrees,
         certifications: profileData.certifications || [
           'TRCN Certified Secondary Educator (Teachers Registration Council of Nigeria)',
           'National Educational Excellence Mentor'
@@ -5996,7 +6050,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           'Paced exam time management techniques'
         ],
         timetable: profileData.timetable || defaultSlots,
-        onboardingStage: profileData.onboardingStage || 3
+        onboardingStage: profileData.onboardingStage || 3,
+        manualSubjectOverrideAt: nowIso,
+        manualProfileOverrideAt: nowIso,
+        subjectRepairVersion: SUBJECT_REPAIR_VERSION,
+        profileRepairVersion: REPAIRED_TUTOR_PROFILE_VERSION
       };
 
       if (profileData.nin) {
@@ -7462,17 +7520,72 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ? formatSubjectSpecialization(nextProficientSubjects || [], currentTutor.subjectSpecialization)
         : currentTutor.subjectSpecialization;
 
+    const nextHighestEd = normalizeHighestEducation(
+      updatedTutorData.highestEducation !== undefined
+        ? updatedTutorData.highestEducation
+        : currentTutor.highestEducation,
+      updatedTutorData.qualification !== undefined
+        ? updatedTutorData.qualification
+        : currentTutor.qualification
+    );
+    const rawQual =
+      updatedTutorData.qualification !== undefined
+        ? String(updatedTutorData.qualification).trim()
+        : String(currentTutor.qualification || '').trim();
+    const nextQualification =
+      nextHighestEd === 'Other'
+        ? rawQual || 'Other Higher Degree'
+        : rawQual && !/^other$/i.test(rawQual)
+          ? rawQual
+          : nextHighestEd;
+    const nextInstitution =
+      updatedTutorData.institution !== undefined
+        ? String(updatedTutorData.institution).trim()
+        : String(currentTutor.institution || '').trim();
+    const nextCourseOfStudy =
+      updatedTutorData.courseOfStudy !== undefined
+        ? String(updatedTutorData.courseOfStudy).trim()
+        : String(currentTutor.courseOfStudy || '').trim();
+
+    const credentialsChanged =
+      updatedTutorData.highestEducation !== undefined ||
+      updatedTutorData.qualification !== undefined ||
+      updatedTutorData.institution !== undefined ||
+      updatedTutorData.courseOfStudy !== undefined;
+
+    const baseDegrees =
+      updatedTutorData.degrees !== undefined ? updatedTutorData.degrees : currentTutor.degrees;
+    const nextDegrees = credentialsChanged
+      ? rebuildTutorDegrees(
+          baseDegrees,
+          {
+            highestEducation: nextHighestEd,
+            qualification: nextQualification,
+            courseOfStudy: nextCourseOfStudy,
+            institution: nextInstitution
+          },
+          currentTutor
+        )
+      : baseDegrees;
+
+    const nowIso = new Date().toISOString();
+    const overrideIso = (updatedTutorData as any).manualProfileOverrideAt || nowIso;
+
     const nextTutorData: RegisteredTutorData = {
       ...currentTutor,
       ...updatedTutorData,
+      highestEducation: nextHighestEd,
+      qualification: nextQualification,
+      institution: nextInstitution,
+      courseOfStudy: nextCourseOfStudy,
+      ...(nextDegrees !== undefined ? { degrees: nextDegrees } : {}),
       ...(nextProficientSubjects !== undefined ? { proficientSubjects: nextProficientSubjects } : {}),
       subjectSpecialization: nextSubjectSpecialization,
-      ...(updatedTutorData.proficientSubjects !== undefined || updatedTutorData.subjectSpecialization !== undefined
-        ? {
-            manualSubjectOverrideAt: (updatedTutorData as any).manualSubjectOverrideAt || new Date().toISOString(),
-            subjectRepairVersion: SUBJECT_REPAIR_VERSION
-          }
-        : {})
+      manualProfileOverrideAt: overrideIso,
+      manualSubjectOverrideAt:
+        (updatedTutorData as any).manualSubjectOverrideAt || overrideIso,
+      subjectRepairVersion: SUBJECT_REPAIR_VERSION,
+      profileRepairVersion: REPAIRED_TUTOR_PROFILE_VERSION
     };
 
     const nextAvatar = updatedTutorData.idDocumentUrl || currentUserProfile.avatarUrl;
@@ -8198,20 +8311,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       allRegisteredUsers.find(u => u.id === userId) ||
       (currentUserProfile?.id === userId ? currentUserProfile : undefined);
 
+    const applyProfileUpdates = (u: RegisteredUserProfile): RegisteredUserProfile => {
+      if (updates.tutorData && u.tutorData) {
+        return {
+          ...u,
+          ...updates,
+          tutorData: mergeTutorDataSafely(u.tutorData, updates.tutorData)
+        };
+      }
+      return { ...u, ...updates };
+    };
+
     setAllRegisteredUsers(prev => {
-      const updated = prev.map(u => (u.id === userId ? { ...u, ...updates } : u));
+      const updated = prev.map(u => (u.id === userId ? applyProfileUpdates(u) : u));
       safeSetItem('sc_all_users', JSON.stringify(updated));
       return updated;
     });
 
     if (currentUserProfile && currentUserProfile.id === userId) {
-      const updated = { ...currentUserProfile, ...updates };
+      const updated = applyProfileUpdates(currentUserProfile);
       setCurrentUserProfile(updated);
       safeSetItem('sc_user_profile', JSON.stringify(updated));
     }
 
     if (impersonatedUser && impersonatedUser.id === userId) {
-      const updated = { ...impersonatedUser, ...updates };
+      const updated = applyProfileUpdates(impersonatedUser);
       setImpersonatedUser(updated);
       if (updated.studentData) setStudent(updated.studentData);
     }

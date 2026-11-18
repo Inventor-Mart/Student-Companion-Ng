@@ -20,6 +20,7 @@ import {
   Sparkles
 } from 'lucide-react';
 import { NairaText, NairaSign } from '../../utils/currency';
+import { formatDisplayLocationWithState } from '../../utils/nigerianSubjects';
 import { PersonaAvatar } from '../common/PersonaAvatar';
 
 interface TutorMapLocatorProps {
@@ -360,7 +361,7 @@ export const TutorMapLocator: React.FC<TutorMapLocatorProps> = ({
                         <div className="min-w-0">
                           <div className="text-xs font-bold text-white truncate">{tutor.name}</div>
                           <div className="text-[11px] text-slate-400 truncate">
-                            {tutor.location}, {tutor.state}
+                            {formatDisplayLocationWithState(tutor.location, tutor.state)}
                             {dist !== null ? ` · ${dist} km` : ''}
                           </div>
                         </div>
@@ -408,7 +409,7 @@ export const TutorMapLocator: React.FC<TutorMapLocatorProps> = ({
                     )}
                   </div>
                   <p className="text-[10px] text-slate-400 mt-0.5">
-                    {selectedTutor.location}, {selectedTutor.state}
+                    {formatDisplayLocationWithState(selectedTutor.location, selectedTutor.state)}
                     {userLocation && (
                       <span className="text-emerald-400 font-bold ml-1">
                         · {calculateDistanceKm(userLocation.lat, userLocation.lng, selectedTutor.lat, selectedTutor.lng)} km away

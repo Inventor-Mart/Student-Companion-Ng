@@ -7,7 +7,8 @@ import {
   ParentRelationship,
   ParentAcademicGoal,
   ParentNotificationChannel,
-  LinkedWard
+  LinkedWard,
+  NigerianHighestEducation
 } from '../../types';
 import {
   GraduationCap,
@@ -40,7 +41,13 @@ import {
 import { NairaSign } from '../../utils/currency';
 import { DeviceImageUploader } from '../admin/DeviceImageUploader';
 import { SubjectMultiSelector } from '../common/SubjectMultiSelector';
-import { dedupeSubjects, formatSubjectSpecialization } from '../../utils/nigerianSubjects';
+import {
+  NIGERIAN_HIGHER_EDUCATION_OPTIONS,
+  dedupeSubjects,
+  formatPrimaryDegreeSummary,
+  formatSubjectSpecialization,
+  normalizeHighestEducation
+} from '../../utils/nigerianSubjects';
 import {
   registerWithFirebaseEmailVerification,
   resendFirebaseVerificationEmail,
@@ -325,7 +332,8 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
   const [tutorState, setTutorState] = useState('Lagos');
 
   // Stage 2: Qualifications & Preferences
-  const [highestEducation, setHighestEducation] = useState<'NCE' | 'B.Sc.' | 'B.Ed.' | 'M.Sc.' | 'Ph.D.' | 'Other'>('B.Sc.');
+  const [highestEducation, setHighestEducation] = useState<NigerianHighestEducation>('B.Sc.');
+  const [customQualificationTitle, setCustomQualificationTitle] = useState('');
   const [institution, setInstitution] = useState('');
   const [courseOfStudy, setCourseOfStudy] = useState('');
   const [experienceYearsRange, setExperienceYearsRange] = useState<'0-1 years' | '1-3 years' | '3-5 years' | '5+ years'>('1-3 years');
@@ -590,6 +598,16 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
 
       const cleanSubjects = dedupeSubjects(proficientSubjects);
       const formattedSpec = formatSubjectSpecialization(cleanSubjects, 'General Subjects');
+      const resolvedHighestEd = normalizeHighestEducation(
+        highestEducation,
+        customQualificationTitle
+      );
+      const resolvedQualification =
+        resolvedHighestEd === 'Other'
+          ? customQualificationTitle.trim() || 'Other Higher Degree'
+          : resolvedHighestEd;
+      const cleanInstitution = institution.trim();
+      const cleanCourseOfStudy = courseOfStudy.trim();
 
       registerNewUser('tutor', {
         firebaseUid: resolvedUid,
@@ -602,9 +620,18 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
         gender: tutorGender,
         city: tutorCity.trim() || 'Lagos',
         state: tutorState,
-        highestEducation,
-        institution: institution.trim() || 'University of Lagos',
-        courseOfStudy: courseOfStudy.trim() || 'Education & Arts / Sciences',
+        highestEducation: resolvedHighestEd,
+        qualification: resolvedQualification,
+        institution: cleanInstitution,
+        courseOfStudy: cleanCourseOfStudy,
+        degrees: [
+          formatPrimaryDegreeSummary({
+            highestEducation: resolvedHighestEd,
+            qualification: resolvedQualification,
+            courseOfStudy: cleanCourseOfStudy,
+            institution: cleanInstitution
+          })
+        ],
         experienceYearsRange,
         targetClasses,
         subjects: cleanSubjects,
@@ -2099,15 +2126,20 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
                           </label>
                           <select
                             value={highestEducation}
-                            onChange={(e) => setHighestEducation(e.target.value as any)}
-                            className="w-full bg-[#081220] border border-[#1E304F] focus:border-sky-400 rounded-xl py-2 px-3 text-xs text-white focus:outline-none"
+                            onChange={(e) => {
+                              const nextVal = e.target.value as NigerianHighestEducation;
+                              setHighestEducation(nextVal);
+                              if (nextVal !== 'Other') {
+                                setCustomQualificationTitle('');
+                              }
+                            }}
+                            className="w-full min-h-[42px] bg-[#081220] border border-[#1E304F] focus:border-sky-400 rounded-xl py-2 px-3 text-xs text-white focus:outline-none"
                           >
-                            <option value="NCE">NCE (National Certificate in Education)</option>
-                            <option value="B.Sc.">B.Sc. (Bachelor of Science)</option>
-                            <option value="B.Ed.">B.Ed. (Bachelor of Education)</option>
-                            <option value="M.Sc.">M.Sc. (Master of Science)</option>
-                            <option value="Ph.D.">Ph.D. / Doctorate</option>
-                            <option value="Other">Other Higher Degree</option>
+                            {NIGERIAN_HIGHER_EDUCATION_OPTIONS.map((opt) => (
+                              <option key={opt.value} value={opt.value}>
+                                {opt.label}
+                              </option>
+                            ))}
                           </select>
                         </div>
 
@@ -2120,8 +2152,8 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
                             required
                             value={institution}
                             onChange={(e) => setInstitution(e.target.value)}
-                            placeholder="e.g. University of Lagos (Unilag)"
-                            className="w-full bg-[#081220] border border-[#1E304F] focus:border-sky-400 rounded-xl py-2 px-3 text-xs text-white placeholder-slate-500 focus:outline-none"
+                            placeholder="e.g. University of Benin (UNIBEN)"
+                            className="w-full min-h-[42px] bg-[#081220] border border-[#1E304F] focus:border-sky-400 rounded-xl py-2 px-3 text-xs text-white placeholder-slate-500 focus:outline-none"
                           />
                         </div>
 
@@ -2134,11 +2166,27 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
                             required
                             value={courseOfStudy}
                             onChange={(e) => setCourseOfStudy(e.target.value)}
-                            placeholder="e.g. Mathematics / Physics"
-                            className="w-full bg-[#081220] border border-[#1E304F] focus:border-sky-400 rounded-xl py-2 px-3 text-xs text-white placeholder-slate-500 focus:outline-none"
+                            placeholder="e.g. French Language / Mathematics"
+                            className="w-full min-h-[42px] bg-[#081220] border border-[#1E304F] focus:border-sky-400 rounded-xl py-2 px-3 text-xs text-white placeholder-slate-500 focus:outline-none"
                           />
                         </div>
                       </div>
+
+                      {highestEducation === 'Other' && (
+                        <div className="bg-[#081220]/90 border border-sky-500/40 rounded-xl p-3 animate-in fade-in duration-150">
+                          <label className="text-xs font-semibold text-sky-300 block mb-1">
+                            Custom Qualification Title *
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            value={customQualificationTitle}
+                            onChange={(e) => setCustomQualificationTitle(e.target.value)}
+                            placeholder="e.g. B.A. (Hons), B.Agric., LL.B., PGD in Education"
+                            className="w-full min-h-[42px] bg-[#060D1A] border border-[#1E304F] focus:border-sky-400 rounded-xl py-2 px-3 text-xs text-white placeholder-slate-500 focus:outline-none"
+                          />
+                        </div>
+                      )}
 
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                         <div>

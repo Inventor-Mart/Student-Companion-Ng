@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Tutor, TimetableSlot } from '../../types';
 import { useApp } from '../../context/AppContext';
 import { NairaText, NairaSign } from '../../utils/currency';
+import { formatDisplayLocationWithState } from '../../utils/nigerianSubjects';
 import { PersonaAvatar } from '../common/PersonaAvatar';
 import {
   ArrowLeft,
@@ -163,7 +164,7 @@ export const TutorProfileView: React.FC<TutorProfileViewProps> = ({
                 <span aria-hidden="true" className="text-slate-600">·</span>
                 <span className="flex items-center gap-1">
                   <MapPin className="w-3 h-3 text-slate-400" />
-                  {tutor.location}, {tutor.state}
+                  {formatDisplayLocationWithState(tutor.location, tutor.state)}
                 </span>
                 {tutor.experienceYears && (
                   <>

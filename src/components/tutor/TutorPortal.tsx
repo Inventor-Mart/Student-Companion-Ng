@@ -30,15 +30,20 @@ import {
 
 import { TutorSecurityVerificationModal } from '../auth/VerificationModals';
 import { NairaText, NairaSign, formatNaira } from '../../utils/currency';
-import { TimetableSlot } from '../../types';
+import { NigerianHighestEducation, TimetableSlot } from '../../types';
 import { playSound, toggleSoundMuted, getSoundMuted } from '../../utils/audioSynthesis';
 import { PersonaAvatar } from '../common/PersonaAvatar';
 import { SubjectMultiSelector } from '../common/SubjectMultiSelector';
 import {
+  NIGERIAN_HIGHER_EDUCATION_OPTIONS,
+  REPAIRED_TUTOR_PROFILE_VERSION,
   SUBJECT_REPAIR_VERSION,
   dedupeSubjects,
+  formatPrimaryDegreeSummary,
   formatSubjectSpecialization,
-  parseSubjectString
+  normalizeHighestEducation,
+  parseSubjectString,
+  rebuildTutorDegrees
 } from '../../utils/nigerianSubjects';
 
 type TutorTab = 'overview' | 'sessions' | 'profile' | 'chat';
@@ -109,9 +114,14 @@ export const TutorPortal: React.FC = () => {
     tutorData?.subjectSpecialization || formatSubjectSpecialization(initialSubjects, '')
   );
   const [editSubjectsError, setEditSubjectsError] = useState<string | null>(null);
+  const [editHighestEducation, setEditHighestEducation] = useState<NigerianHighestEducation>(() =>
+    normalizeHighestEducation(tutorData?.highestEducation, tutorData?.qualification)
+  );
   const [editQualification, setEditQualification] = useState<string>(
     tutorData?.qualification || tutorData?.highestEducation || 'B.Sc.'
   );
+  const [editInstitution, setEditInstitution] = useState<string>(tutorData?.institution || '');
+  const [editCourseOfStudy, setEditCourseOfStudy] = useState<string>(tutorData?.courseOfStudy || '');
   const [editCity, setEditCity] = useState<string>(tutorData?.city || 'Lagos');
   const [editState, setEditState] = useState<string>(tutorData?.state || 'Lagos');
   const [editTagline, setEditTagline] = useState<string>(
@@ -129,8 +139,12 @@ export const TutorPortal: React.FC = () => {
     tutorData?.degrees && tutorData.degrees.length > 0
       ? tutorData.degrees
       : [
-          'B.Eng Mechanical Engineering, University of Lagos (First Class Honours, GPA 4.88/5.00)',
-          'National Mathematics Olympiad Gold Mentor (Lagos State Chapter)'
+          formatPrimaryDegreeSummary({
+            highestEducation: tutorData?.highestEducation,
+            qualification: tutorData?.qualification,
+            courseOfStudy: tutorData?.courseOfStudy,
+            institution: tutorData?.institution
+          })
         ]
   );
   const [editCertifications, setEditCertifications] = useState<string[]>(
@@ -208,7 +222,15 @@ export const TutorPortal: React.FC = () => {
     setEditSubjectSpecialization(
       tutorData.subjectSpecialization || formatSubjectSpecialization(syncedSubjects, '')
     );
+    if (tutorData.highestEducation || tutorData.qualification) {
+      setEditHighestEducation(normalizeHighestEducation(tutorData.highestEducation, tutorData.qualification));
+    }
     if (tutorData.qualification) setEditQualification(tutorData.qualification);
+    if (tutorData.institution !== undefined) setEditInstitution(tutorData.institution || '');
+    if (tutorData.courseOfStudy !== undefined) setEditCourseOfStudy(tutorData.courseOfStudy || '');
+    if (Array.isArray(tutorData.degrees) && tutorData.degrees.length > 0) {
+      setEditDegrees(tutorData.degrees);
+    }
     if (tutorData.city) setEditCity(tutorData.city);
     if (tutorData.state) setEditState(tutorData.state);
     if (tutorData.tagline) setEditTagline(tutorData.tagline);
@@ -222,9 +244,13 @@ export const TutorPortal: React.FC = () => {
     tutorData?.bio,
     tutorData?.hourlyRate,
     tutorData?.teachingMode,
+    tutorData?.highestEducation,
     tutorData?.qualification,
+    tutorData?.institution,
+    tutorData?.courseOfStudy,
     tutorData?.city,
     tutorData?.state,
+    JSON.stringify(tutorData?.degrees || []),
     JSON.stringify(tutorData?.proficientSubjects || [])
   ]);
 
@@ -242,24 +268,57 @@ export const TutorPortal: React.FC = () => {
     setEditSubjectsError(null);
     const resolvedSpecialization =
       editSubjectSpecialization.trim() || formatSubjectSpecialization(cleanSubjects, 'General Subjects');
+    const resolvedHighestEd = normalizeHighestEducation(editHighestEducation, editQualification);
+    const resolvedQual =
+      resolvedHighestEd === 'Other'
+        ? editQualification.trim() || 'Other Higher Degree'
+        : editQualification.trim() && !/^other$/i.test(editQualification.trim())
+          ? editQualification.trim()
+          : resolvedHighestEd;
+    const cleanInst = editInstitution.trim();
+    const cleanCourse = editCourseOfStudy.trim();
+
+    const nextDegrees =
+      activeSheet === 'profile-credentials'
+        ? editDegrees.map(d => d.trim()).filter(Boolean)
+        : rebuildTutorDegrees(
+            editDegrees,
+            {
+              highestEducation: resolvedHighestEd,
+              qualification: resolvedQual,
+              courseOfStudy: cleanCourse,
+              institution: cleanInst
+            },
+            tutorData
+          );
+    if (activeSheet !== 'profile-credentials') {
+      setEditDegrees(nextDegrees);
+    }
+
+    const nowIso = new Date().toISOString();
 
     updateTutorProfile({
       proficientSubjects: cleanSubjects,
       subjectSpecialization: resolvedSpecialization,
-      qualification: editQualification.trim() || tutorQualification,
+      highestEducation: resolvedHighestEd,
+      qualification: resolvedQual,
+      institution: cleanInst,
+      courseOfStudy: cleanCourse,
       city: editCity.trim() || 'Lagos',
       state: editState.trim() || 'Lagos',
       tagline: editTagline.trim() || `${resolvedSpecialization} Specialist`,
       bio: editBio.trim(),
       hourlyRate: Number(editHourlyRate) || 3500,
       teachingMode: editTeachingMode,
-      degrees: editDegrees,
+      degrees: nextDegrees,
       certifications: editCertifications,
       examSpecializations: editExamSpecs,
       curriculumHighlights: editHighlights,
       timetable: editTimetable,
-      manualSubjectOverrideAt: new Date().toISOString(),
-      subjectRepairVersion: SUBJECT_REPAIR_VERSION
+      manualSubjectOverrideAt: nowIso,
+      manualProfileOverrideAt: nowIso,
+      subjectRepairVersion: SUBJECT_REPAIR_VERSION,
+      profileRepairVersion: REPAIRED_TUTOR_PROFILE_VERSION
     } as any);
     playSound.correct();
     setProfileSaveSuccess(true);
@@ -1488,16 +1547,81 @@ export const TutorPortal: React.FC = () => {
                     </div>
                     <div>
                       <label className="text-[11px] font-bold text-slate-200 block mb-1">
-                        Academic Qualification
+                        Highest Education
+                      </label>
+                      <select
+                        value={editHighestEducation}
+                        onChange={e => {
+                          const nextEd = e.target.value as NigerianHighestEducation;
+                          setEditHighestEducation(nextEd);
+                          if (nextEd === 'Other') {
+                            if (
+                              NIGERIAN_HIGHER_EDUCATION_OPTIONS.some(
+                                opt => opt.value.toLowerCase() === editQualification.trim().toLowerCase()
+                              )
+                            ) {
+                              setEditQualification('');
+                            }
+                          } else {
+                            setEditQualification(nextEd);
+                          }
+                        }}
+                        className="w-full min-h-[44px] bg-[#14203D] border-2 border-slate-700 focus:border-[#84CC16] rounded-xl py-2 px-3 text-xs text-white focus:outline-none"
+                      >
+                        {NIGERIAN_HIGHER_EDUCATION_OPTIONS.map(opt => (
+                          <option key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-200 block mb-1">
+                        {editHighestEducation === 'Other'
+                          ? 'Custom Qualification Title *'
+                          : 'Academic Qualification Title'}
                       </label>
                       <input
                         type="text"
+                        required={editHighestEducation === 'Other'}
                         value={editQualification}
                         onChange={e => setEditQualification(e.target.value)}
-                        placeholder="e.g. B.Ed. French & English"
+                        placeholder={
+                          editHighestEducation === 'Other'
+                            ? 'Enter custom title (e.g. PGD, B.Agric., LL.B.)'
+                            : 'e.g. B.A. or B.Ed. (First Class Honours)'
+                        }
                         className="w-full min-h-[44px] bg-[#14203D] border-2 border-slate-700 focus:border-[#84CC16] rounded-xl py-2 px-3 text-xs text-white placeholder-slate-400 focus:outline-none"
                       />
                     </div>
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-200 block mb-1">
+                        Institution Attended
+                      </label>
+                      <input
+                        type="text"
+                        value={editInstitution}
+                        onChange={e => setEditInstitution(e.target.value)}
+                        placeholder="e.g. University of Benin"
+                        className="w-full min-h-[44px] bg-[#14203D] border-2 border-slate-700 focus:border-[#84CC16] rounded-xl py-2 px-3 text-xs text-white placeholder-slate-400 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-200 block mb-1">
+                      Course of Study / Major
+                    </label>
+                    <input
+                      type="text"
+                      value={editCourseOfStudy}
+                      onChange={e => setEditCourseOfStudy(e.target.value)}
+                      placeholder="e.g. French Language / Mathematics"
+                      className="w-full min-h-[44px] bg-[#14203D] border-2 border-slate-700 focus:border-[#84CC16] rounded-xl py-2 px-3 text-xs text-white placeholder-slate-400 focus:outline-none"
+                    />
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
@@ -1630,7 +1754,15 @@ export const TutorPortal: React.FC = () => {
                       type="button"
                       onClick={() => {
                         playSound.tileTap();
-                        setEditDegrees([...editDegrees, 'B.Sc. Education (University of Lagos)']);
+                        setEditDegrees([
+                          ...editDegrees,
+                          formatPrimaryDegreeSummary({
+                            highestEducation: editHighestEducation,
+                            qualification: editQualification,
+                            courseOfStudy: editCourseOfStudy,
+                            institution: editInstitution
+                          })
+                        ]);
                       }}
                       className="text-xs text-[#84CC16] hover:underline flex items-center gap-1 font-bold cursor-pointer"
                     >
