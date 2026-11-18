@@ -64,6 +64,7 @@ import {
   debitWalletLedger,
   refundEscrowInWalletLedger,
   calculateLedgerRankFromXP,
+  LEDGER_DAILY_XP_CAP,
   resetUnverifiedSimulatedSubscriptionsInLedger,
   getAiCoachQuotaStore,
   saveAiCoachQuotaStore,
@@ -4841,40 +4842,83 @@ app.post('/api/students/sync-progress', async (req, res) => {
     return res.status(401).json({ success: false, error: 'Authentication required to sync XP progress.' });
   }
 
-  const { deltaXP, reason, uniformVerified, streakDays } = req.body || {};
+  const {
+    deltaXP,
+    reason,
+    uniformVerified,
+    streakDays,
+    verifiedNotesCount,
+    qualifyingExams60,
+    qualifyingExams70,
+    qualifyingExams75,
+    qualifyingExams80
+  } = req.body || {};
   const studentEntry = getOrInitStudentLedger(verifiedUser.uid);
   const rawDelta = Math.round(Number(deltaXP) || 0);
 
-  if (rawDelta > 500) {
+  if (rawDelta > LEDGER_DAILY_XP_CAP) {
     await securityService.recordIncident({
       category: 'xp_anomaly',
       severity: 'high',
       status: 'open',
       source: 'server_guard',
       title: 'Clamped Abnormal Student XP Request',
-      description: `Student ${verifiedUser.uid} requested abnormal deltaXP=${rawDelta}. Clamped to 250.`,
+      description: `Student ${verifiedUser.uid} requested abnormal deltaXP=${rawDelta}. Clamped to daily cap ${LEDGER_DAILY_XP_CAP}.`,
       actorUserId: verifiedUser.uid,
       actorEmail: verifiedUser.email,
       ipAddress: extractClientIp(req),
       deviceFingerprint: extractDeviceFingerprint(req),
       endpoint: '/api/students/sync-progress',
-      actionTaken: 'Clamped to 250 XP',
+      actionTaken: `Clamped to ${LEDGER_DAILY_XP_CAP} XP cap`,
     });
   }
 
-  const safeDelta = Math.min(500, Math.max(0, rawDelta));
-  let finalDelta = safeDelta;
-  if (uniformVerified && !studentEntry.uniformVerified) {
-    studentEntry.uniformVerified = true;
-    if (finalDelta === 0) finalDelta = 500;
+  const todayStr = new Date().toISOString().split('T')[0];
+  if (studentEntry.dailyXpDate !== todayStr) {
+    studentEntry.dailyXpDate = todayStr;
+    studentEntry.dailyXpEarned = 0;
   }
 
-  studentEntry.xp = Math.max(0, (studentEntry.xp || 0) + finalDelta);
-  studentEntry.rank = calculateLedgerRankFromXP(studentEntry.xp);
+  const earnedToday = Math.max(0, Math.floor(Number(studentEntry.dailyXpEarned) || 0));
+  const remainingDailyCap = Math.max(0, LEDGER_DAILY_XP_CAP - earnedToday);
+
+  const safeDelta = Math.min(LEDGER_DAILY_XP_CAP, Math.max(0, rawDelta));
+  let requestedDelta = safeDelta;
+  if (uniformVerified && !studentEntry.uniformVerified) {
+    studentEntry.uniformVerified = true;
+    if (requestedDelta === 0) requestedDelta = 150;
+  }
+
+  const finalDelta = Math.min(requestedDelta, remainingDailyCap);
+
   if (typeof streakDays === 'number' && streakDays >= studentEntry.streakDays && streakDays <= studentEntry.streakDays + 2) {
     studentEntry.streakDays = streakDays;
   }
-  studentEntry.lastStudyDate = new Date().toISOString().split('T')[0];
+
+  const clampMetricIncrement = (existing: number | undefined, incoming: unknown, maxStep = 25): number => {
+    const prevVal = Math.max(0, Math.floor(Number(existing) || 0));
+    const nextVal = Math.max(0, Math.floor(Number(incoming) || 0));
+    if (!Number.isFinite(nextVal) || nextVal <= prevVal) return prevVal;
+    return Math.min(prevVal + maxStep, Math.min(500, nextVal));
+  };
+
+  studentEntry.verifiedNotesCount = clampMetricIncrement(studentEntry.verifiedNotesCount, verifiedNotesCount);
+  studentEntry.qualifyingExams60 = clampMetricIncrement(studentEntry.qualifyingExams60, qualifyingExams60);
+  studentEntry.qualifyingExams70 = clampMetricIncrement(studentEntry.qualifyingExams70, qualifyingExams70);
+  studentEntry.qualifyingExams75 = clampMetricIncrement(studentEntry.qualifyingExams75, qualifyingExams75);
+  studentEntry.qualifyingExams80 = clampMetricIncrement(studentEntry.qualifyingExams80, qualifyingExams80);
+
+  studentEntry.dailyXpEarned = earnedToday + finalDelta;
+  studentEntry.xp = Math.max(0, (studentEntry.xp || 0) + finalDelta);
+  studentEntry.rank = calculateLedgerRankFromXP(studentEntry.xp, {
+    streakDays: studentEntry.streakDays,
+    verifiedNotesCount: studentEntry.verifiedNotesCount,
+    qualifyingExams60: studentEntry.qualifyingExams60,
+    qualifyingExams70: studentEntry.qualifyingExams70,
+    qualifyingExams75: studentEntry.qualifyingExams75,
+    qualifyingExams80: studentEntry.qualifyingExams80
+  });
+  studentEntry.lastStudyDate = todayStr;
   studentEntry.updatedAt = new Date().toISOString();
   saveAuthoritativeLedger();
 
@@ -4883,6 +4927,8 @@ app.post('/api/students/sync-progress', async (req, res) => {
     xp: studentEntry.xp,
     rank: studentEntry.rank,
     streakDays: studentEntry.streakDays,
+    dailyXpEarned: studentEntry.dailyXpEarned,
+    dailyXpCap: LEDGER_DAILY_XP_CAP,
     uniformVerified: Boolean(studentEntry.uniformVerified),
     reason: reason ? String(reason).slice(0, 120) : undefined,
   });

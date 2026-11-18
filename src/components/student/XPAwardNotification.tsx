@@ -100,22 +100,50 @@ export const XPAwardNotification: React.FC = () => {
           {lastXPAward.paidMilestoneBonus > 0 && (
             <>
               <span aria-hidden="true">·</span>
-              <span className="text-amber-300 font-medium">+{lastXPAward.paidMilestoneBonus.toLocaleString()} Paid Bonus</span>
+              <span className="text-amber-300 font-medium">+{lastXPAward.paidMilestoneBonus.toLocaleString()} Appreciation Bonus</span>
+            </>
+          )}
+          {lastXPAward.rankScalingFactor !== undefined && lastXPAward.rankScalingFactor < 1 && (
+            <>
+              <span aria-hidden="true">·</span>
+              <span className="text-amber-300">Rank Rate {Math.round(lastXPAward.rankScalingFactor * 100)}%</span>
+            </>
+          )}
+          {typeof lastXPAward.dailyXpEarned === 'number' && typeof lastXPAward.dailyXpCap === 'number' && (
+            <>
+              <span aria-hidden="true">·</span>
+              <span className="font-mono tabular-nums text-slate-300">
+                Today {lastXPAward.dailyXpEarned}/{lastXPAward.dailyXpCap} XP
+              </span>
             </>
           )}
         </div>
 
-        {/* Anti-Repetition Gentle Prompt */}
-        {isDiminished && (
-          <div className="mt-2 text-[11px] text-amber-300/90 bg-amber-500/10 rounded-lg p-2 border border-amber-500/20">
-            <span>Repeat task factor: {Math.round(lastXPAward.repeatFactor * 100)}% XP. </span>
-            <button
-              type="button"
-              onClick={() => setActiveStudentTab('ai-coach')}
-              className="underline font-medium hover:text-white inline-flex items-center gap-0.5"
-            >
-              Explore another tool for full 1.5x XP <ChevronRight className="w-3 h-3" />
-            </button>
+        {/* Daily Cap or Mastery Gate Notice */}
+        {(lastXPAward.cappedByDailyLimit || lastXPAward.rankPromotionBlockedByGates || isDiminished) && (
+          <div className="mt-2 space-y-1.5">
+            {lastXPAward.cappedByDailyLimit && (
+              <div className="text-[11px] text-amber-300 bg-amber-500/10 rounded-lg p-2 border border-amber-500/20">
+                Daily {lastXPAward.dailyXpCap || 600} XP cap reached for today. You can still study freely—return tomorrow for fresh XP!
+              </div>
+            )}
+            {lastXPAward.rankPromotionBlockedByGates && (
+              <div className="text-[11px] text-sky-300 bg-sky-500/10 rounded-lg p-2 border border-sky-500/20">
+                XP goal met! Complete your remaining streak, verified lesson notes, or CBT score gates on Home to promote.
+              </div>
+            )}
+            {isDiminished && (
+              <div className="text-[11px] text-amber-300/90 bg-amber-500/10 rounded-lg p-2 border border-amber-500/20">
+                <span>Repeat task factor: {Math.round(lastXPAward.repeatFactor * 100)}% XP. </span>
+                <button
+                  type="button"
+                  onClick={() => setActiveStudentTab('ai-coach')}
+                  className="underline font-medium hover:text-white inline-flex items-center gap-0.5"
+                >
+                  Explore another tool for 1.25x XP <ChevronRight className="w-3 h-3" />
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>

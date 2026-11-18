@@ -48,11 +48,24 @@ export const DailyExplorerHUD: React.FC = () => {
       </div>
 
       {/* Progress Track */}
-      <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
-        <div
-          className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 rounded-full transition-all duration-500"
-          style={{ width: `${Math.min(100, (status.uniqueCount / 4) * 100)}%` }}
-        />
+      <div className="space-y-1">
+        <div className="flex items-center justify-between text-[11px] font-mono tabular-nums">
+          <span className="text-slate-400">Daily XP Quota</span>
+          <span className={status.isDailyCapReached ? 'text-amber-300 font-bold' : 'text-emerald-300 font-bold'}>
+            {status.dailyXpEarned} / {status.dailyXpCap} XP
+            {status.isDailyCapReached ? ' · Daily Cap Reached' : ''}
+          </span>
+        </div>
+        <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
+          <div
+            className={`h-full rounded-full transition-all duration-500 ${
+              status.isDailyCapReached
+                ? 'bg-gradient-to-r from-amber-500 to-orange-400'
+                : 'bg-gradient-to-r from-emerald-500 to-teal-400'
+            }`}
+            style={{ width: `${Math.min(100, (status.dailyXpEarned / status.dailyXpCap) * 100)}%` }}
+          />
+        </div>
       </div>
 
       {/* Interactive Tool Badges (Clicking an unexplored tool jumps right to it!) */}
@@ -91,8 +104,8 @@ export const DailyExplorerHUD: React.FC = () => {
                   <Award className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-base text-white">Academic XP Economics</h3>
-                  <p className="text-xs text-slate-400">Value-scaled rewards, daily breadth & task rigor</p>
+                  <h3 className="font-bold text-base text-white">Earned Rank &amp; XP Economics</h3>
+                  <p className="text-xs text-slate-400">Steep rank curve, daily cap &amp; mastery gates</p>
                 </div>
               </div>
               <button
@@ -104,88 +117,67 @@ export const DailyExplorerHUD: React.FC = () => {
               </button>
             </div>
 
-            {/* Rule 1: Paid Actions Scaling */}
+            {/* Rule 1: Rank Promotion Gates & Steep Ladder */}
             <div className="space-y-1.5">
-              <div className="flex items-center gap-2 text-sm font-semibold text-amber-300">
-                <Sparkles className="w-4 h-4" />
-                <span>1. Academic Investment (Paid Actions)</span>
+              <div className="flex items-center gap-2 text-sm font-semibold text-emerald-300">
+                <Award className="w-4 h-4" />
+                <span>1. Exponential Rank Ladder &amp; Mastery Gates</span>
               </div>
               <p className="text-xs text-slate-300 leading-relaxed">
-                The more substantial the educational commitment, the higher the XP awarded. Paid actions never suffer diminishing returns:
+                Advancing ranks requires sustained consistency and verified mastery—not just raw XP:
               </p>
               <div className="grid grid-cols-2 gap-2 text-[11px] font-mono pt-1">
                 <div className="p-2 rounded-lg bg-slate-800/80 border border-slate-700/60">
-                  <div className="text-slate-400">Single Subject Unlock</div>
-                  <div className="text-amber-400 font-bold">₦500 → +350 XP</div>
+                  <div className="text-slate-400">Scholar · 3,000 XP</div>
+                  <div className="text-emerald-300 font-bold">3d Streak · 3 Notes · 2 Exams (60%+)</div>
                 </div>
                 <div className="p-2 rounded-lg bg-slate-800/80 border border-slate-700/60">
-                  <div className="text-slate-400">1-on-1 Tutor Booking</div>
-                  <div className="text-amber-400 font-bold">₦3,500 → +1,500 XP</div>
+                  <div className="text-slate-400">Prefect · 12,000 XP</div>
+                  <div className="text-emerald-300 font-bold">7d Streak · 8 Notes · 5 Exams (70%+)</div>
                 </div>
                 <div className="p-2 rounded-lg bg-slate-800/80 border border-slate-700/60">
-                  <div className="text-slate-400">Extended Masterclass</div>
-                  <div className="text-amber-400 font-bold">₦5,000 → +2,500 XP</div>
+                  <div className="text-slate-400">Senior · 30,000 XP</div>
+                  <div className="text-emerald-300 font-bold">14d Streak · 18 Notes · 12 Exams (75%+)</div>
                 </div>
                 <div className="p-2 rounded-lg bg-slate-800/80 border border-slate-700/60">
-                  <div className="text-slate-400">Termly / Full Access</div>
-                  <div className="text-amber-400 font-bold">₦15,000 → +8,000 XP</div>
+                  <div className="text-slate-400">Senior Prefect · 65,000 XP</div>
+                  <div className="text-amber-300 font-bold">30d Streak · 35 Notes · 25 Exams (80%+)</div>
                 </div>
               </div>
             </div>
 
-            {/* Rule 2: Exploration Multiplier */}
-            <div className="space-y-1.5 pt-2 border-t border-slate-800">
-              <div className="flex items-center gap-2 text-sm font-semibold text-emerald-300">
-                <Compass className="w-4 h-4" />
-                <span>2. Multi-Tool Daily Exploration</span>
-              </div>
-              <p className="text-xs text-slate-300 leading-relaxed">
-                Students who explore diverse tools earn a daily multiplier on all academic tasks:
-              </p>
-              <div className="grid grid-cols-4 gap-1.5 text-center text-[11px] font-mono pt-1">
-                <div className="p-2 rounded-lg bg-slate-800/80 border border-slate-700/60">
-                  <div className="text-slate-400">1 Tool</div>
-                  <div className="text-slate-200 font-bold">1.0x Base</div>
-                </div>
-                <div className="p-2 rounded-lg bg-slate-800/80 border border-slate-700/60">
-                  <div className="text-slate-400">2 Tools</div>
-                  <div className="text-emerald-400 font-bold">1.1x XP</div>
-                </div>
-                <div className="p-2 rounded-lg bg-slate-800/80 border border-slate-700/60">
-                  <div className="text-slate-400">3 Tools</div>
-                  <div className="text-emerald-400 font-bold">1.25x XP</div>
-                </div>
-                <div className="p-2 rounded-lg bg-slate-800/80 border border-slate-700/60">
-                  <div className="text-slate-400">4+ Tools</div>
-                  <div className="text-emerald-300 font-bold">1.5x Multiplier</div>
-                </div>
-              </div>
-            </div>
-
-            {/* Rule 3: Demand & Difficulty Multipliers */}
+            {/* Rule 2: Rank-Scaled Difficulty & Exploration */}
             <div className="space-y-1.5 pt-2 border-t border-slate-800">
               <div className="flex items-center gap-2 text-sm font-semibold text-sky-300">
                 <TrendingUp className="w-4 h-4" />
-                <span>3. Task Demand & Difficulty Scaling</span>
+                <span>2. Rank-Scaled Difficulty &amp; Daily 600 XP Cap</span>
+              </div>
+              <ul className="text-xs text-slate-300 space-y-1 list-disc list-inside leading-relaxed">
+                <li><strong className="text-white">Daily Cap:</strong> Students earn up to <strong className="text-emerald-300">600 XP / day</strong> so top ranks reward months of steady study.</li>
+                <li><strong className="text-white">Higher-Rank Rigor:</strong> Easy drills &amp; games drop from <strong className="text-white">100% XP</strong> (Fresher) to <strong className="text-amber-300">45%</strong> (Prefect) and <strong className="text-amber-300">15%</strong> (Senior Prefect).</li>
+                <li><strong className="text-white">Hard WAEC/JAMB Exams:</strong> 20–40Q exams with ≥75% accuracy preserve strong payouts across every rank.</li>
+              </ul>
+            </div>
+
+            {/* Rule 3: Symbolic Paid Appreciation Cap */}
+            <div className="space-y-1.5 pt-2 border-t border-slate-800">
+              <div className="flex items-center gap-2 text-sm font-semibold text-amber-300">
+                <Sparkles className="w-4 h-4" />
+                <span>3. Symbolic Appreciation Bonus (Capped ≤ 100 XP)</span>
               </div>
               <p className="text-xs text-slate-300 leading-relaxed">
-                Challenging examinations and larger question volumes yield substantially higher XP:
+                Ranks cannot be bought. Paid subscriptions &amp; tutor bookings grant a modest symbolic bonus capped at <strong className="text-amber-300">+100 XP</strong> (<code className="font-mono">₦500 → +25 XP</code> up to <code className="font-mono">₦10k+ → +100 XP</code>).
               </p>
-              <ul className="text-xs text-slate-400 space-y-1 list-disc list-inside">
-                <li><strong className="text-slate-200">Difficulty:</strong> Easy (1.0x) · Medium WAEC/BECE (1.5x) · Hard JAMB/Olympiad (2.5x)</li>
-                <li><strong className="text-slate-200">Exam Volume:</strong> 5-10 Qs (1.0x) · 20-30 Qs (1.75x) · 40+ Qs (3.0x Multiplier)</li>
-                <li><strong className="text-slate-200">Academic Mastery:</strong> Scores $\ge 80\%$ unlock +25% Distinction bonus; 100% unlocks +50% Flawless bonus</li>
-              </ul>
             </div>
 
             {/* Rule 4: Anti-Repetition Diminishing Returns */}
             <div className="space-y-1.5 pt-2 border-t border-slate-800">
               <div className="flex items-center gap-2 text-sm font-semibold text-rose-300">
                 <Zap className="w-4 h-4" />
-                <span>4. Anti-Repetition Diminishing Returns</span>
+                <span>4. Anti-Repetition Decay</span>
               </div>
               <p className="text-xs text-slate-300 leading-relaxed">
-                Repeatedly grinding the exact same mini-game or single drill within a day reduces XP returns (100% → 75% → 50% → 25%). Switch to other tools like Science Formulas, Lesson Notes, or AI Coach to keep earning full rewards!
+                Repeating the same mini-game or drill decays returns steeply (100% → 85% → 60% → 35% → 15%). Explore up to 4 study tools daily for a <strong className="text-emerald-300">1.25x</strong> diversity bonus.
               </p>
             </div>
 

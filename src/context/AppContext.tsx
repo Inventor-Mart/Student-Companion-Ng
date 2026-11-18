@@ -111,6 +111,7 @@ import {
   calculateDynamicXP,
   calculateRank as calculateRankFromXP,
   getExplorerStatus,
+  getRankProgress,
   ALL_APP_FEATURES
 } from '../utils/xpEconomy';
 import {
@@ -1682,7 +1683,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     safeSetItem('sc_bookings', JSON.stringify(tutorBookings));
   }, [tutorBookings]);
 
+  const examResultsRef = React.useRef<CBTExamResult[]>(examResults);
   useEffect(() => {
+    examResultsRef.current = examResults;
     safeSetItem('sc_exam_results', JSON.stringify(examResults));
   }, [examResults]);
 
@@ -1795,7 +1798,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       lastPaymentReference: overlay.lastPaymentReference !== undefined ? overlay.lastPaymentReference : base.lastPaymentReference,
       addOns: overlay.addOns !== undefined ? overlay.addOns : base.addOns,
       xp: mergedXP,
-      rank: mergedXP >= Number(base.xp || 0) && overlay.rank ? overlay.rank : calculateRankFromXP(mergedXP),
+      rank:
+        mergedXP >= Number(base.xp || 0) && overlay.rank
+          ? overlay.rank
+          : calculateRankFromXP(mergedXP, undefined, {
+              streakDays: base.streakDays,
+              verifiedNotesCount: (base.completedReadNoteIds || []).length,
+              examPercentages: examResultsRef.current.map(r => r.percentage)
+            }),
       uniformVerified: overlay.uniformVerified ?? base.uniformVerified,
     };
   }, []);
@@ -2881,12 +2891,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     let computedResult: AwardXPResult | undefined;
 
     setStudent(prev => {
-      const { result, updatedExploration } = calculateDynamicXP(opts, prev.dailyExploration);
-      computedResult = result;
+      const { result, updatedExploration } = calculateDynamicXP(opts, prev.dailyExploration, prev.rank);
 
       const newXP = prev.xp + result.totalXPAwarded;
-      const newRank = calculateRankFromXP(newXP);
+      const baseExamPercentages = examResultsRef.current.map(r => r.percentage);
+      const isExamTask =
+        (opts.feature === 'cbt' || opts.feature === 'aspirant-cbt') &&
+        typeof opts.scorePercentage === 'number';
+      const effectiveExamPercentages = isExamTask
+        ? [opts.scorePercentage as number, ...baseExamPercentages]
+        : baseExamPercentages;
+      const verifiedNotesCount = (prev.completedReadNoteIds || []).length;
+
+      const masterySnapshot = {
+        streakDays: prev.streakDays,
+        verifiedNotesCount,
+        examPercentages: effectiveExamPercentages
+      };
+      const newRank = calculateRankFromXP(newXP, undefined, masterySnapshot);
       const rankChanged = newRank !== prev.rank;
+
+      const progressAfter = getRankProgress(newXP, undefined, masterySnapshot);
+      const enrichedResult: AwardXPResult = {
+        ...result,
+        rankPromotionBlockedByGates: Boolean(progressAfter.gatesPending)
+      };
+      computedResult = enrichedResult;
 
       const updated = {
         ...prev,
@@ -2911,6 +2941,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           }
         });
 
+        const qualifyingExams60 = effectiveExamPercentages.filter(p => p >= 60).length;
+        const qualifyingExams70 = effectiveExamPercentages.filter(p => p >= 70).length;
+        const qualifyingExams75 = effectiveExamPercentages.filter(p => p >= 75).length;
+        const qualifyingExams80 = effectiveExamPercentages.filter(p => p >= 80).length;
+
         void (async () => {
           try {
             const headers = await getFirebaseAuthHeaders();
@@ -2922,6 +2957,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 deltaXP: result.totalXPAwarded,
                 reason: opts.reason,
                 streakDays: prev.streakDays,
+                verifiedNotesCount,
+                qualifyingExams60,
+                qualifyingExams70,
+                qualifyingExams75,
+                qualifyingExams80
               }),
             });
             const data = await res.json().catch(() => null);
@@ -2966,7 +3006,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setPendingSyncCount(updatedQueue.length);
       }
 
-      setLastXPAward(result);
+      setLastXPAward(enrichedResult);
 
       // Only fire confetti celebration on actual rank level-up
       if (rankChanged) {
@@ -3019,17 +3059,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           difficulty: 'medium',
           reason: `Verified Reading: ${topic.topicTitle}`
         },
-        prev.dailyExploration
+        prev.dailyExploration,
+        prev.rank
       );
       computedResult = result;
 
       const newXP = prev.xp + result.totalXPAwarded;
-      const newRank = calculateRankFromXP(newXP);
+      nextCompletedIds = [...prevIds, topic.id].slice(-200);
+      const examPercentages = examResultsRef.current.map(r => r.percentage);
+      const newRank = calculateRankFromXP(newXP, undefined, {
+        streakDays: prev.streakDays,
+        verifiedNotesCount: nextCompletedIds.length,
+        examPercentages
+      });
       const rankChanged = newRank !== prev.rank;
 
       finalXP = newXP;
       finalRank = newRank;
-      nextCompletedIds = [...prevIds, topic.id].slice(-200);
 
       const newLog: VerifiedLessonReadLog = {
         noteId: topic.id,
@@ -3065,7 +3111,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (currentUser && !isOffline && !isSuperAdminEmail(currentUser.email)) {
         const docRef = doc(db, 'students', currentUser.uid);
         const path = `students/${currentUser.uid}`;
-        // Allowed client-side reading log fields only; XP & rank are enforced server-side
+        // Allowed client-side profile fields only; XP & rank are enforced server-side
         updateDoc(docRef, {
           lastStudyDate: studyDate,
           completedReadNoteIds: nextCompletedIds,
@@ -3076,6 +3122,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             handleFirestoreError(err, OperationType.UPDATE, path);
           }
         });
+
+        const qualifyingExams60 = examPercentages.filter(p => p >= 60).length;
+        const qualifyingExams70 = examPercentages.filter(p => p >= 70).length;
+        const qualifyingExams75 = examPercentages.filter(p => p >= 75).length;
+        const qualifyingExams80 = examPercentages.filter(p => p >= 80).length;
 
         void (async () => {
           try {
@@ -3088,6 +3139,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 deltaXP: result.totalXPAwarded,
                 reason: `Verified Reading: ${topic.topicTitle}`,
                 streakDays: prev.streakDays,
+                verifiedNotesCount: nextCompletedIds.length,
+                qualifyingExams60,
+                qualifyingExams70,
+                qualifyingExams75,
+                qualifyingExams80
               }),
             });
             const data = await res.json().catch(() => null);

@@ -40,6 +40,13 @@ export interface VerifiedStudentLedgerEntry {
   xp: number;
   rank: string;
   streakDays: number;
+  dailyXpDate?: string;
+  dailyXpEarned?: number;
+  verifiedNotesCount?: number;
+  qualifyingExams60?: number;
+  qualifyingExams70?: number;
+  qualifyingExams75?: number;
+  qualifyingExams80?: number;
   lastStudyDate?: string;
   uniformVerified?: boolean;
   updatedAt: string;
@@ -155,11 +162,54 @@ export function saveAiCoachQuotaStore(): void {
 
 loadLedgerFromDisk();
 
-export function calculateLedgerRankFromXP(xp: number): string {
-  if (xp >= 2500) return 'Senior Prefect';
-  if (xp >= 1500) return 'Senior Boy';
-  if (xp >= 800) return 'Prefect';
-  if (xp >= 300) return 'Scholar';
+export const LEDGER_DAILY_XP_CAP = 600;
+
+export interface LedgerMasterySnapshot {
+  streakDays?: number;
+  verifiedNotesCount?: number;
+  qualifyingExams60?: number;
+  qualifyingExams70?: number;
+  qualifyingExams75?: number;
+  qualifyingExams80?: number;
+}
+
+export function calculateLedgerRankFromXP(
+  xp: number,
+  mastery?: LedgerMasterySnapshot
+): string {
+  const safeXp = Math.max(0, Math.floor(Number(xp) || 0));
+  const streak = Math.max(0, Math.floor(Number(mastery?.streakDays) || 0));
+  const notes = Math.max(0, Math.floor(Number(mastery?.verifiedNotesCount) || 0));
+  const ex60 = Math.max(0, Math.floor(Number(mastery?.qualifyingExams60) || 0));
+  const ex70 = Math.max(0, Math.floor(Number(mastery?.qualifyingExams70) || 0));
+  const ex75 = Math.max(0, Math.floor(Number(mastery?.qualifyingExams75) || 0));
+  const ex80 = Math.max(0, Math.floor(Number(mastery?.qualifyingExams80) || 0));
+  const enforceGates = Boolean(mastery);
+
+  if (
+    safeXp >= 65000 &&
+    (!enforceGates || (streak >= 30 && notes >= 35 && ex80 >= 25))
+  ) {
+    return 'Senior Prefect';
+  }
+  if (
+    safeXp >= 30000 &&
+    (!enforceGates || (streak >= 14 && notes >= 18 && ex75 >= 12))
+  ) {
+    return 'Senior Boy';
+  }
+  if (
+    safeXp >= 12000 &&
+    (!enforceGates || (streak >= 7 && notes >= 8 && ex70 >= 5))
+  ) {
+    return 'Prefect';
+  }
+  if (
+    safeXp >= 3000 &&
+    (!enforceGates || (streak >= 3 && notes >= 3 && ex60 >= 2))
+  ) {
+    return 'Scholar';
+  }
   return 'Fresher';
 }
 

@@ -28,6 +28,7 @@ export interface DailyExplorationState {
   date: string; // YYYY-MM-DD
   featuresUsed: string[]; // e.g. ['cbt', 'games', 'syllabus', 'formulas', 'ai-coach', 'tutors', 'competitions', 'community', 'exam-prep', 'uniform']
   featureCounts: Record<string, number>;
+  dailyXpEarned?: number;
 }
 
 export type AppFeatureId =
@@ -63,6 +64,11 @@ export interface AwardXPResult {
   explorerMultiplier: number;
   masteryBonus: number;
   paidMilestoneBonus: number;
+  rankScalingFactor?: number;
+  cappedByDailyLimit?: boolean;
+  dailyXpEarned?: number;
+  dailyXpCap?: number;
+  rankPromotionBlockedByGates?: boolean;
   newDailyCount: number;
   uniqueFeaturesCount: number;
   reason: string;

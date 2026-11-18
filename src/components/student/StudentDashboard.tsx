@@ -48,12 +48,18 @@ import { SchoolMaterial } from '../../types';
 import { playSound } from '../../utils/audioSynthesis';
 import { motion, AnimatePresence } from 'motion/react';
 import { NairaText, NairaSign } from '../../utils/currency';
-import { getRankProgress } from '../../utils/xpEconomy';
+import {
+  getRankProgress,
+  getExplorerStatus,
+  getRankTierDefinition,
+  RANK_LADDER
+} from '../../utils/xpEconomy';
 
 export const StudentDashboard: React.FC = () => {
   const {
     student,
     currentUserProfile,
+    examResults,
     setActiveStudentTab,
     openNoteReader,
     startExam,
@@ -81,6 +87,7 @@ export const StudentDashboard: React.FC = () => {
   const [isExamPrepModalOpen, setIsExamPrepModalOpen] = useState(false);
   const [isCopiedLinkCode, setIsCopiedLinkCode] = useState(false);
   const [isParentLinkInfoOpen, setIsParentLinkInfoOpen] = useState(false);
+  const [isRankRoadmapOpen, setIsRankRoadmapOpen] = useState(false);
   const [audioScrubProgress, setAudioScrubProgress] = useState(42);
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
   const [boardClockMs, setBoardClockMs] = useState<number>(() => Date.now());
@@ -183,10 +190,7 @@ export const StudentDashboard: React.FC = () => {
     }
   };
 
-  // Rank progression details aligned with xpEconomy rank thresholds
-  const rankProgress = getRankProgress(student.xp);
-
-  // Determine current class drill & topic
+  // Verified reading stats and rank progression aligned with xpEconomy
   const currentTopic = NIGERIAN_CURRICULUM_TOPICS[0];
   const verifiedReadIds = student.completedReadNoteIds || [];
   const verifiedLogs = student.verifiedReadingLogs || [];
@@ -195,6 +199,13 @@ export const StudentDashboard: React.FC = () => {
     0,
     Math.round(verifiedLogs.reduce((acc, l) => acc + (l.activeSeconds || 0), 0) / 60)
   );
+  const rankProgress = getRankProgress(student.xp, undefined, {
+    streakDays: student.streakDays,
+    verifiedNotesCount,
+    examPercentages: examResults.map(r => r.percentage)
+  });
+  const explorerStatus = getExplorerStatus(student.dailyExploration);
+  const currentRankTier = getRankTierDefinition(rankProgress.currentRank);
 
   const getDrillConfig = (classLevel: string) => {
     if (classLevel === 'SS 3') {
@@ -315,19 +326,44 @@ export const StudentDashboard: React.FC = () => {
                 <h2 className="text-lg sm:text-xl font-black text-white tracking-tight drop-shadow-sm truncate">
                   {displayName}
                 </h2>
-                <span className="text-xs font-black text-[#84CC16] bg-[#84CC16]/20 border border-[#84CC16]/60 rounded-xl px-2.5 py-0.5 shadow-[0_0_10px_rgba(132,204,22,0.3)] flex items-center gap-1 whitespace-nowrap shrink-0">
-                  {student.classLevel} {student.rank || 'Scholar'} 🏆
-                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    playSound.tileTap();
+                    setIsRankRoadmapOpen(true);
+                  }}
+                  className="text-xs font-black text-[#84CC16] bg-[#84CC16]/20 hover:bg-[#84CC16]/30 border border-[#84CC16]/60 rounded-xl px-2.5 py-0.5 shadow-[0_0_10px_rgba(132,204,22,0.3)] flex items-center gap-1 whitespace-nowrap shrink-0 cursor-pointer transition-colors"
+                  title="View Rank Mastery Gates & Daily XP Quota"
+                >
+                  <span>{student.classLevel} {rankProgress.currentRank} 🏆</span>
+                  <ChevronRight className="w-3 h-3" />
+                </button>
               </div>
 
               {/* Crisp White XP Readout Above Lime Progress Track */}
-              <div className="w-full max-w-[230px] sm:max-w-[260px] space-y-1">
+              <button
+                type="button"
+                onClick={() => {
+                  playSound.tileTap();
+                  setIsRankRoadmapOpen(true);
+                }}
+                className="w-full max-w-[240px] sm:max-w-[275px] space-y-1 text-left cursor-pointer group"
+                title="Tap to inspect promotion gates and daily XP limit"
+              >
                 <div className="flex items-center justify-between gap-2 text-[11px] leading-none">
-                  <span className="font-black font-mono tabular-nums text-white tracking-wide whitespace-nowrap">
+                  <span className="font-black font-mono tabular-nums text-white tracking-wide whitespace-nowrap group-hover:text-[#A3E635] transition-colors">
                     {rankProgress.currentXP.toLocaleString()} / {rankProgress.target.toLocaleString()} XP
                   </span>
-                  <span className="text-[10px] font-semibold text-slate-300 whitespace-nowrap truncate">
-                    {rankProgress.isMaxRank ? 'Top Rank' : `Next: ${rankProgress.nextRank}`}
+                  <span
+                    className={`text-[10px] font-semibold whitespace-nowrap truncate ${
+                      rankProgress.gatesPending ? 'text-amber-300' : 'text-slate-300'
+                    }`}
+                  >
+                    {rankProgress.isMaxRank
+                      ? 'Top Rank'
+                      : rankProgress.gatesPending
+                      ? `Gates Pending`
+                      : `Next: ${rankProgress.nextRank}`}
                   </span>
                 </div>
                 <div
@@ -347,7 +383,17 @@ export const StudentDashboard: React.FC = () => {
                     className="h-full rounded-full bg-gradient-to-r from-[#84CC16] via-[#A3E635] to-[#84CC16] shadow-[0_0_10px_#84CC16]"
                   />
                 </div>
-              </div>
+                <div className="flex items-center justify-between text-[10px] text-slate-400 font-mono tabular-nums">
+                  <span>
+                    Today: {explorerStatus.dailyXpEarned}/{explorerStatus.dailyXpCap} XP
+                  </span>
+                  {explorerStatus.isDailyCapReached ? (
+                    <span className="text-amber-300 font-semibold">Daily Cap</span>
+                  ) : (
+                    <span className="text-slate-400 group-hover:text-slate-200">Tap for Gates</span>
+                  )}
+                </div>
+              </button>
             </div>
           </div>
 
@@ -1374,6 +1420,172 @@ export const StudentDashboard: React.FC = () => {
             >
               Copy Code & Close
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          RANK MASTERY ROADMAP & DAILY XP CAP MODAL
+         ========================================================================= */}
+      {isRankRoadmapOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#101C34] border border-[#84CC16]/40 rounded-3xl max-w-md w-full max-h-[88vh] overflow-y-auto p-5 space-y-4 shadow-2xl text-slate-100">
+            <div className="flex items-center justify-between pb-2.5 border-b border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-[#84CC16]/20 text-[#84CC16]">
+                  <Trophy className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-white">Rank Mastery Roadmap</h3>
+                  <p className="text-[11px] text-slate-400">
+                    Current Rank: <strong className="text-[#84CC16]">{rankProgress.currentRank}</strong>
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsRankRoadmapOpen(false)}
+                className="p-2 min-w-[40px] min-h-[40px] flex items-center justify-center rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 cursor-pointer"
+                aria-label="Close rank roadmap"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Daily XP Cap & Rank Difficulty Rates */}
+            <div className="bg-slate-950/70 border border-slate-800 rounded-2xl p-3.5 space-y-2.5">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-semibold text-slate-300">Daily Earnable XP Limit</span>
+                <span className="font-mono font-bold tabular-nums text-white">
+                  {explorerStatus.dailyXpEarned} / {explorerStatus.dailyXpCap} XP
+                </span>
+              </div>
+              <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all duration-500 ${
+                    explorerStatus.isDailyCapReached ? 'bg-amber-400' : 'bg-[#84CC16]'
+                  }`}
+                  style={{
+                    width: `${Math.min(100, (explorerStatus.dailyXpEarned / explorerStatus.dailyXpCap) * 100)}%`
+                  }}
+                />
+              </div>
+              <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1">
+                <span>
+                  Easy Tasks Rate: <strong className="text-amber-300">{Math.round(currentRankTier.easyMultiplier * 100)}%</strong>
+                </span>
+                <span>
+                  Medium: <strong className="text-sky-300">{Math.round(currentRankTier.mediumMultiplier * 100)}%</strong>
+                </span>
+                <span>
+                  Hard: <strong className="text-emerald-300">{Math.round(currentRankTier.hardMultiplier * 100)}%</strong>
+                </span>
+              </div>
+            </div>
+
+            {/* Next Rank Promotion Gates Checklist */}
+            {!rankProgress.isMaxRank && (
+              <div className="bg-slate-950/70 border border-slate-800 rounded-2xl p-3.5 space-y-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-bold text-white">
+                    Next Rank: {rankProgress.nextRank}
+                  </span>
+                  <span className="font-mono tabular-nums text-[11px] font-bold text-[#84CC16]">
+                    {rankProgress.currentXP.toLocaleString()} / {rankProgress.target.toLocaleString()} XP
+                  </span>
+                </div>
+
+                {rankProgress.gatesPending && (
+                  <p className="text-[11px] text-amber-300 leading-snug">
+                    Your XP meets the {rankProgress.nextRank} threshold. Complete every mastery gate below to unlock your promotion:
+                  </p>
+                )}
+
+                <div className="space-y-2 pt-1">
+                  {rankProgress.gateChecks.map(gate => (
+                    <div
+                      key={gate.id}
+                      className="flex items-center justify-between gap-2 text-xs px-2.5 py-2 rounded-xl bg-slate-900/90 border border-slate-800/80"
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        {gate.met ? (
+                          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                        ) : (
+                          <Clock className="w-4 h-4 text-amber-400 shrink-0" />
+                        )}
+                        <span className={gate.met ? 'text-emerald-200 font-medium' : 'text-slate-200'}>
+                          {gate.label}
+                        </span>
+                      </div>
+                      <span className="font-mono tabular-nums text-[11px] font-bold text-slate-300 shrink-0">
+                        {gate.current} / {gate.required}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsRankRoadmapOpen(false);
+                      setActiveStudentTab('syllabus');
+                    }}
+                    className="py-2 px-3 min-h-[40px] rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-xs font-semibold text-white cursor-pointer whitespace-nowrap"
+                  >
+                    Read Lesson Notes
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsRankRoadmapOpen(false);
+                      setActiveStudentTab('cbt');
+                    }}
+                    className="py-2 px-3 min-h-[40px] rounded-xl bg-[#84CC16] hover:bg-[#A3E635] text-xs font-black text-slate-950 cursor-pointer whitespace-nowrap"
+                  >
+                    Take CBT Exam
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Full 5-Tier Rank Ladder */}
+            <div className="space-y-2">
+              <div className="text-xs font-bold text-slate-300">Official 5-Tier Rank Ladder</div>
+              <div className="space-y-1.5">
+                {RANK_LADDER.map(tier => {
+                  const isCurrent = currentRankTier.rank === tier.rank;
+                  const unlocked = rankProgress.currentXP >= tier.minXP && isCurrent;
+                  return (
+                    <div
+                      key={tier.rank}
+                      className={`p-2.5 rounded-xl border text-xs flex items-center justify-between gap-2 ${
+                        isCurrent
+                          ? 'bg-[#84CC16]/15 border-[#84CC16]/60 text-white'
+                          : 'bg-slate-950/60 border-slate-800 text-slate-300'
+                      }`}
+                    >
+                      <div className="min-w-0">
+                        <div className="font-bold flex items-center gap-1.5">
+                          <span>{tier.label}</span>
+                          {isCurrent && (
+                            <span className="text-[10px] font-semibold text-[#84CC16]">· Current</span>
+                          )}
+                        </div>
+                        <div className="text-[10px] text-slate-400">
+                          {tier.minXP === 0
+                            ? 'Starting rank · Easy tasks 100% XP'
+                            : `${tier.minStreakDays}d streak · ${tier.minVerifiedNotes} notes · ${tier.minQualifyingExams} exams (${tier.minExamScore}%+)`}
+                        </div>
+                      </div>
+                      <span className={`font-mono tabular-nums font-bold shrink-0 ${unlocked ? 'text-[#84CC16]' : 'text-slate-200'}`}>
+                        {tier.minXP.toLocaleString()} XP
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           </div>
         </div>
       )}
