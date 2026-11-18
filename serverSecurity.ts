@@ -293,6 +293,10 @@ export function findActiveBlock(params: {
   return matchedBlocks[0];
 }
 
+export function getDeletedAccountsSnapshot(): DeletedAccountTombstone[] {
+  return [...memoryStore.deletedAccounts];
+}
+
 export class SecurityService {
   private db: Firestore;
   private hydratedFromFirestore = false;

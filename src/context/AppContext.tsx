@@ -223,7 +223,31 @@ interface AppContextType {
     error?: string;
     code?: string;
   }>;
-  authenticateUser: (identifier: string, password: string) => Promise<{ success: boolean; profile?: RegisteredUserProfile; error?: string }>;
+  authenticateUser: (
+    identifier: string,
+    password: string
+  ) => Promise<{
+    success: boolean;
+    profile?: RegisteredUserProfile;
+    error?: string;
+    useEmailOtp?: boolean;
+    email?: string;
+  }>;
+  requestLoginOtp: (email: string) => Promise<{
+    success: boolean;
+    deliveredTo?: string;
+    accountName?: string;
+    needsSignup?: boolean;
+    error?: string;
+  }>;
+  verifyLoginOtp: (
+    email: string,
+    code: string
+  ) => Promise<{
+    success: boolean;
+    profile?: RegisteredUserProfile;
+    error?: string;
+  }>;
   logoutUser: () => Promise<void>;
   isFirebaseConnected: boolean;
 
@@ -390,6 +414,29 @@ interface AppContextType {
   setAdminAiCoachUnlockOverride: (override: boolean) => void;
   impersonatedUser: RegisteredUserProfile | null;
   allRegisteredUsers: RegisteredUserProfile[];
+  isSyncingDirectory: boolean;
+  directorySyncStats: {
+    total: number;
+    backendCount: number;
+    firestoreCount: number;
+    recoveredCount: number;
+    backfilledToFirestoreCount: number;
+    lastSyncedAt?: string;
+    firestoreAdminReady: boolean;
+  } | null;
+  syncUserDirectoryFromCloud: (options?: {
+    silent?: boolean;
+    adminEmailOverride?: string;
+  }) => Promise<{
+    success: boolean;
+    totalUsers: number;
+    backendCount: number;
+    firestoreCount: number;
+    recoveredCount: number;
+    backfilledToFirestoreCount: number;
+    message?: string;
+    error?: string;
+  }>;
   startImpersonation: (user: RegisteredUserProfile) => void;
   stopImpersonation: () => void;
   updateUserRecord: (userId: string, updates: Partial<RegisteredUserProfile>) => Promise<void>;
@@ -620,6 +667,163 @@ const isPurgedRecord = (data: any): boolean => {
   if (data.isSuperAdmin === true) return false;
   const str = `${data.fullName || ''} ${data.name || ''} ${data.studentName || ''} ${data.tutorName || ''} ${data.tutorId || ''} ${data.studentId || ''} ${data.id || ''} ${email}`.toLowerCase();
   return PURGED_PATTERNS.some(p => str.includes(p));
+};
+
+const isPlaceholderRecoveredEmail = (email?: string): boolean => {
+  const clean = String(email || '').trim().toLowerCase();
+  return (
+    !clean ||
+    !clean.includes('@') ||
+    clean.endsWith('@recovered.studentcompanion.ng') ||
+    clean.endsWith('@scrubbed.local')
+  );
+};
+
+const sanitizeFirestoreDocId = (raw: string): string =>
+  String(raw || `usr_${Date.now()}`)
+    .trim()
+    .replace(/[^a-zA-Z0-9_-]/g, '_')
+    .slice(0, 120) || `usr_${Date.now()}`;
+
+const sanitizeUserAccountForFirestore = (profile: RegisteredUserProfile): Record<string, any> => {
+  const payload: Record<string, any> = {
+    id: sanitizeFirestoreDocId(profile.id),
+    role: profile.role || 'student',
+    fullName: String(profile.fullName || 'Student Companion User').trim().slice(0, 120) || 'User',
+    email: String(profile.email || '').trim().toLowerCase().slice(0, 150),
+    emailVerified: Boolean(profile.emailVerified ?? true),
+    createdAt: String(profile.createdAt || new Date().toISOString()).slice(0, 50)
+  };
+  if (profile.avatarUrl && profile.avatarUrl.length <= 500) payload.avatarUrl = profile.avatarUrl;
+  if (profile.verifiedAt) payload.verifiedAt = String(profile.verifiedAt).slice(0, 50);
+  if (profile.studentData) payload.studentData = profile.studentData;
+  if (profile.parentData) payload.parentData = profile.parentData;
+  if (profile.tutorData) payload.tutorData = profile.tutorData;
+  if (profile.adminData) payload.adminData = profile.adminData;
+  if (profile.growthPartnerData) payload.growthPartnerData = profile.growthPartnerData;
+  if (typeof profile.isSuperAdmin === 'boolean') payload.isSuperAdmin = profile.isSuperAdmin;
+  if (typeof profile.isDeveloper === 'boolean') payload.isDeveloper = profile.isDeveloper;
+  if (profile.accountStatus) payload.accountStatus = profile.accountStatus;
+  if (profile.lockedUntil) payload.lockedUntil = String(profile.lockedUntil).slice(0, 50);
+  if (profile.lockReason) payload.lockReason = String(profile.lockReason).slice(0, 300);
+  if (profile.suspensionReason) payload.suspensionReason = String(profile.suspensionReason).slice(0, 300);
+  if (profile.suspendedAt) payload.suspendedAt = String(profile.suspendedAt).slice(0, 50);
+  if (profile.deletedAt) payload.deletedAt = String(profile.deletedAt).slice(0, 50);
+  if (profile.deletedBy) payload.deletedBy = String(profile.deletedBy).slice(0, 150);
+  if (profile.deletionReason) payload.deletionReason = String(profile.deletionReason).slice(0, 300);
+  if (typeof profile.walletFrozen === 'boolean') payload.walletFrozen = profile.walletFrozen;
+  if (profile.walletFrozenReason) payload.walletFrozenReason = String(profile.walletFrozenReason).slice(0, 300);
+  return payload;
+};
+
+const mergeUserProfiles = (
+  existing: RegisteredUserProfile,
+  incoming: RegisteredUserProfile
+): RegisteredUserProfile => {
+  const existingEmail = String(existing.email || '').trim().toLowerCase();
+  const incomingEmail = String(incoming.email || '').trim().toLowerCase();
+  const resolvedEmail = !isPlaceholderRecoveredEmail(incomingEmail)
+    ? incomingEmail
+    : !isPlaceholderRecoveredEmail(existingEmail)
+      ? existingEmail
+      : incomingEmail || existingEmail;
+
+  const existingIsStub = existing.directorySource === 'recovered' || isPlaceholderRecoveredEmail(existingEmail);
+  const incomingIsStub = incoming.directorySource === 'recovered' || isPlaceholderRecoveredEmail(incomingEmail);
+
+  return {
+    ...existing,
+    ...incoming,
+    id: existing.id || incoming.id,
+    role: !incomingIsStub && incoming.role ? incoming.role : existing.role || incoming.role,
+    fullName:
+      !incomingIsStub && incoming.fullName && incoming.fullName !== 'Student Scholar'
+        ? incoming.fullName
+        : existing.fullName || incoming.fullName,
+    email: resolvedEmail,
+    emailVerified: Boolean(existing.emailVerified || incoming.emailVerified),
+    createdAt:
+      existing.createdAt && incoming.createdAt
+        ? existing.createdAt < incoming.createdAt
+          ? existing.createdAt
+          : incoming.createdAt
+        : existing.createdAt || incoming.createdAt || new Date().toISOString(),
+    studentData:
+      existing.studentData || incoming.studentData
+        ? {
+            ...(existing.studentData || ({} as StudentProfile)),
+            ...(incoming.studentData || ({} as StudentProfile)),
+            xp: Math.max(Number(existing.studentData?.xp || 0), Number(incoming.studentData?.xp || 0)),
+            streakDays: Math.max(
+              Number(existing.studentData?.streakDays || 0),
+              Number(incoming.studentData?.streakDays || 0)
+            ),
+            isSubscribed: Boolean(
+              existing.studentData?.isSubscribed || incoming.studentData?.isSubscribed
+            ),
+            studentLinkCode:
+              incoming.studentData?.studentLinkCode || existing.studentData?.studentLinkCode,
+            schoolCode: incoming.studentData?.schoolCode || existing.studentData?.schoolCode
+          }
+        : undefined,
+    parentData:
+      existing.parentData || incoming.parentData
+        ? {
+            ...(existing.parentData || ({} as NonNullable<RegisteredUserProfile['parentData']>)),
+            ...(incoming.parentData || {})
+          }
+        : undefined,
+    tutorData:
+      existing.tutorData || incoming.tutorData
+        ? { ...(existing.tutorData || ({} as RegisteredTutorData)), ...(incoming.tutorData || {}) }
+        : undefined,
+    adminData:
+      existing.adminData || incoming.adminData
+        ? { ...(existing.adminData || ({ schoolName: '', schoolType: '' })), ...(incoming.adminData || {}) }
+        : undefined,
+    growthPartnerData:
+      existing.growthPartnerData || incoming.growthPartnerData
+        ? { ...(existing.growthPartnerData || ({} as GrowthPartner)), ...(incoming.growthPartnerData || {}) }
+        : undefined,
+    directorySource: !existingIsStub
+      ? existing.directorySource || incoming.directorySource
+      : incoming.directorySource || existing.directorySource,
+    recoveredFrom: incoming.recoveredFrom || existing.recoveredFrom
+  };
+};
+
+const mergeUserProfileArrays = (lists: RegisteredUserProfile[][]): RegisteredUserProfile[] => {
+  const byKey = new Map<string, RegisteredUserProfile>();
+  const emailToKey = new Map<string, string>();
+
+  for (const list of lists) {
+    for (const raw of list) {
+      if (!raw || !raw.id || isPurgedRecord(raw)) continue;
+      const cleanEmail = String(raw.email || '').trim().toLowerCase();
+      let targetKey: string | undefined;
+      if (byKey.has(raw.id)) {
+        targetKey = raw.id;
+      } else if (!isPlaceholderRecoveredEmail(cleanEmail) && emailToKey.has(cleanEmail)) {
+        targetKey = emailToKey.get(cleanEmail);
+      }
+      if (targetKey && byKey.has(targetKey)) {
+        const merged = mergeUserProfiles(byKey.get(targetKey)!, raw);
+        byKey.set(targetKey, merged);
+        if (!isPlaceholderRecoveredEmail(merged.email)) {
+          emailToKey.set(merged.email.toLowerCase(), targetKey);
+        }
+      } else {
+        byKey.set(raw.id, raw);
+        if (!isPlaceholderRecoveredEmail(cleanEmail)) {
+          emailToKey.set(cleanEmail, raw.id);
+        }
+      }
+    }
+  }
+
+  return Array.from(byKey.values()).sort((a, b) =>
+    String(b.createdAt || '').localeCompare(String(a.createdAt || ''))
+  );
 };
 
 const isVerifiedSubscriptionRef = (ref?: string | null): boolean => {
@@ -867,6 +1071,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     return INITIAL_USER_DIRECTORY;
   });
+  const [isSyncingDirectory, setIsSyncingDirectory] = useState<boolean>(false);
+  const [directorySyncStats, setDirectorySyncStats] = useState<{
+    total: number;
+    backendCount: number;
+    firestoreCount: number;
+    recoveredCount: number;
+    backfilledToFirestoreCount: number;
+    lastSyncedAt?: string;
+    firestoreAdminReady: boolean;
+  } | null>(null);
 
   // User Impersonation State
   const [impersonatedUser, setImpersonatedUser] = useState<RegisteredUserProfile | null>(null);
@@ -1847,9 +2061,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return { success: true, profile };
     }
 
-    const existing = allRegisteredUsers.find(
+    const baseExisting = allRegisteredUsers.find(
       u => u.email.toLowerCase() === (user.email || '').toLowerCase()
     );
+    let firestoreUserProfile: RegisteredUserProfile | null = null;
+    const userDocRef = doc(db, 'users', user.uid);
+    const userDocPath = `users/${user.uid}`;
+    let userDocExistsInFirestore = false;
+
+    if (!isOffline) {
+      try {
+        const userSnap = await getDoc(userDocRef);
+        if (userSnap.exists()) {
+          userDocExistsInFirestore = true;
+          firestoreUserProfile = userSnap.data() as RegisteredUserProfile;
+        }
+      } catch (err) {
+        handleFirestoreError(err, OperationType.GET, userDocPath);
+      }
+    }
+
+    const existing =
+      firestoreUserProfile && baseExisting
+        ? mergeUserProfiles(baseExisting, firestoreUserProfile)
+        : firestoreUserProfile || baseExisting;
+
     if (existing?.accountStatus === 'deleted') {
       return {
         success: false,
@@ -1900,17 +2136,69 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // Offline fallback handled below
     }
 
-    const profile: RegisteredUserProfile = existing || {
-      id: user.uid,
-      role: currentUserProfile?.role || 'student',
-      fullName: user.displayName || 'Student Companion Learner',
-      email: user.email || '',
-      avatarUrl: user.photoURL || undefined,
-      emailVerified: user.emailVerified ?? true,
-      createdAt: new Date().toISOString(),
-      studentData: student
-    };
+    const profile: RegisteredUserProfile = existing
+      ? {
+          ...existing,
+          fullName: user.displayName || existing.fullName || 'Student Companion Learner',
+          avatarUrl:
+            user.photoURL && user.photoURL.length <= 500 ? user.photoURL : existing.avatarUrl,
+          emailVerified: user.emailVerified ?? existing.emailVerified ?? true
+        }
+      : {
+          id: user.uid,
+          role: currentUserProfile?.role || 'student',
+          fullName: user.displayName || 'Student Companion Learner',
+          email: user.email || '',
+          avatarUrl: user.photoURL && user.photoURL.length <= 500 ? user.photoURL : undefined,
+          emailVerified: user.emailVerified ?? true,
+          verifiedAt: new Date().toISOString(),
+          createdAt: new Date().toISOString(),
+          studentData: { ...student, id: user.uid, name: user.displayName || student.name || 'Student Companion Learner' }
+        };
 
+    // Persist Google account directly to Firestore `users/{uid}` (strictly matching isValidUserAccount rules)
+    if (!isOffline) {
+      if (!userDocExistsInFirestore) {
+        const createPayload = sanitizeUserAccountForFirestore({
+          ...profile,
+          id: user.uid,
+          role: profile.role === 'admin' ? 'student' : profile.role,
+          isSuperAdmin: false,
+          isDeveloper: false,
+          accountStatus: 'active',
+          walletFrozen: false
+        });
+        setDoc(userDocRef, createPayload).catch((err) => {
+          handleFirestoreError(err, OperationType.CREATE, userDocPath);
+        });
+      } else {
+        const ownerUpdate: Record<string, any> = {
+          fullName: String(profile.fullName || 'Student Companion Learner').slice(0, 120)
+        };
+        if (profile.avatarUrl && profile.avatarUrl.length <= 500) {
+          ownerUpdate.avatarUrl = profile.avatarUrl;
+        }
+        updateDoc(userDocRef, ownerUpdate).catch((err) => {
+          handleFirestoreError(err, OperationType.UPDATE, userDocPath);
+        });
+      }
+    }
+
+    // Mirror Google account into shared backend User Directory immediately
+    void fetch('/api/users/sync-profile', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getSecurityHeaders({ userId: profile.id, userEmail: profile.email })
+      },
+      body: JSON.stringify({ profile: { ...profile, directorySource: 'firestore' } })
+    }).catch(() => {});
+
+    setAllRegisteredUsers(prev => {
+      const next = mergeUserProfileArrays([[profile], prev]);
+      safeSetItem('sc_all_users', JSON.stringify(next));
+      return next;
+    });
     setCurrentUserProfile(profile);
     safeSetItem('sc_user_profile', JSON.stringify(profile));
     setCurrentRole(profile.role);
@@ -2123,7 +2411,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const authenticateUser = async (
     identifier: string,
     password: string
-  ): Promise<{ success: boolean; profile?: RegisteredUserProfile; error?: string }> => {
+  ): Promise<{
+    success: boolean;
+    profile?: RegisteredUserProfile;
+    error?: string;
+    useEmailOtp?: boolean;
+    email?: string;
+  }> => {
     const cleanInput = identifier.trim().toLowerCase();
     if (!cleanInput) {
       return { success: false, error: 'Please enter your email or username.' };
@@ -2297,6 +2591,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data?.authenticated) {
+        if (data?.useEmailOtp) {
+          return {
+            success: false,
+            useEmailOtp: true,
+            email: typeof data.email === 'string' ? data.email : cleanInput.includes('@') ? cleanInput : undefined,
+            error:
+              data?.error ||
+              'This account uses Passwordless Email Code (OTP) or Google Sign-In. Switch to Email Code to sign in across devices.'
+          };
+        }
         const failInfo = recordLoginFailure(cleanInput);
         const lockNote = failInfo.isLocked
           ? ' Account temporarily locked for 15 minutes due to repeated failures.'
@@ -2336,6 +2640,105 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       safeSetItem('sc_student', JSON.stringify(matched.studentData));
     }
     return { success: true, profile: matched };
+  };
+
+  const requestLoginOtp = async (emailInput: string): Promise<{
+    success: boolean;
+    deliveredTo?: string;
+    accountName?: string;
+    needsSignup?: boolean;
+    error?: string;
+  }> => {
+    const cleanEmail = String(emailInput || '').trim().toLowerCase();
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      return { success: false, error: 'Please enter a valid registered email address.' };
+    }
+
+    try {
+      const res = await fetch('/api/auth/send-login-otp', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getSecurityHeaders({ userEmail: cleanEmail })
+        },
+        body: JSON.stringify({ email: cleanEmail })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) {
+        return {
+          success: false,
+          needsSignup: Boolean(data?.needsSignup),
+          error: data?.error || 'Could not send 6-digit login code. Please check your email and try again.'
+        };
+      }
+      return {
+        success: true,
+        deliveredTo: data.deliveredTo || cleanEmail,
+        accountName: data.accountName
+      };
+    } catch {
+      return {
+        success: false,
+        error: 'Unable to reach verification server right now. Check your internet connection and try again.'
+      };
+    }
+  };
+
+  const verifyLoginOtp = async (
+    emailInput: string,
+    codeInput: string
+  ): Promise<{ success: boolean; profile?: RegisteredUserProfile; error?: string }> => {
+    const cleanEmail = String(emailInput || '').trim().toLowerCase();
+    const cleanCode = String(codeInput || '').trim();
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      return { success: false, error: 'Please enter a valid registered email address.' };
+    }
+    if (!/^\d{6}$/.test(cleanCode)) {
+      return { success: false, error: 'Please enter the 6-digit code sent to your email.' };
+    }
+
+    try {
+      const res = await fetch('/api/auth/verify-otp-login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getSecurityHeaders({ userEmail: cleanEmail })
+        },
+        body: JSON.stringify({ email: cleanEmail, code: cleanCode })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.authenticated || !data?.profile) {
+        return {
+          success: false,
+          error: data?.error || 'Invalid or expired 6-digit login code. Please request a new code.'
+        };
+      }
+
+      if (typeof data.otaAdminToken === 'string') {
+        setServerOTAAdminToken(data.otaAdminToken);
+      }
+
+      const verifiedProfile = data.profile as RegisteredUserProfile;
+      resetLoginFailures(cleanEmail);
+      setAllRegisteredUsers(prev => {
+        const merged = mergeUserProfileArrays([prev, [verifiedProfile]]);
+        safeSetItem('sc_all_users', JSON.stringify(merged));
+        return merged;
+      });
+      setCurrentUserProfile(verifiedProfile);
+      safeSetItem('sc_user_profile', JSON.stringify(verifiedProfile));
+      setCurrentRole(verifiedProfile.role);
+      if (verifiedProfile.studentData) {
+        setStudent(verifiedProfile.studentData);
+        safeSetItem('sc_student', JSON.stringify(verifiedProfile.studentData));
+      }
+      return { success: true, profile: verifiedProfile };
+    } catch {
+      return {
+        success: false,
+        error: 'Network error verifying login code. Please try again.'
+      };
+    }
   };
 
   // One-time startup purge of legacy sample/test personas, wallets & bookings (retaining Super Admins)
@@ -4888,6 +5291,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const fullName = profileData.fullName || profileData.name || 'User';
     const email = profileData.email || '';
 
+    const syncProfileToServer = (
+      profileSnapshot: RegisteredUserProfile,
+      endpoint: '/api/users/register' | '/api/users/sync-profile' = '/api/users/sync-profile'
+    ) => {
+      void fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getSecurityHeaders({
+            userId: profileSnapshot.id,
+            userEmail: profileSnapshot.email || undefined
+          })
+        },
+        body: JSON.stringify({ profile: profileSnapshot })
+      }).catch(() => {});
+    };
+
     const newProfile: RegisteredUserProfile = {
       id: newId,
       role,
@@ -4895,7 +5315,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       email,
       emailVerified: true,
       verifiedAt: new Date().toISOString(),
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      directorySource: 'backend'
     };
 
     setCurrentRole(role);
@@ -4965,6 +5386,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 studentData: { ...prev.studentData, studentLinkCode: issuedCode }
               };
               safeSetItem('sc_user_profile', JSON.stringify(nextProf));
+              syncProfileToServer(nextProf);
               return nextProf;
             });
             setAllRegisteredUsers(prev => {
@@ -5013,6 +5435,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                       safeSetItem('sc_student', JSON.stringify(nextStu));
                       return nextStu;
                     });
+                    setCurrentUserProfile(prev => {
+                      if (!prev || prev.id !== newId || !prev.studentData) return prev;
+                      const shouldReplaceSchool =
+                        !prev.studentData.school ||
+                        prev.studentData.school === 'Secondary School' ||
+                        prev.studentData.school === 'Federal Secondary School';
+                      const nextProf: RegisteredUserProfile = {
+                        ...prev,
+                        studentData: {
+                          ...prev.studentData,
+                          schoolCode: enrollData.schoolCode || prev.studentData.schoolCode,
+                          school: shouldReplaceSchool ? enrollData.schoolName : prev.studentData.school
+                        }
+                      };
+                      safeSetItem('sc_user_profile', JSON.stringify(nextProf));
+                      syncProfileToServer(nextProf);
+                      return nextProf;
+                    });
                   }
                 })
                 .catch(() => {});
@@ -5048,6 +5488,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 };
                 safeSetItem('sc_student', JSON.stringify(attributed));
                 return attributed;
+              });
+              setCurrentUserProfile(prev => {
+                if (!prev || prev.id !== newId || !prev.studentData) return prev;
+                const nextProf: RegisteredUserProfile = {
+                  ...prev,
+                  studentData: {
+                    ...prev.studentData,
+                    referredByCode: data.referralCode || candidateRefCode,
+                    referredPartnerId: data.partnerId,
+                    referredPartnerName: data.partnerName
+                  }
+                };
+                safeSetItem('sc_user_profile', JSON.stringify(nextProf));
+                syncProfileToServer(nextProf);
+                return nextProf;
               });
             }
           })
@@ -5196,6 +5651,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 growthPartnerData: { ...prev.growthPartnerData, referralCode: liveCode }
               };
               safeSetItem('sc_user_profile', JSON.stringify(nextProf));
+              syncProfileToServer(nextProf);
               return nextProf;
             });
             setAllRegisteredUsers(prev => {
@@ -5257,6 +5713,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 adminData: { ...prev.adminData, schoolCode: liveCode }
               };
               safeSetItem('sc_user_profile', JSON.stringify(nextProf));
+              syncProfileToServer(nextProf);
               return nextProf;
             });
             setAllRegisteredUsers(prev => {
@@ -5280,6 +5737,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
     setCurrentUserProfile(newProfile);
     safeSetItem('sc_user_profile', JSON.stringify(newProfile));
+    syncProfileToServer(newProfile, '/api/users/register');
     setTargetSignUpRole(null);
     setCurrentScreen('app');
   };
@@ -6887,7 +7345,360 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setCurrentRole(role);
   };
 
+  const syncUserDirectoryFromCloud = useCallback(async (options?: {
+    silent?: boolean;
+    adminEmailOverride?: string;
+  }) => {
+    const adminEmail =
+      options?.adminEmailOverride ||
+      currentUserProfile?.email ||
+      currentUser?.email ||
+      (isSuperAdmin ? SUPER_ADMIN_EMAIL : '');
+    if (!isSuperAdmin || !adminEmail) {
+      return {
+        success: false,
+        totalUsers: allRegisteredUsers.length,
+        backendCount: 0,
+        firestoreCount: 0,
+        recoveredCount: 0,
+        backfilledToFirestoreCount: 0,
+        error: 'Super Admin authentication required.'
+      };
+    }
+
+    setIsSyncingDirectory(true);
+    let backendUsers: RegisteredUserProfile[] = [];
+    let backendRecoveredCount = 0;
+    let firestoreUsers: RegisteredUserProfile[] = [];
+    let recoveredRegistryUsers: RegisteredUserProfile[] = [];
+    let backfilledToFirestoreCount = 0;
+    let syncErrorMsg: string | undefined;
+
+    const firestoreAdminReady = Boolean(
+      !isOffline &&
+      isFirebaseConnected &&
+      auth.currentUser &&
+      auth.currentUser.emailVerified &&
+      isSuperAdminEmail(auth.currentUser.email)
+    );
+
+    try {
+      const authHeaders = await getFirebaseAuthHeaders().catch(() => ({}));
+      const headers = {
+        ...authHeaders,
+        ...getSecurityHeaders({
+          userId: currentUserProfile?.id,
+          userEmail: adminEmail
+        })
+      };
+
+      const res = await fetch(`/api/admin/users?adminEmail=${encodeURIComponent(adminEmail)}`, {
+        headers,
+        cache: 'no-store'
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data?.success && Array.isArray(data.users)) {
+        backendUsers = (data.users as RegisteredUserProfile[]).filter(u => !isPurgedRecord(u));
+        backendRecoveredCount = Number(data?.stats?.recoveredFromRegistries || 0);
+      } else if (!options?.silent && !res.ok) {
+        syncErrorMsg = data?.error || `Backend directory sync returned HTTP ${res.status}.`;
+      }
+    } catch (err: any) {
+      if (!options?.silent) {
+        syncErrorMsg = err?.message || 'Unable to reach shared backend directory.';
+      }
+    }
+
+    if (firestoreAdminReady) {
+      try {
+        const readCol = async (colName: string) => {
+          try {
+            return await getDocs(collection(db, colName));
+          } catch (err) {
+            handleFirestoreError(err, OperationType.LIST, colName);
+          }
+        };
+
+        const [
+          usersSnap,
+          studentsSnap,
+          partnersSnap,
+          linkSnap,
+          schoolsSnap,
+          enrollSnap
+        ] = await Promise.all([
+          readCol('users'),
+          readCol('students'),
+          readCol('growthPartners'),
+          readCol('studentLinkRegistry'),
+          readCol('schoolRegistry'),
+          readCol('schoolEnrollments')
+        ]);
+
+        const firestoreUserIds = new Set<string>();
+        const firestoreUserEmails = new Set<string>();
+
+        usersSnap.forEach(docSnap => {
+          const data = docSnap.data() as RegisteredUserProfile;
+          const uid = sanitizeFirestoreDocId(data?.id || docSnap.id);
+          const candidate: RegisteredUserProfile = {
+            ...data,
+            id: uid,
+            role: data?.role || 'student',
+            fullName: data?.fullName || 'Student Scholar',
+            email: data?.email || '',
+            emailVerified: Boolean(data?.emailVerified ?? true),
+            createdAt: data?.createdAt || new Date().toISOString(),
+            directorySource: 'firestore'
+          };
+          if (!isPurgedRecord(candidate)) {
+            firestoreUsers.push(candidate);
+            firestoreUserIds.add(uid);
+            const cleanEm = String(candidate.email || '').trim().toLowerCase();
+            if (!isPlaceholderRecoveredEmail(cleanEm)) {
+              firestoreUserEmails.add(cleanEm);
+            }
+          }
+        });
+
+        studentsSnap.forEach(docSnap => {
+          const d = docSnap.data() as any;
+          const uid = sanitizeFirestoreDocId(d?.id || docSnap.id);
+          const rec: RegisteredUserProfile = {
+            id: uid,
+            role: 'student',
+            fullName: String(d?.name || d?.fullName || 'Student Scholar'),
+            email: String(d?.email || `${uid.toLowerCase()}@recovered.studentcompanion.ng`),
+            emailVerified: true,
+            createdAt: String(d?.createdAt || new Date().toISOString()),
+            directorySource: 'recovered',
+            recoveredFrom: 'Firestore Students',
+            studentData: {
+              ...INITIAL_EMPTY_STUDENT,
+              ...d,
+              id: uid,
+              name: String(d?.name || d?.fullName || 'Student Scholar')
+            }
+          };
+          if (!isPurgedRecord(rec)) recoveredRegistryUsers.push(rec);
+        });
+
+        linkSnap.forEach(docSnap => {
+          const d = docSnap.data() as any;
+          const uid = sanitizeFirestoreDocId(d?.studentId || d?.code || docSnap.id);
+          const rec: RegisteredUserProfile = {
+            id: uid,
+            role: 'student',
+            fullName: String(d?.studentName || 'Student Scholar'),
+            email: String(d?.studentEmail || `${uid.toLowerCase()}@recovered.studentcompanion.ng`),
+            emailVerified: true,
+            createdAt: String(d?.issuedAt || d?.updatedAt || new Date().toISOString()),
+            directorySource: 'recovered',
+            recoveredFrom: 'Student Link Registry',
+            studentData: {
+              ...INITIAL_EMPTY_STUDENT,
+              id: uid,
+              name: String(d?.studentName || 'Student Scholar'),
+              school: String(d?.schoolName || 'Secondary School'),
+              schoolCode: d?.schoolCode ? String(d.schoolCode).toUpperCase() : undefined,
+              classLevel: d?.classLevel || 'JSS 1',
+              stream: d?.stream || 'Junior',
+              studentLinkCode: d?.code ? String(d.code).toUpperCase() : undefined
+            }
+          };
+          if (!isPurgedRecord(rec)) recoveredRegistryUsers.push(rec);
+        });
+
+        enrollSnap.forEach(docSnap => {
+          const d = docSnap.data() as any;
+          const uid = sanitizeFirestoreDocId(d?.studentId || docSnap.id);
+          const rec: RegisteredUserProfile = {
+            id: uid,
+            role: 'student',
+            fullName: String(d?.studentName || 'Student Scholar'),
+            email: String(d?.studentEmail || `${uid.toLowerCase()}@recovered.studentcompanion.ng`),
+            emailVerified: true,
+            createdAt: String(d?.enrolledAt || d?.updatedAt || new Date().toISOString()),
+            directorySource: 'recovered',
+            recoveredFrom: 'School Enrollment',
+            studentData: {
+              ...INITIAL_EMPTY_STUDENT,
+              id: uid,
+              name: String(d?.studentName || 'Student Scholar'),
+              school: String(d?.schoolName || 'Secondary School'),
+              schoolCode: d?.schoolCode ? String(d.schoolCode).toUpperCase() : undefined,
+              classLevel: d?.classLevel || 'JSS 1',
+              stream: d?.stream || 'Junior',
+              xp: Number(d?.xp || 0),
+              streakDays: Number(d?.streakDays || 0),
+              studentLinkCode: d?.studentLinkCode ? String(d.studentLinkCode).toUpperCase() : undefined,
+              isSubscribed: Boolean(d?.isSubscribed),
+              subscriptionTier: d?.subscriptionTier || 'free'
+            }
+          };
+          if (!isPurgedRecord(rec)) recoveredRegistryUsers.push(rec);
+        });
+
+        partnersSnap.forEach(docSnap => {
+          const d = docSnap.data() as any;
+          const uid = sanitizeFirestoreDocId(d?.id || docSnap.id);
+          const rec: RegisteredUserProfile = {
+            id: uid,
+            role: 'growth_partner',
+            fullName: String(d?.name || 'Growth Partner'),
+            email: String(d?.email || `${uid.toLowerCase()}@recovered.studentcompanion.ng`),
+            emailVerified: true,
+            createdAt: String(d?.createdAt || new Date().toISOString()),
+            directorySource: 'recovered',
+            recoveredFrom: 'Growth Partners Registry',
+            growthPartnerData: {
+              ...(d as GrowthPartner),
+              id: uid,
+              name: String(d?.name || 'Growth Partner'),
+              email: String(d?.email || '')
+            }
+          };
+          if (!isPurgedRecord(rec)) recoveredRegistryUsers.push(rec);
+        });
+
+        schoolsSnap.forEach(docSnap => {
+          const d = docSnap.data() as any;
+          const uid = sanitizeFirestoreDocId(d?.adminId || `usr_admin_${d?.schoolCode || docSnap.id}`);
+          const rec: RegisteredUserProfile = {
+            id: uid,
+            role: 'admin',
+            fullName: String(d?.schoolName ? `${d.schoolName} Admin` : 'School Administrator'),
+            email: `${uid.toLowerCase()}@recovered.studentcompanion.ng`,
+            emailVerified: true,
+            createdAt: String(d?.issuedAt || d?.updatedAt || new Date().toISOString()),
+            directorySource: 'recovered',
+            recoveredFrom: 'School Registry',
+            adminData: {
+              schoolName: String(d?.schoolName || 'Secondary School'),
+              schoolType: String(d?.schoolType || 'College'),
+              schoolCode: d?.schoolCode ? String(d.schoolCode).toUpperCase() : undefined,
+              state: d?.state,
+              lga: d?.lga,
+              verificationStatus: d?.verificationStatus || 'pending_verification'
+            }
+          };
+          if (!isPurgedRecord(rec)) recoveredRegistryUsers.push(rec);
+        });
+
+        const mergedPreview = mergeUserProfileArrays([
+          allRegisteredUsers,
+          backendUsers,
+          firestoreUsers,
+          recoveredRegistryUsers
+        ]);
+
+        // Backfill accounts discovered in backend or legacy registries into Firestore `users`
+        const missingInFirestore = mergedPreview.filter(u => {
+          if (isPurgedRecord(u) || u.accountStatus === 'deleted') return false;
+          const docId = sanitizeFirestoreDocId(u.id);
+          const cleanEm = String(u.email || '').trim().toLowerCase();
+          if (firestoreUserIds.has(docId)) return false;
+          if (!isPlaceholderRecoveredEmail(cleanEm) && firestoreUserEmails.has(cleanEm)) return false;
+          return true;
+        });
+
+        for (const candidate of missingInFirestore.slice(0, 50)) {
+          const docId = sanitizeFirestoreDocId(candidate.id);
+          try {
+            await setDoc(doc(db, 'users', docId), sanitizeUserAccountForFirestore(candidate), { merge: true });
+            backfilledToFirestoreCount += 1;
+          } catch {
+            // Skip any doc blocked by Firestore schema validation without aborting batch
+          }
+        }
+
+        // Mirror newly discovered Firestore / recovered accounts back to shared backend
+        if (firestoreUsers.length > 0 || recoveredRegistryUsers.length > 0) {
+          const authHeaders = await getFirebaseAuthHeaders().catch(() => ({}));
+          void fetch('/api/admin/users/sync-batch', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...authHeaders,
+              ...getSecurityHeaders({
+                userId: currentUserProfile?.id,
+                userEmail: adminEmail
+              })
+            },
+            body: JSON.stringify({
+              adminEmail,
+              users: [...firestoreUsers, ...recoveredRegistryUsers]
+            })
+          }).catch(() => {});
+        }
+      } catch (fsErr: any) {
+        if (!options?.silent && !syncErrorMsg) {
+          syncErrorMsg = fsErr?.message || 'Firestore directory sync partially restricted.';
+        }
+      }
+    }
+
+    const mergedAll = mergeUserProfileArrays([
+      allRegisteredUsers,
+      backendUsers,
+      firestoreUsers,
+      recoveredRegistryUsers
+    ]);
+
+    setAllRegisteredUsers(mergedAll);
+    safeSetItem('sc_all_users', JSON.stringify(mergedAll));
+
+    const recoveredTotal = mergedAll.filter(
+      u => u.directorySource === 'recovered' || backendRecoveredCount > 0 && Boolean(u.recoveredFrom)
+    ).length;
+
+    const recoveredCount = Math.max(recoveredTotal, backendRecoveredCount);
+
+    setDirectorySyncStats({
+      total: mergedAll.length,
+      backendCount: backendUsers.length,
+      firestoreCount: firestoreUsers.length,
+      recoveredCount,
+      backfilledToFirestoreCount,
+      lastSyncedAt: new Date().toISOString(),
+      firestoreAdminReady
+    });
+
+    setIsSyncingDirectory(false);
+    const ok = !syncErrorMsg || backendUsers.length > 0 || firestoreUsers.length > 0;
+    return {
+      success: ok,
+      totalUsers: mergedAll.length,
+      backendCount: backendUsers.length,
+      firestoreCount: firestoreUsers.length,
+      recoveredCount,
+      backfilledToFirestoreCount,
+      message: `Directory synced across backend, Firestore, and legacy registries (${mergedAll.length} total account(s)).`,
+      error: syncErrorMsg
+    };
+  }, [
+    isSuperAdmin,
+    currentUserProfile,
+    currentUser,
+    allRegisteredUsers,
+    isOffline,
+    isFirebaseConnected
+  ]);
+
+  const syncedSuperAdminSessionRef = React.useRef<string | null>(null);
+  useEffect(() => {
+    if (!isSuperAdmin || isOffline) return;
+    const sessionKey = `${currentUser?.uid || 'no-fb'}:${currentUserProfile?.email || 'no-prof'}:${isFirebaseConnected}`;
+    if (syncedSuperAdminSessionRef.current === sessionKey) return;
+    syncedSuperAdminSessionRef.current = sessionKey;
+    void syncUserDirectoryFromCloud({ silent: true });
+  }, [isSuperAdmin, isOffline, isFirebaseConnected, currentUser?.uid, currentUserProfile?.email, syncUserDirectoryFromCloud]);
+
   const updateUserRecord = async (userId: string, updates: Partial<RegisteredUserProfile>) => {
+    const existingRecord =
+      allRegisteredUsers.find(u => u.id === userId) ||
+      (currentUserProfile?.id === userId ? currentUserProfile : undefined);
+
     setAllRegisteredUsers(prev => {
       const updated = prev.map(u => (u.id === userId ? { ...u, ...updates } : u));
       safeSetItem('sc_all_users', JSON.stringify(updated));
@@ -6907,8 +7718,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     if (!isOffline && isFirebaseConnected) {
-      if (isSuperAdmin) {
-        setDoc(doc(db, 'users', userId), updates, { merge: true }).catch(err => {
+      const firestoreDocId = sanitizeFirestoreDocId(userId);
+      if (isSuperAdmin && auth.currentUser?.emailVerified && isSuperAdminEmail(auth.currentUser.email)) {
+        const mergedForFirestore = sanitizeUserAccountForFirestore({
+          ...(existingRecord || {
+            id: firestoreDocId,
+            role: 'student',
+            fullName: 'User',
+            email: '',
+            emailVerified: true,
+            createdAt: new Date().toISOString()
+          }),
+          ...updates
+        });
+        setDoc(doc(db, 'users', firestoreDocId), mergedForFirestore, { merge: true }).catch(err => {
           console.warn('Could not sync user update to Firestore:', err);
         });
       } else {
@@ -6920,11 +7743,39 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           }
         }
         if (Object.keys(safeOwnerUpdates).length > 0) {
-          updateDoc(doc(db, 'users', userId), safeOwnerUpdates as any).catch(err => {
+          updateDoc(doc(db, 'users', firestoreDocId), safeOwnerUpdates as any).catch(err => {
             console.warn('Could not sync owner profile fields to Firestore:', err);
           });
         }
       }
+    }
+
+    if (isSuperAdmin) {
+      const adminEmail = currentUserProfile?.email || currentUser?.email || SUPER_ADMIN_EMAIL;
+      const authHeaders = await getFirebaseAuthHeaders().catch(() => ({}));
+      void fetch('/api/admin/users/update', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...authHeaders,
+          ...getSecurityHeaders({ userId: currentUserProfile?.id, userEmail: adminEmail })
+        },
+        body: JSON.stringify({
+          adminEmail,
+          userId,
+          updates,
+          fallbackProfile: existingRecord ? { ...existingRecord, ...updates } : undefined
+        })
+      }).catch(() => {});
+    } else if (existingRecord) {
+      void fetch('/api/users/sync-profile', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getSecurityHeaders({ userId, userEmail: existingRecord.email })
+        },
+        body: JSON.stringify({ profile: { ...existingRecord, ...updates } })
+      }).catch(() => {});
     }
   };
 
@@ -7012,8 +7863,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       safeSetItem('sc_user_profile', JSON.stringify(updatedSelf));
     }
 
-    if (!isOffline && isFirebaseConnected) {
-      setDoc(doc(db, 'users', resolvedId), {
+    if (!isOffline && isFirebaseConnected && auth.currentUser?.emailVerified && isSuperAdminEmail(auth.currentUser.email)) {
+      const docId = sanitizeFirestoreDocId(resolvedId);
+      setDoc(doc(db, 'users', docId), {
         fullName: 'Deleted Account',
         email: scrubbedEmail,
         accountStatus: 'deleted',
@@ -7023,9 +7875,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         walletFrozen: true,
         walletFrozenReason: 'Account permanently closed'
       }, { merge: true }).catch(() => {});
-      deleteDoc(doc(db, 'students', resolvedId)).catch(() => {});
-      deleteDoc(doc(db, 'wallets', resolvedId)).catch(() => {});
+      deleteDoc(doc(db, 'students', docId)).catch(() => {});
+      deleteDoc(doc(db, 'wallets', docId)).catch(() => {});
     }
+
+    const authHeaders = await getFirebaseAuthHeaders().catch(() => ({}));
+    void fetch('/api/admin/users/update', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...authHeaders,
+        ...getSecurityHeaders({ userEmail: adminEmail })
+      },
+      body: JSON.stringify({
+        adminEmail,
+        userId: resolvedId,
+        updates: scrubbedFields
+      })
+    }).catch(() => {});
 
     return { success: true };
   };
@@ -7704,6 +8571,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         loginWithGoogle,
         loginWithGoogleRedirect,
         authenticateUser,
+        requestLoginOtp,
+        verifyLoginOtp,
         logoutUser,
         isFirebaseConnected,
         activeStudentTab,
@@ -7792,6 +8661,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setAdminAiCoachUnlockOverride,
         impersonatedUser,
         allRegisteredUsers,
+        isSyncingDirectory,
+        directorySyncStats,
+        syncUserDirectoryFromCloud,
         startImpersonation,
         stopImpersonation,
         updateUserRecord,

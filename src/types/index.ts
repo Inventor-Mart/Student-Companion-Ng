@@ -469,6 +469,9 @@ export interface RegisteredUserProfile {
   deletionReason?: string;
   walletFrozen?: boolean;
   walletFrozenReason?: string;
+  directorySource?: 'local' | 'backend' | 'firestore' | 'recovered';
+  recoveredFrom?: string;
+  lastSyncedAt?: string;
 }
 
 export interface SchoolMaterial {

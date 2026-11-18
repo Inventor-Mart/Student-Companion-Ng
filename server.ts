@@ -35,8 +35,19 @@ import {
   findActiveBlock,
   extractClientIp,
   extractDeviceFingerprint,
-  AUTHORIZED_SUPER_ADMINS
+  AUTHORIZED_SUPER_ADMINS,
+  getDeletedAccountsSnapshot
 } from './serverSecurity';
+import {
+  upsertServerUser,
+  applyAdminUpdateToServerUser,
+  recordEmailOtpChallenge,
+  verifyEmailOtpChallenge,
+  harvestAllDirectoryUsers,
+  findServerUserByEmailOrId,
+  purgeSampleUsersFromDirectory,
+  isPlaceholderEmail
+} from './serverUserDirectory';
 import {
   getStudentTierPricing,
   getAspirantTierPricing,
@@ -1429,36 +1440,47 @@ app.get('/api/email-status', (_req, res) => {
   });
 });
 
-// 4. Verification Email Dispatch (Gmail SMTP direct to any user + Resend fallback)
-app.post('/api/send-verification-code', async (req, res) => {
-  try {
-    const { email, code, name } = req.body;
+async function dispatchOtpEmail(params: {
+  email: string;
+  code: string;
+  name?: string;
+  purpose: 'signup' | 'login';
+}): Promise<
+  | { success: true; provider: string; deliveredTo: string; messageId?: string; id?: string; message: string }
+  | { success: false; status: number; error: string }
+> {
+  const trimmedEmail = String(params.email || '').trim().toLowerCase();
+  const displayName = params.name ? String(params.name).trim() : 'Student';
+  const code = String(params.code || '').trim();
+  const gmailUser = process.env.GMAIL_USER?.trim() || 'martorefe@gmail.com';
+  const rawGmailPass = process.env.GMAIL_APP_PASSWORD?.trim();
+  const gmailPassword = rawGmailPass ? rawGmailPass.replace(/\s+/g, '') : '';
+  const resendApiKey = process.env.RESEND_API_KEY?.trim();
 
-    if (!email || !code) {
-      return res.status(400).json({ success: false, error: 'Email and 6-digit verification code are required' });
-    }
+  const heading =
+    params.purpose === 'login' ? 'Sign In Verification Code' : 'Verify Your Email Address';
+  const subjectPrefix =
+    params.purpose === 'login'
+      ? `[Student Companion] ${code} is your login code`
+      : `[Student Companion] ${code} is your verification code`;
+  const introLine =
+    params.purpose === 'login'
+      ? `Hello <strong style="color: #FFFFFF;">${displayName}</strong>, enter this 6-digit code to sign back in to your Student Companion account.`
+      : `Hello <strong style="color: #FFFFFF;">${displayName}</strong>, welcome to Nigeria's premier academic companion for WAEC, JAMB, and NECO excellence.`;
 
-    const trimmedEmail = String(email).trim().toLowerCase();
-    const displayName = name ? String(name).trim() : 'Student';
-    const gmailUser = process.env.GMAIL_USER?.trim() || 'martorefe@gmail.com';
-    const rawGmailPass = process.env.GMAIL_APP_PASSWORD?.trim();
-    const gmailPassword = rawGmailPass ? rawGmailPass.replace(/\s+/g, '') : '';
-    const resendApiKey = process.env.RESEND_API_KEY?.trim();
-
-    const htmlContent = `
+  const htmlContent = `
 <!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Your Student Companion Verification Code</title>
+  <title>${heading}</title>
 </head>
 <body style="margin: 0; padding: 0; background-color: #0A1322; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #FFFFFF;">
   <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #0A1322; padding: 40px 16px;">
     <tr>
       <td align="center">
         <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 520px; background-color: #0E1B2E; border: 1px solid #1E3355; border-radius: 20px; padding: 36px 28px; box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);">
-          <!-- Header Logo / Badge -->
           <tr>
             <td align="center" style="padding-bottom: 24px;">
               <div style="display: inline-block; padding: 8px 18px; background-color: #14233C; border-radius: 9999px; border: 1px solid #84E000;">
@@ -1468,18 +1490,14 @@ app.post('/api/send-verification-code', async (req, res) => {
               </div>
             </td>
           </tr>
-
-          <!-- Heading -->
           <tr>
             <td align="center" style="padding-bottom: 16px;">
-              <h1 style="font-size: 22px; font-weight: 800; color: #FFFFFF; margin: 0 0 10px 0;">Verify Your Email Address</h1>
+              <h1 style="font-size: 22px; font-weight: 800; color: #FFFFFF; margin: 0 0 10px 0;">${heading}</h1>
               <p style="font-size: 14px; color: #94A3B8; margin: 0; line-height: 1.6;">
-                Hello <strong style="color: #FFFFFF;">${displayName}</strong>, welcome to Nigeria's premier academic companion for WAEC, JAMB, and NECO excellence.
+                ${introLine}
               </p>
             </td>
           </tr>
-
-          <!-- Verification Box -->
           <tr>
             <td align="center" style="padding: 24px 0;">
               <div style="background-color: #081220; border: 2px dashed #84E000; border-radius: 16px; padding: 20px 24px; display: inline-block;">
@@ -1495,8 +1513,6 @@ app.post('/api/send-verification-code', async (req, res) => {
               </p>
             </td>
           </tr>
-
-          <!-- Security Notice -->
           <tr>
             <td style="background-color: #14233C; border-radius: 12px; padding: 14px 18px; margin-top: 12px;">
               <p style="font-size: 12px; color: #94A3B8; margin: 0; line-height: 1.5;">
@@ -1504,12 +1520,10 @@ app.post('/api/send-verification-code', async (req, res) => {
               </p>
             </td>
           </tr>
-
-          <!-- Footer -->
           <tr>
             <td align="center" style="border-top: 1px solid #1E304F; margin-top: 24px; padding-top: 20px;">
               <p style="font-size: 11px; color: #64748B; margin: 0; line-height: 1.6;">
-                Student Companion Platform &bull; Lagos & Abuja, Nigeria<br />
+                Student Companion Platform &bull; Lagos &amp; Abuja, Nigeria<br />
                 NERDC-Aligned Digital Secondary Education
               </p>
             </td>
@@ -1520,95 +1534,132 @@ app.post('/api/send-verification-code', async (req, res) => {
   </table>
 </body>
 </html>
-    `;
+  `;
 
-    // OPTION 1: Gmail SMTP via Nodemailer (Delivers to ANY student/parent/tutor email address)
-    if (gmailPassword) {
-      try {
-        const transporter = nodemailer.createTransport({
-          service: 'gmail',
-          auth: {
-            user: gmailUser,
-            pass: gmailPassword,
-          },
-        });
-
-        const info = await transporter.sendMail({
-          from: `"Student Companion" <${gmailUser}>`,
-          to: trimmedEmail,
-          subject: `[Student Companion] ${code} is your verification code`,
-          text: `Hello ${displayName},\n\nYour Student Companion verification code is: ${code}\n\nThis code expires in 10 minutes. Do not share this code with anyone.\n\nStudent Companion Nigeria`,
-          html: htmlContent,
-        });
-
-        console.log(`[Gmail SMTP Success] Verification code sent directly to ${trimmedEmail}. Message ID: ${info.messageId}`);
-        return res.json({
-          success: true,
-          delivered: true,
-          provider: 'gmail-smtp',
-          deliveredTo: trimmedEmail,
-          messageId: info.messageId,
-          message: `Verification code successfully delivered to ${trimmedEmail}`,
-        });
-      } catch (smtpErr: any) {
-        console.error('[Gmail SMTP Error]:', smtpErr);
-        return res.status(500).json({
-          success: false,
-          error: `Failed to deliver verification email via Gmail SMTP: ${smtpErr?.message || 'Authentication failed'}. Please ensure your 16-character Google App Password is correct.`,
-        });
-      }
-    }
-
-    // OPTION 2: Resend API (Direct dispatch if verified domain, or to owner if testing)
-    if (resendApiKey) {
-      const resend = new Resend(resendApiKey);
-      const fromEmail = process.env.RESEND_FROM_EMAIL?.trim() || 'Student Companion <onboarding@resend.dev>';
-
-      const sendResult = await resend.emails.send({
-        from: fromEmail,
-        to: [trimmedEmail],
-        subject: `[Student Companion] ${code} is your verification code`,
-        html: htmlContent,
-        text: `Hello ${displayName},\n\nYour Student Companion verification code is: ${code}\n\nThis code expires in 10 minutes. Do not share this code with anyone.\n\nStudent Companion Nigeria`,
-      });
-
-      if (sendResult.error) {
-        if (sendResult.error.statusCode === 403 || sendResult.error.name === 'validation_error') {
-          console.error('[Resend Sandbox Restriction]:', sendResult.error.message);
-          return res.status(403).json({
-            success: false,
-            error: `Resend sandbox restriction: The free onboarding domain can only send to ${gmailUser}. To send verification codes directly to ${trimmedEmail}, connect Gmail SMTP using GMAIL_APP_PASSWORD or verify your domain in Resend.`,
-          });
+  if (gmailPassword) {
+    try {
+      const transporter = nodemailer.createTransport({
+        service: 'gmail',
+        auth: {
+          user: gmailUser,
+          pass: gmailPassword
         }
+      });
 
-        console.error('[Resend Error]:', sendResult.error);
-        return res.status(500).json({
+      const info = await transporter.sendMail({
+        from: `"Student Companion" <${gmailUser}>`,
+        to: trimmedEmail,
+        subject: subjectPrefix,
+        text: `Hello ${displayName},\n\nYour Student Companion verification code is: ${code}\n\nThis code expires in 10 minutes. Do not share this code with anyone.\n\nStudent Companion Nigeria`,
+        html: htmlContent
+      });
+
+      console.log(`[Gmail SMTP Success] Verification code (${params.purpose}) sent directly to ${trimmedEmail}. Message ID: ${info.messageId}`);
+      return {
+        success: true,
+        provider: 'gmail-smtp',
+        deliveredTo: trimmedEmail,
+        messageId: info.messageId,
+        message: `Verification code successfully delivered to ${trimmedEmail}`
+      };
+    } catch (smtpErr: any) {
+      console.error('[Gmail SMTP Error]:', smtpErr);
+      return {
+        success: false,
+        status: 500,
+        error: `Failed to deliver verification email via Gmail SMTP: ${smtpErr?.message || 'Authentication failed'}. Please ensure your 16-character Google App Password is correct.`
+      };
+    }
+  }
+
+  if (resendApiKey) {
+    const resend = new Resend(resendApiKey);
+    const fromEmail = process.env.RESEND_FROM_EMAIL?.trim() || 'Student Companion <onboarding@resend.dev>';
+
+    const sendResult = await resend.emails.send({
+      from: fromEmail,
+      to: [trimmedEmail],
+      subject: subjectPrefix,
+      html: htmlContent,
+      text: `Hello ${displayName},\n\nYour Student Companion verification code is: ${code}\n\nThis code expires in 10 minutes. Do not share this code with anyone.\n\nStudent Companion Nigeria`
+    });
+
+    if (sendResult.error) {
+      if (sendResult.error.statusCode === 403 || sendResult.error.name === 'validation_error') {
+        console.error('[Resend Sandbox Restriction]:', sendResult.error.message);
+        return {
           success: false,
-          error: `Email delivery failed: ${sendResult.error.message}`,
-        });
+          status: 403,
+          error: `Resend sandbox restriction: The free onboarding domain can only send to ${gmailUser}. To send verification codes directly to ${trimmedEmail}, connect Gmail SMTP using GMAIL_APP_PASSWORD or verify your domain in Resend.`
+        };
       }
 
-      console.log(`[Resend Success] Email delivered to ${trimmedEmail}. ID: ${sendResult.data?.id}`);
-      return res.json({
-        success: true,
-        delivered: true,
-        provider: 'resend',
-        deliveredTo: trimmedEmail,
-        id: sendResult.data?.id,
-        message: `Verification code successfully sent to ${trimmedEmail}`,
+      console.error('[Resend Error]:', sendResult.error);
+      return {
+        success: false,
+        status: 500,
+        error: `Email delivery failed: ${sendResult.error.message}`
+      };
+    }
+
+    console.log(`[Resend Success] Email (${params.purpose}) delivered to ${trimmedEmail}. ID: ${sendResult.data?.id}`);
+    return {
+      success: true,
+      provider: 'resend',
+      deliveredTo: trimmedEmail,
+      id: sendResult.data?.id,
+      message: `Verification code successfully sent to ${trimmedEmail}`
+    };
+  }
+
+  return {
+    success: false,
+    status: 503,
+    error: 'Email delivery service is not configured. Please set GMAIL_APP_PASSWORD in environment settings to enable live verification code delivery.'
+  };
+}
+
+// 4. Verification Email Dispatch (Gmail SMTP direct to any user + Resend fallback)
+app.post('/api/send-verification-code', async (req, res) => {
+  try {
+    const { email, code, name } = req.body;
+
+    if (!email || !code) {
+      return res.status(400).json({ success: false, error: 'Email and 6-digit verification code are required' });
+    }
+
+    const trimmedEmail = String(email).trim().toLowerCase();
+    const cleanCode = String(code).trim();
+    recordEmailOtpChallenge(trimmedEmail, cleanCode, 'signup');
+
+    const result = await dispatchOtpEmail({
+      email: trimmedEmail,
+      code: cleanCode,
+      name,
+      purpose: 'signup'
+    });
+
+    if (!result.success) {
+      return res.status(result.status).json({
+        success: false,
+        error: result.error
       });
     }
 
-    // STRICT VERIFICATION: If no email credentials configured, refuse registration progression
-    return res.status(503).json({
-      success: false,
-      error: 'Email delivery service is not configured. Please set GMAIL_APP_PASSWORD in environment settings to enable live verification code delivery to any student email.',
+    return res.json({
+      success: true,
+      delivered: true,
+      provider: result.provider,
+      deliveredTo: result.deliveredTo,
+      ...(result.messageId ? { messageId: result.messageId } : {}),
+      ...(result.id ? { id: result.id } : {}),
+      message: result.message
     });
   } catch (error: any) {
     console.error('Fatal error in /api/send-verification-code:', error);
     return res.status(500).json({
       success: false,
-      error: error?.message || 'Internal server error while dispatching verification email',
+      error: error?.message || 'Internal server error while dispatching verification email'
     });
   }
 });
@@ -5151,7 +5202,8 @@ app.post('/api/admin/purge-test-accounts', async (req, res) => {
     }
   }
 
-  // 3. Also purge any simulated / unverified student subscriptions (Exam Prep, AI Coach, Tier Plans)
+  // 3. Also purge sample entries from shared User Directory & simulated subscriptions
+  purgedStoreEntries += purgeSampleUsersFromDirectory();
   const simSummary = await purgeSimulatedSubscriptionsAcrossFirestore();
 
   return res.json({
@@ -7222,6 +7274,23 @@ app.post('/api/auth/login', async (req, res) => {
         });
       }
       if (!hasLocalProfile) {
+        const serverMatched = await findServerUserByEmailOrId({
+          identifier: cleanIdentifier,
+          linkingMemoryStore,
+          referralMemoryStore,
+          ledgerState: getLedgerState(),
+          serverDb
+        });
+        if (serverMatched) {
+          return res.status(401).json({
+            success: false,
+            authenticated: false,
+            useEmailOtp: true,
+            email: !isPlaceholderEmail(serverMatched.email) ? serverMatched.email : cleanEmail || undefined,
+            error:
+              'Your account uses Passwordless Email Code (OTP) or Google Sign-In. Tap "Sign in with Email Code" above to receive a 6-digit login code.'
+          });
+        }
         return res.status(401).json({
           success: false,
           authenticated: false,
@@ -7245,6 +7314,314 @@ app.post('/api/auth/login', async (req, res) => {
       error: err?.message || 'Unable to verify sign-in right now. Please try again.'
     });
   }
+});
+
+// ==========================================
+// SHARED USER DIRECTORY, LEGACY RECOVERY & EMAIL OTP LOGIN
+// ==========================================
+
+app.post('/api/users/register', async (req, res) => {
+  try {
+    const profileInput = req.body?.profile;
+    if (!profileInput || typeof profileInput !== 'object') {
+      return res.status(400).json({ success: false, error: 'Valid profile payload is required.' });
+    }
+
+    const email = String(profileInput.email || '').trim().toLowerCase();
+    const userId = String(profileInput.id || '').trim();
+    const ip = extractClientIp(req);
+    const fp = extractDeviceFingerprint(req);
+
+    const activeBlock = findActiveBlock({
+      ip,
+      fingerprint: fp,
+      userId: userId || undefined,
+      email: email || undefined,
+      blockTypes: ['account_delete', 'account_suspend', 'account_lock']
+    });
+    if (activeBlock) {
+      return res.status(403).json({
+        success: false,
+        error: `Registration blocked: ${activeBlock.reason}`
+      });
+    }
+
+    const saved = upsertServerUser(profileInput, { defaultSource: 'backend' });
+    if (!saved) {
+      return res.status(400).json({ success: false, error: 'Unable to register user profile.' });
+    }
+
+    return res.json({ success: true, user: saved });
+  } catch (err: any) {
+    return res.status(500).json({
+      success: false,
+      error: err?.message || 'Failed to register user in shared directory.'
+    });
+  }
+});
+
+app.post('/api/users/sync-profile', async (req, res) => {
+  try {
+    const profileInput = req.body?.profile;
+    if (!profileInput || typeof profileInput !== 'object') {
+      return res.status(400).json({ success: false, error: 'Valid profile payload is required.' });
+    }
+    const saved = upsertServerUser(profileInput, {
+      defaultSource: profileInput.directorySource || 'backend'
+    });
+    if (!saved) {
+      return res.status(400).json({ success: false, error: 'Skipped sample or invalid profile.' });
+    }
+    return res.json({ success: true, user: saved });
+  } catch (err: any) {
+    return res.status(500).json({
+      success: false,
+      error: err?.message || 'Failed to sync user profile.'
+    });
+  }
+});
+
+app.post('/api/auth/send-login-otp', async (req, res) => {
+  try {
+    const cleanEmail = String(req.body?.email || '').trim().toLowerCase();
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      return res.status(400).json({ success: false, error: 'Please enter a valid registered email address.' });
+    }
+
+    const ip = extractClientIp(req);
+    const fp = extractDeviceFingerprint(req);
+    const activeBlock = findActiveBlock({
+      ip,
+      fingerprint: fp,
+      email: cleanEmail,
+      blockTypes: ['account_delete', 'account_suspend', 'account_lock', 'ip', 'device_fingerprint']
+    });
+    if (activeBlock) {
+      return res.status(403).json({
+        success: false,
+        error:
+          activeBlock.blockType === 'account_delete'
+            ? `Account Closed: ${activeBlock.reason}`
+            : activeBlock.blockType === 'account_suspend'
+            ? `Account Suspended: ${activeBlock.reason}`
+            : `Account Locked: ${activeBlock.reason}`
+      });
+    }
+
+    const isSuperAdminAccount = AUTHORIZED_SUPER_ADMINS.includes(cleanEmail);
+    const matched = await findServerUserByEmailOrId({
+      identifier: cleanEmail,
+      linkingMemoryStore,
+      referralMemoryStore,
+      ledgerState: getLedgerState(),
+      serverDb
+    });
+
+    if (!matched && !isSuperAdminAccount) {
+      return res.status(404).json({
+        success: false,
+        needsSignup: true,
+        error: `No registered account found for "${cleanEmail}". Please tap Sign up or try Continue with Google.`
+      });
+    }
+
+    const code = String(crypto.randomInt(100000, 1000000));
+    recordEmailOtpChallenge(cleanEmail, code, 'login');
+
+    const delivery = await dispatchOtpEmail({
+      email: cleanEmail,
+      code,
+      name: matched?.fullName || (isSuperAdminAccount ? 'Super Admin' : 'Student'),
+      purpose: 'login'
+    });
+
+    if (!delivery.success) {
+      return res.status(delivery.status).json({
+        success: false,
+        error: delivery.error
+      });
+    }
+
+    return res.json({
+      success: true,
+      delivered: true,
+      deliveredTo: cleanEmail,
+      accountName: matched?.fullName || undefined,
+      message: `A 6-digit login code has been sent to ${cleanEmail}.`
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      success: false,
+      error: err?.message || 'Unable to send login code right now.'
+    });
+  }
+});
+
+app.post('/api/auth/verify-otp-login', async (req, res) => {
+  try {
+    const cleanEmail = String(req.body?.email || '').trim().toLowerCase();
+    const code = String(req.body?.code || '').trim();
+    if (!cleanEmail || !cleanEmail.includes('@') || !code) {
+      return res.status(400).json({ success: false, error: 'Email and 6-digit login code are required.' });
+    }
+
+    const ip = extractClientIp(req);
+    const fp = extractDeviceFingerprint(req);
+    const activeBlock = findActiveBlock({
+      ip,
+      fingerprint: fp,
+      email: cleanEmail,
+      blockTypes: ['account_delete', 'account_suspend', 'account_lock', 'ip', 'device_fingerprint']
+    });
+    if (activeBlock) {
+      return res.status(403).json({
+        success: false,
+        authenticated: false,
+        error: `Access denied: ${activeBlock.reason}`
+      });
+    }
+
+    const check = verifyEmailOtpChallenge(cleanEmail, code, 'login');
+    if (!check.valid) {
+      return res.status(401).json({
+        success: false,
+        authenticated: false,
+        error: check.error || 'Invalid 6-digit login code.'
+      });
+    }
+
+    const isSuperAdminAccount = AUTHORIZED_SUPER_ADMINS.includes(cleanEmail);
+    let profile = await findServerUserByEmailOrId({
+      identifier: cleanEmail,
+      linkingMemoryStore,
+      referralMemoryStore,
+      ledgerState: getLedgerState(),
+      serverDb
+    });
+
+    if (!profile && isSuperAdminAccount) {
+      profile = upsertServerUser(
+        {
+          id: 'usr-dev-martorefe',
+          role: 'admin',
+          fullName: 'Martin Omorefe (Lead Developer)',
+          email: cleanEmail,
+          emailVerified: true,
+          isSuperAdmin: true,
+          isDeveloper: true,
+          createdAt: new Date().toISOString(),
+          adminData: {
+            schoolName: 'Student Companion HQ',
+            schoolType: 'Platform Governance',
+            designation: 'Founder & Lead Architect',
+            verificationStatus: 'verified'
+          }
+        },
+        { allowPrivilegedFields: true, defaultSource: 'backend' }
+      );
+    }
+
+    if (!profile) {
+      return res.status(404).json({
+        success: false,
+        authenticated: false,
+        needsSignup: true,
+        error: 'Account record could not be located. Please complete sign up.'
+      });
+    }
+
+    return res.json({
+      success: true,
+      authenticated: true,
+      profile,
+      ...(isSuperAdminAccount ? { otaAdminToken: issueSuperAdminSessionToken(cleanEmail) } : {}),
+      message: 'Email OTP login verified.'
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      success: false,
+      authenticated: false,
+      error: err?.message || 'Unable to verify login code.'
+    });
+  }
+});
+
+app.get('/api/admin/users', async (req, res) => {
+  const authCheck = await verifySuperAdminRequest(req);
+  if (!authCheck.ok) {
+    await securityService.logUnauthorizedProbe(req, '/api/admin/users', authCheck.email);
+    return res.status(403).json({
+      success: false,
+      error: authCheck.error || 'Unauthorized: Super Admin authentication required to view directory.'
+    });
+  }
+
+  try {
+    const result = await harvestAllDirectoryUsers({
+      linkingMemoryStore,
+      referralMemoryStore,
+      ledgerState: getLedgerState(),
+      serverDb,
+      deletedAccounts: getDeletedAccountsSnapshot()
+    });
+    return res.json({
+      success: true,
+      users: result.users,
+      stats: result.stats
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      success: false,
+      error: err?.message || 'Failed to load shared User Directory.'
+    });
+  }
+});
+
+app.post('/api/admin/users/sync-batch', async (req, res) => {
+  const authCheck = await verifySuperAdminRequest(req);
+  if (!authCheck.ok) {
+    await securityService.logUnauthorizedProbe(req, '/api/admin/users/sync-batch', authCheck.email);
+    return res.status(403).json({
+      success: false,
+      error: authCheck.error || 'Unauthorized: Super Admin authentication required.'
+    });
+  }
+
+  const incoming = Array.isArray(req.body?.users) ? req.body.users : [];
+  let syncedCount = 0;
+  for (const raw of incoming) {
+    const saved = upsertServerUser(raw, {
+      allowPrivilegedFields: true,
+      defaultSource: raw?.directorySource || 'firestore'
+    });
+    if (saved) syncedCount += 1;
+  }
+
+  return res.json({
+    success: true,
+    syncedCount
+  });
+});
+
+app.post('/api/admin/users/update', async (req, res) => {
+  const authCheck = await verifySuperAdminRequest(req);
+  if (!authCheck.ok) {
+    await securityService.logUnauthorizedProbe(req, '/api/admin/users/update', authCheck.email);
+    return res.status(403).json({
+      success: false,
+      error: authCheck.error || 'Unauthorized: Super Admin authentication required.'
+    });
+  }
+
+  const userId = String(req.body?.userId || '').trim();
+  const updates = req.body?.updates;
+  const fallbackProfile = req.body?.fallbackProfile;
+  if (!userId || !updates || typeof updates !== 'object') {
+    return res.status(400).json({ success: false, error: 'userId and updates are required.' });
+  }
+
+  const updated = applyAdminUpdateToServerUser(userId, updates, fallbackProfile);
+  return res.json({ success: true, user: updated });
 });
 
 // Vite Middleware for Dev or Static Files for Prod

@@ -22,13 +22,25 @@ export const SignInPage: React.FC<SignInPageProps> = ({
   const {
     loginWithGoogle,
     authenticateUser,
+    requestLoginOtp,
+    verifyLoginOtp,
     authLoading
   } = useApp();
+  const [loginMode, setLoginMode] = useState<'password' | 'otp'>('password');
   const [emailOrUsername, setEmailOrUsername] = useState('');
   const [password, setPassword] = useState('');
   const [authStatus, setAuthStatus] = useState<AuthStatus>('idle');
   const [authenticatedName, setAuthenticatedName] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [suggestedOtpEmail, setSuggestedOtpEmail] = useState<string | null>(null);
+
+  // Cross-Device Email Code (OTP) States
+  const [otpEmail, setOtpEmail] = useState('');
+  const [otpStep, setOtpStep] = useState<'email' | 'code'>('email');
+  const [otpCode, setOtpCode] = useState('');
+  const [otpDeliveredTo, setOtpDeliveredTo] = useState('');
+  const [otpSending, setOtpSending] = useState(false);
+  const [otpInfoMsg, setOtpInfoMsg] = useState<string | null>(null);
 
   const isSubmitting = authStatus === 'loading' || authStatus === 'success';
 
@@ -76,6 +88,7 @@ export const SignInPage: React.FC<SignInPageProps> = ({
 
     primeLoginAudio();
     setErrorMsg(null);
+    setSuggestedOtpEmail(null);
 
     if (!emailOrUsername.trim()) {
       setAuthStatus('error');
@@ -98,6 +111,82 @@ export const SignInPage: React.FC<SignInPageProps> = ({
     } else {
       setAuthStatus('error');
       setErrorMsg(result.error || 'Unable to sign in. Please verify your details.');
+      if (result.useEmailOtp) {
+        setSuggestedOtpEmail(
+          result.email || (emailOrUsername.includes('@') ? emailOrUsername.trim().toLowerCase() : '')
+        );
+      }
+    }
+  };
+
+  const handleSwitchToOtpMode = (prefillEmail?: string) => {
+    const candidate =
+      (prefillEmail || (emailOrUsername.includes('@') ? emailOrUsername : '') || otpEmail)
+        .trim()
+        .toLowerCase();
+    setLoginMode('otp');
+    setOtpStep('email');
+    if (candidate) setOtpEmail(candidate);
+    setOtpCode('');
+    setOtpInfoMsg(null);
+    setErrorMsg(null);
+    setSuggestedOtpEmail(null);
+    setAuthStatus('idle');
+  };
+
+  const handleSendLoginOtp = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (isSubmitting || otpSending) return;
+    primeLoginAudio();
+    setErrorMsg(null);
+    setOtpInfoMsg(null);
+
+    const target = otpEmail.trim().toLowerCase();
+    if (!target || !target.includes('@')) {
+      setAuthStatus('error');
+      setErrorMsg('Please enter the email address you used to sign up.');
+      return;
+    }
+
+    setOtpSending(true);
+    const res = await requestLoginOtp(target);
+    setOtpSending(false);
+
+    if (res.success) {
+      setAuthStatus('idle');
+      setOtpDeliveredTo(res.deliveredTo || target);
+      setOtpStep('code');
+      setOtpInfoMsg(
+        `6-digit login code sent to ${res.deliveredTo || target}${res.accountName ? ` (${res.accountName})` : ''}. Check inbox or spam.`
+      );
+    } else {
+      setAuthStatus('error');
+      setErrorMsg(res.error || 'Unable to send 6-digit login code.');
+    }
+  };
+
+  const handleVerifyLoginOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (isSubmitting || otpSending) return;
+    primeLoginAudio();
+    setErrorMsg(null);
+
+    const target = (otpDeliveredTo || otpEmail).trim().toLowerCase();
+    const cleanCode = otpCode.replace(/\D/g, '').slice(0, 6);
+    if (!/^\d{6}$/.test(cleanCode)) {
+      setAuthStatus('error');
+      setErrorMsg('Please enter the 6-digit code from your email.');
+      return;
+    }
+
+    setAuthStatus('loading');
+    const result = await verifyLoginOtp(target, cleanCode);
+    if (result.success) {
+      setAuthenticatedName(result.profile?.fullName || null);
+      setAuthStatus('success');
+    } else {
+      setAuthStatus('error');
+      setErrorMsg(result.error || 'Invalid or expired login code.');
     }
   };
 
@@ -105,6 +194,7 @@ export const SignInPage: React.FC<SignInPageProps> = ({
     if (isSubmitting) return;
     primeLoginAudio();
     setErrorMsg(null);
+    setSuggestedOtpEmail(null);
     setAuthStatus('loading');
 
     const result = await loginWithGoogle({ skipNavigate: true });
@@ -131,24 +221,24 @@ export const SignInPage: React.FC<SignInPageProps> = ({
             type="button"
             disabled={isSubmitting}
             onClick={onBackToLanding}
-            className="w-10 h-10 rounded-full bg-[#121E33] hover:bg-[#1A2A47] disabled:opacity-50 text-slate-300 hover:text-white flex items-center justify-center transition-colors cursor-pointer"
+            className="w-11 h-11 rounded-full bg-[#121E33] hover:bg-[#1A2A47] disabled:opacity-50 text-slate-300 hover:text-white flex items-center justify-center transition-colors cursor-pointer"
             title="Back to Landing Page"
             aria-label="Back"
           >
             <ArrowLeft className="w-4 h-4" />
           </button>
           <span className="text-xs text-slate-400 font-medium">Student Companion</span>
-          <div className="w-10" />
+          <div className="w-11" />
         </div>
 
         {/* --- Header & Brand Logo Section --- */}
         <div className="w-full flex flex-col items-center text-center mt-2">
-          <h2 className="text-xl sm:text-2xl font-semibold tracking-tight text-white mb-6">
+          <h2 className="text-xl sm:text-2xl font-semibold tracking-tight text-white mb-5">
             Welcome Back
           </h2>
 
           {/* Student Companion Logo */}
-          <div className="flex flex-col items-center gap-2 mb-8">
+          <div className="flex flex-col items-center gap-2 mb-6">
             <div className="w-24 h-20 relative flex items-center justify-center">
               <svg viewBox="0 0 100 85" className="w-full h-full" fill="none">
                 <path
@@ -181,95 +271,289 @@ export const SignInPage: React.FC<SignInPageProps> = ({
               <span className="text-[32px] font-black text-[#84E000] tracking-tight">Companion</span>
             </div>
           </div>
+
+          {/* Auth Method Segmented Switcher */}
+          <div
+            role="tablist"
+            aria-label="Sign-in method"
+            className="w-full grid grid-cols-2 p-1 rounded-full bg-[#0C172B] border border-[#1E304F] mb-5"
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={loginMode === 'password'}
+              disabled={isSubmitting}
+              onClick={() => {
+                setLoginMode('password');
+                setErrorMsg(null);
+                setOtpInfoMsg(null);
+                setAuthStatus('idle');
+              }}
+              className={`min-h-[44px] rounded-full text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                loginMode === 'password'
+                  ? 'bg-[#84E000] text-[#070D18] shadow-sm'
+                  : 'text-slate-300 hover:text-white'
+              }`}
+            >
+              Password
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={loginMode === 'otp'}
+              disabled={isSubmitting}
+              onClick={() => handleSwitchToOtpMode()}
+              className={`min-h-[44px] rounded-full text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                loginMode === 'otp'
+                  ? 'bg-[#84E000] text-[#070D18] shadow-sm'
+                  : 'text-slate-300 hover:text-white'
+              }`}
+            >
+              Email Code (OTP)
+            </button>
+          </div>
         </div>
 
         {/* --- Sign In Form --- */}
-        <form onSubmit={handleSubmit} className="w-full flex flex-col gap-5">
-          {errorMsg && (
-            <div role="alert" className="p-3 rounded-xl bg-rose-950/85 border border-rose-700 text-rose-200 text-xs text-center font-medium flex items-center justify-center gap-2">
-              <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
-              <span>{errorMsg}</span>
-            </div>
-          )}
+        {loginMode === 'password' ? (
+          <form onSubmit={handleSubmit} className="w-full flex flex-col gap-5">
+            {errorMsg && (
+              <div role="alert" className="p-3.5 rounded-2xl bg-rose-950/85 border border-rose-700 text-rose-200 text-xs text-center font-medium space-y-2.5">
+                <div className="flex items-center justify-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                  <span>{errorMsg}</span>
+                </div>
+                {suggestedOtpEmail !== null && (
+                  <button
+                    type="button"
+                    onClick={() => handleSwitchToOtpMode(suggestedOtpEmail)}
+                    className="w-full min-h-[40px] rounded-full bg-[#84E000] hover:bg-[#96F716] text-[#070D18] font-bold text-xs px-4 transition-colors cursor-pointer"
+                  >
+                    Switch to Email Code Sign-In
+                  </button>
+                )}
+              </div>
+            )}
 
-          {/* Email or Username Input (Glowing Lime Green Border) */}
-          <div className="relative w-full">
-            <div className="absolute inset-y-0 left-5 flex items-center pointer-events-none text-[#84E000]">
-              <Mail className="w-5 h-5 stroke-[2.2]" />
+            {/* Email or Username Input (Glowing Lime Green Border) */}
+            <div className="relative w-full">
+              <div className="absolute inset-y-0 left-5 flex items-center pointer-events-none text-[#84E000]">
+                <Mail className="w-5 h-5 stroke-[2.2]" />
+              </div>
+              <input
+                id="sc-login-identifier"
+                name="username"
+                type="text"
+                autoComplete="username"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                disabled={isSubmitting}
+                value={emailOrUsername}
+                onChange={(e) => {
+                  setEmailOrUsername(e.target.value);
+                  if (errorMsg) setErrorMsg(null);
+                  if (suggestedOtpEmail !== null) setSuggestedOtpEmail(null);
+                }}
+                placeholder="Email or Username"
+                className="w-full min-h-[52px] bg-[#0C172B] text-white text-sm font-medium rounded-full py-4 pl-14 pr-5 border-2 border-[#84E000] shadow-[0_0_18px_rgba(132,224,0,0.22)] focus:outline-none focus:ring-2 focus:ring-[#84E000] placeholder-[#728198] disabled:opacity-60 transition-all"
+              />
             </div>
-            <input
-              id="sc-login-identifier"
-              name="username"
-              type="text"
-              autoComplete="username"
-              autoCapitalize="none"
-              autoCorrect="off"
-              spellCheck={false}
-              disabled={isSubmitting}
-              value={emailOrUsername}
-              onChange={(e) => {
-                setEmailOrUsername(e.target.value);
-                if (errorMsg) setErrorMsg(null);
-              }}
-              placeholder="Email or Username"
-              className="w-full bg-[#0C172B] text-white text-sm font-medium rounded-full py-4 pl-14 pr-5 border-2 border-[#84E000] shadow-[0_0_18px_rgba(132,224,0,0.22)] focus:outline-none focus:ring-2 focus:ring-[#84E000] placeholder-[#728198] disabled:opacity-60 transition-all"
-            />
-          </div>
 
-          {/* Password Input (Glowing Electric Orange Border) */}
-          <div className="relative w-full">
-            <div className="absolute inset-y-0 left-5 flex items-center pointer-events-none text-[#FF5B00]">
-              <Lock className="w-5 h-5 stroke-[2.2]" />
+            {/* Password Input (Glowing Electric Orange Border) */}
+            <div className="relative w-full">
+              <div className="absolute inset-y-0 left-5 flex items-center pointer-events-none text-[#FF5B00]">
+                <Lock className="w-5 h-5 stroke-[2.2]" />
+              </div>
+              <input
+                id="sc-login-password"
+                name="password"
+                type="password"
+                autoComplete="current-password"
+                disabled={isSubmitting}
+                value={password}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  if (errorMsg) setErrorMsg(null);
+                }}
+                placeholder="Password"
+                className="w-full min-h-[52px] bg-[#0C172B] text-white text-sm font-medium rounded-full py-4 pl-14 pr-5 border-2 border-[#FF5B00] shadow-[0_0_18px_rgba(255,91,0,0.22)] focus:outline-none focus:ring-2 focus:ring-[#FF5B00] placeholder-[#728198] disabled:opacity-60 transition-all"
+              />
             </div>
-            <input
-              id="sc-login-password"
-              name="password"
-              type="password"
-              autoComplete="current-password"
-              disabled={isSubmitting}
-              value={password}
-              onChange={(e) => {
-                setPassword(e.target.value);
-                if (errorMsg) setErrorMsg(null);
-              }}
-              placeholder="Password"
-              className="w-full bg-[#0C172B] text-white text-sm font-medium rounded-full py-4 pl-14 pr-5 border-2 border-[#FF5B00] shadow-[0_0_18px_rgba(255,91,0,0.22)] focus:outline-none focus:ring-2 focus:ring-[#FF5B00] placeholder-[#728198] disabled:opacity-60 transition-all"
-            />
-          </div>
 
-          {/* Forgot? Link */}
-          <div className="w-full flex justify-end -mt-1 pr-2">
+            {/* Forgot? Link */}
+            <div className="w-full flex items-center justify-between -mt-1 px-2">
+              <button
+                type="button"
+                disabled={isSubmitting}
+                onClick={() => handleSwitchToOtpMode()}
+                className="text-xs font-semibold text-slate-300 hover:text-[#84E000] disabled:opacity-50 cursor-pointer"
+              >
+                Use 6-digit email code instead
+              </button>
+              <button
+                type="button"
+                disabled={isSubmitting}
+                onClick={() => {
+                  setResetEmail(emailOrUsername);
+                  setResetErrorMsg(null);
+                  setResetSuccessMsg(null);
+                  setIsForgotModalOpen(true);
+                }}
+                className="text-sm font-semibold text-[#FF5B00] hover:underline disabled:opacity-50 cursor-pointer"
+              >
+                Forgot?
+              </button>
+            </div>
+
+            {/* Solid Lime Green LOG IN Button with explicit Loading State */}
             <button
-              type="button"
+              type="submit"
               disabled={isSubmitting}
-              onClick={() => {
-                setResetEmail(emailOrUsername);
-                setResetErrorMsg(null);
-                setResetSuccessMsg(null);
-                setIsForgotModalOpen(true);
-              }}
-              className="text-sm font-semibold text-[#FF5B00] hover:underline disabled:opacity-50 cursor-pointer"
+              className="w-full min-h-[54px] py-4 px-6 rounded-full bg-[#84E000] hover:bg-[#96F716] active:scale-[0.98] disabled:opacity-75 disabled:cursor-not-allowed text-[#070D18] font-black text-base tracking-wider uppercase shadow-lg shadow-[#84E000]/30 transition-all cursor-pointer flex items-center justify-center gap-2 mt-1"
             >
-              Forgot?
+              {authStatus === 'loading' ? (
+                <>
+                  <Loader2 className="w-5 h-5 animate-spin stroke-[2.6]" />
+                  <span>Signing In...</span>
+                </>
+              ) : (
+                <span>Log In</span>
+              )}
             </button>
-          </div>
-
-          {/* Solid Lime Green LOG IN Button with explicit Loading State */}
-          <button
-            type="submit"
-            disabled={isSubmitting}
-            className="w-full min-h-[54px] py-4 px-6 rounded-full bg-[#84E000] hover:bg-[#96F716] active:scale-[0.98] disabled:opacity-75 disabled:cursor-not-allowed text-[#070D18] font-black text-base tracking-wider uppercase shadow-lg shadow-[#84E000]/30 transition-all cursor-pointer flex items-center justify-center gap-2 mt-2"
+          </form>
+        ) : (
+          <form
+            onSubmit={otpStep === 'email' ? handleSendLoginOtp : handleVerifyLoginOtp}
+            className="w-full flex flex-col gap-4"
           >
-            {authStatus === 'loading' ? (
+            {errorMsg && (
+              <div role="alert" className="p-3 rounded-xl bg-rose-950/85 border border-rose-700 text-rose-200 text-xs text-center font-medium flex items-center justify-center gap-2">
+                <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                <span>{errorMsg}</span>
+              </div>
+            )}
+
+            {otpInfoMsg && (
+              <div className="p-3 rounded-xl bg-emerald-950/80 border border-emerald-600/70 text-emerald-200 text-xs text-center font-medium flex items-center justify-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-[#84E000] shrink-0" />
+                <span>{otpInfoMsg}</span>
+              </div>
+            )}
+
+            {otpStep === 'email' ? (
               <>
-                <Loader2 className="w-5 h-5 animate-spin stroke-[2.6]" />
-                <span>Signing In...</span>
+                <div className="relative w-full">
+                  <div className="absolute inset-y-0 left-5 flex items-center pointer-events-none text-[#84E000]">
+                    <Mail className="w-5 h-5 stroke-[2.2]" />
+                  </div>
+                  <input
+                    id="sc-otp-email"
+                    name="email"
+                    type="email"
+                    autoComplete="email"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    disabled={isSubmitting || otpSending}
+                    value={otpEmail}
+                    onChange={(e) => {
+                      setOtpEmail(e.target.value);
+                      if (errorMsg) setErrorMsg(null);
+                    }}
+                    placeholder="Registered Email Address"
+                    className="w-full min-h-[52px] bg-[#0C172B] text-white text-sm font-medium rounded-full py-4 pl-14 pr-5 border-2 border-[#84E000] shadow-[0_0_18px_rgba(132,224,0,0.22)] focus:outline-none focus:ring-2 focus:ring-[#84E000] placeholder-[#728198] disabled:opacity-60 transition-all"
+                  />
+                </div>
+
+                <p className="text-[11px] text-slate-400 text-center leading-relaxed px-2">
+                  Sign in across any phone or browser with a one-time 6-digit verification code sent to your signup email.
+                </p>
+
+                <button
+                  type="submit"
+                  disabled={isSubmitting || otpSending || !otpEmail.trim()}
+                  className="w-full min-h-[54px] py-4 px-6 rounded-full bg-[#84E000] hover:bg-[#96F716] active:scale-[0.98] disabled:opacity-65 disabled:cursor-not-allowed text-[#070D18] font-black text-sm tracking-wider uppercase shadow-lg shadow-[#84E000]/30 transition-all cursor-pointer flex items-center justify-center gap-2 mt-1"
+                >
+                  {otpSending ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin stroke-[2.6]" />
+                      <span>Sending Code...</span>
+                    </>
+                  ) : (
+                    <span>Send 6-Digit Code</span>
+                  )}
+                </button>
               </>
             ) : (
-              <span>Log In</span>
+              <>
+                <div className="flex items-center justify-between text-xs text-slate-300 px-2">
+                  <span className="truncate font-mono">{otpDeliveredTo || otpEmail}</span>
+                  <button
+                    type="button"
+                    disabled={isSubmitting || otpSending}
+                    onClick={() => {
+                      setOtpStep('email');
+                      setOtpCode('');
+                      setOtpInfoMsg(null);
+                      setErrorMsg(null);
+                    }}
+                    className="text-[#FF5B00] font-semibold hover:underline shrink-0 ml-2 cursor-pointer"
+                  >
+                    Change email
+                  </button>
+                </div>
+
+                <div className="relative w-full">
+                  <div className="absolute inset-y-0 left-5 flex items-center pointer-events-none text-[#FF5B00]">
+                    <Lock className="w-5 h-5 stroke-[2.2]" />
+                  </div>
+                  <input
+                    id="sc-otp-code"
+                    name="one-time-code"
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    maxLength={6}
+                    disabled={isSubmitting || otpSending}
+                    value={otpCode}
+                    onChange={(e) => {
+                      setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6));
+                      if (errorMsg) setErrorMsg(null);
+                    }}
+                    placeholder="Enter 6-Digit Code"
+                    className="w-full min-h-[52px] bg-[#0C172B] text-white text-center text-lg font-mono font-bold tracking-[0.35em] tabular-nums rounded-full py-3.5 pl-12 pr-5 border-2 border-[#FF5B00] shadow-[0_0_18px_rgba(255,91,0,0.22)] focus:outline-none focus:ring-2 focus:ring-[#FF5B00] placeholder-[#728198] placeholder:text-sm placeholder:tracking-normal placeholder:font-sans disabled:opacity-60 transition-all"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isSubmitting || otpSending || otpCode.length !== 6}
+                  className="w-full min-h-[54px] py-4 px-6 rounded-full bg-[#84E000] hover:bg-[#96F716] active:scale-[0.98] disabled:opacity-65 disabled:cursor-not-allowed text-[#070D18] font-black text-base tracking-wider uppercase shadow-lg shadow-[#84E000]/30 transition-all cursor-pointer flex items-center justify-center gap-2 mt-1"
+                >
+                  {authStatus === 'loading' ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin stroke-[2.6]" />
+                      <span>Verifying...</span>
+                    </>
+                  ) : (
+                    <span>Verify &amp; Log In</span>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  disabled={isSubmitting || otpSending}
+                  onClick={() => void handleSendLoginOtp()}
+                  className="w-full min-h-[44px] py-2 rounded-full border border-[#1E304F] hover:border-[#84E000]/60 text-xs font-semibold text-slate-300 hover:text-white transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${otpSending ? 'animate-spin' : ''}`} />
+                  <span>{otpSending ? 'Resending Code...' : 'Resend Code'}</span>
+                </button>
+              </>
             )}
-          </button>
-        </form>
+          </form>
+        )}
 
         {/* --- OR Divider & Social Options --- */}
         <div className="w-full flex flex-col items-center mt-6">

@@ -79,7 +79,10 @@ export const SuperAdminPortal: React.FC = () => {
     currentUserProfile,
     getSchoolAccreditationMetrics,
     fetchSchoolLiveRoster,
-    adminLessonNotes
+    adminLessonNotes,
+    isSyncingDirectory,
+    directorySyncStats,
+    syncUserDirectoryFromCloud
   } = useApp();
 
   const [portalView, setPortalView] = useState<'directory' | 'school_admin' | 'forum_moderation' | 'ota_competitions' | 'lesson_notes' | 'class_directory' | 'past_questions' | 'security_trust' | 'aspirant_rewards'>(() => {
@@ -198,6 +201,14 @@ export const SuperAdminPortal: React.FC = () => {
       void fetchSchoolLiveRoster(code);
     });
   }, [portalView, allRegisteredUsers, fetchSchoolLiveRoster]);
+
+  const didAutoSyncDirectoryRef = React.useRef<boolean>(false);
+  React.useEffect(() => {
+    if (portalView !== 'directory' || !isSuperAdmin) return;
+    if (didAutoSyncDirectoryRef.current) return;
+    didAutoSyncDirectoryRef.current = true;
+    void syncUserDirectoryFromCloud({ silent: true });
+  }, [portalView, isSuperAdmin, syncUserDirectoryFromCloud]);
 
   React.useEffect(() => {
     void fetchAspirantRewards();
@@ -594,26 +605,31 @@ export const SuperAdminPortal: React.FC = () => {
 
     const query = searchQuery.toLowerCase();
     const studentSchool = u.studentData?.school?.toLowerCase() || '';
+    const studentLinkCode = u.studentData?.studentLinkCode?.toLowerCase() || '';
     const parentWard = u.parentData?.wardName?.toLowerCase() || '';
     const tutorSubject = u.tutorData?.subjectSpecialization?.toLowerCase() || '';
     const adminSchool = u.adminData?.schoolName?.toLowerCase() || '';
     const adminCode = u.adminData?.schoolCode?.toLowerCase() || '';
+    const partnerCode = u.growthPartnerData?.referralCode?.toLowerCase() || '';
 
     return (
       u.fullName.toLowerCase().includes(query) ||
       u.email.toLowerCase().includes(query) ||
       u.id.toLowerCase().includes(query) ||
       studentSchool.includes(query) ||
+      studentLinkCode.includes(query) ||
       parentWard.includes(query) ||
       tutorSubject.includes(query) ||
       adminSchool.includes(query) ||
-      adminCode.includes(query)
+      adminCode.includes(query) ||
+      partnerCode.includes(query)
     );
   });
 
   const studentCount = allRegisteredUsers.filter(u => u.role === 'student').length;
   const parentCount = allRegisteredUsers.filter(u => u.role === 'parent').length;
   const tutorCount = allRegisteredUsers.filter(u => u.role === 'tutor').length;
+  const growthPartnerCount = allRegisteredUsers.filter(u => u.role === 'growth_partner').length;
   const adminCount = allRegisteredUsers.filter(u => u.role === 'admin').length;
 
   const handleOpenEditModal = (u: RegisteredUserProfile) => {
@@ -2188,6 +2204,29 @@ export const SuperAdminPortal: React.FC = () => {
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
+              disabled={isSyncingDirectory}
+              onClick={async () => {
+                setDirectoryNotice(null);
+                const res = await syncUserDirectoryFromCloud({
+                  silent: false,
+                  adminEmailOverride: authorizedAdminEmail
+                });
+                setDirectoryNotice({
+                  type: res.success ? 'success' : 'error',
+                  text: res.success
+                    ? res.message || `Directory synced across backend, Firestore, and legacy registries (${res.totalUsers} total account(s)).`
+                    : res.error || 'Directory sync completed with partial restrictions.'
+                });
+              }}
+              className="px-3 py-1.5 rounded-xl bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-700/70 text-emerald-200 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50 whitespace-nowrap"
+              title="Fetch all signups from shared backend, Firestore users, and recover legacy link-code, school, and partner records"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 text-[#84E000] ${isSyncingDirectory ? 'animate-spin' : ''}`} />
+              <span>{isSyncingDirectory ? 'Syncing Cloud...' : 'Sync & Recover Directory'}</span>
+            </button>
+
+            <button
+              type="button"
               disabled={isPurgingSimSubs}
               onClick={async () => {
                 setIsPurgingSimSubs(true);
@@ -2241,12 +2280,40 @@ export const SuperAdminPortal: React.FC = () => {
                 type="text"
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
-                placeholder="Search user, email, school..."
+                placeholder="Search user, email, code..."
                 className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-8 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
               />
             </div>
           </div>
         </div>
+
+        {/* Cloud Directory Sync Summary Bar */}
+        {directorySyncStats && (
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 px-3 py-2 rounded-xl bg-slate-950/80 border border-slate-800/80 text-[11px] text-slate-300">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 font-mono tabular-nums">
+              <span className="text-emerald-400 font-semibold">Cloud Synced</span>
+              <span aria-hidden="true" className="text-slate-600">·</span>
+              <span>Total {directorySyncStats.total}</span>
+              <span aria-hidden="true" className="text-slate-600">·</span>
+              <span>Backend {directorySyncStats.backendCount}</span>
+              <span aria-hidden="true" className="text-slate-600">·</span>
+              <span>Firestore {directorySyncStats.firestoreCount}</span>
+              <span aria-hidden="true" className="text-slate-600">·</span>
+              <span>Recovered {directorySyncStats.recoveredCount}</span>
+              {directorySyncStats.backfilledToFirestoreCount > 0 && (
+                <>
+                  <span aria-hidden="true" className="text-slate-600">·</span>
+                  <span className="text-sky-400">Backfilled +{directorySyncStats.backfilledToFirestoreCount}</span>
+                </>
+              )}
+            </div>
+            {!directorySyncStats.firestoreAdminReady && (
+              <span className="text-[11px] text-amber-300">
+                Sign in with Google as Super Admin to query and backfill Firestore users directly.
+              </span>
+            )}
+          </div>
+        )}
 
         {/* Role Filter Tabs */}
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -2256,6 +2323,7 @@ export const SuperAdminPortal: React.FC = () => {
               { id: 'student', label: 'Students', count: studentCount },
               { id: 'parent', label: 'Parents', count: parentCount },
               { id: 'tutor', label: 'Tutors', count: tutorCount },
+              { id: 'growth_partner', label: 'Partners', count: growthPartnerCount },
               { id: 'admin', label: 'Admins', count: adminCount }
             ].map(f => (
               <button
@@ -2395,6 +2463,14 @@ export const SuperAdminPortal: React.FC = () => {
                               </span>
                             </>
                           )}
+                          {(u.recoveredFrom || u.directorySource === 'recovered') && (
+                            <>
+                              <span aria-hidden="true" className="text-slate-600">·</span>
+                              <span className="text-amber-300 font-medium">
+                                Recovered from {u.recoveredFrom || 'Legacy Registry'}
+                              </span>
+                            </>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -2403,9 +2479,10 @@ export const SuperAdminPortal: React.FC = () => {
                       isStudent ? 'text-[#84E000] bg-emerald-950/60 border-emerald-800' :
                       isParent ? 'text-[#FF5B00] bg-orange-950/60 border-orange-800' :
                       isTutor ? 'text-sky-400 bg-sky-950/60 border-sky-800' :
+                      u.role === 'growth_partner' ? 'text-amber-300 bg-amber-950/60 border-amber-800' :
                       'text-purple-400 bg-purple-950/60 border-purple-800'
                     }`}>
-                      {u.role}
+                      {u.role === 'growth_partner' ? 'partner' : u.role}
                     </span>
                   </div>
 
@@ -2581,6 +2658,29 @@ export const SuperAdminPortal: React.FC = () => {
                       })()}
                     </div>
                   )}
+
+                  {u.role === 'growth_partner' && u.growthPartnerData && (
+                    <div className="bg-slate-900/80 rounded-xl p-2.5 text-[11px] space-y-1.5 border border-slate-800/60">
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-400">Referral Code:</span>
+                        <span className="font-mono font-bold text-amber-300">
+                          {u.growthPartnerData.referralCode || 'Pending'}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-400">Active Referrals:</span>
+                        <span className="font-semibold text-white tabular-nums">
+                          {Number(u.growthPartnerData.activeReferralsCount || 0)}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-400">Total Commission:</span>
+                        <span className="font-bold text-[#84E000] tabular-nums">
+                          <NairaText amount={Number(u.growthPartnerData.totalEarningsNaira || 0)} />
+                        </span>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Card Action Buttons */}
@@ -2697,6 +2797,25 @@ export const SuperAdminPortal: React.FC = () => {
             );
           })}
         </div>
+
+        {filteredUsers.length === 0 && (
+          <div className="bg-slate-950/70 border border-slate-800 rounded-2xl p-6 text-center space-y-2.5">
+            <p className="text-xs font-semibold text-slate-300">
+              No accounts match your current filter or search query.
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                setRoleFilter('all');
+                setStatusFilter('all');
+                setSearchQuery('');
+              }}
+              className="px-3.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-xs font-semibold text-emerald-400 cursor-pointer"
+            >
+              Reset Directory Filters
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Edit User Modal */}
