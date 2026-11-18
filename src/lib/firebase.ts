@@ -6,6 +6,10 @@ import {
   signInWithRedirect,
   signInWithCredential,
   getRedirectResult,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  sendEmailVerification,
+  updateProfile,
   signOut,
   User
 } from 'firebase/auth';
@@ -533,6 +537,115 @@ export async function signInWithGoogleMediaScopes(): Promise<{ user: any; access
 export function disconnectGoogleMedia() {
   cachedMediaAccessToken = null;
   cachedMediaEmail = null;
+}
+
+export async function registerWithFirebaseEmailVerification(params: {
+  email: string;
+  password: string;
+  displayName?: string;
+}): Promise<{ user: User; alreadyVerified: boolean; verificationSent: boolean }> {
+  const cleanEmail = String(params.email || '').trim().toLowerCase();
+  const rawPassword = String(params.password || '');
+  const cleanName = String(params.displayName || '').trim();
+
+  if (!cleanEmail || !cleanEmail.includes('@')) {
+    const err = new Error('Please enter a valid email address.');
+    (err as any).code = 'auth/invalid-email';
+    throw err;
+  }
+  if (rawPassword.length < 6) {
+    const err = new Error('Please use a password with at least 6 characters to verify with Firebase.');
+    (err as any).code = 'auth/weak-password';
+    throw err;
+  }
+
+  try {
+    const cred = await createUserWithEmailAndPassword(auth, cleanEmail, rawPassword);
+    if (cleanName) {
+      await updateProfile(cred.user, { displayName: cleanName }).catch(() => {});
+    }
+    await sendEmailVerification(cred.user);
+    return {
+      user: cred.user,
+      alreadyVerified: Boolean(cred.user.emailVerified),
+      verificationSent: true
+    };
+  } catch (error: any) {
+    const code = String(error?.code || '');
+    if (code === 'auth/email-already-in-use') {
+      try {
+        const existingCred = await signInWithEmailAndPassword(auth, cleanEmail, rawPassword);
+        await existingCred.user.reload().catch(() => {});
+        if (existingCred.user.emailVerified) {
+          return {
+            user: existingCred.user,
+            alreadyVerified: true,
+            verificationSent: false
+          };
+        }
+        await sendEmailVerification(existingCred.user);
+        return {
+          user: existingCred.user,
+          alreadyVerified: false,
+          verificationSent: true
+        };
+      } catch (signInErr: any) {
+        const signInCode = String(signInErr?.code || '');
+        if (signInCode === 'auth/too-many-requests') {
+          const wrapped = new Error('Too many verification attempts. Please wait a few minutes or continue with Google.');
+          (wrapped as any).code = 'auth/too-many-requests';
+          throw wrapped;
+        }
+        const wrapped = new Error(
+          'An account with this email already exists. Please Sign In instead, or use Continue with Google.'
+        );
+        (wrapped as any).code = 'auth/email-already-in-use';
+        throw wrapped;
+      }
+    }
+    if (code === 'auth/operation-not-allowed') {
+      const wrapped = new Error(
+        'Email/Password sign-up is not enabled in Firebase Authentication yet. You can complete sign-up instantly using Google below.'
+      );
+      (wrapped as any).code = 'auth/operation-not-allowed';
+      throw wrapped;
+    }
+    if (code === 'auth/weak-password') {
+      const wrapped = new Error('Password must be at least 6 characters long.');
+      (wrapped as any).code = 'auth/weak-password';
+      throw wrapped;
+    }
+    if (code === 'auth/too-many-requests') {
+      const wrapped = new Error('Too many verification emails sent. Please check your inbox/spam or try again shortly.');
+      (wrapped as any).code = 'auth/too-many-requests';
+      throw wrapped;
+    }
+    throw normalizeFirebaseAuthError(error);
+  }
+}
+
+export async function resendFirebaseVerificationEmail(): Promise<{ sent: boolean; alreadyVerified: boolean }> {
+  const user = auth.currentUser;
+  if (!user) {
+    const err = new Error('Session expired. Please go back and submit your details again.');
+    (err as any).code = 'auth/no-current-user';
+    throw err;
+  }
+  await user.reload().catch(() => {});
+  if (user.emailVerified) {
+    return { sent: false, alreadyVerified: true };
+  }
+  await sendEmailVerification(user);
+  return { sent: true, alreadyVerified: false };
+}
+
+export async function checkFirebaseEmailVerified(): Promise<{ verified: boolean; user: User | null }> {
+  const user = auth.currentUser;
+  if (!user) {
+    return { verified: false, user: null };
+  }
+  await user.reload();
+  return { verified: Boolean(auth.currentUser?.emailVerified), user: auth.currentUser };
 }
 
 export async function logOut() {

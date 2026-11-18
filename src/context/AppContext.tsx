@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import confetti from 'canvas-confetti';
-import { User, onAuthStateChanged, signInWithEmailAndPassword } from 'firebase/auth';
+import { User, onAuthStateChanged, signInWithEmailAndPassword, sendEmailVerification } from 'firebase/auth';
 import {
   doc,
   collection,
@@ -235,6 +235,19 @@ interface AppContextType {
   loginWithGoogleRedirect: (returnTarget?: GoogleAuthReturnTarget) => Promise<{
     success: boolean;
     redirecting?: boolean;
+    error?: string;
+    code?: string;
+  }>;
+  authenticateGoogleForSignUp: () => Promise<{
+    success: boolean;
+    status?: 'existing_signed_in' | 'new_google_user';
+    profile?: RegisteredUserProfile;
+    googleUser?: {
+      uid: string;
+      email: string;
+      displayName: string;
+      photoURL?: string;
+    };
     error?: string;
     code?: string;
   }>;
@@ -2603,6 +2616,94 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  const authenticateGoogleForSignUp = async (): Promise<{
+    success: boolean;
+    status?: 'existing_signed_in' | 'new_google_user';
+    profile?: RegisteredUserProfile;
+    googleUser?: {
+      uid: string;
+      email: string;
+      displayName: string;
+      photoURL?: string;
+    };
+    error?: string;
+    code?: string;
+  }> => {
+    setGoogleAuthError(null);
+    try {
+      const user = hasAndroidCustomTabBridge()
+        ? await signInWithApkCustomTab()
+        : await signInWithGoogle();
+
+      const cleanEmail = String(user.email || '').trim().toLowerCase();
+      if (!cleanEmail) {
+        return {
+          success: false,
+          error: 'Google account did not return an email address. Please try another Google account.'
+        };
+      }
+
+      if (isSuperAdminEmail(cleanEmail)) {
+        const res = await finalizeGoogleUserSession(user, { skipNavigate: false });
+        return {
+          success: res.success,
+          status: res.success ? 'existing_signed_in' : undefined,
+          profile: res.profile,
+          error: res.error,
+          code: res.code
+        };
+      }
+
+      const localExisting = allRegisteredUsers.find(
+        u => u.email.toLowerCase() === cleanEmail || u.id === user.uid
+      );
+      let firestoreExisting: RegisteredUserProfile | null = null;
+      if (!isOffline) {
+        try {
+          const snap = await getDoc(doc(db, 'users', user.uid));
+          if (snap.exists()) {
+            firestoreExisting = snap.data() as RegisteredUserProfile;
+          }
+        } catch {
+          // Non-fatal: fall back to local / backend check below
+        }
+      }
+
+      if (localExisting || firestoreExisting) {
+        const res = await finalizeGoogleUserSession(user, { skipNavigate: false });
+        return {
+          success: res.success,
+          status: res.success ? 'existing_signed_in' : undefined,
+          profile: res.profile,
+          error: res.error,
+          code: res.code
+        };
+      }
+
+      return {
+        success: true,
+        status: 'new_google_user',
+        googleUser: {
+          uid: user.uid,
+          email: cleanEmail,
+          displayName: String(user.displayName || '').trim(),
+          photoURL: user.photoURL && user.photoURL.length <= 500 ? user.photoURL : undefined
+        }
+      };
+    } catch (error: any) {
+      const code = String(error?.code || 'auth/unknown');
+      const domain = error?.domain || (typeof window !== 'undefined' ? window.location.hostname : '');
+      const msg =
+        code === 'auth/unauthorized-domain'
+          ? `Firebase Auth (${FIREBASE_PROJECT_ID}) rejected domain "${domain}" (${code}). Add "${domain}" under Authorized domains in Firebase Console.`
+          : code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request'
+          ? 'Google sign-up window was closed before completing. Please try again.'
+          : error?.message || 'Unable to verify with Google right now. Please try again.';
+      setGoogleAuthError(msg);
+      return { success: false, error: msg, code };
+    }
+  };
+
   const authenticateUser = async (
     identifier: string,
     password: string
@@ -2729,7 +2830,42 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     }
 
-    const matched =
+    let firebaseMatchedProfile: RegisteredUserProfile | null = null;
+    let firebaseIdToken = '';
+    if (cleanInput.includes('@') && !isOffline) {
+      try {
+        const fbCred = await signInWithEmailAndPassword(auth, cleanInput, password);
+        await fbCred.user.reload().catch(() => {});
+        if (!fbCred.user.emailVerified) {
+          await sendEmailVerification(fbCred.user).catch(() => {});
+          return {
+            success: false,
+            error: `Please verify your email first. We sent a fresh verification link to ${cleanInput}—open it and then sign in again.`
+          };
+        }
+        firebaseIdToken = await fbCred.user.getIdToken().catch(() => '');
+        const snap = await getDoc(doc(db, 'users', fbCred.user.uid)).catch(() => null);
+        if (snap?.exists()) {
+          firebaseMatchedProfile = repairSpecificTutorRecord(snap.data() as RegisteredUserProfile).user;
+        }
+      } catch (fbErr: any) {
+        const fbCode = String(fbErr?.code || '');
+        if (fbCode === 'auth/wrong-password' || fbCode === 'auth/invalid-credential') {
+          const localCandidate = allRegisteredUsers.find(
+            u => u.email.toLowerCase() === cleanInput
+          );
+          if (!localCandidate) {
+            recordLoginFailure(cleanInput);
+            return {
+              success: false,
+              error: 'Incorrect email or password. Please verify your credentials or try Continue with Google.'
+            };
+          }
+        }
+      }
+    }
+
+    const localMatched =
       allRegisteredUsers.find(
         u =>
           u.email.toLowerCase() === cleanInput ||
@@ -2740,6 +2876,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         currentUserProfile.fullName.toLowerCase() === cleanInput)
         ? currentUserProfile
         : null);
+
+    const matched =
+      firebaseMatchedProfile && localMatched
+        ? mergeUserProfiles(localMatched, firebaseMatchedProfile)
+        : firebaseMatchedProfile || localMatched;
 
     if (matched?.accountStatus === 'deleted') {
       return {
@@ -2769,6 +2910,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...(firebaseIdToken ? { Authorization: `Bearer ${firebaseIdToken}` } : {}),
           ...getSecurityHeaders({
             userId: matched?.id,
             userEmail: matched?.email || (cleanInput.includes('@') ? cleanInput : undefined)
@@ -2777,7 +2919,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         body: JSON.stringify({
           identifier: cleanInput,
           password,
-          method: 'password',
+          method: firebaseIdToken ? 'google' : 'password',
           userId: matched?.id,
           email: matched?.email || (cleanInput.includes('@') ? cleanInput : undefined),
           role: matched?.role,
@@ -2786,7 +2928,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data?.authenticated) {
-        if (data?.useEmailOtp) {
+        if (data?.useEmailOtp && !firebaseIdToken) {
           return {
             success: false,
             useEmailOtp: true,
@@ -2796,17 +2938,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               'This account uses Passwordless Email Code (OTP) or Google Sign-In. Switch to Email Code to sign in across devices.'
           };
         }
-        const failInfo = recordLoginFailure(cleanInput);
-        const lockNote = failInfo.isLocked
-          ? ' Account temporarily locked for 15 minutes due to repeated failures.'
-          : '';
-        return {
-          success: false,
-          error:
-            (data?.error ||
-              'No account found matching that email or username. Please Sign up or try Google Sign-In.') +
-            lockNote
-        };
+        if (!firebaseIdToken) {
+          const failInfo = recordLoginFailure(cleanInput);
+          const lockNote = failInfo.isLocked
+            ? ' Account temporarily locked for 15 minutes due to repeated failures.'
+            : '';
+          return {
+            success: false,
+            error:
+              (data?.error ||
+                'No account found matching that email or username. Please Sign up or try Google Sign-In.') +
+              lockNote
+          };
+        }
       }
     } catch {
       if (!matched) {
@@ -2827,6 +2971,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     resetLoginFailures(cleanInput);
+    setAllRegisteredUsers(prev => {
+      const next = mergeUserProfileArrays([[matched], prev]);
+      safeSetItem('sc_all_users', JSON.stringify(next));
+      return next;
+    });
     setCurrentUserProfile(matched);
     safeSetItem('sc_user_profile', JSON.stringify(matched));
     setCurrentRole(matched.role);
@@ -5539,9 +5688,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const registerNewUser = (role: UserRole, profileData: any) => {
-    const newId = `usr_${role}_${Date.now()}`;
+    const newId =
+      (profileData.firebaseUid && String(profileData.firebaseUid).trim()) ||
+      `usr_${role}_${Date.now()}`;
     const fullName = profileData.fullName || profileData.name || 'User';
     const email = profileData.email || '';
+    const rawAvatarUrl = String(profileData.avatarUrl || '').trim();
 
     const syncProfileToServer = (
       profileSnapshot: RegisteredUserProfile,
@@ -5565,10 +5717,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       role,
       fullName,
       email,
+      ...(rawAvatarUrl && rawAvatarUrl.length <= 500 ? { avatarUrl: rawAvatarUrl } : {}),
       emailVerified: true,
       verifiedAt: new Date().toISOString(),
       createdAt: new Date().toISOString(),
-      directorySource: 'backend'
+      directorySource: auth.currentUser && auth.currentUser.uid === newId ? 'firestore' : 'backend'
     };
 
     setCurrentRole(role);
@@ -6003,6 +6156,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setCurrentUserProfile(newProfile);
     safeSetItem('sc_user_profile', JSON.stringify(newProfile));
     syncProfileToServer(newProfile, '/api/users/register');
+
+    if (!isOffline && auth.currentUser && auth.currentUser.uid === newId) {
+      const firestoreSafeRole = newProfile.role === 'admin' ? 'school_admin' : newProfile.role;
+      const createPayload = sanitizeUserAccountForFirestore({
+        ...newProfile,
+        role: firestoreSafeRole as UserRole,
+        isSuperAdmin: false,
+        isDeveloper: false,
+        accountStatus: 'active',
+        walletFrozen: false
+      });
+      setDoc(doc(db, 'users', newId), createPayload).catch((err) => {
+        console.warn('Could not persist registered user doc to Firestore:', err);
+      });
+    }
+
     setTargetSignUpRole(null);
     setCurrentScreen('app');
   };
@@ -9071,6 +9240,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         clearGoogleAuthError,
         loginWithGoogle,
         loginWithGoogleRedirect,
+        authenticateGoogleForSignUp,
         authenticateUser,
         requestLoginOtp,
         verifyLoginOtp,

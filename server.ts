@@ -1431,13 +1431,17 @@ STRICT BOARD SPECIFICATIONS:
 app.get('/api/email-status', (_req, res) => {
   const hasGmail = Boolean(process.env.GMAIL_APP_PASSWORD && process.env.GMAIL_APP_PASSWORD.trim() !== '');
   const hasResend = Boolean(process.env.RESEND_API_KEY && process.env.RESEND_API_KEY.trim() !== '');
-  const gmailUser = process.env.GMAIL_USER?.trim() || 'martorefe@gmail.com';
+  const fromEmail = (process.env.RESEND_FROM_EMAIL || 'Student Companion <onboarding@resend.dev>').trim();
+  const customResendDomain = Boolean(fromEmail && !fromEmail.toLowerCase().includes('resend.dev'));
+  const directDeliveryAvailable = hasGmail || (hasResend && customResendDomain);
+  const sandboxOnly = !hasGmail && hasResend && !customResendDomain;
 
   return res.json({
     configured: hasGmail || hasResend,
     provider: hasGmail ? 'gmail-smtp' : (hasResend ? 'resend' : 'none'),
-    senderEmail: hasGmail ? gmailUser : (process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev'),
-    directDeliveryAvailable: hasGmail || (hasResend && !process.env.RESEND_FROM_EMAIL?.includes('resend.dev')),
+    senderEmail: hasGmail ? 'gmail-smtp' : (customResendDomain ? fromEmail : 'onboarding@resend.dev'),
+    directDeliveryAvailable,
+    sandboxOnly,
   });
 });
 
@@ -1445,10 +1449,17 @@ async function dispatchOtpEmail(params: {
   email: string;
   code: string;
   name?: string;
-  purpose: 'signup' | 'login';
+  purpose: 'signup' | 'login' | 'admin-test';
 }): Promise<
   | { success: true; provider: string; deliveredTo: string; messageId?: string; id?: string; message: string }
-  | { success: false; status: number; error: string }
+  | {
+      success: false;
+      status: number;
+      reason: 'sandbox_restricted' | 'provider_unconfigured' | 'smtp_failed' | 'resend_failed';
+      fallbackRecommended: boolean;
+      error: string;
+      adminDiagnostic: string;
+    }
 > {
   const trimmedEmail = String(params.email || '').trim().toLowerCase();
   const displayName = params.name ? String(params.name).trim() : 'Student';
@@ -1459,14 +1470,22 @@ async function dispatchOtpEmail(params: {
   const resendApiKey = process.env.RESEND_API_KEY?.trim();
 
   const heading =
-    params.purpose === 'login' ? 'Sign In Verification Code' : 'Verify Your Email Address';
+    params.purpose === 'login'
+      ? 'Sign In Verification Code'
+      : params.purpose === 'admin-test'
+      ? 'Live Email Delivery Diagnostic'
+      : 'Verify Your Email Address';
   const subjectPrefix =
     params.purpose === 'login'
       ? `[Student Companion] ${code} is your login code`
+      : params.purpose === 'admin-test'
+      ? `[Student Companion] Live Email Test (${code})`
       : `[Student Companion] ${code} is your verification code`;
   const introLine =
     params.purpose === 'login'
       ? `Hello <strong style="color: #FFFFFF;">${displayName}</strong>, enter this 6-digit code to sign back in to your Student Companion account.`
+      : params.purpose === 'admin-test'
+      ? `Hello <strong style="color: #FFFFFF;">${displayName}</strong>, this is a live diagnostic email sent from your Student Companion Super Admin console.`
       : `Hello <strong style="color: #FFFFFF;">${displayName}</strong>, welcome to Nigeria's premier academic companion for WAEC, JAMB, and NECO excellence.`;
 
   const htmlContent = `
@@ -1568,7 +1587,10 @@ async function dispatchOtpEmail(params: {
       return {
         success: false,
         status: 500,
-        error: `Failed to deliver verification email via Gmail SMTP: ${smtpErr?.message || 'Authentication failed'}. Please ensure your 16-character Google App Password is correct.`
+        reason: 'smtp_failed',
+        fallbackRecommended: true,
+        error: 'Unable to send a 6-digit verification code right now. Switching to instant email link verification.',
+        adminDiagnostic: `Gmail SMTP delivery failed for ${gmailUser}: ${smtpErr?.message || 'Authentication failed'}. Verify GMAIL_USER and your 16-character GMAIL_APP_PASSWORD.`
       };
     }
   }
@@ -1591,7 +1613,10 @@ async function dispatchOtpEmail(params: {
         return {
           success: false,
           status: 403,
-          error: `Resend sandbox restriction: The free onboarding domain can only send to ${gmailUser}. To send verification codes directly to ${trimmedEmail}, connect Gmail SMTP using GMAIL_APP_PASSWORD or verify your domain in Resend.`
+          reason: 'sandbox_restricted',
+          fallbackRecommended: true,
+          error: 'Direct 6-digit code delivery is unavailable for this address right now. Switching to Firebase email verification.',
+          adminDiagnostic: `Resend sandbox restriction: The onboarding sender (${fromEmail}) can only send to the Resend account owner (${gmailUser}). Add GMAIL_USER and GMAIL_APP_PASSWORD in Render Environment Variables or verify a custom sending domain in Resend to send 6-digit codes directly to ${trimmedEmail}.`
         };
       }
 
@@ -1599,7 +1624,10 @@ async function dispatchOtpEmail(params: {
       return {
         success: false,
         status: 500,
-        error: `Email delivery failed: ${sendResult.error.message}`
+        reason: 'resend_failed',
+        fallbackRecommended: true,
+        error: 'Email verification service is temporarily unavailable. Switching to Firebase email verification.',
+        adminDiagnostic: `Resend API error: ${sendResult.error.message}`
       };
     }
 
@@ -1616,7 +1644,10 @@ async function dispatchOtpEmail(params: {
   return {
     success: false,
     status: 503,
-    error: 'Email delivery service is not configured. Please set GMAIL_APP_PASSWORD in environment settings to enable live verification code delivery.'
+    reason: 'provider_unconfigured',
+    fallbackRecommended: true,
+    error: 'Direct email verification code service is not configured. Switching to Firebase email verification.',
+    adminDiagnostic: 'No mail credentials found on the server. Set GMAIL_USER + GMAIL_APP_PASSWORD (or a verified RESEND_API_KEY + custom RESEND_FROM_EMAIL) in Render Environment Variables.'
   };
 }
 
@@ -1643,6 +1674,8 @@ app.post('/api/send-verification-code', async (req, res) => {
     if (!result.success) {
       return res.status(result.status).json({
         success: false,
+        reason: result.reason,
+        fallbackRecommended: result.fallbackRecommended,
         error: result.error
       });
     }
@@ -1660,7 +1693,9 @@ app.post('/api/send-verification-code', async (req, res) => {
     console.error('Fatal error in /api/send-verification-code:', error);
     return res.status(500).json({
       success: false,
-      error: error?.message || 'Internal server error while dispatching verification email'
+      reason: 'smtp_failed',
+      fallbackRecommended: true,
+      error: 'Unable to dispatch verification code right now. Switching to Firebase email verification.'
     });
   }
 });
@@ -6366,6 +6401,11 @@ app.get('/api/system/integrations-status', (req, res) => {
   const paystackSecretConfigured = secPaystack.startsWith('sk_live_');
   const resendConfigured = Boolean((process.env.RESEND_API_KEY || '').trim());
   const gmailConfigured = Boolean((process.env.GMAIL_APP_PASSWORD || '').trim());
+  const gmailUserConfigured = Boolean((process.env.GMAIL_USER || '').trim());
+  const resendFromEmail = (process.env.RESEND_FROM_EMAIL || 'Student Companion <onboarding@resend.dev>').trim();
+  const customResendDomain = Boolean(resendFromEmail && !resendFromEmail.toLowerCase().includes('resend.dev'));
+  const directEmailDeliveryReady = gmailConfigured || (resendConfigured && customResendDomain);
+  const emailSandboxOnly = !gmailConfigured && resendConfigured && !customResendDomain;
   const mapsKey = (process.env.VITE_GOOGLE_MAPS_API_KEY || process.env.GOOGLE_MAPS_API_KEY || '').trim();
   const googleMapsConfigured = Boolean(mapsKey && mapsKey !== 'MY_GOOGLE_MAPS_API_KEY');
   const githubTokenConfigured = Boolean((process.env.GITHUB_TOKEN || process.env.GH_TOKEN || '').trim());
@@ -6380,7 +6420,11 @@ app.get('/api/system/integrations-status', (req, res) => {
     paystackLiveReady: paystackPublicConfigured && paystackSecretConfigured,
     resendConfigured,
     gmailConfigured,
-    emailReady: resendConfigured || gmailConfigured,
+    gmailUserConfigured,
+    resendFromEmail,
+    directEmailDeliveryReady,
+    emailSandboxOnly,
+    emailReady: directEmailDeliveryReady,
     googleMapsConfigured,
     githubTokenConfigured,
     superAdminPasswordConfigured,
@@ -8081,7 +8125,12 @@ app.post('/api/auth/send-login-otp', async (req, res) => {
     if (!delivery.success) {
       return res.status(delivery.status).json({
         success: false,
-        error: delivery.error
+        reason: delivery.reason,
+        fallbackRecommended: delivery.fallbackRecommended,
+        error:
+          delivery.reason === 'sandbox_restricted' || delivery.reason === 'provider_unconfigured'
+            ? 'Direct email code delivery is unavailable for this address right now. Please sign in with your Password or Continue with Google.'
+            : delivery.error
       });
     }
 
@@ -8265,6 +8314,52 @@ app.post('/api/admin/users/update', async (req, res) => {
 
   const updated = applyAdminUpdateToServerUser(userId, updates, fallbackProfile);
   return res.json({ success: true, user: updated });
+});
+
+app.post('/api/admin/email-test', async (req, res) => {
+  const authCheck = await verifySuperAdminRequest(req);
+  if (!authCheck.ok) {
+    await securityService.logUnauthorizedProbe(req, '/api/admin/email-test', authCheck.email);
+    return res.status(403).json({
+      success: false,
+      error: authCheck.error || 'Unauthorized: Super Admin authentication required.'
+    });
+  }
+
+  const recipientEmail = String(req.body?.recipientEmail || '').trim().toLowerCase();
+  if (!recipientEmail || !recipientEmail.includes('@')) {
+    return res.status(400).json({
+      success: false,
+      error: 'Please enter a valid recipient email address to test live delivery.'
+    });
+  }
+
+  const testCode = String(crypto.randomInt(100000, 1000000));
+  const delivery = await dispatchOtpEmail({
+    email: recipientEmail,
+    code: testCode,
+    name: 'Admin Email Verification Test',
+    purpose: 'admin-test'
+  });
+
+  if (!delivery.success) {
+    return res.status(delivery.status).json({
+      success: false,
+      reason: delivery.reason,
+      sandboxRestricted: delivery.reason === 'sandbox_restricted',
+      error: delivery.adminDiagnostic,
+      testedAt: new Date().toISOString()
+    });
+  }
+
+  return res.json({
+    success: true,
+    provider: delivery.provider,
+    deliveredTo: delivery.deliveredTo,
+    messageId: delivery.messageId || delivery.id || null,
+    message: `Live test email delivered to ${delivery.deliveredTo} via ${delivery.provider === 'gmail-smtp' ? 'Gmail SMTP' : 'Resend'}.`,
+    testedAt: new Date().toISOString()
+  });
 });
 
 // Vite Middleware for Dev or Static Files for Prod

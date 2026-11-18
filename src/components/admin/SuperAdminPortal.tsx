@@ -525,6 +525,10 @@ export const SuperAdminPortal: React.FC = () => {
     paystackLiveReady: boolean;
     resendConfigured: boolean;
     gmailConfigured: boolean;
+    gmailUserConfigured?: boolean;
+    resendFromEmail?: string;
+    directEmailDeliveryReady?: boolean;
+    emailSandboxOnly?: boolean;
     emailReady: boolean;
     googleMapsConfigured: boolean;
     githubTokenConfigured: boolean;
@@ -537,6 +541,15 @@ export const SuperAdminPortal: React.FC = () => {
   const [integrationsError, setIntegrationsError] = useState<string | null>(null);
   const [showRenderGuide, setShowRenderGuide] = useState(false);
   const [copiedSecretKey, setCopiedSecretKey] = useState<string | null>(null);
+  const [testEmailRecipient, setTestEmailRecipient] = useState<string>(authorizedAdminEmail || '');
+  const [isSendingTestEmail, setIsSendingTestEmail] = useState(false);
+  const [testEmailResult, setTestEmailResult] = useState<{
+    success: boolean;
+    message: string;
+    provider?: string;
+    sandboxRestricted?: boolean;
+    testedAt?: string;
+  } | null>(null);
 
   const handleCopySecretKey = (keyName: string) => {
     if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
@@ -577,6 +590,54 @@ export const SuperAdminPortal: React.FC = () => {
     void fetchApkCloudStatus();
     void fetchIntegrationsStatus();
   }, [fetchApkCloudStatus, fetchIntegrationsStatus]);
+
+  const handleSendAdminTestEmail = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const target = testEmailRecipient.trim().toLowerCase();
+    if (!target || !target.includes('@')) {
+      setTestEmailResult({
+        success: false,
+        message: 'Enter a valid email address to test live delivery.'
+      });
+      return;
+    }
+    setIsSendingTestEmail(true);
+    setTestEmailResult(null);
+    try {
+      const headers = await buildAdminHeaders(true);
+      const res = await fetch('/api/admin/email-test', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          recipientEmail: target,
+          adminEmail: authorizedAdminEmail
+        })
+      });
+      const { data, nonJsonError } = await safeParseApiJson(res);
+      if (res.ok && data?.success) {
+        setTestEmailResult({
+          success: true,
+          message: data.message || `Live test email delivered to ${target}.`,
+          provider: data.provider,
+          testedAt: data.testedAt
+        });
+      } else {
+        setTestEmailResult({
+          success: false,
+          message: data?.error || nonJsonError || `Live email test failed (HTTP ${res.status}).`,
+          sandboxRestricted: Boolean(data?.sandboxRestricted),
+          testedAt: data?.testedAt
+        });
+      }
+    } catch (err: any) {
+      setTestEmailResult({
+        success: false,
+        message: err?.message || 'Network error while running live email test.'
+      });
+    } finally {
+      setIsSendingTestEmail(false);
+    }
+  };
 
   const handleTriggerGithubApkBuild = async () => {
     if (!authorizedAdminEmail) return;
@@ -1787,10 +1848,13 @@ export const SuperAdminPortal: React.FC = () => {
                   ready: integrationsStatus.paystackLiveReady
                 },
                 {
-                  label: 'Email Delivery (Resend / Gmail)',
-                  secretName: 'RESEND_API_KEY or GMAIL_APP_PASSWORD',
-                  where: 'Render Env Vars & AI Studio Secrets',
-                  ready: integrationsStatus.emailReady
+                  label: 'Email Delivery (Gmail / Resend)',
+                  secretName: integrationsStatus.emailSandboxOnly
+                    ? 'Resend Sandbox Only (Add GMAIL_APP_PASSWORD on Render)'
+                    : 'GMAIL_APP_PASSWORD or verified RESEND_API_KEY',
+                  where: 'Render Env Vars & AI Studio Secrets (Firebase link handles fallback)',
+                  ready: Boolean(integrationsStatus.directEmailDeliveryReady ?? integrationsStatus.emailReady),
+                  statusLabel: integrationsStatus.emailSandboxOnly ? 'Sandbox Only' : undefined
                 },
                 {
                   label: 'Google Maps Tutor Locator',
@@ -1881,35 +1945,98 @@ export const SuperAdminPortal: React.FC = () => {
               )}
 
               {integrationsStatus && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 text-xs">
-                  {readinessItems.map((item) => (
-                    <div
-                      key={item.label}
-                      className="bg-slate-950 border border-slate-800 rounded-xl p-3 flex flex-col justify-between gap-1.5"
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="font-bold text-white truncate">{item.label}</span>
-                        <span
-                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-[11px] font-bold shrink-0 ${
-                            item.ready
-                              ? 'bg-emerald-500/15 border-emerald-500/35 text-[#84E000]'
-                              : 'bg-amber-500/15 border-amber-500/35 text-amber-300'
-                          }`}
-                        >
-                          {item.ready ? (
-                            <CheckCircle2 className="w-3 h-3 shrink-0" />
-                          ) : (
-                            <AlertTriangle className="w-3 h-3 shrink-0" />
-                          )}
-                          <span>{item.ready ? 'Ready' : 'Needs Secret'}</span>
-                        </span>
+                <div className="space-y-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 text-xs">
+                    {readinessItems.map((item: any) => (
+                      <div
+                        key={item.label}
+                        className="bg-slate-950 border border-slate-800 rounded-xl p-3 flex flex-col justify-between gap-1.5"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-bold text-white truncate">{item.label}</span>
+                          <span
+                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-[11px] font-bold shrink-0 ${
+                              item.ready
+                                ? 'bg-emerald-500/15 border-emerald-500/35 text-[#84E000]'
+                                : 'bg-amber-500/15 border-amber-500/35 text-amber-300'
+                            }`}
+                          >
+                            {item.ready ? (
+                              <CheckCircle2 className="w-3 h-3 shrink-0" />
+                            ) : (
+                              <AlertTriangle className="w-3 h-3 shrink-0" />
+                            )}
+                            <span>{item.ready ? 'Ready' : (item.statusLabel || 'Needs Secret')}</span>
+                          </span>
+                        </div>
+                        <div className="text-[11px] font-mono text-slate-300 truncate">
+                          {item.secretName}
+                        </div>
+                        <div className="text-[10px] text-slate-500">{item.where}</div>
                       </div>
-                      <div className="text-[11px] font-mono text-slate-300 truncate">
-                        {item.secretName}
+                    ))}
+                  </div>
+
+                  {/* Live Email Delivery Test Console */}
+                  <div className="bg-slate-950 border border-slate-800 rounded-xl p-3 space-y-2.5">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="text-xs font-bold text-white">Live Email Delivery Test</div>
+                        <p className="text-[11px] text-slate-400">
+                          {integrationsStatus.emailSandboxOnly
+                            ? 'Resend is in sandbox mode (owner-only). External sign-ups automatically fall back to Firebase verification until GMAIL_APP_PASSWORD or a verified Resend domain is active on Render.'
+                            : integrationsStatus.directEmailDeliveryReady
+                            ? 'Direct email delivery is active. Test sending a diagnostic email to any external address.'
+                            : 'No direct SMTP/Resend sender active. Sign-ups automatically fall back to Firebase email verification.'}
+                        </p>
                       </div>
-                      <div className="text-[10px] text-slate-500">{item.where}</div>
                     </div>
-                  ))}
+
+                    <form onSubmit={handleSendAdminTestEmail} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                      <input
+                        type="email"
+                        value={testEmailRecipient}
+                        onChange={(e) => setTestEmailRecipient(e.target.value)}
+                        placeholder="Enter test recipient email (e.g. tutor@gmail.com)"
+                        className="flex-1 min-h-[44px] bg-slate-900 border border-slate-700 focus:border-[#84E000] rounded-xl px-3.5 py-2 text-xs text-white placeholder-slate-500 focus:outline-none"
+                      />
+                      <button
+                        type="submit"
+                        disabled={isSendingTestEmail}
+                        className="min-h-[44px] px-4 py-2 rounded-xl bg-[#84E000] hover:bg-[#75c900] disabled:opacity-60 text-[#0A1322] font-bold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                      >
+                        <RefreshCw className={`w-3.5 h-3.5 ${isSendingTestEmail ? 'animate-spin' : ''}`} />
+                        <span>{isSendingTestEmail ? 'Sending Test...' : 'Send Test Email'}</span>
+                      </button>
+                    </form>
+
+                    {testEmailResult && (
+                      <div
+                        className={`p-2.5 rounded-xl border text-xs flex items-start gap-2 ${
+                          testEmailResult.success
+                            ? 'bg-emerald-950/50 border-emerald-500/40 text-emerald-200'
+                            : 'bg-amber-950/60 border-amber-500/40 text-amber-200'
+                        }`}
+                      >
+                        {testEmailResult.success ? (
+                          <CheckCircle2 className="w-4 h-4 text-[#84E000] shrink-0 mt-0.5" />
+                        ) : (
+                          <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                        )}
+                        <div className="min-w-0 space-y-0.5">
+                          <div className="font-semibold text-white">
+                            {testEmailResult.success ? 'Delivery Passed' : testEmailResult.sandboxRestricted ? 'Resend Sandbox Active' : 'Delivery Check Failed'}
+                            {testEmailResult.testedAt && (
+                              <span className="ml-2 text-[10px] font-mono font-normal text-slate-400 tabular-nums">
+                                {new Date(testEmailResult.testedAt).toLocaleTimeString()}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[11px] leading-relaxed break-words">{testEmailResult.message}</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 

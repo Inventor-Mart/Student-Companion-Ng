@@ -41,6 +41,11 @@ import { NairaSign } from '../../utils/currency';
 import { DeviceImageUploader } from '../admin/DeviceImageUploader';
 import { SubjectMultiSelector } from '../common/SubjectMultiSelector';
 import { dedupeSubjects, formatSubjectSpecialization } from '../../utils/nigerianSubjects';
+import {
+  registerWithFirebaseEmailVerification,
+  resendFirebaseVerificationEmail,
+  checkFirebaseEmailVerified
+} from '../../lib/firebase';
 
 interface SignUpPageProps {
   onBackToSignIn: () => void;
@@ -53,7 +58,14 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
   onSignUpSuccess,
   initialRole
 }) => {
-  const { registerNewUser, targetSignUpRole, allRegisteredUsers, appliedReferralCode, applyReferralCode } = useApp();
+  const {
+    registerNewUser,
+    authenticateGoogleForSignUp,
+    targetSignUpRole,
+    allRegisteredUsers,
+    appliedReferralCode,
+    applyReferralCode
+  } = useApp();
 
   const effectiveRole = initialRole || targetSignUpRole;
   const [step, setStep] = useState<1 | 2 | 3>(effectiveRole ? 2 : 1);
@@ -66,13 +78,19 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
-  // Email Verification States
+  // Email Verification & Google Quick Sign-Up States
+  const [verificationMode, setVerificationMode] = useState<'otp' | 'firebase_link'>('otp');
+  const [verifiedFirebaseUid, setVerifiedFirebaseUid] = useState<string | null>(null);
+  const [googleAvatarUrl, setGoogleAvatarUrl] = useState<string | undefined>(undefined);
+  const [isGoogleVerified, setIsGoogleVerified] = useState<boolean>(false);
+  const [isGoogleAuthenticating, setIsGoogleAuthenticating] = useState<boolean>(false);
   const [verificationCode, setVerificationCode] = useState<string>('');
   const [inputCode, setInputCode] = useState<string>('');
   const [verificationError, setVerificationError] = useState<string | null>(null);
   const [emailDeliveryError, setEmailDeliveryError] = useState<string | null>(null);
   const [resendTimer, setResendTimer] = useState<number>(30);
   const [isSendingCode, setIsSendingCode] = useState<boolean>(false);
+  const [isCheckingFirebaseLink, setIsCheckingFirebaseLink] = useState<boolean>(false);
   const [codeNotification, setCodeNotification] = useState<string | null>(null);
 
   // Student Fields
@@ -498,106 +516,28 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
     }
   }, [step, resendTimer]);
 
-  const sendVerificationCode = async (targetEmail: string): Promise<boolean> => {
-    setIsSendingCode(true);
-    setVerificationError(null);
-    setEmailDeliveryError(null);
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
-    setVerificationCode(code);
-    setResendTimer(30);
-
-    const displayName = `${firstName.trim()} ${lastName.trim()}`.trim() || 'Student';
-
-    try {
-      const response = await fetch('/api/send-verification-code', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: targetEmail,
-          code,
-          name: displayName,
-        }),
-      });
-
-      const result = await response.json().catch(() => ({}));
-
-      if (response.ok && result.success && result.delivered) {
-        const providerText = result.provider === 'gmail-smtp' ? 'Gmail' : 'Email Service';
-        setCodeNotification(`Verification code successfully sent to ${targetEmail} via ${providerText}. Check your inbox or spam.`);
-        setEmailDeliveryError(null);
-        return true;
-      } else {
-        const errorMsg = result.error || `Unable to deliver verification code to ${targetEmail}. Please check that the email address is correct.`;
-        setEmailDeliveryError(errorMsg);
-        setVerificationError(errorMsg);
-        setCodeNotification(null);
-        return false;
-      }
-    } catch (err) {
-      console.warn('Network issue calling verification service:', err);
-      const networkError = 'Network error: Unable to contact verification server. Please check your internet connection.';
-      setEmailDeliveryError(networkError);
-      setVerificationError(networkError);
-      setCodeNotification(null);
-      return false;
-    } finally {
-      setIsSendingCode(false);
-    }
-  };
-
-  const handleProceedToVerification = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    const trimmedFirst = firstName.trim();
-    const trimmedLast = lastName.trim();
-
-    if (!trimmedFirst || !trimmedLast) {
-      setNameError('Both First Name and Last Name are compulsory to complete registration.');
-      return;
-    }
-    setNameError(null);
-
-    const trimmedEmail = email.trim();
-    if (!trimmedEmail || !trimmedEmail.includes('@')) {
-      setNameError('Please enter a valid email address for verification.');
-      return;
-    }
-
-    if (selectedRole === 'tutor' && dedupeSubjects(proficientSubjects).length === 0) {
-      setTutorStage(2);
-      setTutorSubjectError('Please select or add at least one teaching subject before continuing.');
-      setNameError('Please select or add at least one teaching subject in Stage 2.');
-      return;
-    }
-
-    setEmailDeliveryError(null);
-    const delivered = await sendVerificationCode(trimmedEmail);
-    if (delivered) {
-      setInputCode('');
-      setStep(3);
-    }
-  };
-
-  const handleVerifyAndCreateAccount = (e: React.FormEvent) => {
-    e.preventDefault();
-
-    if (inputCode.trim() !== verificationCode) {
-      setVerificationError('Invalid 6-digit code. Please enter the verification code sent to your email.');
-      return;
-    }
-
-    setVerificationError(null);
-
-    const trimmedFirst = firstName.trim();
-    const trimmedLast = lastName.trim();
-    const computedFullName = `${trimmedFirst} ${trimmedLast}`;
+  const completeRegistration = (overrides?: {
+    firebaseUid?: string | null;
+    avatarUrl?: string;
+    email?: string;
+    firstName?: string;
+    lastName?: string;
+  }) => {
+    const trimmedFirst = (overrides?.firstName ?? firstName).trim();
+    const trimmedLast = (overrides?.lastName ?? lastName).trim();
+    const computedFullName = `${trimmedFirst} ${trimmedLast}`.trim() || 'User';
+    const resolvedEmail = (overrides?.email ?? email).trim();
+    const resolvedUid = overrides?.firebaseUid ?? verifiedFirebaseUid ?? undefined;
+    const resolvedAvatar = overrides?.avatarUrl ?? googleAvatarUrl;
 
     if (selectedRole === 'student') {
       registerNewUser('student', {
+        firebaseUid: resolvedUid,
+        avatarUrl: resolvedAvatar,
         name: computedFullName,
         firstName: trimmedFirst,
         lastName: trimmedLast,
-        email: email.trim(),
+        email: resolvedEmail,
         classLevel,
         stream,
         school: schoolName.trim() || (classLevel === 'University Aspirant' ? 'School Leaver / Aspirant' : 'Secondary School'),
@@ -623,10 +563,12 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
       }
 
       registerNewUser('parent', {
+        firebaseUid: resolvedUid,
+        avatarUrl: resolvedAvatar,
         name: computedFullName,
         firstName: trimmedFirst,
         lastName: trimmedLast,
-        email: email.trim(),
+        email: resolvedEmail,
         phone: phone.trim(),
         pin: pin.trim() || '1234',
         wardName: wardName.trim() || (initialLinkedWards[0]?.studentName || 'Student Ward'),
@@ -650,11 +592,12 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
       const formattedSpec = formatSubjectSpecialization(cleanSubjects, 'General Subjects');
 
       registerNewUser('tutor', {
+        firebaseUid: resolvedUid,
         name: fullLegalName,
         firstName: trimmedFirst,
         middleName: middleName.trim(),
         lastName: trimmedLast,
-        email: email.trim(),
+        email: resolvedEmail,
         phone: phone.trim(),
         gender: tutorGender,
         city: tutorCity.trim() || 'Lagos',
@@ -680,7 +623,7 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
         nin: tutorNin.trim(),
         idDocumentUrl,
         cvResumeUrl,
-        avatarUrl: headshotUrl,
+        avatarUrl: headshotUrl || resolvedAvatar,
         guarantors: [
           ...(referee1Name.trim() ? [{ name: referee1Name.trim(), phone: referee1Phone.trim(), relationship: referee1Rel.trim() || 'Colleague' }] : []),
           ...(referee2Name.trim() ? [{ name: referee2Name.trim(), phone: referee2Phone.trim(), relationship: referee2Rel.trim() || 'Referee' }] : [])
@@ -689,10 +632,12 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
       });
     } else if (selectedRole === 'growth_partner') {
       registerNewUser('growth_partner', {
+        firebaseUid: resolvedUid,
+        avatarUrl: resolvedAvatar,
         name: computedFullName,
         firstName: trimmedFirst,
         lastName: trimmedLast,
-        email: email.trim(),
+        email: resolvedEmail,
         phone: phone.trim(),
         bankName: partnerBankName,
         accountNumber: partnerAccountNumber.trim(),
@@ -702,10 +647,12 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
       });
     } else {
       registerNewUser('admin', {
+        firebaseUid: resolvedUid,
+        avatarUrl: resolvedAvatar,
         name: computedFullName,
         firstName: trimmedFirst,
         lastName: trimmedLast,
-        email: email.trim(),
+        email: resolvedEmail,
         schoolName: adminSchoolName.trim() || 'Secondary School',
         schoolType,
         designation: adminDesignation,
@@ -718,6 +665,292 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
     }
 
     onSignUpSuccess();
+  };
+
+  // Auto-poll Firebase email verification while user is waiting on Step 3 link verification
+  useEffect(() => {
+    if (step !== 3 || verificationMode !== 'firebase_link') return;
+    let cancelled = false;
+    const interval = window.setInterval(async () => {
+      try {
+        const status = await checkFirebaseEmailVerified();
+        if (!cancelled && status.verified) {
+          window.clearInterval(interval);
+          completeRegistration({ firebaseUid: status.user?.uid || verifiedFirebaseUid });
+        }
+      } catch {
+        // Ignore transient network polling failures
+      }
+    }, 4000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [step, verificationMode, verifiedFirebaseUid]);
+
+  const sendVerificationCode = async (
+    targetEmail: string,
+    overrideDisplayName?: string
+  ): Promise<{ mode: 'otp' | 'firebase_link' | 'already_verified' | 'error'; firebaseUid?: string }> => {
+    setIsSendingCode(true);
+    setVerificationError(null);
+    setEmailDeliveryError(null);
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    setVerificationCode(code);
+    setResendTimer(30);
+
+    const displayName =
+      overrideDisplayName || `${firstName.trim()} ${lastName.trim()}`.trim() || 'Student';
+
+    let shouldFallbackToFirebase = false;
+
+    try {
+      const response = await fetch('/api/send-verification-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: targetEmail,
+          code,
+          name: displayName,
+        }),
+      });
+
+      const result = await response.json().catch(() => ({}));
+
+      if (response.ok && result.success && result.delivered) {
+        const providerText = result.provider === 'gmail-smtp' ? 'Gmail' : 'Email Service';
+        setVerificationMode('otp');
+        setCodeNotification(
+          `Verification code successfully sent to ${targetEmail} via ${providerText}. Check your inbox or spam.`
+        );
+        setEmailDeliveryError(null);
+        setIsSendingCode(false);
+        return { mode: 'otp' };
+      }
+
+      if (result.fallbackRecommended || response.status === 403 || response.status === 503 || response.status >= 500) {
+        shouldFallbackToFirebase = true;
+      } else {
+        const safeMsg =
+          result.error ||
+          `Unable to deliver verification code to ${targetEmail}. Please check that the email address is correct.`;
+        setEmailDeliveryError(safeMsg);
+        setVerificationError(safeMsg);
+        setCodeNotification(null);
+        setIsSendingCode(false);
+        return { mode: 'error' };
+      }
+    } catch (err) {
+      console.warn('Server OTP unavailable, switching to Firebase email verification:', err);
+      shouldFallbackToFirebase = true;
+    }
+
+    if (shouldFallbackToFirebase) {
+      try {
+        const fbRes = await registerWithFirebaseEmailVerification({
+          email: targetEmail,
+          password,
+          displayName,
+        });
+        setVerifiedFirebaseUid(fbRes.user.uid);
+        if (fbRes.alreadyVerified) {
+          setIsSendingCode(false);
+          return { mode: 'already_verified', firebaseUid: fbRes.user.uid };
+        }
+        setVerificationMode('firebase_link');
+        setCodeNotification(
+          `Firebase verification link sent to ${targetEmail}. Open your inbox or spam folder, tap the link, and return here.`
+        );
+        setEmailDeliveryError(null);
+        setVerificationError(null);
+        setIsSendingCode(false);
+        return { mode: 'firebase_link', firebaseUid: fbRes.user.uid };
+      } catch (fbErr: any) {
+        const fbMessage =
+          fbErr?.message ||
+          'Unable to send verification email right now. Please try "Verify Instantly with Google" below.';
+        setEmailDeliveryError(fbMessage);
+        setVerificationError(fbMessage);
+        setCodeNotification(null);
+        setIsSendingCode(false);
+        return { mode: 'error' };
+      }
+    }
+
+    setIsSendingCode(false);
+    return { mode: 'error' };
+  };
+
+  const handleGoogleQuickSignUp = async (fromStep: 1 | 2 | 3) => {
+    if (isGoogleAuthenticating || isSendingCode) return;
+    setIsGoogleAuthenticating(true);
+    setEmailDeliveryError(null);
+    setVerificationError(null);
+    setNameError(null);
+
+    try {
+      const res = await authenticateGoogleForSignUp();
+      if (!res.success) {
+        const errMsg = res.error || 'Unable to verify with Google right now.';
+        if (fromStep === 1 || fromStep === 2) {
+          setEmailDeliveryError(errMsg);
+        } else {
+          setVerificationError(errMsg);
+        }
+        return;
+      }
+
+      if (res.status === 'existing_signed_in') {
+        onSignUpSuccess();
+        return;
+      }
+
+      if (res.status === 'new_google_user' && res.googleUser) {
+        const parts = res.googleUser.displayName.split(/\s+/).filter(Boolean);
+        const gFirst = firstName.trim() || parts[0] || 'Student';
+        const gLast = lastName.trim() || parts.slice(1).join(' ') || 'Learner';
+
+        setFirstName(gFirst);
+        setLastName(gLast);
+        setEmail(res.googleUser.email);
+        setVerifiedFirebaseUid(res.googleUser.uid);
+        setGoogleAvatarUrl(res.googleUser.photoURL);
+        setIsGoogleVerified(true);
+
+        const tutorSubjectsReady =
+          selectedRole !== 'tutor' || dedupeSubjects(proficientSubjects).length > 0;
+
+        if ((fromStep === 2 || fromStep === 3) && tutorSubjectsReady) {
+          completeRegistration({
+            firebaseUid: res.googleUser.uid,
+            avatarUrl: res.googleUser.photoURL,
+            email: res.googleUser.email,
+            firstName: gFirst,
+            lastName: gLast,
+          });
+          return;
+        }
+
+        setStep(2);
+        if (selectedRole === 'tutor' && !tutorSubjectsReady) {
+          setTutorStage(2);
+          setTutorSubjectError('Please select or add at least one teaching subject to complete your Tutor profile.');
+        }
+      }
+    } finally {
+      setIsGoogleAuthenticating(false);
+    }
+  };
+
+  const handleCheckFirebaseVerification = async () => {
+    setIsCheckingFirebaseLink(true);
+    setVerificationError(null);
+    try {
+      const status = await checkFirebaseEmailVerified();
+      if (status.verified) {
+        completeRegistration({ firebaseUid: status.user?.uid || verifiedFirebaseUid });
+      } else {
+        setVerificationError(
+          `Your email (${email.trim()}) has not been marked verified yet. Please click the verification link in your inbox or spam folder, then tap Check Verification again.`
+        );
+      }
+    } catch (err: any) {
+      setVerificationError(
+        err?.message || 'Unable to check verification status right now. Please try again.'
+      );
+    } finally {
+      setIsCheckingFirebaseLink(false);
+    }
+  };
+
+  const handleResendVerification = async () => {
+    if (resendTimer > 0 || isSendingCode) return;
+    if (verificationMode === 'firebase_link') {
+      setIsSendingCode(true);
+      setVerificationError(null);
+      setResendTimer(30);
+      try {
+        const res = await resendFirebaseVerificationEmail();
+        if (res.alreadyVerified) {
+          completeRegistration({ firebaseUid: verifiedFirebaseUid });
+          return;
+        }
+        setCodeNotification(
+          `Fresh Firebase verification link sent to ${email.trim()}. Check your inbox or spam folder.`
+        );
+      } catch (err: any) {
+        setVerificationError(
+          err?.message || 'Unable to resend verification link right now. Please wait a moment.'
+        );
+      } finally {
+        setIsSendingCode(false);
+      }
+      return;
+    }
+
+    await sendVerificationCode(email.trim());
+  };
+
+  const handleProceedToVerification = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    const trimmedFirst = firstName.trim();
+    const trimmedLast = lastName.trim();
+
+    if (!trimmedFirst || !trimmedLast) {
+      setNameError('Both First Name and Last Name are compulsory to complete registration.');
+      return;
+    }
+    setNameError(null);
+
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail || !trimmedEmail.includes('@')) {
+      setNameError('Please enter a valid email address for verification.');
+      return;
+    }
+
+    if (!isGoogleVerified && password.length < 6) {
+      setNameError('Please enter a password of at least 6 characters.');
+      return;
+    }
+
+    if (selectedRole === 'tutor' && dedupeSubjects(proficientSubjects).length === 0) {
+      setTutorStage(2);
+      setTutorSubjectError('Please select or add at least one teaching subject before continuing.');
+      setNameError('Please select or add at least one teaching subject in Stage 2.');
+      return;
+    }
+
+    if (isGoogleVerified && verifiedFirebaseUid) {
+      completeRegistration({ firebaseUid: verifiedFirebaseUid });
+      return;
+    }
+
+    setEmailDeliveryError(null);
+    const result = await sendVerificationCode(trimmedEmail, `${trimmedFirst} ${trimmedLast}`);
+    if (result.mode === 'already_verified') {
+      completeRegistration({ firebaseUid: result.firebaseUid });
+    } else if (result.mode === 'otp' || result.mode === 'firebase_link') {
+      setInputCode('');
+      setStep(3);
+    }
+  };
+
+  const handleVerifyAndCreateAccount = (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (verificationMode === 'firebase_link') {
+      void handleCheckFirebaseVerification();
+      return;
+    }
+
+    if (inputCode.trim() !== verificationCode) {
+      setVerificationError('Invalid 6-digit code. Please enter the verification code sent to your email.');
+      return;
+    }
+
+    setVerificationError(null);
+    completeRegistration();
   };
 
   return (
@@ -816,14 +1049,47 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
                 })}
               </div>
 
-              <button
-                type="button"
-                onClick={() => setStep(2)}
-                className="w-full mt-6 py-3.5 rounded-full bg-[#84E000] hover:bg-[#75c900] active:scale-[0.98] text-[#0A1322] font-black text-sm tracking-wider uppercase shadow-lg shadow-[#84E000]/25 transition-all flex items-center justify-center gap-2 cursor-pointer"
-              >
-                <span>Continue to Profile Setup</span>
-                <ChevronRight className="w-4 h-4 stroke-[3]" />
-              </button>
+              {emailDeliveryError && (
+                <div className="p-3 rounded-2xl bg-red-950/70 border border-red-500/40 flex items-start gap-2.5 text-xs text-red-200">
+                  <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+                  <p className="text-[11px] leading-relaxed">{emailDeliveryError}</p>
+                </div>
+              )}
+
+              <div className="space-y-2.5 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setStep(2)}
+                  className="w-full min-h-[44px] py-3.5 px-4 rounded-full bg-[#84E000] hover:bg-[#75c900] active:scale-[0.98] text-[#0A1322] font-black text-sm tracking-wider uppercase shadow-lg shadow-[#84E000]/25 transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap"
+                >
+                  <span>Continue to Profile Setup</span>
+                  <ChevronRight className="w-4 h-4 stroke-[3]" />
+                </button>
+
+                <button
+                  type="button"
+                  disabled={isGoogleAuthenticating}
+                  onClick={() => void handleGoogleQuickSignUp(1)}
+                  className="w-full min-h-[44px] py-3 px-4 rounded-full bg-[#14233C] hover:bg-[#1B2E4E] border border-[#2A436D] text-white font-bold text-xs transition-colors flex items-center justify-center gap-2.5 cursor-pointer disabled:opacity-60 whitespace-nowrap"
+                >
+                  {isGoogleAuthenticating ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin text-[#84E000]" />
+                      <span>Connecting Google Account...</span>
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" aria-hidden="true">
+                        <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                        <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                        <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                        <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                      </svg>
+                      <span>Sign Up Instantly with Google</span>
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           )}
 
@@ -907,37 +1173,89 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
                   </div>
                 )}
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-xs font-semibold text-slate-300 block mb-1">Email Address</label>
-                    <div className="relative">
-                      <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                      <input
-                        type="email"
-                        required
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        placeholder="you@domain.ng"
-                        className="w-full bg-[#081220] border border-[#1E304F] focus:border-[#84E000] rounded-xl py-2.5 pl-10 pr-4 text-xs text-white placeholder-slate-500 focus:outline-none transition-colors"
-                      />
+                {isGoogleVerified ? (
+                  <div className="p-3 rounded-xl bg-emerald-950/50 border border-emerald-500/40 flex items-center justify-between gap-3 text-xs">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <CheckCircle2 className="w-4 h-4 text-[#84E000] shrink-0" />
+                      <div className="min-w-0">
+                        <span className="font-bold text-white block">Verified via Google</span>
+                        <span className="text-[11px] text-emerald-200 font-mono truncate block">{email}</span>
+                      </div>
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsGoogleVerified(false);
+                        setVerifiedFirebaseUid(null);
+                        setGoogleAvatarUrl(undefined);
+                      }}
+                      className="text-[11px] font-semibold text-slate-300 hover:text-white underline shrink-0 cursor-pointer"
+                    >
+                      Use another email
+                    </button>
                   </div>
+                ) : (
+                  <div className="space-y-2.5">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-xs font-semibold text-slate-300 block mb-1">Email Address</label>
+                        <div className="relative">
+                          <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                          <input
+                            type="email"
+                            required
+                            value={email}
+                            onChange={(e) => setEmail(e.target.value)}
+                            placeholder="you@domain.ng"
+                            className="w-full min-h-[44px] bg-[#081220] border border-[#1E304F] focus:border-[#84E000] rounded-xl py-2.5 pl-10 pr-4 text-xs text-white placeholder-slate-500 focus:outline-none transition-colors"
+                          />
+                        </div>
+                      </div>
 
-                  <div>
-                    <label className="text-xs font-semibold text-slate-300 block mb-1">Password</label>
-                    <div className="relative">
-                      <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                      <input
-                        type="password"
-                        required
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        placeholder="••••••••"
-                        className="w-full bg-[#081220] border border-[#1E304F] focus:border-[#84E000] rounded-xl py-2.5 pl-10 pr-4 text-xs text-white placeholder-slate-500 focus:outline-none transition-colors"
-                      />
+                      <div>
+                        <label className="text-xs font-semibold text-slate-300 block mb-1">
+                          Password <span className="text-[10px] font-normal text-slate-400">(min 6 chars)</span>
+                        </label>
+                        <div className="relative">
+                          <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                          <input
+                            type="password"
+                            required
+                            minLength={6}
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                            placeholder="••••••"
+                            className="w-full min-h-[44px] bg-[#081220] border border-[#1E304F] focus:border-[#84E000] rounded-xl py-2.5 pl-10 pr-4 text-xs text-white placeholder-slate-500 focus:outline-none transition-colors"
+                          />
+                        </div>
+                      </div>
                     </div>
+
+                    <button
+                      type="button"
+                      disabled={isGoogleAuthenticating || isSendingCode}
+                      onClick={() => void handleGoogleQuickSignUp(2)}
+                      className="w-full min-h-[44px] py-2.5 px-4 rounded-xl bg-[#0E1B30] hover:bg-[#14233C] border border-[#23385C] text-slate-200 hover:text-white text-xs font-semibold transition-colors flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
+                    >
+                      {isGoogleAuthenticating ? (
+                        <>
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin text-[#84E000]" />
+                          <span>Connecting Google Account...</span>
+                        </>
+                      ) : (
+                        <>
+                          <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" aria-hidden="true">
+                            <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                            <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                            <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                            <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                          </svg>
+                          <span>Verify Email Instantly with Google (Skip Email Link/Code)</span>
+                        </>
+                      )}
+                    </button>
                   </div>
-                </div>
+                )}
               </div>
 
               {/* ROLE SPECIFIC FIELDS */}
@@ -2433,12 +2751,22 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
 
               {/* Email Delivery Error Banner */}
               {emailDeliveryError && (
-                <div className="p-3.5 rounded-2xl bg-red-950/70 border border-red-500/50 flex items-start gap-3 text-xs text-red-200 shadow-md">
-                  <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
-                  <div className="space-y-1">
-                    <span className="font-bold text-white block">Email Delivery Required</span>
-                    <p className="text-[11px] leading-relaxed text-red-200/90">{emailDeliveryError}</p>
+                <div className="p-3.5 rounded-2xl bg-red-950/70 border border-red-500/50 space-y-2.5 text-xs text-red-200 shadow-md">
+                  <div className="flex items-start gap-2.5">
+                    <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+                    <div className="space-y-1">
+                      <span className="font-bold text-white block">Verification Notice</span>
+                      <p className="text-[11px] leading-relaxed text-red-200/90">{emailDeliveryError}</p>
+                    </div>
                   </div>
+                  <button
+                    type="button"
+                    disabled={isGoogleAuthenticating}
+                    onClick={() => void handleGoogleQuickSignUp(2)}
+                    className="w-full min-h-[44px] py-2 px-3 rounded-xl bg-white/10 hover:bg-white/15 border border-white/20 text-white font-bold text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                  >
+                    <span>Continue &amp; Verify Instantly with Google</span>
+                  </button>
                 </div>
               )}
 
@@ -2447,21 +2775,26 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
                 <button
                   type="button"
                   onClick={() => setStep(1)}
-                  disabled={isSendingCode}
-                  className="py-3 px-5 rounded-full bg-[#14233C] hover:bg-[#1E3355] text-slate-300 font-bold text-xs transition-colors cursor-pointer disabled:opacity-50"
+                  disabled={isSendingCode || isGoogleAuthenticating}
+                  className="min-h-[44px] py-3 px-5 rounded-full bg-[#14233C] hover:bg-[#1E3355] text-slate-300 font-bold text-xs transition-colors cursor-pointer disabled:opacity-50 whitespace-nowrap shrink-0"
                 >
                   Change Role
                 </button>
 
                 <button
                   type="submit"
-                  disabled={isSendingCode}
-                  className="flex-1 py-3.5 px-6 rounded-full bg-[#84E000] hover:bg-[#75c900] disabled:opacity-70 disabled:cursor-not-allowed active:scale-[0.98] text-[#0A1322] font-black text-xs sm:text-sm tracking-wider uppercase shadow-lg shadow-[#84E000]/25 transition-all text-center flex items-center justify-center gap-2 cursor-pointer"
+                  disabled={isSendingCode || isGoogleAuthenticating}
+                  className="flex-1 min-h-[44px] py-3.5 px-6 rounded-full bg-[#84E000] hover:bg-[#75c900] disabled:opacity-70 disabled:cursor-not-allowed active:scale-[0.98] text-[#0A1322] font-black text-xs sm:text-sm tracking-wider uppercase shadow-lg shadow-[#84E000]/25 transition-all text-center flex items-center justify-center gap-2 cursor-pointer"
                 >
                   {isSendingCode ? (
                     <>
                       <RefreshCw className="w-4 h-4 stroke-[3] animate-spin" />
-                      <span>Sending Code...</span>
+                      <span>Sending Verification...</span>
+                    </>
+                  ) : isGoogleVerified ? (
+                    <>
+                      <CheckCircle2 className="w-4 h-4 stroke-[2.5]" />
+                      <span>Activate Verified Account</span>
                     </>
                   ) : (
                     <>
@@ -2475,18 +2808,20 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
             </form>
           )}
 
-          {/* STEP 3: MANDATORY EMAIL VERIFICATION */}
+          {/* STEP 3: MANDATORY EMAIL VERIFICATION (OTP OR FIREBASE LINK) */}
           {step === 3 && (
             <form onSubmit={handleVerifyAndCreateAccount} className="space-y-4">
               
-              {/* Active Role Indicator Banner with Change Role button */}
+              {/* Active Role Indicator Banner with Edit Profile button */}
               <div className="flex items-center justify-between p-3 rounded-2xl bg-[#091222] border border-[#1A2C49]">
                 <div className="flex items-center gap-2.5">
                   <div className="p-2 rounded-xl bg-[#14233C]">
                     <Mail className="w-5 h-5 text-[#84E000]" />
                   </div>
                   <div>
-                    <span className="text-[10px] text-slate-400 uppercase tracking-wider block font-semibold">Account Activation</span>
+                    <span className="text-[10px] text-slate-400 uppercase tracking-wider block font-semibold">
+                      {verificationMode === 'firebase_link' ? 'Firebase Email Verification' : 'Account Activation'}
+                    </span>
                     <span className="text-sm font-bold text-white">
                       Mandatory Email Verification
                     </span>
@@ -2495,7 +2830,7 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
                 <button
                   type="button"
                   onClick={() => setStep(2)}
-                  className="text-xs font-bold text-[#84E000] hover:underline px-2.5 py-1 rounded-lg bg-[#84E000]/10 hover:bg-[#84E000]/20 transition-all cursor-pointer"
+                  className="text-xs font-bold text-[#84E000] hover:underline px-2.5 py-1.5 rounded-lg bg-[#84E000]/10 hover:bg-[#84E000]/20 transition-all cursor-pointer whitespace-nowrap shrink-0"
                 >
                   Edit Profile
                 </button>
@@ -2509,96 +2844,190 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
                 </div>
               )}
 
-              <div className="text-center space-y-2 py-3 bg-[#081220] border border-[#1E304F] rounded-2xl p-4">
-                <div className="w-12 h-12 mx-auto rounded-2xl bg-[#14233C] border border-[#1E304F] flex items-center justify-center text-[#84E000] shadow-inner">
-                  <KeyRound className="w-6 h-6" />
-                </div>
-                <h3 className="text-base font-bold text-white">
-                  Enter 6-Digit Verification Code
-                </h3>
-                <p className="text-xs text-slate-400 max-w-sm mx-auto leading-relaxed">
-                  We sent a 6-digit verification code to{' '}
-                  <strong className="text-white font-mono break-all">{email}</strong>.
-                  All accounts must verify their email address before access is granted.
-                </p>
-              </div>
+              {verificationMode === 'firebase_link' ? (
+                <>
+                  <div className="text-center space-y-2.5 py-4 bg-[#081220] border border-[#1E304F] rounded-2xl p-5">
+                    <div className="w-12 h-12 mx-auto rounded-2xl bg-[#14233C] border border-[#1E304F] flex items-center justify-center text-[#84E000] shadow-inner">
+                      <Mail className="w-6 h-6" />
+                    </div>
+                    <h3 className="text-base font-bold text-white">
+                      Confirm Your Verification Link
+                    </h3>
+                    <p className="text-xs text-slate-300 max-w-sm mx-auto leading-relaxed">
+                      We sent a verification link via Firebase to{' '}
+                      <strong className="text-white font-mono break-all">{email}</strong>.
+                      Tap the link in your inbox or spam folder, then return here—your account will unlock automatically.
+                    </p>
+                  </div>
 
-              {/* 6-Digit Code Input Box */}
-              <div>
-                <label className="text-xs font-semibold text-slate-300 block mb-1 text-center">
-                  Verification Code
-                </label>
-                <input
-                  type="text"
-                  maxLength={6}
-                  required
-                  value={inputCode}
-                  onChange={(e) => {
-                    const val = e.target.value.replace(/\D/g, '').slice(0, 6);
-                    setInputCode(val);
-                    if (verificationError) setVerificationError(null);
-                  }}
-                  placeholder="••••••"
-                  autoFocus
-                  className="w-full text-center text-3xl font-mono tracking-[0.5em] font-black bg-[#081220] border-2 border-[#1E304F] focus:border-[#84E000] rounded-2xl py-3.5 text-white placeholder-slate-600 focus:outline-none transition-colors"
-                />
-              </div>
-
-              {verificationError && (
-                <div className="text-xs text-amber-300 bg-amber-950/70 border border-amber-800/80 p-3 rounded-xl flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 shrink-0 text-amber-400" />
-                  <span>{verificationError}</span>
-                </div>
-              )}
-
-              {/* Resend and Change Email controls */}
-              <div className="flex items-center justify-between text-xs text-slate-400 px-1 pt-1">
-                <button
-                  type="button"
-                  onClick={() => setStep(2)}
-                  className="hover:text-white transition-colors cursor-pointer text-xs underline"
-                >
-                  Change Email Address
-                </button>
-
-                <button
-                  type="button"
-                  disabled={resendTimer > 0 || isSendingCode}
-                  onClick={() => sendVerificationCode(email.trim())}
-                  className="text-[#84E000] hover:text-[#75c900] disabled:text-slate-500 font-semibold cursor-pointer disabled:cursor-not-allowed transition-colors text-xs flex items-center gap-1"
-                >
-                  {isSendingCode ? (
-                    <>
-                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                      <span>Sending...</span>
-                    </>
-                  ) : resendTimer > 0 ? (
-                    `Resend code in ${resendTimer}s`
-                  ) : (
-                    'Resend Code'
+                  {verificationError && (
+                    <div className="text-xs text-amber-300 bg-amber-950/70 border border-amber-800/80 p-3 rounded-xl flex items-start gap-2">
+                      <AlertCircle className="w-4 h-4 shrink-0 text-amber-400 mt-0.5" />
+                      <span>{verificationError}</span>
+                    </div>
                   )}
-                </button>
-              </div>
 
-              {/* Action Buttons */}
-              <div className="flex items-center gap-3 pt-3">
-                <button
-                  type="button"
-                  onClick={() => setStep(2)}
-                  className="py-3 px-5 rounded-full bg-[#14233C] hover:bg-[#1E3355] text-slate-300 font-bold text-xs transition-colors cursor-pointer"
-                >
-                  Back
-                </button>
+                  <div className="flex items-center justify-between text-xs text-slate-400 px-1 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setStep(2)}
+                      className="hover:text-white transition-colors cursor-pointer text-xs underline"
+                    >
+                      Change Email Address
+                    </button>
 
-                <button
-                  type="submit"
-                  disabled={inputCode.length !== 6}
-                  className="flex-1 py-3.5 px-6 rounded-full bg-[#84E000] hover:bg-[#75c900] disabled:opacity-50 active:scale-[0.98] text-[#0A1322] font-black text-xs sm:text-sm tracking-wider uppercase shadow-lg shadow-[#84E000]/25 transition-all text-center cursor-pointer disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                >
-                  <CheckCircle2 className="w-4 h-4" />
-                  <span>Verify Email & Activate Account</span>
-                </button>
-              </div>
+                    <button
+                      type="button"
+                      disabled={resendTimer > 0 || isSendingCode}
+                      onClick={() => void handleResendVerification()}
+                      className="text-[#84E000] hover:text-[#75c900] disabled:text-slate-500 font-semibold cursor-pointer disabled:cursor-not-allowed transition-colors text-xs flex items-center gap-1 tabular-nums"
+                    >
+                      {isSendingCode ? (
+                        <>
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                          <span>Sending...</span>
+                        </>
+                      ) : resendTimer > 0 ? (
+                        `Resend link in ${resendTimer}s`
+                      ) : (
+                        'Resend Verification Link'
+                      )}
+                    </button>
+                  </div>
+
+                  <div className="space-y-2.5 pt-2">
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setStep(2)}
+                        className="min-h-[44px] py-3 px-5 rounded-full bg-[#14233C] hover:bg-[#1E3355] text-slate-300 font-bold text-xs transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                      >
+                        Back
+                      </button>
+
+                      <button
+                        type="submit"
+                        disabled={isCheckingFirebaseLink}
+                        className="flex-1 min-h-[44px] py-3.5 px-6 rounded-full bg-[#84E000] hover:bg-[#75c900] disabled:opacity-60 active:scale-[0.98] text-[#0A1322] font-black text-xs sm:text-sm tracking-wider uppercase shadow-lg shadow-[#84E000]/25 transition-all text-center cursor-pointer flex items-center justify-center gap-2"
+                      >
+                        {isCheckingFirebaseLink ? (
+                          <>
+                            <RefreshCw className="w-4 h-4 animate-spin" />
+                            <span>Checking Verification...</span>
+                          </>
+                        ) : (
+                          <>
+                            <CheckCircle2 className="w-4 h-4" />
+                            <span>I&apos;ve Verified My Email</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={isGoogleAuthenticating}
+                      onClick={() => void handleGoogleQuickSignUp(3)}
+                      className="w-full min-h-[44px] py-2.5 px-4 rounded-full bg-[#0E1B30] hover:bg-[#14233C] border border-[#23385C] text-slate-200 hover:text-white text-xs font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                    >
+                      <span>Verify Instantly with Google Instead</span>
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="text-center space-y-2 py-3 bg-[#081220] border border-[#1E304F] rounded-2xl p-4">
+                    <div className="w-12 h-12 mx-auto rounded-2xl bg-[#14233C] border border-[#1E304F] flex items-center justify-center text-[#84E000] shadow-inner">
+                      <KeyRound className="w-6 h-6" />
+                    </div>
+                    <h3 className="text-base font-bold text-white">
+                      Enter 6-Digit Verification Code
+                    </h3>
+                    <p className="text-xs text-slate-400 max-w-sm mx-auto leading-relaxed">
+                      We sent a 6-digit verification code to{' '}
+                      <strong className="text-white font-mono break-all">{email}</strong>.
+                      All accounts must verify their email address before access is granted.
+                    </p>
+                  </div>
+
+                  {/* 6-Digit Code Input Box */}
+                  <div>
+                    <label className="text-xs font-semibold text-slate-300 block mb-1 text-center">
+                      Verification Code
+                    </label>
+                    <input
+                      type="text"
+                      maxLength={6}
+                      required
+                      value={inputCode}
+                      onChange={(e) => {
+                        const val = e.target.value.replace(/\D/g, '').slice(0, 6);
+                        setInputCode(val);
+                        if (verificationError) setVerificationError(null);
+                      }}
+                      placeholder="••••••"
+                      autoFocus
+                      className="w-full text-center text-3xl font-mono tracking-[0.5em] font-black bg-[#081220] border-2 border-[#1E304F] focus:border-[#84E000] rounded-2xl py-3.5 text-white placeholder-slate-600 focus:outline-none transition-colors tabular-nums"
+                    />
+                  </div>
+
+                  {verificationError && (
+                    <div className="text-xs text-amber-300 bg-amber-950/70 border border-amber-800/80 p-3 rounded-xl flex items-center gap-2">
+                      <AlertCircle className="w-4 h-4 shrink-0 text-amber-400" />
+                      <span>{verificationError}</span>
+                    </div>
+                  )}
+
+                  {/* Resend and Change Email controls */}
+                  <div className="flex items-center justify-between text-xs text-slate-400 px-1 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setStep(2)}
+                      className="hover:text-white transition-colors cursor-pointer text-xs underline"
+                    >
+                      Change Email Address
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={resendTimer > 0 || isSendingCode}
+                      onClick={() => void handleResendVerification()}
+                      className="text-[#84E000] hover:text-[#75c900] disabled:text-slate-500 font-semibold cursor-pointer disabled:cursor-not-allowed transition-colors text-xs flex items-center gap-1 tabular-nums"
+                    >
+                      {isSendingCode ? (
+                        <>
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                          <span>Sending...</span>
+                        </>
+                      ) : resendTimer > 0 ? (
+                        `Resend code in ${resendTimer}s`
+                      ) : (
+                        'Resend Code'
+                      )}
+                    </button>
+                  </div>
+
+                  {/* Action Buttons */}
+                  <div className="flex items-center gap-3 pt-3">
+                    <button
+                      type="button"
+                      onClick={() => setStep(2)}
+                      className="min-h-[44px] py-3 px-5 rounded-full bg-[#14233C] hover:bg-[#1E3355] text-slate-300 font-bold text-xs transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                    >
+                      Back
+                    </button>
+
+                    <button
+                      type="submit"
+                      disabled={inputCode.length !== 6}
+                      className="flex-1 min-h-[44px] py-3.5 px-6 rounded-full bg-[#84E000] hover:bg-[#75c900] disabled:opacity-50 active:scale-[0.98] text-[#0A1322] font-black text-xs sm:text-sm tracking-wider uppercase shadow-lg shadow-[#84E000]/25 transition-all text-center cursor-pointer disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    >
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>Verify Email &amp; Activate Account</span>
+                    </button>
+                  </div>
+                </>
+              )}
             </form>
           )}
 
