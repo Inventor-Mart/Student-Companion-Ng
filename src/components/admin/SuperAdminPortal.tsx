@@ -82,7 +82,8 @@ export const SuperAdminPortal: React.FC = () => {
     adminLessonNotes,
     isSyncingDirectory,
     directorySyncStats,
-    syncUserDirectoryFromCloud
+    syncUserDirectoryFromCloud,
+    loginWithGoogle
   } = useApp();
 
   const [portalView, setPortalView] = useState<'directory' | 'school_admin' | 'forum_moderation' | 'ota_competitions' | 'lesson_notes' | 'class_directory' | 'past_questions' | 'security_trust' | 'aspirant_rewards'>(() => {
@@ -98,7 +99,12 @@ export const SuperAdminPortal: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedUserForEdit, setSelectedUserForEdit] = useState<RegisteredUserProfile | null>(null);
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
-  const [directoryNotice, setDirectoryNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [directoryNotice, setDirectoryNotice] = useState<{
+    type: 'success' | 'error';
+    text: string;
+    needsGoogleAuth?: boolean;
+  } | null>(null);
+  const [isUnlockingCloudAuth, setIsUnlockingCloudAuth] = useState<boolean>(false);
   const [actingUserId, setActingUserId] = useState<string | null>(null);
   const [isPurgingTestAccounts, setIsPurgingTestAccounts] = useState<boolean>(false);
   const [isPurgingSimSubs, setIsPurgingSimSubs] = useState<boolean>(false);
@@ -209,6 +215,47 @@ export const SuperAdminPortal: React.FC = () => {
     didAutoSyncDirectoryRef.current = true;
     void syncUserDirectoryFromCloud({ silent: true });
   }, [portalView, isSuperAdmin, syncUserDirectoryFromCloud]);
+
+  const handleUnlockCloudSyncWithGoogle = async () => {
+    setIsUnlockingCloudAuth(true);
+    setDirectoryNotice(null);
+    try {
+      const authRes: any = await loginWithGoogle({
+        skipNavigate: true,
+        returnTarget: 'super_admin'
+      });
+      if (authRes?.redirecting) {
+        return;
+      }
+      if (!authRes?.success) {
+        setDirectoryNotice({
+          type: 'error',
+          text: authRes?.error || 'Google Sign-In was not completed. Please sign in with your Super Admin Google account.',
+          needsGoogleAuth: true
+        });
+        return;
+      }
+      const syncRes = await syncUserDirectoryFromCloud({
+        silent: false,
+        adminEmailOverride: authRes?.profile?.email || authorizedAdminEmail
+      });
+      setDirectoryNotice({
+        type: syncRes.success ? 'success' : 'error',
+        text: syncRes.success
+          ? syncRes.message || `Directory synced across backend, Firestore, and legacy registries (${syncRes.totalUsers} total account(s)).`
+          : syncRes.error || 'Directory sync completed with partial restrictions.',
+        needsGoogleAuth: Boolean(syncRes.needsGoogleAuth && !syncRes.success)
+      });
+    } catch (err: any) {
+      setDirectoryNotice({
+        type: 'error',
+        text: err?.message || 'Unable to verify Google Admin session.',
+        needsGoogleAuth: true
+      });
+    } finally {
+      setIsUnlockingCloudAuth(false);
+    }
+  };
 
   React.useEffect(() => {
     void fetchAspirantRewards();
@@ -2215,7 +2262,8 @@ export const SuperAdminPortal: React.FC = () => {
                   type: res.success ? 'success' : 'error',
                   text: res.success
                     ? res.message || `Directory synced across backend, Firestore, and legacy registries (${res.totalUsers} total account(s)).`
-                    : res.error || 'Directory sync completed with partial restrictions.'
+                    : res.error || 'Directory sync completed with partial restrictions.',
+                  needsGoogleAuth: Boolean(res.needsGoogleAuth && !res.success)
                 });
               }}
               className="px-3 py-1.5 rounded-xl bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-700/70 text-emerald-200 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50 whitespace-nowrap"
@@ -2308,9 +2356,24 @@ export const SuperAdminPortal: React.FC = () => {
               )}
             </div>
             {!directorySyncStats.firestoreAdminReady && (
-              <span className="text-[11px] text-amber-300">
-                Sign in with Google as Super Admin to query and backfill Firestore users directly.
-              </span>
+              <div className="flex flex-wrap items-center justify-between gap-2.5 pt-1 sm:pt-0">
+                <span className="text-[11px] text-amber-300 leading-snug">
+                  Sign in with Google as Super Admin to query and backfill Firestore users directly.
+                </span>
+                <button
+                  type="button"
+                  disabled={isUnlockingCloudAuth || isSyncingDirectory}
+                  onClick={() => void handleUnlockCloudSyncWithGoogle()}
+                  className="px-3 py-1.5 min-h-[36px] rounded-xl bg-white hover:bg-slate-100 text-slate-950 text-[11px] font-bold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50 whitespace-nowrap shrink-0 shadow-sm"
+                >
+                  {isUnlockingCloudAuth ? (
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin text-slate-700" />
+                  ) : (
+                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-700" />
+                  )}
+                  <span>{isUnlockingCloudAuth ? 'Unlocking...' : 'Continue with Google'}</span>
+                </button>
+              </div>
             )}
           </div>
         )}
@@ -2359,27 +2422,47 @@ export const SuperAdminPortal: React.FC = () => {
 
         {directoryNotice && (
           <div
-            className={`px-3.5 py-2.5 rounded-xl border text-xs flex items-center justify-between gap-2 ${
+            className={`px-3.5 py-2.5 rounded-xl border text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 ${
               directoryNotice.type === 'success'
                 ? 'bg-emerald-950/70 border-emerald-700 text-emerald-200'
                 : 'bg-rose-950/70 border-rose-700 text-rose-200'
             }`}
           >
-            <div className="flex items-center gap-2">
+            <div className="flex items-start sm:items-center gap-2 min-w-0">
               {directoryNotice.type === 'success' ? (
-                <CheckCircle2 className="w-4 h-4 text-[#84E000] shrink-0" />
+                <CheckCircle2 className="w-4 h-4 text-[#84E000] shrink-0 mt-0.5 sm:mt-0" />
               ) : (
-                <XCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                <XCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5 sm:mt-0" />
               )}
-              <span>{directoryNotice.text}</span>
+              <span className="break-words">{directoryNotice.text}</span>
             </div>
-            <button
-              type="button"
-              onClick={() => setDirectoryNotice(null)}
-              className="text-slate-400 hover:text-white text-[11px] cursor-pointer"
-            >
-              Dismiss
-            </button>
+            <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+              {directoryNotice.type === 'error' &&
+                (directoryNotice.needsGoogleAuth ||
+                  directoryNotice.text.includes('403') ||
+                  directoryNotice.text.toLowerCase().includes('google')) && (
+                  <button
+                    type="button"
+                    disabled={isUnlockingCloudAuth || isSyncingDirectory}
+                    onClick={() => void handleUnlockCloudSyncWithGoogle()}
+                    className="px-3 py-1.5 min-h-[36px] rounded-lg bg-white hover:bg-slate-100 text-slate-950 text-[11px] font-bold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50 whitespace-nowrap shrink-0"
+                  >
+                    {isUnlockingCloudAuth ? (
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin text-slate-700" />
+                    ) : (
+                      <ShieldCheck className="w-3.5 h-3.5 text-emerald-700" />
+                    )}
+                    <span>{isUnlockingCloudAuth ? 'Unlocking...' : 'Continue with Google'}</span>
+                  </button>
+                )}
+              <button
+                type="button"
+                onClick={() => setDirectoryNotice(null)}
+                className="text-slate-400 hover:text-white text-[11px] cursor-pointer px-1.5 py-1"
+              >
+                Dismiss
+              </button>
+            </div>
           </div>
         )}
 

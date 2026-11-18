@@ -434,6 +434,7 @@ interface AppContextType {
     firestoreCount: number;
     recoveredCount: number;
     backfilledToFirestoreCount: number;
+    needsGoogleAuth?: boolean;
     message?: string;
     error?: string;
   }>;
@@ -1694,6 +1695,84 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       safeSetItem('sc_user_profile', JSON.stringify(currentUserProfile));
     }
   }, [currentUserProfile]);
+
+  const syncedStartupProfileKeyRef = React.useRef<string | null>(null);
+  const checkedStartupFirestoreUidRef = React.useRef<string | null>(null);
+  useEffect(() => {
+    if (isOffline || !currentUserProfile) return;
+    if (isPurgedRecord(currentUserProfile) || currentUserProfile.accountStatus === 'deleted') return;
+    if (isSuperAdminEmail(currentUserProfile.email)) return;
+
+    const studentSnapshot =
+      currentUserProfile.role === 'student'
+        ? {
+            ...(currentUserProfile.studentData || INITIAL_EMPTY_STUDENT),
+            ...student,
+            id: currentUserProfile.id,
+            name: student.name || currentUserProfile.fullName
+          }
+        : currentUserProfile.studentData;
+
+    const syncKey = [
+      currentUserProfile.id,
+      currentUserProfile.email,
+      currentUserProfile.role,
+      studentSnapshot?.studentLinkCode || '',
+      studentSnapshot?.schoolCode || '',
+      studentSnapshot?.subscriptionTier || '',
+      Number(studentSnapshot?.xp || 0),
+      currentUserProfile.adminData?.schoolCode || '',
+      currentUserProfile.growthPartnerData?.referralCode || ''
+    ].join('|');
+
+    if (syncedStartupProfileKeyRef.current === syncKey) return;
+    syncedStartupProfileKeyRef.current = syncKey;
+
+    const profileSnapshot: RegisteredUserProfile = {
+      ...currentUserProfile,
+      studentData: studentSnapshot
+    };
+
+    void fetch('/api/users/sync-profile', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getSecurityHeaders({
+          userId: profileSnapshot.id,
+          userEmail: profileSnapshot.email
+        })
+      },
+      body: JSON.stringify({ profile: profileSnapshot })
+    }).catch(() => {});
+
+    const fbUser = auth.currentUser;
+    if (
+      isFirebaseConnected &&
+      fbUser &&
+      fbUser.uid === currentUserProfile.id &&
+      checkedStartupFirestoreUidRef.current !== fbUser.uid
+    ) {
+      checkedStartupFirestoreUidRef.current = fbUser.uid;
+      const userDocRef = doc(db, 'users', fbUser.uid);
+      void getDoc(userDocRef)
+        .then(snap => {
+          if (!snap.exists()) {
+            const createPayload = sanitizeUserAccountForFirestore({
+              ...profileSnapshot,
+              id: fbUser.uid,
+              role: profileSnapshot.role === 'admin' ? 'student' : profileSnapshot.role,
+              isSuperAdmin: false,
+              isDeveloper: false,
+              accountStatus: 'active',
+              walletFrozen: false
+            });
+            return setDoc(userDocRef, createPayload);
+          }
+          return undefined;
+        })
+        .catch(() => {});
+    }
+  }, [isOffline, isFirebaseConnected, currentUserProfile, student]);
 
   const authoritativeStudentOverlayRef = React.useRef<Partial<StudentProfile> | null>(null);
   const authoritativeWalletOverlayRef = React.useRef<{
@@ -7373,6 +7452,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     let recoveredRegistryUsers: RegisteredUserProfile[] = [];
     let backfilledToFirestoreCount = 0;
     let syncErrorMsg: string | undefined;
+    let needsGoogleAuth = false;
 
     const firestoreAdminReady = Boolean(
       !isOffline &&
@@ -7381,6 +7461,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       auth.currentUser.emailVerified &&
       isSuperAdminEmail(auth.currentUser.email)
     );
+
+    if (!firestoreAdminReady) {
+      needsGoogleAuth = true;
+    }
 
     try {
       const authHeaders = await getFirebaseAuthHeaders().catch(() => ({}));
@@ -7400,6 +7484,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (res.ok && data?.success && Array.isArray(data.users)) {
         backendUsers = (data.users as RegisteredUserProfile[]).filter(u => !isPurgedRecord(u));
         backendRecoveredCount = Number(data?.stats?.recoveredFromRegistries || 0);
+      } else if (res.status === 401 || res.status === 403) {
+        needsGoogleAuth = true;
+        if (!options?.silent) {
+          syncErrorMsg =
+            'Cloud admin session not verified yet. Tap "Continue with Google" to unlock Backend & Firestore directory sync.';
+        }
       } else if (!options?.silent && !res.ok) {
         syncErrorMsg = data?.error || `Backend directory sync returned HTTP ${res.status}.`;
       }
@@ -7673,6 +7763,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       firestoreCount: firestoreUsers.length,
       recoveredCount,
       backfilledToFirestoreCount,
+      needsGoogleAuth,
       message: `Directory synced across backend, Firestore, and legacy registries (${mergedAll.length} total account(s)).`,
       error: syncErrorMsg
     };

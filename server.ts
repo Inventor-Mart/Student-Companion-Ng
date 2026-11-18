@@ -5265,6 +5265,495 @@ async function runGit(
   }
 }
 
+function isGitEnoentError(err: any): boolean {
+  if (!err) return false;
+  const code = String(err?.code || '').toUpperCase();
+  const msg = String(err?.message || err?.stderr || '').toLowerCase();
+  return (
+    code === 'ENOENT' ||
+    msg.includes('spawn git enoent') ||
+    msg.includes('git: not found') ||
+    msg.includes('enoent')
+  );
+}
+
+let cachedGitCliAvailable: boolean | null = null;
+async function checkGitCliAvailable(): Promise<boolean> {
+  if (cachedGitCliAvailable !== null) return cachedGitCliAvailable;
+  try {
+    await execFileAsync('git', ['--version'], {
+      cwd: __dirname,
+      env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+      timeout: 5000,
+    });
+    cachedGitCliAvailable = true;
+  } catch (err: any) {
+    if (isGitEnoentError(err)) {
+      cachedGitCliAvailable = false;
+    } else {
+      cachedGitCliAvailable = false;
+    }
+  }
+  return cachedGitCliAvailable;
+}
+
+function computeGitBlobSha(buf: Buffer): string {
+  return crypto
+    .createHash('sha1')
+    .update(`blob ${buf.length}\0`)
+    .update(buf)
+    .digest('hex');
+}
+
+function shouldIgnoreWorkspacePath(relPath: string, isDir: boolean): boolean {
+  const norm = relPath.replace(/\\/g, '/').replace(/^\/+/, '');
+  if (!norm) return false;
+  const baseName = path.posix.basename(norm);
+
+  const exactDirExcludes = new Set([
+    '.git',
+    'node_modules',
+    'dist',
+    'build',
+    'coverage',
+    '.aistudio',
+    '.gmp_cache',
+    'tmp',
+    '.cache',
+  ]);
+
+  const segments = norm.split('/');
+  if (segments.some((seg) => exactDirExcludes.has(seg))) return true;
+
+  if (
+    norm === 'public/assets/aistudio' ||
+    norm.startsWith('public/assets/aistudio/') ||
+    norm === 'android-project/app/src/main/assets/www' ||
+    norm.startsWith('android-project/app/src/main/assets/www/') ||
+    norm === 'android-project/app/build' ||
+    norm.startsWith('android-project/app/build/') ||
+    norm === 'android-project/.gradle' ||
+    norm.startsWith('android-project/.gradle/') ||
+    norm === 'android-project/build' ||
+    norm.startsWith('android-project/build/')
+  ) {
+    return true;
+  }
+
+  if (isDir) return false;
+
+  if (
+    baseName === '.DS_Store' ||
+    baseName.endsWith('.log') ||
+    baseName === '.ota-runtime-state.json' ||
+    baseName === '.paystack-runtime-config.json'
+  ) {
+    return true;
+  }
+
+  if (baseName.startsWith('.env') && baseName !== '.env.example') {
+    return true;
+  }
+
+  return false;
+}
+
+interface WorkspaceGitFile {
+  path: string;
+  absPath: string;
+  sha: string;
+  size: number;
+  mode: '100644' | '100755';
+  content: Buffer;
+}
+
+function collectWorkspaceGitFiles(rootDir: string): WorkspaceGitFile[] {
+  const results: WorkspaceGitFile[] = [];
+
+  const walk = (dirPath: string, relPrefix: string) => {
+    let entries: fs.Dirent[] = [];
+    try {
+      entries = fs.readdirSync(dirPath, { withFileTypes: true });
+    } catch {
+      return;
+    }
+
+    for (const entry of entries) {
+      const rel = relPrefix ? `${relPrefix}/${entry.name}` : entry.name;
+      const abs = path.join(dirPath, entry.name);
+      if (entry.isSymbolicLink()) continue;
+
+      if (entry.isDirectory()) {
+        if (shouldIgnoreWorkspacePath(rel, true)) continue;
+        walk(abs, rel);
+      } else if (entry.isFile()) {
+        if (shouldIgnoreWorkspacePath(rel, false)) continue;
+        try {
+          const stat = fs.statSync(abs);
+          // Skip unusually huge binary artifacts (> 25 MB)
+          if (stat.size > 25 * 1024 * 1024) continue;
+          const content = fs.readFileSync(abs);
+          const isExec = (stat.mode & 0o111) !== 0 && !rel.endsWith('.ts') && !rel.endsWith('.tsx') && !rel.endsWith('.json') && !rel.endsWith('.md');
+          results.push({
+            path: rel,
+            absPath: abs,
+            sha: computeGitBlobSha(content),
+            size: content.length,
+            mode: isExec ? '100755' : '100644',
+            content,
+          });
+        } catch {
+          // Skip unreadable files
+        }
+      }
+    }
+  };
+
+  walk(rootDir, '');
+  return results;
+}
+
+async function githubRestRequest(
+  endpoint: string,
+  token: string,
+  options?: { method?: string; body?: any; timeoutMs?: number }
+): Promise<{ status: number; ok: boolean; data: any }> {
+  const headers: Record<string, string> = {
+    Accept: 'application/vnd.github+json',
+    'User-Agent': 'Student-Companion-Ng-Sync',
+  };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  if (options?.body !== undefined) headers['Content-Type'] = 'application/json';
+
+  const url = endpoint.startsWith('http')
+    ? endpoint
+    : `https://api.github.com/repos/${TARGET_GITHUB_OWNER}/${TARGET_GITHUB_REPO}${endpoint}`;
+
+  const res = await fetch(url, {
+    method: options?.method || 'GET',
+    headers,
+    body: options?.body !== undefined ? JSON.stringify(options.body) : undefined,
+    signal: AbortSignal.timeout(options?.timeoutMs ?? 25000),
+  });
+
+  const text = await res.text().catch(() => '');
+  let data: any = {};
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    data = { message: text };
+  }
+  return { status: res.status, ok: res.ok, data };
+}
+
+async function fetchRemoteBranchTreeViaRest(token: string): Promise<{
+  emptyRepo: boolean;
+  remoteCommitSha: string | null;
+  remoteTreeSha: string | null;
+  remoteBlobs: Map<string, { sha: string; mode: string }>;
+  recentCommits: Array<{ sha: string; subject: string; author: string; date: string }>;
+  error?: string;
+}> {
+  const remoteBlobs = new Map<string, { sha: string; mode: string }>();
+  let recentCommits: Array<{ sha: string; subject: string; author: string; date: string }> = [];
+
+  const branchRes = await githubRestRequest(`/branches/${TARGET_GITHUB_BRANCH}`, token);
+  if (branchRes.status === 404 || branchRes.status === 409) {
+    return { emptyRepo: true, remoteCommitSha: null, remoteTreeSha: null, remoteBlobs, recentCommits };
+  }
+  if (!branchRes.ok) {
+    return {
+      emptyRepo: false,
+      remoteCommitSha: null,
+      remoteTreeSha: null,
+      remoteBlobs,
+      recentCommits,
+      error: scrubGitToken(
+        String(branchRes.data?.message || `GitHub API returned HTTP ${branchRes.status} loading branch ${TARGET_GITHUB_BRANCH}.`),
+        token
+      ),
+    };
+  }
+
+  const remoteCommitSha = String(branchRes.data?.commit?.sha || '') || null;
+  const remoteTreeSha = String(branchRes.data?.commit?.commit?.tree?.sha || '') || null;
+
+  if (remoteTreeSha) {
+    const treeRes = await githubRestRequest(`/git/trees/${remoteTreeSha}?recursive=1`, token);
+    if (treeRes.ok && Array.isArray(treeRes.data?.tree)) {
+      for (const item of treeRes.data.tree) {
+        if (item?.type === 'blob' && typeof item?.path === 'string' && typeof item?.sha === 'string') {
+          remoteBlobs.set(item.path, { sha: item.sha, mode: String(item.mode || '100644') });
+        }
+      }
+    }
+  }
+
+  const commitsRes = await githubRestRequest(`/commits?sha=${TARGET_GITHUB_BRANCH}&per_page=8`, token);
+  if (commitsRes.ok && Array.isArray(commitsRes.data)) {
+    recentCommits = commitsRes.data.map((c: any) => ({
+      sha: String(c?.sha || '').slice(0, 7),
+      subject: String(c?.commit?.message || '(no message)').split(/\r?\n/)[0].slice(0, 120),
+      author: String(c?.commit?.author?.name || c?.author?.login || 'GitHub'),
+      date: String(c?.commit?.author?.date || '').slice(0, 10),
+    }));
+  }
+
+  return {
+    emptyRepo: !remoteCommitSha,
+    remoteCommitSha,
+    remoteTreeSha,
+    remoteBlobs,
+    recentCommits,
+  };
+}
+
+async function pushWorkspaceViaGithubRest(params: {
+  token: string;
+  adminEmail: string;
+  commitMessage: string;
+}): Promise<{
+  status: number;
+  body: Record<string, any>;
+}> {
+  const { token, adminEmail, commitMessage } = params;
+  const remoteInfo = await fetchRemoteBranchTreeViaRest(token);
+  if (remoteInfo.error) {
+    return { status: 502, body: { success: false, error: remoteInfo.error } };
+  }
+
+  const localFiles = collectWorkspaceGitFiles(__dirname);
+  const changedFiles = localFiles.filter((f) => {
+    const existing = remoteInfo.remoteBlobs.get(f.path);
+    return !existing || existing.sha !== f.sha;
+  });
+
+  if (changedFiles.length === 0 && remoteInfo.remoteCommitSha) {
+    const shortSha = remoteInfo.remoteCommitSha.slice(0, 7);
+    return {
+      status: 200,
+      body: {
+        success: true,
+        transport: 'github_rest_api',
+        repo: `${TARGET_GITHUB_OWNER}/${TARGET_GITHUB_REPO}`,
+        branch: TARGET_GITHUB_BRANCH,
+        pushedCommits: 0,
+        latestCommit: shortSha,
+        message: `${TARGET_GITHUB_OWNER}/${TARGET_GITHUB_REPO} (${TARGET_GITHUB_BRANCH}) is already up to date (${shortSha}).`,
+      },
+    };
+  }
+
+  const uploadedTreeItems: Array<{ path: string; mode: string; type: 'blob'; sha: string }> = [];
+  const BATCH_SIZE = 6;
+
+  for (let i = 0; i < changedFiles.length; i += BATCH_SIZE) {
+    const batch = changedFiles.slice(i, i + BATCH_SIZE);
+    const batchResults = await Promise.all(
+      batch.map(async (file) => {
+        const blobRes = await githubRestRequest('/git/blobs', token, {
+          method: 'POST',
+          body: {
+            content: file.content.toString('base64'),
+            encoding: 'base64',
+          },
+          timeoutMs: 30000,
+        });
+        if (!blobRes.ok || !blobRes.data?.sha) {
+          throw new Error(
+            String(blobRes.data?.message || `Failed to upload ${file.path} (HTTP ${blobRes.status})`)
+          );
+        }
+        return {
+          path: file.path,
+          mode: file.mode,
+          type: 'blob' as const,
+          sha: String(blobRes.data.sha),
+        };
+      })
+    );
+    uploadedTreeItems.push(...batchResults);
+  }
+
+  const treePayload: Record<string, any> = {
+    tree: uploadedTreeItems,
+  };
+  if (remoteInfo.remoteTreeSha) {
+    treePayload.base_tree = remoteInfo.remoteTreeSha;
+  }
+
+  const treeRes = await githubRestRequest('/git/trees', token, {
+    method: 'POST',
+    body: treePayload,
+    timeoutMs: 30000,
+  });
+  if (!treeRes.ok || !treeRes.data?.sha) {
+    return {
+      status: treeRes.status === 403 ? 403 : 502,
+      body: {
+        success: false,
+        error: scrubGitToken(
+          String(treeRes.data?.message || 'GitHub REST API failed creating tree.'),
+          token
+        ),
+      },
+    };
+  }
+
+  const authorEmail =
+    adminEmail && AUTHORIZED_GIT_ADMINS.includes(adminEmail.toLowerCase().trim())
+      ? adminEmail.toLowerCase().trim()
+      : 'martorefe@gmail.com';
+
+  const commitRes = await githubRestRequest('/git/commits', token, {
+    method: 'POST',
+    body: {
+      message: commitMessage,
+      tree: String(treeRes.data.sha),
+      parents: remoteInfo.remoteCommitSha ? [remoteInfo.remoteCommitSha] : [],
+      author: {
+        name: 'Martin Omorefe',
+        email: authorEmail,
+        date: new Date().toISOString(),
+      },
+    },
+    timeoutMs: 30000,
+  });
+  if (!commitRes.ok || !commitRes.data?.sha) {
+    return {
+      status: commitRes.status === 403 ? 403 : 502,
+      body: {
+        success: false,
+        error: scrubGitToken(
+          String(commitRes.data?.message || 'GitHub REST API failed creating commit.'),
+          token
+        ),
+      },
+    };
+  }
+
+  const newCommitSha = String(commitRes.data.sha);
+  const refUpdateRes = remoteInfo.remoteCommitSha
+    ? await githubRestRequest(`/git/refs/heads/${TARGET_GITHUB_BRANCH}`, token, {
+        method: 'PATCH',
+        body: { sha: newCommitSha, force: false },
+      })
+    : await githubRestRequest('/git/refs', token, {
+        method: 'POST',
+        body: { ref: `refs/heads/${TARGET_GITHUB_BRANCH}`, sha: newCommitSha },
+      });
+
+  if (!refUpdateRes.ok) {
+    const rawMsg = String(refUpdateRes.data?.message || `Failed to update refs/heads/${TARGET_GITHUB_BRANCH}`);
+    if (
+      rawMsg.toLowerCase().includes('workflow') &&
+      (rawMsg.toLowerCase().includes('scope') || rawMsg.toLowerCase().includes('refusing'))
+    ) {
+      return {
+        status: 403,
+        body: {
+          success: false,
+          error:
+            'GitHub rejected updating .github/workflows/ because GITHUB_TOKEN lacks the "workflow" scope. Update GITHUB_TOKEN permissions in Secrets and retry.',
+        },
+      };
+    }
+    return {
+      status: refUpdateRes.status === 403 ? 403 : 502,
+      body: { success: false, error: scrubGitToken(rawMsg, token) },
+    };
+  }
+
+  const shortSha = newCommitSha.slice(0, 7);
+  return {
+    status: 200,
+    body: {
+      success: true,
+      transport: 'github_rest_api',
+      autoInitialized: true,
+      repo: `${TARGET_GITHUB_OWNER}/${TARGET_GITHUB_REPO}`,
+      branch: TARGET_GITHUB_BRANCH,
+      pushedCommits: 1,
+      uploadedFiles: uploadedTreeItems.length,
+      latestCommit: shortSha,
+      message: `Successfully synced ${uploadedTreeItems.length} file(s) to ${TARGET_GITHUB_OWNER}/${TARGET_GITHUB_REPO} (${TARGET_GITHUB_BRANCH}) · HEAD ${shortSha}.`,
+    },
+  };
+}
+
+async function pullWorkspaceViaGithubRest(token: string): Promise<{
+  status: number;
+  body: Record<string, any>;
+}> {
+  const remoteInfo = await fetchRemoteBranchTreeViaRest(token);
+  if (remoteInfo.error) {
+    return { status: 502, body: { success: false, error: remoteInfo.error } };
+  }
+  if (!remoteInfo.remoteCommitSha) {
+    return {
+      status: 200,
+      body: {
+        success: true,
+        pulledCommits: 0,
+        updatedFilesCount: 0,
+        latestCommit: 'unborn',
+        message: `${TARGET_GITHUB_OWNER}/${TARGET_GITHUB_REPO} (${TARGET_GITHUB_BRANCH}) has no commits to pull yet.`,
+      },
+    };
+  }
+
+  const localFiles = collectWorkspaceGitFiles(__dirname);
+  const localShaMap = new Map(localFiles.map((f) => [f.path, f.sha]));
+  const filesToPull: Array<{ path: string; sha: string }> = [];
+
+  for (const [remotePath, meta] of remoteInfo.remoteBlobs.entries()) {
+    if (shouldIgnoreWorkspacePath(remotePath, false)) continue;
+    if (localShaMap.get(remotePath) !== meta.sha) {
+      filesToPull.push({ path: remotePath, sha: meta.sha });
+    }
+  }
+
+  let updatedFilesCount = 0;
+  const BATCH_SIZE = 6;
+  const rootResolved = path.resolve(__dirname);
+
+  for (let i = 0; i < filesToPull.length; i += BATCH_SIZE) {
+    const batch = filesToPull.slice(i, i + BATCH_SIZE);
+    await Promise.all(
+      batch.map(async (item) => {
+        const destAbs = path.resolve(__dirname, item.path);
+        if (!destAbs.startsWith(rootResolved + path.sep)) return;
+        const blobRes = await githubRestRequest(`/git/blobs/${item.sha}`, token, { timeoutMs: 25000 });
+        if (blobRes.ok && typeof blobRes.data?.content === 'string') {
+          const encoding = blobRes.data.encoding === 'base64' ? 'base64' : 'utf8';
+          const buf = Buffer.from(blobRes.data.content.replace(/\n/g, ''), encoding);
+          fs.mkdirSync(path.dirname(destAbs), { recursive: true });
+          fs.writeFileSync(destAbs, buf);
+          updatedFilesCount += 1;
+        }
+      })
+    );
+  }
+
+  const shortSha = remoteInfo.remoteCommitSha.slice(0, 7);
+  return {
+    status: 200,
+    body: {
+      success: true,
+      transport: 'github_rest_api',
+      repo: `${TARGET_GITHUB_OWNER}/${TARGET_GITHUB_REPO}`,
+      branch: TARGET_GITHUB_BRANCH,
+      pulledCommits: updatedFilesCount > 0 ? 1 : 0,
+      updatedFilesCount,
+      latestCommit: shortSha,
+      message:
+        updatedFilesCount > 0
+          ? `Pulled ${updatedFilesCount} updated file(s) from ${TARGET_GITHUB_OWNER}/${TARGET_GITHUB_REPO} (${TARGET_GITHUB_BRANCH}) · HEAD ${shortSha}.`
+          : `Workspace is already up to date with GitHub ${TARGET_GITHUB_BRANCH} (${shortSha}).`,
+    },
+  };
+}
+
 async function fetchRemoteMainRef(token: string): Promise<{
   remoteSha: string | null;
   emptyRepo: boolean;
@@ -6091,6 +6580,56 @@ app.get('/api/git/status', async (req, res) => {
   let lastError: string | undefined;
 
   const tokenCheckPromise = verifyGithubTokenAccess(token);
+  const gitCliAvailable = await checkGitCliAvailable();
+
+  if (!gitCliAvailable) {
+    const tokenCheck = await tokenCheckPromise;
+    let uncommittedCount = 0;
+    let hasUncommitted = false;
+    let remoteLatestCommit = tokenCheck.remoteLatestCommit;
+    let incomingCommits: Array<{ sha: string; subject: string; author: string; date: string }> = [];
+
+    try {
+      const remoteInfo = await fetchRemoteBranchTreeViaRest(token);
+      if (remoteInfo.error) {
+        lastError = remoteInfo.error;
+      } else {
+        if (remoteInfo.remoteCommitSha) {
+          remoteLatestCommit = remoteInfo.remoteCommitSha.slice(0, 7);
+        }
+        incomingCommits = remoteInfo.recentCommits;
+        const localFiles = collectWorkspaceGitFiles(__dirname);
+        uncommittedCount = localFiles.filter((f) => {
+          const remoteBlob = remoteInfo.remoteBlobs.get(f.path);
+          return !remoteBlob || remoteBlob.sha !== f.sha;
+        }).length;
+        hasUncommitted = uncommittedCount > 0;
+      }
+    } catch (restErr: any) {
+      lastError = scrubGitToken(String(restErr?.message || 'Unable to inspect remote GitHub tree.'), token);
+    }
+
+    return res.json({
+      success: true,
+      transport: 'github_rest_api',
+      configured: tokenCheck.configured,
+      canPush: tokenCheck.canPush,
+      tokenStatus: tokenCheck.tokenStatus,
+      tokenMessage: tokenCheck.tokenMessage,
+      githubUser: tokenCheck.githubUser,
+      gitInitialized: true,
+      repo: `${TARGET_GITHUB_OWNER}/${TARGET_GITHUB_REPO}`,
+      branch: TARGET_GITHUB_BRANCH,
+      aheadCount: 0,
+      behindCount: 0,
+      uncommittedCount,
+      incomingCommits,
+      latestCommit: remoteLatestCommit || 'api-sync',
+      remoteLatestCommit,
+      hasUncommitted,
+      lastError,
+    });
+  }
 
   if (shouldFetch && !gitInitialized) {
     try {
@@ -6270,6 +6809,19 @@ app.post('/api/git/pull', async (req, res) => {
   const token = (process.env.GITHUB_TOKEN || process.env.GH_TOKEN || '').trim();
   let didStash = false;
 
+  const gitCliAvailable = await checkGitCliAvailable();
+  if (!gitCliAvailable) {
+    try {
+      const restPull = await pullWorkspaceViaGithubRest(token);
+      return res.status(restPull.status).json(restPull.body);
+    } catch (restErr: any) {
+      return res.status(500).json({
+        success: false,
+        error: scrubGitToken(String(restErr?.message || 'GitHub REST pull failed.'), token),
+      });
+    }
+  }
+
   try {
     const { autoInitialized } = await ensureGitWorkspace(adminEmail);
 
@@ -6441,6 +6993,18 @@ app.post('/api/git/pull', async (req, res) => {
         await runGit(['stash', 'pop'], { tokenToScrub: token });
       } catch {}
     }
+    if (isGitEnoentError(err)) {
+      cachedGitCliAvailable = false;
+      try {
+        const restPull = await pullWorkspaceViaGithubRest(token);
+        return res.status(restPull.status).json(restPull.body);
+      } catch (restErr: any) {
+        return res.status(500).json({
+          success: false,
+          error: scrubGitToken(String(restErr?.message || 'GitHub REST pull failed.'), token),
+        });
+      }
+    }
     const rawMsg = err?.stderr || err?.message || 'Failed to pull updates from GitHub.';
     return res.status(500).json({
       success: false,
@@ -6476,6 +7040,27 @@ app.post('/api/git/push', async (req, res) => {
     });
   }
 
+  const commitMsg =
+    String(req.body?.commitMessage || '').trim().slice(0, 200) ||
+    `chore: sync Student Companion updates [${new Date().toISOString()}]`;
+
+  const gitCliAvailable = await checkGitCliAvailable();
+  if (!gitCliAvailable) {
+    try {
+      const restPush = await pushWorkspaceViaGithubRest({
+        token,
+        adminEmail,
+        commitMessage: commitMsg,
+      });
+      return res.status(restPush.status).json(restPush.body);
+    } catch (restErr: any) {
+      return res.status(500).json({
+        success: false,
+        error: scrubGitToken(String(restErr?.message || 'GitHub REST push failed.'), token),
+      });
+    }
+  }
+
   let didStash = false;
   try {
     const { autoInitialized } = await ensureGitWorkspace(adminEmail);
@@ -6493,10 +7078,6 @@ app.post('/api/git/push', async (req, res) => {
       await runGit(['add', '-A'], { tokenToScrub: token });
       await runGit(['commit', '--no-edit'], { tokenToScrub: token });
     }
-
-    const commitMsg =
-      String(req.body?.commitMessage || '').trim().slice(0, 200) ||
-      `chore: sync Student Companion updates [${new Date().toISOString()}]`;
 
     const authenticatedUrl = `https://x-access-token:${encodeURIComponent(token)}@github.com/${TARGET_GITHUB_OWNER}/${TARGET_GITHUB_REPO}.git`;
 
@@ -6708,6 +7289,22 @@ app.post('/api/git/push', async (req, res) => {
       try {
         await runGit(['stash', 'pop'], { tokenToScrub: token });
       } catch {}
+    }
+    if (isGitEnoentError(err)) {
+      cachedGitCliAvailable = false;
+      try {
+        const restPush = await pushWorkspaceViaGithubRest({
+          token,
+          adminEmail,
+          commitMessage: commitMsg,
+        });
+        return res.status(restPush.status).json(restPush.body);
+      } catch (restErr: any) {
+        return res.status(500).json({
+          success: false,
+          error: scrubGitToken(String(restErr?.message || 'GitHub REST push failed.'), token),
+        });
+      }
     }
     const rawMsg = err?.stderr || err?.message || 'GitHub push failed.';
     const cleaned = scrubGitToken(String(rawMsg), token);
