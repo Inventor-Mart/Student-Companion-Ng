@@ -389,6 +389,8 @@ export interface RegisteredTutorData {
   curriculumHighlights?: string[];
   timetable?: TimetableSlot[];
   onboardingStage?: 1 | 2 | 3;
+  manualSubjectOverrideAt?: string;
+  subjectRepairVersion?: string;
 }
 
 export type ParentRelationship = 'Father' | 'Mother' | 'Guardian' | 'Sibling' | 'Relative' | 'Other';

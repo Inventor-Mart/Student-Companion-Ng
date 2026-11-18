@@ -127,6 +127,13 @@ import {
 } from '../data/competitionPrizesData';
 import { INITIAL_USER_DIRECTORY } from '../data/mockUsersData';
 import {
+  SUBJECT_REPAIR_VERSION,
+  dedupeSubjects,
+  formatSubjectSpecialization,
+  mergeTutorDataSafely,
+  repairSpecificTutorRecord
+} from '../utils/nigerianSubjects';
+import {
   auth,
   db,
   FIREBASE_PROJECT_ID,
@@ -786,10 +793,7 @@ const mergeUserProfiles = (
             ...(incoming.parentData || {})
           }
         : undefined,
-    tutorData:
-      existing.tutorData || incoming.tutorData
-        ? { ...(existing.tutorData || ({} as RegisteredTutorData)), ...(incoming.tutorData || {}) }
-        : undefined,
+    tutorData: mergeTutorDataSafely(existing.tutorData, incoming.tutorData),
     adminData:
       existing.adminData || incoming.adminData
         ? { ...(existing.adminData || ({ schoolName: '', schoolType: '' })), ...(incoming.adminData || {}) }
@@ -810,8 +814,9 @@ const mergeUserProfileArrays = (lists: RegisteredUserProfile[][]): RegisteredUse
   const emailToKey = new Map<string, string>();
 
   for (const list of lists) {
-    for (const raw of list) {
-      if (!raw || !raw.id || isPurgedRecord(raw)) continue;
+    for (const rawInput of list) {
+      if (!rawInput || !rawInput.id || isPurgedRecord(rawInput)) continue;
+      const raw = repairSpecificTutorRecord(rawInput).user;
       const cleanEmail = String(raw.email || '').trim().toLowerCase();
       let targetKey: string | undefined;
       if (byKey.has(raw.id)) {
@@ -820,7 +825,7 @@ const mergeUserProfileArrays = (lists: RegisteredUserProfile[][]): RegisteredUse
         targetKey = emailToKey.get(cleanEmail);
       }
       if (targetKey && byKey.has(targetKey)) {
-        const merged = mergeUserProfiles(byKey.get(targetKey)!, raw);
+        const merged = repairSpecificTutorRecord(mergeUserProfiles(byKey.get(targetKey)!, raw)).user;
         byKey.set(targetKey, merged);
         if (!isPlaceholderRecoveredEmail(merged.email)) {
           emailToKey.set(merged.email.toLowerCase(), targetKey);
@@ -945,7 +950,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           safeRemoveItem('sc_user_profile');
           return null;
         }
-        if (parsed?.id && parsed?.role) return parsed;
+        if (parsed?.id && parsed?.role) {
+          const repaired = repairSpecificTutorRecord(parsed);
+          if (repaired.changed) {
+            safeSetItem('sc_user_profile', JSON.stringify(repaired.user));
+          }
+          return repaired.user;
+        }
       } catch {}
     }
     return null;
@@ -1146,7 +1157,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       try {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          const cleaned = parsed.filter((u: RegisteredUserProfile) => !isPurgedRecord(u));
+          let anyChanged = false;
+          const cleaned = parsed
+            .filter((u: RegisteredUserProfile) => !isPurgedRecord(u))
+            .map((u: RegisteredUserProfile) => {
+              const res = repairSpecificTutorRecord(u);
+              if (res.changed) anyChanged = true;
+              return res.user;
+            });
+          if (anyChanged) {
+            safeSetItem('sc_all_users', JSON.stringify(cleaned));
+          }
           if (cleaned.length > 0) return cleaned;
         }
       } catch {}
@@ -2305,7 +2326,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // Offline fallback handled below
     }
 
-    const profile: RegisteredUserProfile = existing
+    const rawProfile: RegisteredUserProfile = existing
       ? {
           ...existing,
           fullName: user.displayName || existing.fullName || 'Student Companion Learner',
@@ -2324,6 +2345,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           createdAt: new Date().toISOString(),
           studentData: { ...student, id: user.uid, name: user.displayName || student.name || 'Student Companion Learner' }
         };
+    const repairedResult = repairSpecificTutorRecord(rawProfile);
+    const profile = repairedResult.user;
 
     // Persist Google account directly to Firestore `users/{uid}` (strictly matching isValidUserAccount rules)
     if (!isOffline) {
@@ -2346,6 +2369,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         };
         if (profile.avatarUrl && profile.avatarUrl.length <= 500) {
           ownerUpdate.avatarUrl = profile.avatarUrl;
+        }
+        if (repairedResult.changed && profile.tutorData) {
+          ownerUpdate.tutorData = profile.tutorData;
         }
         updateDoc(userDocRef, ownerUpdate).catch((err) => {
           handleFirestoreError(err, OperationType.UPDATE, userDocPath);
@@ -2887,7 +2913,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setServerOTAAdminToken(data.otaAdminToken);
       }
 
-      const verifiedProfile = data.profile as RegisteredUserProfile;
+      const otpRepair = repairSpecificTutorRecord(data.profile as RegisteredUserProfile);
+      const verifiedProfile = otpRepair.user;
+      if (otpRepair.changed) {
+        void fetch('/api/users/sync-profile', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...getSecurityHeaders({ userId: verifiedProfile.id, userEmail: verifiedProfile.email })
+          },
+          body: JSON.stringify({ profile: verifiedProfile })
+        }).catch(() => {});
+      }
       resetLoginFailures(cleanEmail);
       setAllRegisteredUsers(prev => {
         const merged = mergeUserProfileArrays([prev, [verifiedProfile]]);
@@ -4983,7 +5020,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           subjects:
             td?.proficientSubjects && td.proficientSubjects.length > 0
               ? td.proficientSubjects
-              : [td?.subjectSpecialization || 'Mathematics'],
+              : [td?.subjectSpecialization || 'General Subjects'],
           rating: 5.0,
           reviewCount: 0,
           hourlyRateNaira: td?.hourlyRate || 3500,
@@ -5746,8 +5783,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         { id: `slot-${newId}-6`, day: 'Saturday', time: '02:00 PM - 04:00 PM', period: 'Afternoon', isAvailable: true }
       ];
 
+      const cleanTutorSubjects = dedupeSubjects(
+        Array.isArray(profileData.proficientSubjects) && profileData.proficientSubjects.length > 0
+          ? profileData.proficientSubjects
+          : Array.isArray(profileData.subjects) && profileData.subjects.length > 0
+          ? profileData.subjects
+          : []
+      );
+      const resolvedTutorSpec =
+        String(profileData.subjectSpecialization || '').trim() ||
+        formatSubjectSpecialization(cleanTutorSubjects, 'General Subjects');
+
       newProfile.tutorData = {
-        subjectSpecialization: profileData.subjectSpecialization || profileData.subjects?.[0] || 'General Mathematics',
+        subjectSpecialization: resolvedTutorSpec,
         qualification: profileData.qualification || profileData.highestEducation || 'B.Sc. (First Class Honours)',
         hourlyRate: Number(profileData.hourlyRate) || Number(profileData.hourlyRateNaira) || 3500,
         teachingMode: profileData.teachingMode || 'both',
@@ -5755,12 +5803,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         gender: profileData.gender || 'Prefer not to say',
         highestEducation: profileData.highestEducation || 'B.Sc.',
         institution: profileData.institution || 'University of Lagos',
-        courseOfStudy: profileData.courseOfStudy || 'Education & Science',
+        courseOfStudy: profileData.courseOfStudy || 'Education & Arts / Sciences',
         experienceYearsRange: profileData.experienceYearsRange || '3-5 years',
         targetClasses: profileData.targetClasses || ['JSS 3', 'SS 3', 'WAEC/NECO Prep', 'JAMB Prep'],
-        proficientSubjects: profileData.proficientSubjects || profileData.subjects || ['Mathematics', 'Physics'],
-        bio: profileData.bio || 'Dedicated Nigerian educator specializing in WAEC distinctions, JAMB speed drills, and student-centered conceptual learning.',
-        tagline: profileData.tagline || `${profileData.subjectSpecialization || 'WAEC & JAMB'} Specialist Educator`,
+        proficientSubjects: cleanTutorSubjects,
+        bio:
+          profileData.bio ||
+          `${resolvedTutorSpec} educator specializing in WAEC distinctions, JAMB drills, and student-centered conceptual learning.`,
+        tagline: profileData.tagline || `${resolvedTutorSpec} Specialist Educator`,
         city: profileData.city || 'Ikeja',
         state: profileData.state || 'Lagos',
         nin: profileData.nin || '',
@@ -7229,16 +7279,38 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       hourlyRate: 3500,
       teachingMode: 'both'
     };
-    const merged: RegisteredUserProfile = {
-      ...currentUserProfile,
-      avatarUrl: updatedTutorData.idDocumentUrl || currentUserProfile.avatarUrl,
-      tutorData: {
-        ...currentTutor,
-        ...updatedTutorData
-      }
+
+    const nextProficientSubjects =
+      updatedTutorData.proficientSubjects !== undefined
+        ? dedupeSubjects(updatedTutorData.proficientSubjects)
+        : currentTutor.proficientSubjects;
+
+    const nextSubjectSpecialization =
+      updatedTutorData.subjectSpecialization !== undefined
+        ? updatedTutorData.subjectSpecialization.trim() ||
+          formatSubjectSpecialization(nextProficientSubjects || [], currentTutor.subjectSpecialization)
+        : updatedTutorData.proficientSubjects !== undefined
+        ? formatSubjectSpecialization(nextProficientSubjects || [], currentTutor.subjectSpecialization)
+        : currentTutor.subjectSpecialization;
+
+    const nextTutorData: RegisteredTutorData = {
+      ...currentTutor,
+      ...updatedTutorData,
+      ...(nextProficientSubjects !== undefined ? { proficientSubjects: nextProficientSubjects } : {}),
+      subjectSpecialization: nextSubjectSpecialization,
+      ...(updatedTutorData.proficientSubjects !== undefined || updatedTutorData.subjectSpecialization !== undefined
+        ? {
+            manualSubjectOverrideAt: (updatedTutorData as any).manualSubjectOverrideAt || new Date().toISOString(),
+            subjectRepairVersion: SUBJECT_REPAIR_VERSION
+          }
+        : {})
     };
-    setCurrentUserProfile(merged);
-    safeSetItem('sc_user_profile', JSON.stringify(merged));
+
+    const nextAvatar = updatedTutorData.idDocumentUrl || currentUserProfile.avatarUrl;
+    void updateUserRecord(currentUserProfile.id, {
+      ...(nextAvatar ? { avatarUrl: nextAvatar } : {}),
+      tutorData: nextTutorData
+    });
   };
 
   const deleteAccount = async (userId?: string) => {
@@ -7870,6 +7942,37 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       firestoreUsers,
       recoveredRegistryUsers
     ]);
+
+    if (firestoreAdminReady) {
+      for (const fsUser of firestoreUsers) {
+        const repairedMatch = mergedAll.find(
+          (u) => u.id === fsUser.id || (u.email && fsUser.email && u.email.toLowerCase() === fsUser.email.toLowerCase())
+        );
+        if (
+          repairedMatch &&
+          repairedMatch.role === 'tutor' &&
+          repairSpecificTutorRecord(fsUser).changed
+        ) {
+          const docId = sanitizeFirestoreDocId(repairedMatch.id);
+          void setDoc(doc(db, 'users', docId), sanitizeUserAccountForFirestore(repairedMatch), { merge: true }).catch(() => {});
+          const authHeaders = await getFirebaseAuthHeaders().catch(() => ({}));
+          void fetch('/api/admin/users/update', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...authHeaders,
+              ...getSecurityHeaders({ userId: currentUserProfile?.id, userEmail: adminEmail })
+            },
+            body: JSON.stringify({
+              adminEmail,
+              userId: repairedMatch.id,
+              updates: { tutorData: repairedMatch.tutorData },
+              fallbackProfile: repairedMatch
+            })
+          }).catch(() => {});
+        }
+      }
+    }
 
     setAllRegisteredUsers(mergedAll);
     safeSetItem('sc_all_users', JSON.stringify(mergedAll));

@@ -39,6 +39,8 @@ import {
 } from 'lucide-react';
 import { NairaSign } from '../../utils/currency';
 import { DeviceImageUploader } from '../admin/DeviceImageUploader';
+import { SubjectMultiSelector } from '../common/SubjectMultiSelector';
+import { dedupeSubjects, formatSubjectSpecialization } from '../../utils/nigerianSubjects';
 
 interface SignUpPageProps {
   onBackToSignIn: () => void;
@@ -310,7 +312,8 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
   const [courseOfStudy, setCourseOfStudy] = useState('');
   const [experienceYearsRange, setExperienceYearsRange] = useState<'0-1 years' | '1-3 years' | '3-5 years' | '5+ years'>('1-3 years');
   const [targetClasses, setTargetClasses] = useState<string[]>(['SS 3', 'WAEC/NECO Prep', 'JAMB Prep']);
-  const [proficientSubjects, setProficientSubjects] = useState<string[]>(['Mathematics']);
+  const [proficientSubjects, setProficientSubjects] = useState<string[]>([]);
+  const [tutorSubjectError, setTutorSubjectError] = useState<string | null>(null);
   const [hourlyRate, setHourlyRate] = useState('3500');
   const [teachingMode, setTeachingMode] = useState<'both' | 'online' | 'physical'>('both');
   const [tutorBio, setTutorBio] = useState('');
@@ -560,6 +563,13 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
       return;
     }
 
+    if (selectedRole === 'tutor' && dedupeSubjects(proficientSubjects).length === 0) {
+      setTutorStage(2);
+      setTutorSubjectError('Please select or add at least one teaching subject before continuing.');
+      setNameError('Please select or add at least one teaching subject in Stage 2.');
+      return;
+    }
+
     setEmailDeliveryError(null);
     const delivered = await sendVerificationCode(trimmedEmail);
     if (delivered) {
@@ -636,6 +646,9 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
         ? `${trimmedFirst} ${middleName.trim()} ${trimmedLast}`
         : computedFullName;
 
+      const cleanSubjects = dedupeSubjects(proficientSubjects);
+      const formattedSpec = formatSubjectSpecialization(cleanSubjects, 'General Subjects');
+
       registerNewUser('tutor', {
         name: fullLegalName,
         firstName: trimmedFirst,
@@ -648,16 +661,17 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
         state: tutorState,
         highestEducation,
         institution: institution.trim() || 'University of Lagos',
-        courseOfStudy: courseOfStudy.trim() || 'Education & Science',
+        courseOfStudy: courseOfStudy.trim() || 'Education & Arts / Sciences',
         experienceYearsRange,
         targetClasses,
-        subjects: proficientSubjects.length > 0 ? proficientSubjects : ['Mathematics'],
-        proficientSubjects,
+        subjects: cleanSubjects,
+        proficientSubjects: cleanSubjects,
+        subjectSpecialization: formattedSpec,
         hourlyRateNaira: parseInt(hourlyRate) || 3500,
         hourlyRate: parseInt(hourlyRate) || 3500,
         teachingMode,
-        bio: tutorBio.trim() || `${proficientSubjects.join(' & ')} educator with ${experienceYearsRange} experience.`,
-        tagline: `${proficientSubjects.slice(0, 2).join(' & ')} Specialist (${experienceYearsRange})`,
+        bio: tutorBio.trim() || `${formattedSpec} educator with ${experienceYearsRange} experience.`,
+        tagline: `${formattedSpec} Specialist (${experienceYearsRange})`,
         digitalReadiness: {
           hasDevice,
           hasInternet,
@@ -1859,48 +1873,18 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
                         </div>
                       </div>
 
-                      {/* Proficient Subjects Multi-Select */}
-                      <div>
-                        <label className="text-xs font-semibold text-slate-300 block mb-1.5">
-                          Proficient Subjects (Check all that apply)
-                        </label>
-                        <div className="flex flex-wrap gap-1.5">
-                          {[
-                            'Mathematics',
-                            'English Language',
-                            'Basic Science',
-                            'Physics',
-                            'Chemistry',
-                            'Biology',
-                            'Economics',
-                            'Literature-in-English',
-                            'Further Mathematics'
-                          ].map((sub) => {
-                            const isChecked = proficientSubjects.includes(sub);
-                            return (
-                              <button
-                                key={sub}
-                                type="button"
-                                onClick={() => {
-                                  if (isChecked) {
-                                    setProficientSubjects(proficientSubjects.filter((s) => s !== sub));
-                                  } else {
-                                    setProficientSubjects([...proficientSubjects, sub]);
-                                  }
-                                }}
-                                className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
-                                  isChecked
-                                    ? 'bg-sky-500/20 text-sky-300 border border-sky-500/60'
-                                    : 'bg-[#081220] text-slate-400 border border-[#1E304F] hover:text-white'
-                                }`}
-                              >
-                                {isChecked ? '✓ ' : '+ '}
-                                {sub}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
+                      {/* Proficient Subjects Multi-Select + Custom Entry */}
+                      <SubjectMultiSelector
+                        selectedSubjects={proficientSubjects}
+                        onChange={(next) => {
+                          setProficientSubjects(next);
+                          if (next.length > 0) setTutorSubjectError(null);
+                        }}
+                        label="Proficient Subjects (Select or Add Custom)"
+                        helperText="Pick every subject you teach (including English Language, French, CRS, Sciences, or add custom subjects)."
+                        error={tutorSubjectError}
+                        accentColor="sky"
+                      />
 
                       {/* Target Classes Multi-Select */}
                       <div>
@@ -1959,10 +1943,17 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
                         </button>
                         <button
                           type="button"
-                          onClick={() => setTutorStage(3)}
-                          className="py-2 px-4 rounded-xl bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer"
+                          onClick={() => {
+                            if (dedupeSubjects(proficientSubjects).length === 0) {
+                              setTutorSubjectError('Please select or add at least one subject you teach.');
+                              return;
+                            }
+                            setTutorSubjectError(null);
+                            setTutorStage(3);
+                          }}
+                          className="min-h-[44px] py-2 px-4 rounded-xl bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer"
                         >
-                          <span>Next: KYC & Digital Readiness</span>
+                          <span>Next: KYC &amp; Digital Readiness</span>
                           <ChevronRight className="w-3.5 h-3.5 stroke-[3]" />
                         </button>
                       </div>

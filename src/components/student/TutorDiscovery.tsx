@@ -146,7 +146,20 @@ export const TutorDiscovery: React.FC = () => {
 
   const classroomEligibility = getStudentClassroomEligibility(boardClockMs);
 
-  const subjects = ['All', 'Mathematics', 'Physics', 'Biology', 'Chemistry', 'Economics', 'English Language', 'Further Mathematics'];
+  const baseFilterSubjects = [
+    'All',
+    'English Language',
+    'French',
+    'CRS',
+    'Mathematics',
+    'Physics',
+    'Biology',
+    'Chemistry',
+    'Economics',
+    'Literature-in-English',
+    'Government',
+    'Further Mathematics'
+  ];
 
   // Strictly real registered tutors from AppContext (zero hardcoded/sample tutors)
   const allTutors: Tutor[] = React.useMemo(() => {
@@ -187,13 +200,33 @@ export const TutorDiscovery: React.FC = () => {
     return list;
   }, [registeredTutors, currentUserProfile]);
 
-  const filteredTutors = allTutors.filter(tutor => {
-    const matchesSearch =
-      tutor.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      tutor.location.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      tutor.subjects.some(s => s.toLowerCase().includes(searchQuery.toLowerCase()));
+  const subjects = React.useMemo(() => {
+    const seen = new Set(baseFilterSubjects.map(s => s.toLowerCase()));
+    const dynamicExtras: string[] = [];
+    for (const tutor of allTutors) {
+      for (const sub of tutor.subjects || []) {
+        const clean = String(sub || '').trim();
+        if (clean && !seen.has(clean.toLowerCase())) {
+          seen.add(clean.toLowerCase());
+          dynamicExtras.push(clean);
+        }
+      }
+    }
+    return [...baseFilterSubjects, ...dynamicExtras];
+  }, [allTutors]);
 
-    const matchesSubject = selectedSubject === 'All' || tutor.subjects.includes(selectedSubject);
+  const filteredTutors = allTutors.filter(tutor => {
+    const q = searchQuery.toLowerCase();
+    const matchesSearch =
+      !q ||
+      tutor.name.toLowerCase().includes(q) ||
+      tutor.location.toLowerCase().includes(q) ||
+      tutor.tagline.toLowerCase().includes(q) ||
+      tutor.subjects.some(s => s.toLowerCase().includes(q));
+
+    const matchesSubject =
+      selectedSubject === 'All' ||
+      tutor.subjects.some(s => s.toLowerCase() === selectedSubject.toLowerCase());
 
     return matchesSearch && matchesSubject;
   });

@@ -14,6 +14,7 @@ import {
   type ServerSecurityBlock
 } from './serverSecurity';
 import type { AuthoritativeLedgerState } from './serverLedger';
+import { mergeTutorDataSafely, repairSpecificTutorRecord } from './src/utils/nigerianSubjects';
 
 const USER_DIRECTORY_PATH = '/tmp/sc-user-directory.json';
 const OTP_CHALLENGES_PATH = '/tmp/sc-otp-challenges.json';
@@ -114,10 +115,16 @@ function loadDirectoryStore(): void {
     if (fs.existsSync(USER_DIRECTORY_PATH)) {
       const raw = JSON.parse(fs.readFileSync(USER_DIRECTORY_PATH, 'utf8')) as Partial<DirectoryStoreFile>;
       if (raw && raw.users && typeof raw.users === 'object') {
+        let repairedAny = false;
         for (const [id, rec] of Object.entries(raw.users)) {
           if (rec && typeof rec === 'object' && rec.id) {
-            directoryUsers[id] = rec;
+            const repaired = repairSpecificTutorRecord(rec);
+            directoryUsers[id] = repaired.user;
+            if (repaired.changed) repairedAny = true;
           }
+        }
+        if (repairedAny) {
+          saveDirectoryStore();
         }
       }
     }
@@ -341,11 +348,17 @@ function mergeTwoUsers(
         ? {
             ...(existing.studentData || {}),
             ...(incoming.studentData || {}),
-            xp: Math.max(Number(existing.studentData?.xp || 0), Number(incoming.studentData?.xp || 0)),
-            streakDays: Math.max(
-              Number(existing.studentData?.streakDays || 0),
-              Number(incoming.studentData?.streakDays || 0)
-            ),
+            xp:
+              allowPriv && incoming.studentData?.xp !== undefined
+                ? Math.max(0, Number(incoming.studentData.xp))
+                : Math.max(Number(existing.studentData?.xp || 0), Number(incoming.studentData?.xp || 0)),
+            streakDays:
+              allowPriv && incoming.studentData?.streakDays !== undefined
+                ? Math.max(0, Number(incoming.studentData.streakDays))
+                : Math.max(
+                    Number(existing.studentData?.streakDays || 0),
+                    Number(incoming.studentData?.streakDays || 0)
+                  ),
             isSubscribed: Boolean(
               existing.studentData?.isSubscribed || incoming.studentData?.isSubscribed
             ),
@@ -359,10 +372,7 @@ function mergeTwoUsers(
       existing.parentData || incoming.parentData
         ? { ...(existing.parentData || {}), ...(incoming.parentData || {}) }
         : undefined,
-    tutorData:
-      existing.tutorData || incoming.tutorData
-        ? { ...(existing.tutorData || {}), ...(incoming.tutorData || {}) }
-        : undefined,
+    tutorData: mergeTutorDataSafely(existing.tutorData, incoming.tutorData),
     adminData:
       existing.adminData || incoming.adminData
         ? { ...(existing.adminData || {}), ...(incoming.adminData || {}) }
@@ -398,7 +408,7 @@ function mergeTwoUsers(
     }
   }
 
-  return stripUndefinedDeep(merged);
+  return stripUndefinedDeep(repairSpecificTutorRecord(merged).user);
 }
 
 function normalizeRawUser(
@@ -458,7 +468,7 @@ function normalizeRawUser(
     if (raw?.walletFrozenReason) base.walletFrozenReason = raw.walletFrozenReason;
   }
 
-  return stripUndefinedDeep(base);
+  return stripUndefinedDeep(repairSpecificTutorRecord(base).user);
 }
 
 export function upsertServerUser(
@@ -513,8 +523,31 @@ export function applyAdminUpdateToServerUser(
     (fallbackProfile ? normalizeRawUser({ id: cleanId, ...fallbackProfile }, { allowPrivilegedFields: true }) : null);
 
   if (!existing) return null;
+
+  const incomingTutorData =
+    updates.tutorData && typeof updates.tutorData === 'object'
+      ? {
+          ...(existing.tutorData || {}),
+          ...updates.tutorData,
+          ...(updates.tutorData.proficientSubjects !== undefined || updates.tutorData.subjectSpecialization !== undefined
+            ? { manualSubjectOverrideAt: updates.tutorData.manualSubjectOverrideAt || new Date().toISOString() }
+            : {})
+        }
+      : updates.tutorData;
+
+  const incomingEmailHash =
+    typeof updates.email === 'string' && updates.email.trim()
+      ? hashEmailSha256(updates.email)
+      : existing.emailHash;
+
   const incoming = normalizeRawUser(
-    { ...existing, ...updates, id: existing.id },
+    {
+      ...existing,
+      ...updates,
+      emailHash: incomingEmailHash,
+      ...(incomingTutorData !== undefined ? { tutorData: incomingTutorData } : {}),
+      id: existing.id
+    },
     { allowPrivilegedFields: true, defaultSource: existing.directorySource || 'backend' }
   );
   const merged = mergeTwoUsers(existing, incoming, { allowPrivilegedOverwrite: true });

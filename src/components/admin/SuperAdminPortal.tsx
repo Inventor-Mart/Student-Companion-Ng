@@ -1,7 +1,26 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
-import { RegisteredUserProfile, UserRole, NigerianClassLevel, AspirantReferralReward } from '../../types';
+import {
+  RegisteredUserProfile,
+  UserRole,
+  NigerianClassLevel,
+  AcademicStream,
+  ParentRelationship,
+  ParentNotificationChannel,
+  GrowthPartner,
+  RegisteredTutorData,
+  AspirantReferralReward,
+  ForumReport
+} from '../../types';
 import { PersonaAvatar } from '../common/PersonaAvatar';
+import { SubjectMultiSelector } from '../common/SubjectMultiSelector';
+import {
+  SUBJECT_REPAIR_VERSION,
+  dedupeSubjects,
+  formatSubjectSpecialization,
+  parseSubjectString
+} from '../../utils/nigerianSubjects';
+import { calculateRank as calculateRankFromXP } from '../../utils/xpEconomy';
 import { useBackHandler } from '../../lib/backNavigation';
 import {
   Users,
@@ -59,7 +78,6 @@ import { SecurityTrustCenter } from './SecurityTrustCenter';
 import { SchemeOfWorkHub } from '../student/SchemeOfWorkHub';
 import { NairaText, NairaSign } from '../../utils/currency';
 import { getSecurityHeaders } from '../../utils/securityGuard';
-import { ForumReport } from '../../types';
 import {
   getStoredForumReports,
   saveStoredForumReports,
@@ -618,18 +636,73 @@ export const SuperAdminPortal: React.FC = () => {
     setTimeout(() => setModerationNotice(null), 3500);
   };
 
-  // Edit form state
+  // Edit form state — Common + Full Persona Fields
   const [editFullName, setEditFullName] = useState<string>('');
   const [editEmail, setEditEmail] = useState<string>('');
-  const [editClassLevel, setEditClassLevel] = useState<string>('JSS 3');
+
+  // Student Persona Edit State
+  const [editClassLevel, setEditClassLevel] = useState<NigerianClassLevel>('JSS 3');
+  const [editStudentStream, setEditStudentStream] = useState<AcademicStream>('Science');
+  const [editStudentSchool, setEditStudentSchool] = useState<string>('');
+  const [editStudentSchoolCode, setEditStudentSchoolCode] = useState<string>('');
+  const [editStudentLinkCode, setEditStudentLinkCode] = useState<string>('');
   const [editXP, setEditXP] = useState<number>(0);
+  const [editStudentStreakDays, setEditStudentStreakDays] = useState<number>(1);
   const [editUniformVerified, setEditUniformVerified] = useState<boolean>(false);
+
+  // Parent Persona Edit State
+  const [editParentPhone, setEditParentPhone] = useState<string>('');
+  const [editParentRelationship, setEditParentRelationship] = useState<ParentRelationship>('Mother');
+  const [editParentWardName, setEditParentWardName] = useState<string>('');
+  const [editParentState, setEditParentState] = useState<string>('Lagos');
+  const [editParentCity, setEditParentCity] = useState<string>('');
   const [editParentPin, setEditParentPin] = useState<string>('1234');
-  const [editHourlyRate, setEditHourlyRate] = useState<number>(3000);
-  const [editTutorVerified, setEditTutorVerified] = useState<boolean>(true);
+  const [editParentNotificationPref, setEditParentNotificationPref] =
+    useState<ParentNotificationChannel>('WhatsApp');
+  const [editParentAllowReports, setEditParentAllowReports] = useState<boolean>(true);
+
+  // Tutor Persona Edit State
+  const [editTutorSubjects, setEditTutorSubjects] = useState<string[]>([]);
+  const [editTutorSpecialization, setEditTutorSpecialization] = useState<string>('');
+  const [editHourlyRate, setEditHourlyRate] = useState<number>(3500);
+  const [editTutorTeachingMode, setEditTutorTeachingMode] = useState<'both' | 'online' | 'physical'>('both');
+  const [editTutorQualification, setEditTutorQualification] = useState<string>('');
+  const [editTutorHighestEducation, setEditTutorHighestEducation] =
+    useState<NonNullable<RegisteredTutorData['highestEducation']>>('B.Sc.');
+  const [editTutorInstitution, setEditTutorInstitution] = useState<string>('');
+  const [editTutorCourseOfStudy, setEditTutorCourseOfStudy] = useState<string>('');
+  const [editTutorExperienceRange, setEditTutorExperienceRange] =
+    useState<NonNullable<RegisteredTutorData['experienceYearsRange']>>('1-3 years');
+  const [editTutorPhone, setEditTutorPhone] = useState<string>('');
+  const [editTutorCity, setEditTutorCity] = useState<string>('');
+  const [editTutorState, setEditTutorState] = useState<string>('Lagos');
+  const [editTutorTargetClasses, setEditTutorTargetClasses] = useState<string[]>([]);
+  const [editTutorTagline, setEditTutorTagline] = useState<string>('');
+  const [editTutorBio, setEditTutorBio] = useState<string>('');
+  const [editTutorNin, setEditTutorNin] = useState<string>('');
+  const [editTutorVerified, setEditTutorVerified] = useState<boolean>(false);
+
+  // School Admin Persona Edit State
   const [editAdminSchoolName, setEditAdminSchoolName] = useState<string>('');
+  const [editAdminSchoolType, setEditAdminSchoolType] = useState<string>('Private Secondary College');
   const [editAdminSchoolCode, setEditAdminSchoolCode] = useState<string>('');
+  const [editAdminDesignation, setEditAdminDesignation] = useState<string>('');
+  const [editAdminPhone, setEditAdminPhone] = useState<string>('');
+  const [editAdminState, setEditAdminState] = useState<string>('Lagos');
+  const [editAdminLga, setEditAdminLga] = useState<string>('');
   const [editAdminVerified, setEditAdminVerified] = useState<boolean>(true);
+
+  // Growth Partner Persona Edit State
+  const [editPartnerPhone, setEditPartnerPhone] = useState<string>('');
+  const [editPartnerReferralCode, setEditPartnerReferralCode] = useState<string>('');
+  const [editPartnerCommissionRate, setEditPartnerCommissionRate] = useState<number>(10);
+  const [editPartnerBankName, setEditPartnerBankName] = useState<string>('');
+  const [editPartnerAccountNumber, setEditPartnerAccountNumber] = useState<string>('');
+  const [editPartnerAccountName, setEditPartnerAccountName] = useState<string>('');
+  const [editPartnerStatus, setEditPartnerStatus] =
+    useState<GrowthPartner['status']>('active');
+
+  // Trust & Enforcement State
   const [editAccountStatus, setEditAccountStatus] = useState<'active' | 'locked' | 'suspended' | 'deleted'>('active');
   const [editLockDurationMinutes, setEditLockDurationMinutes] = useState<number>(60);
   const [editWalletFrozen, setEditWalletFrozen] = useState<boolean>(false);
@@ -659,7 +732,12 @@ export const SuperAdminPortal: React.FC = () => {
     const studentSchool = u.studentData?.school?.toLowerCase() || '';
     const studentLinkCode = u.studentData?.studentLinkCode?.toLowerCase() || '';
     const parentWard = u.parentData?.wardName?.toLowerCase() || '';
-    const tutorSubject = u.tutorData?.subjectSpecialization?.toLowerCase() || '';
+    const tutorSubject = [
+      u.tutorData?.subjectSpecialization || '',
+      ...(u.tutorData?.proficientSubjects || [])
+    ]
+      .join(' ')
+      .toLowerCase();
     const adminSchool = u.adminData?.schoolName?.toLowerCase() || '';
     const adminCode = u.adminData?.schoolCode?.toLowerCase() || '';
     const partnerCode = u.growthPartnerData?.referralCode?.toLowerCase() || '';
@@ -688,18 +766,76 @@ export const SuperAdminPortal: React.FC = () => {
     setSelectedUserForEdit(u);
     setEditFullName(u.fullName);
     setEditEmail(u.email);
+
+    // Student
     setEditClassLevel(u.studentData?.classLevel || 'JSS 3');
-    setEditXP(u.studentData?.xp || 0);
-    setEditUniformVerified(u.studentData?.uniformVerified || false);
+    setEditStudentStream((u.studentData?.stream as AcademicStream) || 'Science');
+    setEditStudentSchool(u.studentData?.school || '');
+    setEditStudentSchoolCode(u.studentData?.schoolCode || '');
+    setEditStudentLinkCode(u.studentData?.studentLinkCode || '');
+    setEditXP(Number(u.studentData?.xp || 0));
+    setEditStudentStreakDays(Number(u.studentData?.streakDays || 1));
+    setEditUniformVerified(Boolean(u.studentData?.uniformVerified));
+
+    // Parent
+    setEditParentPhone(u.parentData?.phone || '');
+    setEditParentRelationship(u.parentData?.relationship || 'Mother');
+    setEditParentWardName(u.parentData?.wardName || '');
+    setEditParentState(u.parentData?.stateOfResidence || 'Lagos');
+    setEditParentCity(u.parentData?.cityOrLga || '');
     setEditParentPin(u.parentData?.pin || '1234');
-    setEditHourlyRate(u.tutorData?.hourlyRate || 3000);
-    setEditTutorVerified(u.tutorData?.verification?.isVerified || false);
+    setEditParentNotificationPref(u.parentData?.notificationPreference || 'WhatsApp');
+    setEditParentAllowReports(u.parentData?.allowAutomatedReports !== false);
+
+    // Tutor
+    const td = u.tutorData;
+    const parsedTutorSubjects =
+      td?.proficientSubjects && td.proficientSubjects.length > 0
+        ? dedupeSubjects(td.proficientSubjects)
+        : parseSubjectString(td?.subjectSpecialization);
+    setEditTutorSubjects(parsedTutorSubjects);
+    setEditTutorSpecialization(
+      td?.subjectSpecialization || formatSubjectSpecialization(parsedTutorSubjects, '')
+    );
+    setEditHourlyRate(Number(td?.hourlyRate || 3500));
+    setEditTutorTeachingMode(td?.teachingMode || 'both');
+    setEditTutorQualification(td?.qualification || '');
+    setEditTutorHighestEducation(td?.highestEducation || 'B.Sc.');
+    setEditTutorInstitution(td?.institution || '');
+    setEditTutorCourseOfStudy(td?.courseOfStudy || '');
+    setEditTutorExperienceRange(td?.experienceYearsRange || '1-3 years');
+    setEditTutorPhone(td?.phone || '');
+    setEditTutorCity(td?.city || '');
+    setEditTutorState(td?.state || 'Lagos');
+    setEditTutorTargetClasses(Array.isArray(td?.targetClasses) ? td.targetClasses : []);
+    setEditTutorTagline(td?.tagline || '');
+    setEditTutorBio(td?.bio || '');
+    setEditTutorNin(td?.nin || td?.verification?.nin || '');
+    setEditTutorVerified(Boolean(td?.verification?.isVerified));
+
+    // School Admin
     setEditAdminSchoolName(u.adminData?.schoolName || 'Secondary School');
+    setEditAdminSchoolType(u.adminData?.schoolType || 'Private Secondary College');
     setEditAdminSchoolCode(u.adminData?.schoolCode || '');
+    setEditAdminDesignation(u.adminData?.designation || '');
+    setEditAdminPhone(u.adminData?.phone || '');
+    setEditAdminState(u.adminData?.state || 'Lagos');
+    setEditAdminLga(u.adminData?.lga || '');
     setEditAdminVerified(u.adminData?.verificationStatus === 'verified');
     if (u.role === 'admin' && u.adminData?.schoolCode) {
       void fetchSchoolLiveRoster(u.adminData.schoolCode);
     }
+
+    // Growth Partner
+    const gp = u.growthPartnerData;
+    setEditPartnerPhone(gp?.phone || '');
+    setEditPartnerReferralCode(gp?.referralCode || '');
+    setEditPartnerCommissionRate(Number(gp?.commissionRatePercent ?? 10));
+    setEditPartnerBankName(gp?.bankName || '');
+    setEditPartnerAccountNumber(gp?.accountNumber || '');
+    setEditPartnerAccountName(gp?.accountName || u.fullName || '');
+    setEditPartnerStatus(gp?.status || 'active');
+
     const eff = getEffectiveStatus(u);
     setEditAccountStatus(eff);
     setEditLockDurationMinutes(60);
@@ -846,44 +982,144 @@ export const SuperAdminPortal: React.FC = () => {
       return;
     }
 
+    const cleanName = editFullName.trim() || selectedUserForEdit.fullName;
+    const cleanEmail = editEmail.trim().toLowerCase() || selectedUserForEdit.email;
+
     const updates: Partial<RegisteredUserProfile> = {
-      fullName: editFullName,
-      email: editEmail
+      fullName: cleanName,
+      email: cleanEmail
     };
 
-    if (selectedUserForEdit.role === 'student' && selectedUserForEdit.studentData) {
+    if (selectedUserForEdit.role === 'student') {
+      const nextXP = Math.max(0, Number(editXP) || 0);
+      const nextStreak = Math.max(0, Number(editStudentStreakDays) || 0);
       updates.studentData = {
-        ...selectedUserForEdit.studentData,
-        name: editFullName,
-        classLevel: editClassLevel as NigerianClassLevel,
-        xp: Number(editXP),
+        ...(selectedUserForEdit.studentData || {
+          id: selectedUserForEdit.id,
+          name: cleanName,
+          school: 'Secondary School',
+          classLevel: editClassLevel,
+          stream: editStudentStream,
+          xp: nextXP,
+          rank: calculateRankFromXP(nextXP),
+          streakDays: nextStreak,
+          lastStudyDate: new Date().toISOString().split('T')[0],
+          uniformVerified: editUniformVerified,
+          uniformPhotoUrl: null,
+          downloadedSubjectIds: [],
+          completedQuizIds: [],
+          completedReadNoteIds: [],
+          verifiedReadingLogs: []
+        }),
+        name: cleanName,
+        classLevel: editClassLevel,
+        stream: editStudentStream,
+        school: editStudentSchool.trim() || 'Secondary School',
+        schoolCode: editStudentSchoolCode.trim().toUpperCase() || undefined,
+        studentLinkCode: editStudentLinkCode.trim().toUpperCase() || undefined,
+        xp: nextXP,
+        rank: calculateRankFromXP(nextXP),
+        streakDays: nextStreak,
         uniformVerified: editUniformVerified
       };
-    } else if (selectedUserForEdit.role === 'parent' && selectedUserForEdit.parentData) {
+    } else if (selectedUserForEdit.role === 'parent') {
       updates.parentData = {
-        ...selectedUserForEdit.parentData,
-        pin: editParentPin
+        ...(selectedUserForEdit.parentData || { phone: '', pin: '1234' }),
+        phone: editParentPhone.trim(),
+        relationship: editParentRelationship,
+        wardName: editParentWardName.trim(),
+        stateOfResidence: editParentState.trim(),
+        cityOrLga: editParentCity.trim(),
+        pin: editParentPin.trim() || '1234',
+        notificationPreference: editParentNotificationPref,
+        allowAutomatedReports: editParentAllowReports
       };
-    } else if (selectedUserForEdit.role === 'tutor' && selectedUserForEdit.tutorData) {
+    } else if (selectedUserForEdit.role === 'tutor') {
+      const cleanSubjects = dedupeSubjects(
+        editTutorSubjects.length > 0
+          ? editTutorSubjects
+          : parseSubjectString(editTutorSpecialization)
+      );
+      const resolvedSpec =
+        editTutorSpecialization.trim() ||
+        formatSubjectSpecialization(cleanSubjects, 'General Subjects');
+      const existingTd = selectedUserForEdit.tutorData;
+
       updates.tutorData = {
-        ...selectedUserForEdit.tutorData,
-        hourlyRate: Number(editHourlyRate),
+        ...(existingTd || {
+          subjectSpecialization: resolvedSpec,
+          qualification: 'B.Sc.',
+          hourlyRate: 3500,
+          teachingMode: 'both'
+        }),
+        proficientSubjects: cleanSubjects,
+        subjectSpecialization: resolvedSpec,
+        hourlyRate: Math.max(0, Number(editHourlyRate) || 3500),
+        teachingMode: editTutorTeachingMode,
+        qualification: editTutorQualification.trim() || editTutorHighestEducation,
+        highestEducation: editTutorHighestEducation,
+        institution: editTutorInstitution.trim(),
+        courseOfStudy: editTutorCourseOfStudy.trim(),
+        experienceYearsRange: editTutorExperienceRange,
+        phone: editTutorPhone.trim(),
+        city: editTutorCity.trim(),
+        state: editTutorState.trim(),
+        targetClasses: editTutorTargetClasses,
+        tagline: editTutorTagline.trim() || `${resolvedSpec} Specialist`,
+        bio: editTutorBio.trim(),
+        nin: editTutorNin.trim(),
         verification: {
-          ...selectedUserForEdit.tutorData.verification,
-          nin: selectedUserForEdit.tutorData.verification?.nin || 'NIN-123456789',
-          bankName: selectedUserForEdit.tutorData.verification?.bankName || 'Access Bank',
-          accountNumber: selectedUserForEdit.tutorData.verification?.accountNumber || '0123456789',
-          accountName: editFullName.toUpperCase(),
+          ...(existingTd?.verification || {
+            nin: editTutorNin.trim() || 'NIN-PENDING',
+            bankName: 'Access Bank',
+            accountNumber: '0123456789',
+            accountName: cleanName.toUpperCase(),
+            isVerified: editTutorVerified
+          }),
+          nin: editTutorNin.trim() || existingTd?.verification?.nin || 'NIN-PENDING',
+          accountName: cleanName.toUpperCase(),
           isVerified: editTutorVerified
-        }
+        },
+        manualSubjectOverrideAt: new Date().toISOString(),
+        subjectRepairVersion: SUBJECT_REPAIR_VERSION
       };
-    } else if (selectedUserForEdit.role === 'admin' && selectedUserForEdit.adminData) {
+    } else if (selectedUserForEdit.role === 'admin' || selectedUserForEdit.role === 'school_admin') {
       updates.adminData = {
-        ...selectedUserForEdit.adminData,
-        schoolName: editAdminSchoolName,
-        schoolCode: editAdminSchoolCode.toUpperCase(),
+        ...(selectedUserForEdit.adminData || { schoolName: '', schoolType: '' }),
+        schoolName: editAdminSchoolName.trim() || 'Secondary School',
+        schoolType: editAdminSchoolType.trim() || 'Private Secondary College',
+        schoolCode: editAdminSchoolCode.trim().toUpperCase(),
+        designation: editAdminDesignation.trim(),
+        phone: editAdminPhone.trim(),
+        state: editAdminState.trim(),
+        lga: editAdminLga.trim(),
         verificationStatus: editAdminVerified ? 'verified' : 'pending_verification',
         verifiedAt: editAdminVerified ? new Date().toISOString() : undefined
+      };
+    } else if (selectedUserForEdit.role === 'growth_partner') {
+      const existingGp = selectedUserForEdit.growthPartnerData;
+      updates.growthPartnerData = {
+        ...(existingGp || {
+          id: selectedUserForEdit.id,
+          name: cleanName,
+          email: cleanEmail,
+          referralCode: '',
+          commissionRatePercent: 10,
+          totalEarningsNaira: 0,
+          totalPaidOutNaira: 0,
+          activeReferralsCount: 0,
+          status: 'active',
+          createdAt: selectedUserForEdit.createdAt || new Date().toISOString()
+        }),
+        name: cleanName,
+        email: cleanEmail,
+        phone: editPartnerPhone.trim(),
+        referralCode: editPartnerReferralCode.trim().toUpperCase(),
+        commissionRatePercent: Math.max(0, Math.min(100, Number(editPartnerCommissionRate) || 10)),
+        bankName: editPartnerBankName.trim(),
+        accountNumber: editPartnerAccountNumber.trim(),
+        accountName: editPartnerAccountName.trim() || cleanName,
+        status: editPartnerStatus
       };
     }
 
@@ -2629,15 +2865,17 @@ export const SuperAdminPortal: React.FC = () => {
 
                   {isTutor && u.tutorData && (
                     <div className="bg-slate-900/80 rounded-xl p-2.5 text-[11px] space-y-1.5 border border-slate-800/60">
-                      <div className="flex items-center justify-between">
-                        <span className="text-slate-400">Specialization:</span>
-                        <span className="font-semibold text-white truncate max-w-[180px]">
-                          {u.tutorData.subjectSpecialization}
+                      <div className="flex items-start justify-between gap-2">
+                        <span className="text-slate-400 shrink-0">Subjects:</span>
+                        <span className="font-semibold text-white text-right leading-snug">
+                          {u.tutorData.subjectSpecialization ||
+                            (u.tutorData.proficientSubjects && u.tutorData.proficientSubjects.join(', ')) ||
+                            'Unspecified'}
                         </span>
                       </div>
                       <div className="flex items-center justify-between">
                         <span className="text-slate-400">Hourly Rate:</span>
-                        <span className="font-bold text-[#84E000]">
+                        <span className="font-bold text-[#84E000] tabular-nums">
                           <NairaText amount={u.tutorData.hourlyRate} /> / hr
                         </span>
                       </div>
@@ -2906,167 +3144,573 @@ export const SuperAdminPortal: React.FC = () => {
         )}
       </div>
 
-      {/* Edit User Modal */}
+      {/* Full-Persona Account Editor Modal */}
       {selectedUserForEdit && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs">
-          <div className="bg-[#0B1526] border border-slate-700 w-full max-w-md max-h-[90vh] overflow-y-auto rounded-2xl p-5 space-y-4 shadow-2xl animate-in zoom-in-95 duration-150">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/75 backdrop-blur-xs">
+          <div className="bg-[#0B1526] border border-slate-700 w-full max-w-2xl max-h-[92vh] overflow-y-auto rounded-2xl p-4 sm:p-6 space-y-4 shadow-2xl animate-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2.5">
                 <Edit3 className="w-4 h-4 text-emerald-400" />
-                <h3 className="text-sm font-bold text-white">
-                  Modify Account ({selectedUserForEdit.role.toUpperCase()})
-                </h3>
+                <div>
+                  <h3 className="text-sm font-bold text-white">
+                    Modify Persona Account ({selectedUserForEdit.role.replace('_', ' ').toUpperCase()})
+                  </h3>
+                  <span className="text-[11px] font-mono text-slate-400">ID: {selectedUserForEdit.id}</span>
+                </div>
               </div>
               <button
+                type="button"
                 onClick={() => setSelectedUserForEdit(null)}
-                className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center cursor-pointer"
+                className="min-h-[44px] min-w-[44px] rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center cursor-pointer"
+                aria-label="Close account editor"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             {saveSuccessMsg && (
-              <div className="bg-emerald-950/80 border border-emerald-600/80 text-emerald-300 px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+              <div className="bg-emerald-950/80 border border-emerald-600/80 text-emerald-300 px-3 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
                 <span>{saveSuccessMsg}</span>
               </div>
             )}
 
-            <form onSubmit={handleSaveUserEdit} className="space-y-3.5 text-xs">
-              <div>
-                <label className="text-slate-400 font-semibold block mb-1">Full Name</label>
-                <input
-                  type="text"
-                  value={editFullName}
-                  onChange={e => setEditFullName(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
-                />
+            <form onSubmit={handleSaveUserEdit} className="space-y-4 text-xs">
+              {/* Section 1: Core Identity */}
+              <div className="space-y-3">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">
+                  Core Identity
+                </span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-slate-300 font-semibold block mb-1">Full Name</label>
+                    <input
+                      type="text"
+                      value={editFullName}
+                      onChange={e => setEditFullName(e.target.value)}
+                      className="w-full min-h-[44px] bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-slate-300 font-semibold block mb-1">Email Address</label>
+                    <input
+                      type="email"
+                      value={editEmail}
+                      onChange={e => setEditEmail(e.target.value)}
+                      className="w-full min-h-[44px] bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+                </div>
               </div>
 
-              <div>
-                <label className="text-slate-400 font-semibold block mb-1">Email Address</label>
-                <input
-                  type="email"
-                  value={editEmail}
-                  onChange={e => setEditEmail(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
-                />
-              </div>
-
+              {/* Section 2A: Student Persona */}
               {selectedUserForEdit.role === 'student' && (
-                <>
-                  <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-3 border-t border-slate-800/80 pt-3.5">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-400 block">
+                    Student Academic Profile
+                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <label className="text-slate-400 font-semibold block mb-1">Class Level</label>
+                      <label className="text-slate-300 font-semibold block mb-1">Class Level</label>
                       <select
                         value={editClassLevel}
-                        onChange={e => setEditClassLevel(e.target.value)}
-                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-2 text-white focus:outline-none focus:border-emerald-500"
+                        onChange={e => setEditClassLevel(e.target.value as NigerianClassLevel)}
+                        className="w-full min-h-[44px] bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
                       >
-                        {['JSS 1', 'JSS 2', 'JSS 3', 'SS 1', 'SS 2', 'SS 3'].map(lvl => (
+                        {['JSS 1', 'JSS 2', 'JSS 3', 'SS 1', 'SS 2', 'SS 3', 'University Aspirant'].map(lvl => (
                           <option key={lvl} value={lvl}>{lvl}</option>
                         ))}
                       </select>
                     </div>
 
                     <div>
-                      <label className="text-slate-400 font-semibold block mb-1">Academic XP</label>
+                      <label className="text-slate-300 font-semibold block mb-1">Academic Stream</label>
+                      <select
+                        value={editStudentStream}
+                        onChange={e => setEditStudentStream(e.target.value as AcademicStream)}
+                        className="w-full min-h-[44px] bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
+                      >
+                        {['Junior', 'Science', 'Non-Science'].map(st => (
+                          <option key={st} value={st}>{st}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="text-slate-300 font-semibold block mb-1">School Name</label>
+                      <input
+                        type="text"
+                        value={editStudentSchool}
+                        onChange={e => setEditStudentSchool(e.target.value)}
+                        className="w-full min-h-[44px] bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-slate-300 font-semibold block mb-1">School Code</label>
+                        <input
+                          type="text"
+                          value={editStudentSchoolCode}
+                          onChange={e => setEditStudentSchoolCode(e.target.value.toUpperCase())}
+                          className="w-full min-h-[44px] bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white font-mono uppercase focus:outline-none focus:border-emerald-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-slate-300 font-semibold block mb-1">Link Code</label>
+                        <input
+                          type="text"
+                          value={editStudentLinkCode}
+                          onChange={e => setEditStudentLinkCode(e.target.value.toUpperCase())}
+                          className="w-full min-h-[44px] bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white font-mono uppercase focus:outline-none focus:border-emerald-500"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-slate-300 font-semibold block mb-1">Academic XP</label>
                       <input
                         type="number"
+                        min={0}
                         value={editXP}
                         onChange={e => setEditXP(Number(e.target.value))}
-                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
+                        className="w-full min-h-[44px] bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white font-mono tabular-nums focus:outline-none focus:border-emerald-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-slate-300 font-semibold block mb-1">Study Streak (Days)</label>
+                      <input
+                        type="number"
+                        min={0}
+                        value={editStudentStreakDays}
+                        onChange={e => setEditStudentStreakDays(Number(e.target.value))}
+                        className="w-full min-h-[44px] bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white font-mono tabular-nums focus:outline-none focus:border-emerald-500"
                       />
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between p-2.5 bg-slate-950 border border-slate-800 rounded-xl">
+                  <div className="flex items-center justify-between p-3 bg-slate-950 border border-slate-800 rounded-xl">
                     <div>
                       <span className="font-semibold text-white block">School Uniform Verification</span>
-                      <span className="text-[10px] text-slate-400">Award verified school badge and bonus rank</span>
+                      <span className="text-[11px] text-slate-400">Award verified school badge and bonus status</span>
                     </div>
                     <button
                       type="button"
                       onClick={() => setEditUniformVerified(!editUniformVerified)}
-                      className={`px-3 py-1 rounded-lg font-bold text-xs cursor-pointer transition-colors ${
+                      className={`min-h-[44px] px-4 py-1.5 rounded-xl font-bold text-xs cursor-pointer transition-colors ${
                         editUniformVerified
                           ? 'bg-emerald-600 text-white'
-                          : 'bg-slate-800 text-slate-400 hover:text-white'
+                          : 'bg-slate-800 text-slate-300 hover:text-white'
                       }`}
                     >
-                      {editUniformVerified ? 'Verified' : 'Unverified'}
+                      {editUniformVerified ? 'Verified ✓' : 'Unverified'}
                     </button>
-                  </div>
-                </>
-              )}
-
-              {selectedUserForEdit.role === 'parent' && (
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="text-slate-400 font-semibold block mb-1">Wallet PIN</label>
-                    <input
-                      type="text"
-                      maxLength={4}
-                      value={editParentPin}
-                      onChange={e => setEditParentPin(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white font-mono focus:outline-none focus:border-emerald-500"
-                    />
                   </div>
                 </div>
               )}
 
+              {/* Section 2B: Parent Persona */}
+              {selectedUserForEdit.role === 'parent' && (
+                <div className="space-y-3 border-t border-slate-800/80 pt-3.5">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-orange-400 block">
+                    Parent / Guardian Profile
+                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-slate-300 font-semibold block mb-1">Phone Number</label>
+                      <input
+                        type="text"
+                        value={editParentPhone}
+                        onChange={e => setEditParentPhone(e.target.value)}
+                        className="w-full min-h-[44px] bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white font-mono focus:outline-none focus:border-emerald-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-slate-300 font-semibold block mb-1">Relationship to Ward</label>
+                      <select
+                        value={editParentRelationship}
+                        onChange={e => setEditParentRelationship(e.target.value as ParentRelationship)}
+                        className="w-full min-h-[44px] bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
+                      >
+                        {['Father', 'Mother', 'Guardian', 'Sibling', 'Relative', 'Other'].map(rel => (
+                          <option key={rel} value={rel}>{rel}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="text-slate-300 font-semibold block mb-1">Primary Ward Name</label>
+                      <input
+                        type="text"
+                        value={editParentWardName}
+                        onChange={e => setEditParentWardName(e.target.value)}
+                        className="w-full min-h-[44px] bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-slate-300 font-semibold block mb-1">Wallet PIN (4 digits)</label>
+                      <input
+                        type="text"
+                        maxLength={4}
+                        value={editParentPin}
+                        onChange={e => setEditParentPin(e.target.value)}
+                        className="w-full min-h-[44px] bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white font-mono tabular-nums focus:outline-none focus:border-emerald-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-slate-300 font-semibold block mb-1">State of Residence</label>
+                      <input
+                        type="text"
+                        value={editParentState}
+                        onChange={e => setEditParentState(e.target.value)}
+                        className="w-full min-h-[44px] bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-slate-300 font-semibold block mb-1">City / LGA</label>
+                      <input
+                        type="text"
+                        value={editParentCity}
+                        onChange={e => setEditParentCity(e.target.value)}
+                        className="w-full min-h-[44px] bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-slate-300 font-semibold block mb-1">Notification Channel</label>
+                      <select
+                        value={editParentNotificationPref}
+                        onChange={e => setEditParentNotificationPref(e.target.value as ParentNotificationChannel)}
+                        className="w-full min-h-[44px] bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
+                      >
+                        {['WhatsApp', 'SMS', 'Email', 'In-App Only'].map(ch => (
+                          <option key={ch} value={ch}>{ch}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="flex flex-col justify-end">
+                      <button
+                        type="button"
+                        onClick={() => setEditParentAllowReports(!editParentAllowReports)}
+                        className={`min-h-[44px] w-full px-3 py-2 rounded-xl font-bold text-xs cursor-pointer transition-colors ${
+                          editParentAllowReports
+                            ? 'bg-emerald-600 text-white'
+                            : 'bg-slate-800 text-slate-300 hover:text-white'
+                        }`}
+                      >
+                        {editParentAllowReports ? 'Automated Reports: Enabled' : 'Automated Reports: Off'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Section 2C: Tutor Persona */}
               {selectedUserForEdit.role === 'tutor' && (
-                <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-3.5 border-t border-slate-800/80 pt-3.5">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-sky-400 block">
+                    Educator / Tutor Persona &amp; Subjects
+                  </span>
+
+                  <SubjectMultiSelector
+                    selectedSubjects={editTutorSubjects}
+                    onChange={(nextSubjects) => {
+                      setEditTutorSubjects(nextSubjects);
+                      setEditTutorSpecialization(formatSubjectSpecialization(nextSubjects));
+                    }}
+                    label="Proficient Subjects"
+                    helperText="Select or add custom subjects taught by this tutor. Updating here syncs her public directory card immediately."
+                    accentColor="emerald"
+                    compact
+                  />
+
                   <div>
-                    <label className="text-slate-400 font-semibold block mb-1">
-                      Hourly Rate (<NairaSign />)
+                    <label className="text-slate-300 font-semibold block mb-1">
+                      Subject Specialization Headline (Displays under tutor name)
                     </label>
                     <input
-                      type="number"
-                      step={500}
-                      value={editHourlyRate}
-                      onChange={e => setEditHourlyRate(Number(e.target.value))}
+                      type="text"
+                      value={editTutorSpecialization}
+                      onChange={e => setEditTutorSpecialization(e.target.value)}
+                      placeholder="e.g. English Language, French and CRS"
+                      className="w-full min-h-[44px] bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="text-slate-300 font-semibold block mb-1">
+                        Hourly Rate (<NairaSign />)
+                      </label>
+                      <input
+                        type="number"
+                        step={500}
+                        min={0}
+                        value={editHourlyRate}
+                        onChange={e => setEditHourlyRate(Number(e.target.value))}
+                        className="w-full min-h-[44px] bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white font-mono tabular-nums focus:outline-none focus:border-emerald-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-slate-300 font-semibold block mb-1">Teaching Mode</label>
+                      <select
+                        value={editTutorTeachingMode}
+                        onChange={e => setEditTutorTeachingMode(e.target.value as any)}
+                        className="w-full min-h-[44px] bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
+                      >
+                        <option value="both">Online &amp; In-Person</option>
+                        <option value="online">Online Only</option>
+                        <option value="physical">In-Person Home Only</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="text-slate-300 font-semibold block mb-1">Experience</label>
+                      <select
+                        value={editTutorExperienceRange}
+                        onChange={e => setEditTutorExperienceRange(e.target.value as any)}
+                        className="w-full min-h-[44px] bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
+                      >
+                        <option value="0-1 years">0-1 years</option>
+                        <option value="1-3 years">1-3 years</option>
+                        <option value="3-5 years">3-5 years</option>
+                        <option value="5+ years">5+ years</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-slate-300 font-semibold block mb-1">Highest Education</label>
+                      <select
+                        value={editTutorHighestEducation}
+                        onChange={e => setEditTutorHighestEducation(e.target.value as any)}
+                        className="w-full min-h-[44px] bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
+                      >
+                        {['NCE', 'B.Sc.', 'B.Ed.', 'M.Sc.', 'Ph.D.', 'Other'].map(ed => (
+                          <option key={ed} value={ed}>{ed}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="text-slate-300 font-semibold block mb-1">Qualification Title</label>
+                      <input
+                        type="text"
+                        value={editTutorQualification}
+                        onChange={e => setEditTutorQualification(e.target.value)}
+                        placeholder="e.g. B.Ed. (First Class Honours)"
+                        className="w-full min-h-[44px] bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-slate-300 font-semibold block mb-1">Institution Attended</label>
+                      <input
+                        type="text"
+                        value={editTutorInstitution}
+                        onChange={e => setEditTutorInstitution(e.target.value)}
+                        className="w-full min-h-[44px] bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-slate-300 font-semibold block mb-1">Course of Study</label>
+                      <input
+                        type="text"
+                        value={editTutorCourseOfStudy}
+                        onChange={e => setEditTutorCourseOfStudy(e.target.value)}
+                        className="w-full min-h-[44px] bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-slate-300 font-semibold block mb-1">Phone Number</label>
+                      <input
+                        type="text"
+                        value={editTutorPhone}
+                        onChange={e => setEditTutorPhone(e.target.value)}
+                        className="w-full min-h-[44px] bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white font-mono focus:outline-none focus:border-emerald-500"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-slate-300 font-semibold block mb-1">City</label>
+                        <input
+                          type="text"
+                          value={editTutorCity}
+                          onChange={e => setEditTutorCity(e.target.value)}
+                          className="w-full min-h-[44px] bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-slate-300 font-semibold block mb-1">State</label>
+                        <input
+                          type="text"
+                          value={editTutorState}
+                          onChange={e => setEditTutorState(e.target.value)}
+                          className="w-full min-h-[44px] bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-slate-300 font-semibold block mb-1.5">Target Classes</label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {['JSS 1', 'JSS 2', 'JSS 3', 'SS 1', 'SS 2', 'SS 3', 'WAEC/NECO Prep', 'JAMB Prep'].map(lvl => {
+                        const active = editTutorTargetClasses.includes(lvl);
+                        return (
+                          <button
+                            key={lvl}
+                            type="button"
+                            onClick={() =>
+                              setEditTutorTargetClasses(prev =>
+                                active ? prev.filter(c => c !== lvl) : [...prev, lvl]
+                              )
+                            }
+                            className={`min-h-[38px] px-2.5 py-1 rounded-lg text-xs font-semibold border cursor-pointer transition-colors ${
+                              active
+                                ? 'bg-sky-500/20 text-sky-200 border-sky-400'
+                                : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-white'
+                            }`}
+                          >
+                            {active ? '✓ ' : '+ '}
+                            {lvl}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-slate-300 font-semibold block mb-1">Profile Tagline</label>
+                    <input
+                      type="text"
+                      value={editTutorTagline}
+                      onChange={e => setEditTutorTagline(e.target.value)}
+                      className="w-full min-h-[44px] bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-slate-300 font-semibold block mb-1">Biography &amp; Methodology</label>
+                    <textarea
+                      rows={3}
+                      value={editTutorBio}
+                      onChange={e => setEditTutorBio(e.target.value)}
                       className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
                     />
                   </div>
 
-                  <div className="flex flex-col justify-end">
-                    <button
-                      type="button"
-                      onClick={() => setEditTutorVerified(!editTutorVerified)}
-                      className={`w-full py-2 rounded-xl font-bold text-xs cursor-pointer transition-colors ${
-                        editTutorVerified
-                          ? 'bg-emerald-600 text-white'
-                          : 'bg-slate-800 text-slate-400 hover:text-white'
-                      }`}
-                    >
-                      {editTutorVerified ? 'NIN Verified' : 'Unverified'}
-                    </button>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-slate-300 font-semibold block mb-1">NIN Number</label>
+                      <input
+                        type="text"
+                        value={editTutorNin}
+                        onChange={e => setEditTutorNin(e.target.value)}
+                        className="w-full min-h-[44px] bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white font-mono focus:outline-none focus:border-emerald-500"
+                      />
+                    </div>
+                    <div className="flex flex-col justify-end">
+                      <button
+                        type="button"
+                        onClick={() => setEditTutorVerified(!editTutorVerified)}
+                        className={`min-h-[44px] w-full py-2 rounded-xl font-bold text-xs cursor-pointer transition-colors ${
+                          editTutorVerified
+                            ? 'bg-emerald-600 text-white'
+                            : 'bg-slate-800 text-slate-300 hover:text-white'
+                        }`}
+                      >
+                        {editTutorVerified ? 'NIN Verified ✓' : 'NIN Unverified'}
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}
 
-              {selectedUserForEdit.role === 'admin' && (
-                <div className="space-y-2.5">
-                  <div className="grid grid-cols-2 gap-2">
+              {/* Section 2D: School Admin Persona */}
+              {(selectedUserForEdit.role === 'admin' || selectedUserForEdit.role === 'school_admin') && (
+                <div className="space-y-3 border-t border-slate-800/80 pt-3.5">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-purple-400 block">
+                    School Administrator &amp; Institution
+                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <label className="text-slate-400 font-semibold block mb-1">School Name</label>
+                      <label className="text-slate-300 font-semibold block mb-1">School Name</label>
                       <input
                         type="text"
                         value={editAdminSchoolName}
                         onChange={e => setEditAdminSchoolName(e.target.value)}
-                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-purple-500"
+                        className="w-full min-h-[44px] bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-purple-500"
                       />
                     </div>
                     <div>
-                      <label className="text-slate-400 font-semibold block mb-1">School Code (6–8 char)</label>
+                      <label className="text-slate-300 font-semibold block mb-1">School Type</label>
+                      <input
+                        type="text"
+                        value={editAdminSchoolType}
+                        onChange={e => setEditAdminSchoolType(e.target.value)}
+                        className="w-full min-h-[44px] bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-purple-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-slate-300 font-semibold block mb-1">School Code (6–8 char)</label>
                       <input
                         type="text"
                         maxLength={12}
                         value={editAdminSchoolCode}
                         onChange={e => setEditAdminSchoolCode(e.target.value.toUpperCase())}
-                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white font-mono font-bold uppercase focus:outline-none focus:border-purple-500"
+                        className="w-full min-h-[44px] bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white font-mono font-bold uppercase tabular-nums focus:outline-none focus:border-purple-500"
                       />
+                    </div>
+                    <div>
+                      <label className="text-slate-300 font-semibold block mb-1">Designation / Role</label>
+                      <input
+                        type="text"
+                        value={editAdminDesignation}
+                        onChange={e => setEditAdminDesignation(e.target.value)}
+                        className="w-full min-h-[44px] bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-purple-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-slate-300 font-semibold block mb-1">Official Phone</label>
+                      <input
+                        type="text"
+                        value={editAdminPhone}
+                        onChange={e => setEditAdminPhone(e.target.value)}
+                        className="w-full min-h-[44px] bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white font-mono focus:outline-none focus:border-purple-500"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-slate-300 font-semibold block mb-1">State</label>
+                        <input
+                          type="text"
+                          value={editAdminState}
+                          onChange={e => setEditAdminState(e.target.value)}
+                          className="w-full min-h-[44px] bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-purple-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-slate-300 font-semibold block mb-1">LGA</label>
+                        <input
+                          type="text"
+                          value={editAdminLga}
+                          onChange={e => setEditAdminLga(e.target.value)}
+                          className="w-full min-h-[44px] bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-purple-500"
+                        />
+                      </div>
                     </div>
                   </div>
 
@@ -3086,25 +3730,25 @@ export const SuperAdminPortal: React.FC = () => {
                             </span>
                           )}
                         </div>
-                        <div className="text-[10px] text-slate-500">
+                        <div className="text-[10px] text-slate-500 tabular-nums">
                           Affiliated: {metrics.paidStudents} Paid · {metrics.freeStudents} Free Tier ({metrics.totalStudents} Total)
                         </div>
                       </div>
                     );
                   })()}
 
-                  <div className="flex items-center justify-between p-2.5 bg-slate-950 border border-slate-800 rounded-xl">
+                  <div className="flex items-center justify-between p-3 bg-slate-950 border border-slate-800 rounded-xl">
                     <div>
                       <span className="font-semibold text-white block">Institutional Accreditation</span>
-                      <span className="text-[10px] text-slate-400">Unlock curriculum notes and CBT publishing</span>
+                      <span className="text-[11px] text-slate-400">Unlock curriculum notes and CBT publishing</span>
                     </div>
                     <button
                       type="button"
                       onClick={() => setEditAdminVerified(!editAdminVerified)}
-                      className={`px-3 py-1 rounded-lg font-bold text-xs cursor-pointer transition-colors ${
+                      className={`min-h-[44px] px-4 py-1.5 rounded-xl font-bold text-xs cursor-pointer transition-colors ${
                         editAdminVerified
                           ? 'bg-emerald-600 text-white'
-                          : 'bg-slate-800 text-slate-400 hover:text-white'
+                          : 'bg-slate-800 text-slate-300 hover:text-white'
                       }`}
                     >
                       {editAdminVerified ? 'Accredited ✓' : 'Pending Review'}
@@ -3113,9 +3757,89 @@ export const SuperAdminPortal: React.FC = () => {
                 </div>
               )}
 
+              {/* Section 2E: Growth Partner Persona */}
+              {selectedUserForEdit.role === 'growth_partner' && (
+                <div className="space-y-3 border-t border-slate-800/80 pt-3.5">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-400 block">
+                    Growth Partner &amp; Settlement Profile
+                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-slate-300 font-semibold block mb-1">Phone Number</label>
+                      <input
+                        type="text"
+                        value={editPartnerPhone}
+                        onChange={e => setEditPartnerPhone(e.target.value)}
+                        className="w-full min-h-[44px] bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white font-mono focus:outline-none focus:border-emerald-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-slate-300 font-semibold block mb-1">Referral Code</label>
+                      <input
+                        type="text"
+                        value={editPartnerReferralCode}
+                        onChange={e => setEditPartnerReferralCode(e.target.value.toUpperCase())}
+                        className="w-full min-h-[44px] bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white font-mono uppercase focus:outline-none focus:border-emerald-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-slate-300 font-semibold block mb-1">Commission Rate (%)</label>
+                      <input
+                        type="number"
+                        min={0}
+                        max={100}
+                        step={1}
+                        value={editPartnerCommissionRate}
+                        onChange={e => setEditPartnerCommissionRate(Number(e.target.value))}
+                        className="w-full min-h-[44px] bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white font-mono tabular-nums focus:outline-none focus:border-emerald-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-slate-300 font-semibold block mb-1">Partner Status</label>
+                      <select
+                        value={editPartnerStatus}
+                        onChange={e => setEditPartnerStatus(e.target.value as GrowthPartner['status'])}
+                        className="w-full min-h-[44px] bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
+                      >
+                        <option value="active">Active</option>
+                        <option value="pending_approval">Pending Approval</option>
+                        <option value="suspended">Suspended</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-slate-300 font-semibold block mb-1">Payout Bank Name</label>
+                      <input
+                        type="text"
+                        value={editPartnerBankName}
+                        onChange={e => setEditPartnerBankName(e.target.value)}
+                        className="w-full min-h-[44px] bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-slate-300 font-semibold block mb-1">Account Number</label>
+                      <input
+                        type="text"
+                        value={editPartnerAccountNumber}
+                        onChange={e => setEditPartnerAccountNumber(e.target.value)}
+                        className="w-full min-h-[44px] bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white font-mono tabular-nums focus:outline-none focus:border-emerald-500"
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="text-slate-300 font-semibold block mb-1">Settlement Account Name</label>
+                      <input
+                        type="text"
+                        value={editPartnerAccountName}
+                        onChange={e => setEditPartnerAccountName(e.target.value)}
+                        className="w-full min-h-[44px] bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Trust & Enforcement Controls inside Edit Modal */}
               {!selectedUserForEdit.isSuperAdmin && (
-                <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-2.5">
+                <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-xl space-y-2.5">
                   <div className="flex items-center justify-between">
                     <span className="font-bold text-slate-200 flex items-center gap-1.5">
                       <ShieldAlert className="w-3.5 h-3.5 text-rose-400" />
@@ -3123,13 +3847,13 @@ export const SuperAdminPortal: React.FC = () => {
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                     <div>
                       <label className="text-[11px] text-slate-400 block mb-1">Account Status</label>
                       <select
                         value={editAccountStatus}
                         onChange={e => setEditAccountStatus(e.target.value as any)}
-                        className="w-full bg-slate-900 border border-slate-800 rounded-xl px-2.5 py-2 text-white focus:outline-none focus:border-emerald-500"
+                        className="w-full min-h-[44px] bg-slate-900 border border-slate-800 rounded-xl px-2.5 py-2 text-white focus:outline-none focus:border-emerald-500"
                       >
                         <option value="active">Active</option>
                         <option value="locked">Timed Lock</option>
@@ -3143,7 +3867,7 @@ export const SuperAdminPortal: React.FC = () => {
                         <select
                           value={editLockDurationMinutes}
                           onChange={e => setEditLockDurationMinutes(Number(e.target.value))}
-                          className="w-full bg-slate-900 border border-slate-800 rounded-xl px-2.5 py-2 text-white font-mono focus:outline-none focus:border-amber-500"
+                          className="w-full min-h-[44px] bg-slate-900 border border-slate-800 rounded-xl px-2.5 py-2 text-white font-mono focus:outline-none focus:border-amber-500"
                         >
                           <option value={15}>15 mins</option>
                           <option value={60}>1 hour</option>
@@ -3156,7 +3880,7 @@ export const SuperAdminPortal: React.FC = () => {
                         <button
                           type="button"
                           onClick={() => setEditWalletFrozen(!editWalletFrozen)}
-                          className={`w-full py-2 rounded-xl font-bold text-xs cursor-pointer flex items-center justify-center gap-1.5 transition-colors ${
+                          className={`min-h-[44px] w-full py-2 rounded-xl font-bold text-xs cursor-pointer flex items-center justify-center gap-1.5 transition-colors ${
                             editWalletFrozen
                               ? 'bg-sky-600 text-white'
                               : 'bg-slate-900 border border-slate-800 text-slate-300 hover:text-white'
@@ -3177,7 +3901,7 @@ export const SuperAdminPortal: React.FC = () => {
                         value={editEnforcementReason}
                         onChange={e => setEditEnforcementReason(e.target.value)}
                         placeholder="Reason for lock, suspension, or wallet freeze"
-                        className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-rose-500"
+                        className="w-full min-h-[44px] bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-rose-500"
                       />
                     </div>
                   )}
@@ -3198,7 +3922,7 @@ export const SuperAdminPortal: React.FC = () => {
                           'Account soft-deleted and PII scrubbed by Super Admin'
                       });
                     }}
-                    className="px-3 py-1.5 rounded-xl bg-rose-950/70 hover:bg-rose-900 border border-rose-800 text-rose-300 font-bold inline-flex items-center gap-1 cursor-pointer"
+                    className="min-h-[44px] px-3.5 py-2 rounded-xl bg-rose-950/70 hover:bg-rose-900 border border-rose-800 text-rose-300 font-bold inline-flex items-center gap-1.5 cursor-pointer"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                     <span>Soft-Delete</span>
@@ -3210,13 +3934,13 @@ export const SuperAdminPortal: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => setSelectedUserForEdit(null)}
-                    className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 font-semibold cursor-pointer"
+                    className="min-h-[44px] px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 font-semibold cursor-pointer"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
-                    className="px-4 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold transition-colors cursor-pointer shadow-sm"
+                    className="min-h-[44px] px-5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold transition-colors cursor-pointer shadow-sm"
                   >
                     Save Changes
                   </button>

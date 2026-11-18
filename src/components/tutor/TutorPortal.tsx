@@ -33,6 +33,13 @@ import { NairaText, NairaSign, formatNaira } from '../../utils/currency';
 import { TimetableSlot } from '../../types';
 import { playSound, toggleSoundMuted, getSoundMuted } from '../../utils/audioSynthesis';
 import { PersonaAvatar } from '../common/PersonaAvatar';
+import { SubjectMultiSelector } from '../common/SubjectMultiSelector';
+import {
+  SUBJECT_REPAIR_VERSION,
+  dedupeSubjects,
+  formatSubjectSpecialization,
+  parseSubjectString
+} from '../../utils/nigerianSubjects';
 
 type TutorTab = 'overview' | 'sessions' | 'profile' | 'chat';
 type TutorSheet = 'earnings' | 'profile-core' | 'profile-credentials' | 'profile-exams' | 'timetable' | null;
@@ -91,13 +98,28 @@ export const TutorPortal: React.FC = () => {
   const [profileSaveSuccess, setProfileSaveSuccess] = useState<boolean>(false);
   const [isMuted, setIsMuted] = useState<boolean>(getSoundMuted());
 
+  const initialSubjects =
+    tutorData?.proficientSubjects && tutorData.proficientSubjects.length > 0
+      ? dedupeSubjects(tutorData.proficientSubjects)
+      : parseSubjectString(tutorData?.subjectSpecialization);
+
   // Editable Profile States (Preserving All Original Fields)
+  const [editProficientSubjects, setEditProficientSubjects] = useState<string[]>(initialSubjects);
+  const [editSubjectSpecialization, setEditSubjectSpecialization] = useState<string>(
+    tutorData?.subjectSpecialization || formatSubjectSpecialization(initialSubjects, '')
+  );
+  const [editSubjectsError, setEditSubjectsError] = useState<string | null>(null);
+  const [editQualification, setEditQualification] = useState<string>(
+    tutorData?.qualification || tutorData?.highestEducation || 'B.Sc.'
+  );
+  const [editCity, setEditCity] = useState<string>(tutorData?.city || 'Lagos');
+  const [editState, setEditState] = useState<string>(tutorData?.state || 'Lagos');
   const [editTagline, setEditTagline] = useState<string>(
-    tutorData?.tagline || `${tutorSpecialization} (10+ Yrs Prep Specialist)`
+    tutorData?.tagline || `${tutorSpecialization} (Prep Specialist)`
   );
   const [editBio, setEditBio] = useState<string>(
     tutorData?.bio ||
-      'Former Olympiad coach preparing secondary school candidates for Distinction grades in WAEC and 300+ in JAMB UTME. Patient, step-by-step problem solver specializing in interactive digital whiteboard drills.'
+      'Dedicated secondary school educator preparing candidates for Distinction grades in WAEC and 300+ in JAMB UTME.'
   );
   const [editHourlyRate, setEditHourlyRate] = useState<number>(tutorHourlyRate);
   const [editTeachingMode, setEditTeachingMode] = useState<'both' | 'online' | 'physical'>(
@@ -175,18 +197,70 @@ export const TutorPortal: React.FC = () => {
     if (!nextMuted) playSound.tileTap();
   };
 
+  // Keep local form synchronized whenever profile repairs or Super Admin updates arrive
+  useEffect(() => {
+    if (!tutorData) return;
+    const syncedSubjects =
+      tutorData.proficientSubjects && tutorData.proficientSubjects.length > 0
+        ? dedupeSubjects(tutorData.proficientSubjects)
+        : parseSubjectString(tutorData.subjectSpecialization);
+    setEditProficientSubjects(syncedSubjects);
+    setEditSubjectSpecialization(
+      tutorData.subjectSpecialization || formatSubjectSpecialization(syncedSubjects, '')
+    );
+    if (tutorData.qualification) setEditQualification(tutorData.qualification);
+    if (tutorData.city) setEditCity(tutorData.city);
+    if (tutorData.state) setEditState(tutorData.state);
+    if (tutorData.tagline) setEditTagline(tutorData.tagline);
+    if (tutorData.bio) setEditBio(tutorData.bio);
+    if (typeof tutorData.hourlyRate === 'number') setEditHourlyRate(tutorData.hourlyRate);
+    if (tutorData.teachingMode) setEditTeachingMode(tutorData.teachingMode);
+  }, [
+    currentUserProfile?.id,
+    tutorData?.subjectSpecialization,
+    tutorData?.tagline,
+    tutorData?.bio,
+    tutorData?.hourlyRate,
+    tutorData?.teachingMode,
+    tutorData?.qualification,
+    tutorData?.city,
+    tutorData?.state,
+    JSON.stringify(tutorData?.proficientSubjects || [])
+  ]);
+
   const commitProfileUpdate = (closeSheetAfter = false) => {
+    const cleanSubjects = dedupeSubjects(
+      editProficientSubjects.length > 0
+        ? editProficientSubjects
+        : parseSubjectString(editSubjectSpecialization)
+    );
+    if (cleanSubjects.length === 0 && !editSubjectSpecialization.trim()) {
+      setEditSubjectsError('Please select or add at least one teaching subject.');
+      playSound.buzz();
+      return;
+    }
+    setEditSubjectsError(null);
+    const resolvedSpecialization =
+      editSubjectSpecialization.trim() || formatSubjectSpecialization(cleanSubjects, 'General Subjects');
+
     updateTutorProfile({
-      tagline: editTagline,
-      bio: editBio,
-      hourlyRate: editHourlyRate,
+      proficientSubjects: cleanSubjects,
+      subjectSpecialization: resolvedSpecialization,
+      qualification: editQualification.trim() || tutorQualification,
+      city: editCity.trim() || 'Lagos',
+      state: editState.trim() || 'Lagos',
+      tagline: editTagline.trim() || `${resolvedSpecialization} Specialist`,
+      bio: editBio.trim(),
+      hourlyRate: Number(editHourlyRate) || 3500,
       teachingMode: editTeachingMode,
       degrees: editDegrees,
       certifications: editCertifications,
       examSpecializations: editExamSpecs,
       curriculumHighlights: editHighlights,
-      timetable: editTimetable
-    });
+      timetable: editTimetable,
+      manualSubjectOverrideAt: new Date().toISOString(),
+      subjectRepairVersion: SUBJECT_REPAIR_VERSION
+    } as any);
     playSound.correct();
     setProfileSaveSuccess(true);
     if (closeSheetAfter) {
@@ -894,6 +968,9 @@ export const TutorPortal: React.FC = () => {
                     </span>
                   </div>
                   <h3 className="text-sm font-black text-white">Public Marketplace Profile</h3>
+                  <p className="text-xs font-semibold text-[#84CC16] line-clamp-1">
+                    {editSubjectSpecialization || tutorSpecialization}
+                  </p>
                   <p className="text-[11px] text-slate-300 line-clamp-2">{editTagline}</p>
                   <span className="inline-block text-[10px] font-bold text-[#FF5B00] bg-[#FF5B00]/15 px-2 py-0.5 rounded-lg border border-[#FF5B00]/30">
                     {teachingModeLabel}
@@ -901,7 +978,7 @@ export const TutorPortal: React.FC = () => {
                 </div>
 
                 <div className="mt-3 pt-2.5 border-t border-slate-700/80 flex items-center justify-between text-[11px] font-black text-[#84CC16]">
-                  <span>Edit Tagline, Bio &amp; Rate</span>
+                  <span>Edit Subjects, Bio &amp; Rate</span>
                   <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
                 </div>
               </motion.div>
@@ -1357,29 +1434,91 @@ export const TutorPortal: React.FC = () => {
                     </button>
                   </div>
 
+                  <SubjectMultiSelector
+                    selectedSubjects={editProficientSubjects}
+                    onChange={(nextSubjects) => {
+                      setEditProficientSubjects(nextSubjects);
+                      setEditSubjectSpecialization(formatSubjectSpecialization(nextSubjects));
+                      if (nextSubjects.length > 0) setEditSubjectsError(null);
+                    }}
+                    label="Teaching Subjects"
+                    helperText="Select all subjects you teach or add custom subjects below. This updates your public listing immediately."
+                    error={editSubjectsError}
+                    accentColor="lime"
+                    compact
+                  />
+
                   <div>
                     <label className="text-[11px] font-bold text-slate-200 block mb-1">
-                      Profile Tagline (Displays under your name)
+                      Subject Specialization Headline (Displays under your name)
                     </label>
                     <input
                       type="text"
-                      value={editTagline}
-                      onChange={e => setEditTagline(e.target.value)}
-                      placeholder="e.g. WAEC & JAMB Mathematics/Physics Specialist (10+ Yrs)"
-                      className="w-full bg-[#14203D] border-2 border-slate-700 focus:border-[#84CC16] rounded-xl py-2 px-3 text-xs text-white placeholder-slate-400 focus:outline-none"
+                      value={editSubjectSpecialization}
+                      onChange={e => setEditSubjectSpecialization(e.target.value)}
+                      placeholder="e.g. English Language, French and CRS"
+                      className="w-full min-h-[44px] bg-[#14203D] border-2 border-slate-700 focus:border-[#84CC16] rounded-xl py-2 px-3 text-xs text-white placeholder-slate-400 focus:outline-none"
                     />
                   </div>
 
                   <div>
                     <label className="text-[11px] font-bold text-slate-200 block mb-1">
-                      Hourly Rate (<NairaSign />)
+                      Profile Tagline
                     </label>
                     <input
-                      type="number"
-                      value={editHourlyRate}
-                      onChange={e => setEditHourlyRate(Number(e.target.value))}
-                      className="w-full bg-[#14203D] border-2 border-slate-700 focus:border-[#84CC16] rounded-xl py-2 px-3 text-xs text-white font-mono focus:outline-none"
+                      type="text"
+                      value={editTagline}
+                      onChange={e => setEditTagline(e.target.value)}
+                      placeholder="e.g. WAEC & JAMB English Language, French and CRS Specialist"
+                      className="w-full min-h-[44px] bg-[#14203D] border-2 border-slate-700 focus:border-[#84CC16] rounded-xl py-2 px-3 text-xs text-white placeholder-slate-400 focus:outline-none"
                     />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-200 block mb-1">
+                        Hourly Rate (<NairaSign />)
+                      </label>
+                      <input
+                        type="number"
+                        value={editHourlyRate}
+                        onChange={e => setEditHourlyRate(Number(e.target.value))}
+                        className="w-full min-h-[44px] bg-[#14203D] border-2 border-slate-700 focus:border-[#84CC16] rounded-xl py-2 px-3 text-xs text-white font-mono tabular-nums focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-200 block mb-1">
+                        Academic Qualification
+                      </label>
+                      <input
+                        type="text"
+                        value={editQualification}
+                        onChange={e => setEditQualification(e.target.value)}
+                        placeholder="e.g. B.Ed. French & English"
+                        className="w-full min-h-[44px] bg-[#14203D] border-2 border-slate-700 focus:border-[#84CC16] rounded-xl py-2 px-3 text-xs text-white placeholder-slate-400 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-200 block mb-1">City</label>
+                      <input
+                        type="text"
+                        value={editCity}
+                        onChange={e => setEditCity(e.target.value)}
+                        className="w-full min-h-[44px] bg-[#14203D] border-2 border-slate-700 focus:border-[#84CC16] rounded-xl py-2 px-3 text-xs text-white focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-200 block mb-1">State</label>
+                      <input
+                        type="text"
+                        value={editState}
+                        onChange={e => setEditState(e.target.value)}
+                        className="w-full min-h-[44px] bg-[#14203D] border-2 border-slate-700 focus:border-[#84CC16] rounded-xl py-2 px-3 text-xs text-white focus:outline-none"
+                      />
+                    </div>
                   </div>
 
                   <div>
@@ -1412,7 +1551,7 @@ export const TutorPortal: React.FC = () => {
                             playSound.tileTap();
                             setEditTeachingMode(m.id as any);
                           }}
-                          className={`py-2 px-2 rounded-xl text-[11px] font-black transition-all cursor-pointer border-2 ${
+                          className={`min-h-[44px] py-2 px-2 rounded-xl text-[11px] font-black transition-all cursor-pointer border-2 ${
                             editTeachingMode === m.id
                               ? 'bg-[#84CC16] border-[#A3E635] text-slate-950'
                               : 'bg-[#14203D] border-slate-700 text-slate-300 hover:text-white'
@@ -1426,7 +1565,7 @@ export const TutorPortal: React.FC = () => {
 
                   <button
                     type="submit"
-                    className="w-full py-3 rounded-2xl bg-[#FF5B00] hover:bg-[#e05000] text-white font-black text-xs uppercase tracking-wider shadow-lg shadow-[#FF5B00]/25 flex items-center justify-center gap-2 cursor-pointer"
+                    className="min-h-[44px] w-full py-3 rounded-2xl bg-[#FF5B00] hover:bg-[#e05000] text-white font-black text-xs uppercase tracking-wider shadow-lg shadow-[#FF5B00]/25 flex items-center justify-center gap-2 cursor-pointer"
                   >
                     <Save className="w-4 h-4" />
                     <span>Save &amp; Publish Marketplace Profile</span>
