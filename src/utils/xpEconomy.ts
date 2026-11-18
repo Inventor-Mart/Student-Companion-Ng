@@ -25,6 +25,62 @@ export const calculateRank = (xp: number, gender?: 'male' | 'female'): StudentRa
   return 'Fresher';
 };
 
+export const getRankProgress = (
+  xp: number,
+  gender?: 'male' | 'female'
+): {
+  currentXP: number;
+  target: number;
+  nextRank: string;
+  percent: number;
+  isMaxRank: boolean;
+} => {
+  const safeXp = Math.max(0, Math.floor(Number(xp) || 0));
+  if (safeXp >= 25000) {
+    return {
+      currentXP: safeXp,
+      target: 25000,
+      nextRank: 'Senior Prefect',
+      percent: 100,
+      isMaxRank: true
+    };
+  }
+  if (safeXp >= 15000) {
+    return {
+      currentXP: safeXp,
+      target: 25000,
+      nextRank: 'Senior Prefect',
+      percent: Math.min(100, Math.max(0, Math.round(((safeXp - 15000) / 10000) * 100))),
+      isMaxRank: false
+    };
+  }
+  if (safeXp >= 7500) {
+    return {
+      currentXP: safeXp,
+      target: 15000,
+      nextRank: gender === 'female' ? 'Senior Girl' : 'Senior Boy',
+      percent: Math.min(100, Math.max(0, Math.round(((safeXp - 7500) / 7500) * 100))),
+      isMaxRank: false
+    };
+  }
+  if (safeXp >= 2500) {
+    return {
+      currentXP: safeXp,
+      target: 7500,
+      nextRank: 'Prefect',
+      percent: Math.min(100, Math.max(0, Math.round(((safeXp - 2500) / 5000) * 100))),
+      isMaxRank: false
+    };
+  }
+  return {
+    currentXP: safeXp,
+    target: 2500,
+    nextRank: 'Scholar',
+    percent: Math.min(100, Math.max(0, Math.round((safeXp / 2500) * 100))),
+    isMaxRank: false
+  };
+};
+
 /**
  * Calculates dynamic XP based on value, exploration diversity, difficulty, volume, and repetition.
  */

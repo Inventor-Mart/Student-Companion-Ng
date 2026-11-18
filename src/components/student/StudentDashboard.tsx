@@ -48,6 +48,7 @@ import { SchoolMaterial } from '../../types';
 import { playSound } from '../../utils/audioSynthesis';
 import { motion, AnimatePresence } from 'motion/react';
 import { NairaText, NairaSign } from '../../utils/currency';
+import { getRankProgress } from '../../utils/xpEconomy';
 
 export const StudentDashboard: React.FC = () => {
   const {
@@ -182,14 +183,7 @@ export const StudentDashboard: React.FC = () => {
     }
   };
 
-  // Rank progression details
-  const getRankProgress = (xp: number) => {
-    if (xp >= 15000) return { target: 20000, nextRank: 'Senior Prefect', percent: 100 };
-    if (xp >= 7500) return { target: 15000, nextRank: 'Senior Boy', percent: Math.round(((xp - 7500) / 7500) * 100) };
-    if (xp >= 2500) return { target: 7500, nextRank: 'Prefect', percent: Math.round(((xp - 2500) / 5000) * 100) };
-    return { target: 2500, nextRank: 'Scholar', percent: Math.round((xp / 2500) * 100) };
-  };
-
+  // Rank progression details aligned with xpEconomy rank thresholds
   const rankProgress = getRankProgress(student.xp);
 
   // Determine current class drill & topic
@@ -315,29 +309,43 @@ export const StudentDashboard: React.FC = () => {
               />
             </div>
 
-            {/* Name, Rank Badge & Signature Image 1 XP Capsule */}
-            <div className="min-w-0 space-y-1">
+            {/* Name, Rank Badge & High-Contrast XP Progress Readout */}
+            <div className="min-w-0 space-y-1.5 flex-1">
               <div className="flex items-center gap-2 flex-wrap">
                 <h2 className="text-lg sm:text-xl font-black text-white tracking-tight drop-shadow-sm truncate">
                   {displayName}
                 </h2>
-                <span className="text-xs font-black text-[#84CC16] bg-[#84CC16]/20 border border-[#84CC16]/60 rounded-xl px-2.5 py-0.5 shadow-[0_0_10px_rgba(132,204,22,0.3)] flex items-center gap-1">
+                <span className="text-xs font-black text-[#84CC16] bg-[#84CC16]/20 border border-[#84CC16]/60 rounded-xl px-2.5 py-0.5 shadow-[0_0_10px_rgba(132,204,22,0.3)] flex items-center gap-1 whitespace-nowrap shrink-0">
                   {student.classLevel} {student.rank || 'Scholar'} 🏆
                 </span>
               </div>
 
-              {/* Reference Image 1: Signature XP Progress Capsule */}
-              <div className="flex items-center gap-2">
-                <div className="relative w-40 sm:w-56 h-6 bg-[#0B1323] rounded-full p-0.5 border border-[#84CC16]/60 shadow-inner overflow-hidden flex items-center">
+              {/* Crisp White XP Readout Above Lime Progress Track */}
+              <div className="w-full max-w-[230px] sm:max-w-[260px] space-y-1">
+                <div className="flex items-center justify-between gap-2 text-[11px] leading-none">
+                  <span className="font-black font-mono tabular-nums text-white tracking-wide whitespace-nowrap">
+                    {rankProgress.currentXP.toLocaleString()} / {rankProgress.target.toLocaleString()} XP
+                  </span>
+                  <span className="text-[10px] font-semibold text-slate-300 whitespace-nowrap truncate">
+                    {rankProgress.isMaxRank ? 'Top Rank' : `Next: ${rankProgress.nextRank}`}
+                  </span>
+                </div>
+                <div
+                  className="w-full h-2.5 bg-[#0B1323] rounded-full p-0.5 border border-[#84CC16]/60 shadow-inner overflow-hidden flex items-center"
+                  role="progressbar"
+                  aria-valuenow={rankProgress.currentXP}
+                  aria-valuemin={0}
+                  aria-valuemax={rankProgress.target}
+                  aria-label={`${rankProgress.currentXP} of ${rankProgress.target} XP toward ${rankProgress.nextRank}`}
+                >
                   <motion.div
                     initial={{ width: 0 }}
-                    animate={{ width: `${Math.min(100, Math.max(10, rankProgress.percent))}%` }}
-                    transition={{ duration: 0.9, ease: 'easeOut' }}
-                    className="h-full rounded-full bg-gradient-to-r from-[#84CC16] via-[#A3E635] to-[#84CC16] shadow-[0_0_12px_#84CC16]"
+                    animate={{
+                      width: `${rankProgress.currentXP > 0 ? Math.min(100, Math.max(6, rankProgress.percent)) : 0}%`
+                    }}
+                    transition={{ duration: 0.7, ease: 'easeOut' }}
+                    className="h-full rounded-full bg-gradient-to-r from-[#84CC16] via-[#A3E635] to-[#84CC16] shadow-[0_0_10px_#84CC16]"
                   />
-                  <span className="absolute inset-0 flex items-center justify-center text-[11px] font-black font-mono text-slate-950 tracking-wide select-none drop-shadow-xs">
-                    {student.xp.toLocaleString()} / 1,000 XP
-                  </span>
                 </div>
               </div>
             </div>
