@@ -316,19 +316,7 @@
         },
         "amountNaira": {
           "type": "number",
-          "description": "Gross session fee in Naira paid by parent"
-        },
-        "commissionRatePercent": {
-          "type": "number",
-          "description": "Platform service fee percentage deducted from booking (default 20)"
-        },
-        "platformFeeNaira": {
-          "type": "number",
-          "description": "20% system platform fee allocated to Student Companion ledger in Naira"
-        },
-        "tutorNetNaira": {
-          "type": "number",
-          "description": "80% net tutor payout amount in Naira"
+          "description": "Session fee in Naira"
         },
         "scheduledStartIso": {
           "type": "string",
@@ -1349,8 +1337,7 @@
         "suspensionReason": { "type": "string", "maxLength": 300 },
         "suspendedAt": { "type": "string", "maxLength": 50 },
         "walletFrozen": { "type": "boolean" },
-        "walletFrozenReason": { "type": "string", "maxLength": 300 },
-        "legalConsent": { "type": "object", "description": "Timestamped User Agreement acceptance record (version, acceptedAt, roleAcceptedAs)" }
+        "walletFrozenReason": { "type": "string", "maxLength": 300 }
       },
       "required": ["id", "role", "fullName", "email", "emailVerified", "createdAt"]
     },

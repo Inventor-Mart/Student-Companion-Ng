@@ -60,10 +60,6 @@ import {
   NotificationDeepLinkTab
 } from '../types';
 import {
-  calculateTutorBookingSplit,
-  createLegalConsentRecord
-} from '../utils/platformLegalAndFees';
-import {
   getSecurityHeaders,
   checkLoginBruteForce,
   recordLoginFailure,
@@ -401,7 +397,6 @@ interface AppContextType {
       paymentReference?: string;
     }
   ) => TutorBooking | null;
-  acceptUserAgreement: () => Promise<void>;
   activeTutorChatId: string | null;
   setActiveTutorChatId: (tutorId: string | null) => void;
   chatMessages: Record<string, ChatMessage[]>;
@@ -756,14 +751,6 @@ const sanitizeUserAccountForFirestore = (profile: RegisteredUserProfile): Record
   if (profile.deletionReason) payload.deletionReason = String(profile.deletionReason).slice(0, 300);
   if (typeof profile.walletFrozen === 'boolean') payload.walletFrozen = profile.walletFrozen;
   if (profile.walletFrozenReason) payload.walletFrozenReason = String(profile.walletFrozenReason).slice(0, 300);
-  if (profile.legalConsent && typeof profile.legalConsent === 'object') {
-    payload.legalConsent = {
-      accepted: Boolean(profile.legalConsent.accepted),
-      version: String(profile.legalConsent.version || 'v1.0').slice(0, 24),
-      acceptedAt: String(profile.legalConsent.acceptedAt || new Date().toISOString()).slice(0, 50),
-      roleAcceptedAs: profile.legalConsent.roleAcceptedAs || profile.role || 'student'
-    };
-  }
   return payload;
 };
 
@@ -851,16 +838,6 @@ const mergeUserProfiles = (
       existing.growthPartnerData || incoming.growthPartnerData
         ? { ...(existing.growthPartnerData || ({} as GrowthPartner)), ...(incoming.growthPartnerData || {}) }
         : undefined,
-    legalConsent: (() => {
-      const ex = existing.legalConsent;
-      const inc = incoming.legalConsent;
-      if (inc?.accepted && ex?.accepted) {
-        return (inc.acceptedAt || '') >= (ex.acceptedAt || '') ? inc : ex;
-      }
-      if (inc?.accepted) return inc;
-      if (ex?.accepted) return ex;
-      return inc || ex;
-    })(),
     directorySource: !existingIsStub
       ? existing.directorySource || incoming.directorySource
       : incoming.directorySource || existing.directorySource,
@@ -5367,17 +5344,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     const isParentApprovedNow = pinVerifiedNow;
-    const { parentPin: _omitParentPin, ...bookingParams } = params;
-    const feeSplit = calculateTutorBookingSplit(bookingParams.amountNaira);
     const newBooking: TutorBooking = {
-      ...bookingParams,
+      ...params,
       id: bookingId,
       createdAt: new Date().toISOString(),
       status: isParentApprovedNow ? 'pending_tutor' : 'pending_parent',
-      amountNaira: feeSplit.grossAmountNaira,
-      commissionRatePercent: feeSplit.commissionRatePercent,
-      platformFeeNaira: feeSplit.platformFeeNaira,
-      tutorNetNaira: feeSplit.tutorNetNaira,
       isParentApproved: isParentApprovedNow,
       parentApprovalDate: isParentApprovedNow
         ? new Date().toLocaleDateString('en-NG', {
@@ -5780,10 +5751,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       emailVerified: true,
       verifiedAt: new Date().toISOString(),
       createdAt: new Date().toISOString(),
-      legalConsent:
-        profileData.legalConsent && profileData.legalConsent.accepted
-          ? profileData.legalConsent
-          : createLegalConsentRecord(role),
       directorySource: auth.currentUser && auth.currentUser.uid === newId ? 'firestore' : 'backend'
     };
 
@@ -8391,7 +8358,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           console.warn('Could not sync user update to Firestore:', err);
         });
       } else {
-        const allowedOwnerKeys = ['fullName', 'avatarUrl', 'parentData', 'tutorData', 'legalConsent'] as const;
+        const allowedOwnerKeys = ['fullName', 'avatarUrl', 'parentData', 'tutorData'] as const;
         const safeOwnerUpdates: Partial<RegisteredUserProfile> = {};
         for (const key of allowedOwnerKeys) {
           if (updates[key] !== undefined) {
@@ -8433,12 +8400,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         body: JSON.stringify({ profile: { ...existingRecord, ...updates } })
       }).catch(() => {});
     }
-  };
-
-  const acceptUserAgreement = async () => {
-    if (!currentUserProfile) return;
-    const consent = createLegalConsentRecord(currentUserProfile.role || currentRole);
-    await updateUserRecord(currentUserProfile.id, { legalConsent: consent });
   };
 
   const softDeleteUserRecord = async (
@@ -9469,7 +9430,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         registeredTutors,
         tutorBookings,
         createTutorBooking,
-        acceptUserAgreement,
         activeTutorChatId,
         setActiveTutorChatId,
         chatMessages,

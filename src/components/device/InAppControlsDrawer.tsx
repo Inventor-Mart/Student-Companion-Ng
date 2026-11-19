@@ -20,11 +20,9 @@ import {
   CheckCircle2,
   ShieldAlert,
   RefreshCw,
-  HardDriveDownload,
-  Scale
+  HardDriveDownload
 } from 'lucide-react';
 import { ReportSecurityModal } from '../security/ReportSecurityModal';
-import { LegalAgreementModal } from '../common/LegalAgreementModal';
 import { PWAInstallButton } from '../common/PWAInstallButton';
 import {
   getOfflineCacheSummary,
@@ -68,7 +66,6 @@ export const InAppControlsDrawer: React.FC<InAppControlsDrawerProps> = ({
   } = useApp();
 
   const [isReportModalOpen, setIsReportModalOpen] = React.useState(false);
-  const [isLegalModalOpen, setIsLegalModalOpen] = React.useState(false);
   const [cacheSummary, setCacheSummary] = React.useState<OfflineCacheSummary | null>(null);
   const [isWarmingCache, setIsWarmingCache] = React.useState(false);
 
@@ -90,7 +87,7 @@ export const InAppControlsDrawer: React.FC<InAppControlsDrawerProps> = ({
     }
   };
 
-  if (!isOpen && !isReportModalOpen && !isLegalModalOpen) return null;
+  if (!isOpen && !isReportModalOpen) return null;
 
   const showOfflineToggle = currentRole === 'student' || isSuperAdmin;
   const showDeviceFrameToggle = isSuperAdmin;
@@ -524,17 +521,6 @@ export const InAppControlsDrawer: React.FC<InAppControlsDrawerProps> = ({
 
               <button
                 onClick={() => {
-                  setIsLegalModalOpen(true);
-                  onClose();
-                }}
-                className="w-full flex items-center gap-2.5 px-3 min-h-[44px] rounded-xl bg-[#101C31] hover:bg-[#162846] border border-[#1C2F4D] text-slate-200 transition-all cursor-pointer"
-              >
-                <Scale className="w-4 h-4 text-[#84E000] shrink-0" />
-                <span className="font-semibold">User Agreement &amp; Legal Terms</span>
-              </button>
-
-              <button
-                onClick={() => {
                   setIsReportModalOpen(true);
                   onClose();
                 }}
@@ -572,16 +558,6 @@ export const InAppControlsDrawer: React.FC<InAppControlsDrawerProps> = ({
         isOpen={isReportModalOpen}
         onClose={() => setIsReportModalOpen(false)}
         defaultContext={`Account Menu (${currentRole})`}
-      />
-    )}
-    {isLegalModalOpen && (
-      <LegalAgreementModal
-        isOpen={isLegalModalOpen}
-        mode="view"
-        role={(currentUserProfile?.role || currentRole) as UserRole}
-        userName={currentUserProfile?.fullName}
-        acceptedAt={currentUserProfile?.legalConsent?.acceptedAt}
-        onClose={() => setIsLegalModalOpen(false)}
       />
     )}
     </>

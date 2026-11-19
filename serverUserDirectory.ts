@@ -90,12 +90,6 @@ export interface ServerRegisteredUser {
   deletionReason?: string;
   walletFrozen?: boolean;
   walletFrozenReason?: string;
-  legalConsent?: {
-    accepted: boolean;
-    version: string;
-    acceptedAt: string;
-    roleAcceptedAs: string;
-  };
   directorySource?: 'local' | 'backend' | 'firestore' | 'recovered';
   recoveredFrom?: string;
 }
@@ -301,9 +295,6 @@ export function toFirestoreUserAccountPayload(user: ServerRegisteredUser): Recor
   if (user.deletionReason) payload.deletionReason = String(user.deletionReason).slice(0, 300);
   if (typeof user.walletFrozen === 'boolean') payload.walletFrozen = user.walletFrozen;
   if (user.walletFrozenReason) payload.walletFrozenReason = String(user.walletFrozenReason).slice(0, 300);
-  if (user.legalConsent && typeof user.legalConsent === 'object') {
-    payload.legalConsent = stripUndefinedDeep(user.legalConsent);
-  }
   return payload;
 }
 
@@ -395,16 +386,6 @@ function mergeTwoUsers(
       existing.growthPartnerData || incoming.growthPartnerData
         ? { ...(existing.growthPartnerData || {}), ...(incoming.growthPartnerData || {}) }
         : undefined,
-    legalConsent: (() => {
-      const ex = existing.legalConsent;
-      const inc = incoming.legalConsent;
-      if (inc?.accepted && ex?.accepted) {
-        return (inc.acceptedAt || '') >= (ex.acceptedAt || '') ? inc : ex;
-      }
-      if (inc?.accepted) return inc;
-      if (ex?.accepted) return ex;
-      return inc || ex;
-    })(),
     directorySource:
       !existingIsRecoveredPlaceholder
         ? existing.directorySource || incoming.directorySource
@@ -472,15 +453,6 @@ function normalizeRawUser(
     growthPartnerData:
       raw?.growthPartnerData && typeof raw.growthPartnerData === 'object'
         ? raw.growthPartnerData
-        : undefined,
-    legalConsent:
-      raw?.legalConsent && typeof raw.legalConsent === 'object' && raw.legalConsent.accepted
-        ? {
-            accepted: Boolean(raw.legalConsent.accepted),
-            version: String(raw.legalConsent.version || 'v1.0').slice(0, 24),
-            acceptedAt: String(raw.legalConsent.acceptedAt || new Date().toISOString()).slice(0, 50),
-            roleAcceptedAs: String(raw.legalConsent.roleAcceptedAs || safeRole).slice(0, 30)
-          }
         : undefined,
     directorySource: raw?.directorySource || options?.defaultSource || 'backend',
     recoveredFrom: typeof raw?.recoveredFrom === 'string' ? raw.recoveredFrom : undefined
