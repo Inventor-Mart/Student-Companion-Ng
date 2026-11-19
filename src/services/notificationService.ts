@@ -1,11 +1,13 @@
 import {
   collection,
   doc,
+  getDocs,
   onSnapshot,
   setDoc,
   deleteDoc
 } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { onAuthStateChanged } from 'firebase/auth';
+import { auth, db } from '../lib/firebase';
 import {
   AppNotificationItem,
   NotificationCategory,
@@ -349,39 +351,77 @@ export function subscribeToOTANotificationBroadcasts(
   callback(cached);
   otaNotifListeners.add(callback);
 
-  let unsubFirestore = () => {};
-  try {
-    const colRef = collection(db, 'otaNotifications');
-    unsubFirestore = onSnapshot(
-      colRef,
-      (snap) => {
-        if (!snap.empty) {
-          const remoteItems: OTANotificationBroadcast[] = [];
-          snap.forEach((d) => {
-            const clean = sanitizeBroadcast(d.id, d.data() as Partial<OTANotificationBroadcast>);
-            if (clean) remoteItems.push(clean);
-          });
-          remoteItems.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-          if (remoteItems.length > 0) {
-            writeJson(CACHE_KEY_OTA_NOTIFICATIONS, remoteItems);
-            otaNotifListeners.forEach((cb) => cb(remoteItems));
-            return;
-          }
-        }
-        // Fallback cleanly to local cache/defaults when empty
-        otaNotifListeners.forEach((cb) => cb(cached));
-      },
-      (err) => {
-        console.warn('OTA notifications listener offline, using cached:', err);
+  const colRef = collection(db, 'otaNotifications');
+  const handleSnap = (snap: { empty: boolean; forEach: (fn: (d: { id: string; data: () => unknown }) => void) => void }) => {
+    if (!snap.empty) {
+      const remoteItems: OTANotificationBroadcast[] = [];
+      snap.forEach((d) => {
+        const clean = sanitizeBroadcast(d.id, d.data() as Partial<OTANotificationBroadcast>);
+        if (clean) remoteItems.push(clean);
+      });
+      remoteItems.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      if (remoteItems.length > 0) {
+        writeJson(CACHE_KEY_OTA_NOTIFICATIONS, remoteItems);
+        otaNotifListeners.forEach((cb) => cb(remoteItems));
+        return;
       }
-    );
-  } catch (err) {
-    console.warn('Failed to subscribe to OTA notifications:', err);
+    }
+    otaNotifListeners.forEach((cb) => cb(cached));
+  };
+
+  let active = true;
+  let unsubFirestore: (() => void) | null = null;
+
+  const detach = () => {
+    if (unsubFirestore) {
+      try {
+        unsubFirestore();
+      } catch {}
+      unsubFirestore = null;
+    }
+  };
+
+  const attach = () => {
+    if (unsubFirestore || !active) return;
+    try {
+      unsubFirestore = onSnapshot(
+        colRef,
+        (snap) => handleSnap(snap),
+        (err) => {
+          console.warn('OTA notifications listener offline, using cached:', err);
+        }
+      );
+    } catch (err) {
+      console.warn('Failed to subscribe to OTA notifications:', err);
+    }
+  };
+
+  const unsubAuth = onAuthStateChanged(auth, (user) => {
+    if (!active) return;
+    if (user) {
+      attach();
+    } else {
+      detach();
+    }
+  });
+
+  if (auth.currentUser) {
+    attach();
+  } else if (typeof navigator === 'undefined' || navigator.onLine) {
+    getDocs(colRef)
+      .then((snap) => {
+        if (active) handleSnap(snap);
+      })
+      .catch(() => {});
   }
 
   return () => {
+    active = false;
     otaNotifListeners.delete(callback);
-    unsubFirestore();
+    try {
+      unsubAuth();
+    } catch {}
+    detach();
   };
 }
 

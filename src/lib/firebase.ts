@@ -32,8 +32,7 @@ try {
   firestoreDb = initializeFirestore(
     app,
     {
-      experimentalForceLongPolling: true,
-      experimentalLongPollingOptions: { timeoutSeconds: 20 },
+      experimentalAutoDetectLongPolling: true,
       ignoreUndefinedProperties: true,
       localCache:
         typeof window !== 'undefined' && typeof indexedDB !== 'undefined'
@@ -47,8 +46,7 @@ try {
     firestoreDb = initializeFirestore(
       app,
       {
-        experimentalForceLongPolling: true,
-        experimentalLongPollingOptions: { timeoutSeconds: 20 },
+        experimentalAutoDetectLongPolling: true,
         ignoreUndefinedProperties: true,
         localCache: memoryLocalCache()
       },

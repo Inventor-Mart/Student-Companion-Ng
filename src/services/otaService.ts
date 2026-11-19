@@ -1019,10 +1019,14 @@ export async function fetchLatestGitHubApkRelease(): Promise<GitHubApkReleaseInf
  */
 export async function fetchLiveOTAAppRelease(): Promise<OTAAppReleaseConfig | null> {
   const docRef = doc(db, 'otaAppReleases', 'active_release');
-  const boundedFirestoreRead = Promise.race([
-    getDocFromServer(docRef).catch(() => null),
-    new Promise<null>((resolve) => setTimeout(() => resolve(null), 6000)),
-  ]);
+  const shouldQueryFirestore =
+    Boolean(auth.currentUser) && (typeof navigator === 'undefined' || navigator.onLine);
+  const boundedFirestoreRead = shouldQueryFirestore
+    ? Promise.race([
+        getDocFromServer(docRef).catch(() => null),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 5000)),
+      ])
+    : Promise.resolve(null);
 
   const [firestoreRes, serverRes] = await Promise.allSettled([
     boundedFirestoreRead,
@@ -1094,31 +1098,29 @@ export function subscribeToOTAAppRelease(
   callback(cached);
   releaseListeners.add(callback);
 
-  // Perform immediate live server/Firestore check
-  fetchLiveOTAAppRelease().catch(() => {});
-
-  let unsubFirestore = () => {};
-  try {
-    const docRef = doc(db, 'otaAppReleases', 'active_release');
-    unsubFirestore = onSnapshot(
-      docRef,
-      (snap) => {
-        if (snap.exists()) {
-          const sanitized = sanitizeReleaseConfig(snap.data() as Partial<OTAAppReleaseConfig>);
-          notifyReleaseListeners(sanitized);
+  const docRef = doc(db, 'otaAppReleases', 'active_release');
+  const unsubGated = createAuthGatedSubscription(
+    async () => {
+      await fetchLiveOTAAppRelease();
+    },
+    () =>
+      onSnapshot(
+        docRef,
+        (snap) => {
+          if (snap.exists()) {
+            const sanitized = sanitizeReleaseConfig(snap.data() as Partial<OTAAppReleaseConfig>);
+            notifyReleaseListeners(sanitized);
+          }
+        },
+        (error) => {
+          console.warn('OTA app release listener offline, using cached:', error);
         }
-      },
-      (error) => {
-        console.warn('OTA app release listener offline, using cached:', error);
-      }
-    );
-  } catch (err) {
-    console.warn('Failed to subscribe to OTA app release:', err);
-  }
+      )
+  );
 
   return () => {
     releaseListeners.delete(callback);
-    unsubFirestore();
+    unsubGated();
   };
 }
 
