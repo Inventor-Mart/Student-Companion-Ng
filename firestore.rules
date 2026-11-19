@@ -100,7 +100,7 @@ service cloud.firestore {
                'studentData', 'parentData', 'tutorData', 'adminData', 'growthPartnerData',
                'isSuperAdmin', 'isDeveloper', 'accountStatus', 'lockedUntil', 'lockReason',
                'suspensionReason', 'suspendedAt', 'deletedAt', 'deletedBy', 'deletionReason',
-               'walletFrozen', 'walletFrozenReason'
+               'walletFrozen', 'walletFrozenReason', 'legalConsent'
              ]) &&
              data.id is string && isValidId(data.id) &&
              data.role in ['student', 'parent', 'tutor', 'admin', 'growth_partner', 'school_admin'] &&
@@ -126,7 +126,8 @@ service cloud.firestore {
              (!('deletedBy' in data) || data.deletedBy == null || (data.deletedBy is string && data.deletedBy.size() <= 150)) &&
              (!('deletionReason' in data) || data.deletionReason == null || (data.deletionReason is string && data.deletionReason.size() <= 300)) &&
              (!('walletFrozen' in data) || data.walletFrozen is bool) &&
-             (!('walletFrozenReason' in data) || data.walletFrozenReason == null || (data.walletFrozenReason is string && data.walletFrozenReason.size() <= 300));
+             (!('walletFrozenReason' in data) || data.walletFrozenReason == null || (data.walletFrozenReason is string && data.walletFrozenReason.size() <= 300)) &&
+             (!('legalConsent' in data) || data.legalConsent == null || data.legalConsent is map);
     }
 
     function isValidExamResult(data) {
@@ -192,6 +193,7 @@ service cloud.firestore {
                'id', 'tutorId', 'tutorName', 'tutorPhoto', 'studentId', 'studentName',
                'subject', 'topic', 'bookingType', 'date', 'timeSlot',
                'scheduledStartIso', 'scheduledEndIso', 'status', 'amountNaira',
+               'commissionRatePercent', 'platformFeeNaira', 'tutorNetNaira',
                'isParentApproved', 'parentApprovalDate',
                'isTutorApproved', 'tutorApprovalDate', 'tutorRejectionReason',
                'paymentReference', 'paymentGateway', 'escrowStatus', 'createdAt'
@@ -211,6 +213,9 @@ service cloud.firestore {
              (!('scheduledEndIso' in data) || (data.scheduledEndIso is string && data.scheduledEndIso.size() <= 100)) &&
              data.status in ['pending_payment', 'pending_parent', 'pending_tutor', 'confirmed', 'completed', 'cancelled'] &&
              data.amountNaira is number && data.amountNaira >= 0 &&
+             (!('commissionRatePercent' in data) || (data.commissionRatePercent is number && data.commissionRatePercent >= 0 && data.commissionRatePercent <= 100)) &&
+             (!('platformFeeNaira' in data) || (data.platformFeeNaira is number && data.platformFeeNaira >= 0)) &&
+             (!('tutorNetNaira' in data) || (data.tutorNetNaira is number && data.tutorNetNaira >= 0)) &&
              data.isParentApproved is bool &&
              (!('parentApprovalDate' in data) || (data.parentApprovalDate is string && data.parentApprovalDate.size() <= 100)) &&
              (!('isTutorApproved' in data) || data.isTutorApproved is bool) &&
@@ -795,7 +800,7 @@ service cloud.firestore {
           (!('isDeveloper' in incoming()) || incoming().isDeveloper == existing().isDeveloper) &&
           (!('accountStatus' in incoming()) || incoming().accountStatus == existing().accountStatus) &&
           (!('walletFrozen' in incoming()) || incoming().walletFrozen == existing().walletFrozen) &&
-          incoming().diff(existing()).affectedKeys().hasOnly(['fullName', 'avatarUrl', 'parentData', 'tutorData'])
+          incoming().diff(existing()).affectedKeys().hasOnly(['fullName', 'avatarUrl', 'parentData', 'tutorData', 'legalConsent'])
         )
       );
       allow delete: if isAdmin();
