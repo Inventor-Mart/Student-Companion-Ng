@@ -541,9 +541,26 @@ service cloud.firestore {
              (!('growthPartnerPortal' in notes) || (notes.growthPartnerPortal is string && notes.growthPartnerPortal.size() <= 240));
     }
 
+    function isValidRegistrationControls(ctrl) {
+      return ctrl is map &&
+             ctrl.keys().hasAll(['pauseAll', 'pausedRoles', 'pauseMessage', 'updatedAt', 'updatedBy']) &&
+             ctrl.keys().hasOnly(['pauseAll', 'pausedRoles', 'pauseMessage', 'updatedAt', 'updatedBy']) &&
+             ctrl.pauseAll is bool &&
+             ctrl.pausedRoles is map &&
+             ctrl.pausedRoles.keys().hasOnly(['student', 'parent', 'tutor', 'school_admin', 'growth_partner']) &&
+             (!('student' in ctrl.pausedRoles) || ctrl.pausedRoles.student is bool) &&
+             (!('parent' in ctrl.pausedRoles) || ctrl.pausedRoles.parent is bool) &&
+             (!('tutor' in ctrl.pausedRoles) || ctrl.pausedRoles.tutor is bool) &&
+             (!('school_admin' in ctrl.pausedRoles) || ctrl.pausedRoles.school_admin is bool) &&
+             (!('growth_partner' in ctrl.pausedRoles) || ctrl.pausedRoles.growth_partner is bool) &&
+             ctrl.pauseMessage is string && ctrl.pauseMessage.size() <= 300 &&
+             ctrl.updatedAt is string && ctrl.updatedAt.size() <= 100 &&
+             ctrl.updatedBy is string && ctrl.updatedBy.size() <= 150;
+    }
+
     function isValidOtaAppRelease(data) {
       return data.keys().hasAll(['id', 'latestVersion', 'minimumSupportedVersion', 'upgradeMode', 'releaseTitle', 'releaseNotes', 'featureHighlights', 'featureFlags', 'defaultPausedMessage', 'pausedFeatureNotes', 'maintenanceMode', 'maintenanceMessage', 'publishedAt', 'publishedBy']) &&
-             data.keys().hasOnly(['id', 'latestVersion', 'minimumSupportedVersion', 'upgradeMode', 'releaseTitle', 'releaseNotes', 'featureHighlights', 'downloadUrl', 'featureFlags', 'defaultPausedMessage', 'pausedFeatureNotes', 'maintenanceMode', 'maintenanceMessage', 'publishedAt', 'publishedBy']) &&
+             data.keys().hasOnly(['id', 'latestVersion', 'minimumSupportedVersion', 'upgradeMode', 'releaseTitle', 'releaseNotes', 'featureHighlights', 'downloadUrl', 'featureFlags', 'defaultPausedMessage', 'pausedFeatureNotes', 'maintenanceMode', 'maintenanceMessage', 'registrationControls', 'publishedAt', 'publishedBy']) &&
              data.id is string && isValidId(data.id) &&
              data.latestVersion is string && data.latestVersion.size() >= 5 && data.latestVersion.size() <= 32 && data.latestVersion.matches('^v?[0-9]+\\.[0-9]+\\.[0-9]+$') &&
              data.minimumSupportedVersion is string && data.minimumSupportedVersion.size() >= 5 && data.minimumSupportedVersion.size() <= 32 && data.minimumSupportedVersion.matches('^v?[0-9]+\\.[0-9]+\\.[0-9]+$') &&
@@ -558,6 +575,7 @@ service cloud.firestore {
              isValidPausedFeatureNotes(data.pausedFeatureNotes) &&
              data.maintenanceMode is bool &&
              data.maintenanceMessage is string && data.maintenanceMessage.size() <= 500 &&
+             (!('registrationControls' in data) || isValidRegistrationControls(data.registrationControls)) &&
              data.publishedAt is string && data.publishedAt.size() <= 100 &&
              data.publishedBy is string && data.publishedBy.size() <= 150;
     }

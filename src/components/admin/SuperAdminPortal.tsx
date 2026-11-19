@@ -15,6 +15,7 @@ import {
 } from '../../types';
 import { PersonaAvatar } from '../common/PersonaAvatar';
 import { SubjectMultiSelector } from '../common/SubjectMultiSelector';
+import { RegistrationGateCard } from './RegistrationGateCard';
 import {
   NIGERIAN_HIGHER_EDUCATION_OPTIONS,
   REPAIRED_TUTOR_PROFILE_VERSION,
@@ -1913,6 +1914,9 @@ export const SuperAdminPortal: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Registration Intake Gate (Master & Per-Persona Pause/Unpause) */}
+      <RegistrationGateCard variant="console" />
 
       {/* Platform Tutor Commissions (20% System Revenue Ledger) */}
       {(() => {

@@ -47,6 +47,7 @@ import { useApp } from '../../context/AppContext';
 import { NairaText, NairaSign } from '../../utils/currency';
 import { DeviceImageUploader } from './DeviceImageUploader';
 import { OTAPushRemindersTab } from './OTAPushRemindersTab';
+import { RegistrationGateCard } from './RegistrationGateCard';
 import {
   Radio,
   Tv,
@@ -114,6 +115,7 @@ export const OTACompetitionManager: React.FC = () => {
     currentUserProfile,
     installedAppVersion,
     refreshOTAStatus,
+    registrationControls,
     loginWithGoogle,
     loginWithGoogleRedirect
   } = useApp();
@@ -501,6 +503,7 @@ export const OTACompetitionManager: React.FC = () => {
     try {
       const result = await saveOTAAppRelease({
         ...releaseConfig,
+        registrationControls,
         publishedBy: currentUserProfile?.email || 'martorefe@gmail.com'
       });
       setReleaseConfig(result.release);
@@ -523,6 +526,7 @@ export const OTACompetitionManager: React.FC = () => {
   const handleResetReleaseDefaults = () => {
     setReleaseConfig({
       ...DEFAULT_OTA_APP_RELEASE,
+      registrationControls,
       downloadUrl: githubApkInfo?.apkReady && githubApkInfo.apkUrl ? githubApkInfo.apkUrl : '',
       publishedAt: new Date().toISOString()
     });
@@ -1905,8 +1909,11 @@ export const OTACompetitionManager: React.FC = () => {
               </div>
             </div>
 
-            {/* RIGHT COLUMN: LIVE FEATURE FLAGS, MAINTENANCE LOCK & PREVIEW */}
+            {/* RIGHT COLUMN: REGISTRATION GATE, LIVE FEATURE FLAGS, MAINTENANCE LOCK & PREVIEW */}
             <div className="flex flex-col gap-5">
+              {/* New User Registration Pause / Unpause Switchboard */}
+              <RegistrationGateCard variant="studio" />
+
               {/* Feature Flags: Full 17-Module App Switchboard */}
               <div className="p-4 sm:p-5 bg-slate-900/70 border border-slate-800 rounded-xl flex flex-col gap-3.5">
                 {(() => {

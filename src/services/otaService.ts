@@ -19,7 +19,10 @@ import {
   OTAAppReleaseConfig,
   OTAFeatureFlags,
   OTAFeatureKey,
-  OTAUpgradeMode
+  OTAUpgradeMode,
+  RegistrablePersonaRole,
+  RegistrationControls,
+  UserRole
 } from '../types';
 import {
   TERMLY_CHAMPIONSHIP_PRIZES,
@@ -187,6 +190,61 @@ export const DEFAULT_OTA_FEATURE_FLAGS: OTAFeatureFlags = {
   growthPartnerPortal: true
 };
 
+export const DEFAULT_REGISTRATION_PAUSE_MESSAGE =
+  'New account registrations are temporarily paused while we complete platform updates. Existing members can sign in normally.';
+
+export const REGISTRABLE_PERSONA_ROLES: {
+  role: RegistrablePersonaRole;
+  label: string;
+  shortLabel: string;
+  description: string;
+}[] = [
+  {
+    role: 'student',
+    label: 'Student',
+    shortLabel: 'Student',
+    description: 'JSS 1–SS 3 & University Aspirant learners'
+  },
+  {
+    role: 'parent',
+    label: 'Parent / Guardian',
+    shortLabel: 'Parent',
+    description: 'Ward progress oversight & escrow wallet'
+  },
+  {
+    role: 'tutor',
+    label: 'Verified Tutor',
+    shortLabel: 'Tutor',
+    description: 'Home & virtual whiteboard educators'
+  },
+  {
+    role: 'school_admin',
+    label: 'School Admin',
+    shortLabel: 'School Admin',
+    description: 'Institutional school principals & coordinators'
+  },
+  {
+    role: 'growth_partner',
+    label: 'Growth Partner',
+    shortLabel: 'Growth Partner',
+    description: 'Referral partners & regional ambassadors'
+  }
+];
+
+export const DEFAULT_REGISTRATION_CONTROLS: RegistrationControls = {
+  pauseAll: false,
+  pausedRoles: {
+    student: false,
+    parent: false,
+    tutor: false,
+    school_admin: false,
+    growth_partner: false
+  },
+  pauseMessage: DEFAULT_REGISTRATION_PAUSE_MESSAGE,
+  updatedAt: new Date().toISOString(),
+  updatedBy: 'martorefe@gmail.com'
+};
+
 export const DEFAULT_OTA_APP_RELEASE: OTAAppReleaseConfig = {
   id: 'active_release',
   latestVersion: CURRENT_APP_VERSION,
@@ -205,6 +263,7 @@ export const DEFAULT_OTA_APP_RELEASE: OTAAppReleaseConfig = {
   pausedFeatureNotes: {},
   maintenanceMode: false,
   maintenanceMessage: 'Scheduled OTA platform maintenance is underway to improve speed and reliability. We will be back shortly.',
+  registrationControls: DEFAULT_REGISTRATION_CONTROLS,
   publishedAt: new Date().toISOString(),
   publishedBy: 'martorefe@gmail.com'
 };
@@ -846,6 +905,160 @@ export function clearReleaseDismissal(): void {
   } catch {}
 }
 
+export function sanitizeRegistrationControls(
+  raw?: Partial<RegistrationControls> | null
+): RegistrationControls {
+  const rawRoles = (raw?.pausedRoles || {}) as Partial<Record<RegistrablePersonaRole, unknown>>;
+  const pausedRoles: Record<RegistrablePersonaRole, boolean> = {
+    student: Boolean(rawRoles.student),
+    parent: Boolean(rawRoles.parent),
+    tutor: Boolean(rawRoles.tutor),
+    school_admin: Boolean(rawRoles.school_admin),
+    growth_partner: Boolean(rawRoles.growth_partner)
+  };
+  const pauseMessage =
+    typeof raw?.pauseMessage === 'string' && raw.pauseMessage.trim().length > 0
+      ? raw.pauseMessage.trim().slice(0, 300)
+      : DEFAULT_REGISTRATION_PAUSE_MESSAGE;
+  return {
+    pauseAll: Boolean(raw?.pauseAll),
+    pausedRoles,
+    pauseMessage,
+    updatedAt:
+      typeof raw?.updatedAt === 'string' && raw.updatedAt.trim().length > 0
+        ? raw.updatedAt.trim().slice(0, 100)
+        : new Date().toISOString(),
+    updatedBy:
+      typeof raw?.updatedBy === 'string' && raw.updatedBy.trim().length > 0
+        ? raw.updatedBy.trim().slice(0, 150)
+        : 'martorefe@gmail.com'
+  };
+}
+
+export function getRegistrationControls(
+  release?: OTAAppReleaseConfig | null
+): RegistrationControls {
+  return sanitizeRegistrationControls(release?.registrationControls);
+}
+
+export function isRegistrablePersonaRole(role: UserRole): role is RegistrablePersonaRole {
+  return (
+    role === 'student' ||
+    role === 'parent' ||
+    role === 'tutor' ||
+    role === 'school_admin' ||
+    role === 'growth_partner'
+  );
+}
+
+export function isRegistrationPausedForRole(
+  release: OTAAppReleaseConfig | null | undefined,
+  role: UserRole
+): boolean {
+  if (!isRegistrablePersonaRole(role)) return false;
+  const ctrl = getRegistrationControls(release);
+  if (ctrl.pauseAll) return true;
+  return Boolean(ctrl.pausedRoles[role]);
+}
+
+export function areAllRegistrationsPaused(
+  release: OTAAppReleaseConfig | null | undefined
+): boolean {
+  const ctrl = getRegistrationControls(release);
+  if (ctrl.pauseAll) return true;
+  return REGISTRABLE_PERSONA_ROLES.every((p) => Boolean(ctrl.pausedRoles[p.role]));
+}
+
+export function getOpenRegistrableRoles(
+  release: OTAAppReleaseConfig | null | undefined
+): RegistrablePersonaRole[] {
+  const ctrl = getRegistrationControls(release);
+  if (ctrl.pauseAll) return [];
+  return REGISTRABLE_PERSONA_ROLES.filter((p) => !ctrl.pausedRoles[p.role]).map((p) => p.role);
+}
+
+export function getRegistrationPauseMessage(
+  release: OTAAppReleaseConfig | null | undefined,
+  role?: UserRole
+): string {
+  const ctrl = getRegistrationControls(release);
+  if (ctrl.pauseMessage && ctrl.pauseMessage.trim().length > 0) {
+    return ctrl.pauseMessage.trim();
+  }
+  if (role && isRegistrablePersonaRole(role)) {
+    const label =
+      REGISTRABLE_PERSONA_ROLES.find((p) => p.role === role)?.label || 'this account type';
+    return `New ${label} registrations are temporarily paused. Existing members can sign in normally.`;
+  }
+  return DEFAULT_REGISTRATION_PAUSE_MESSAGE;
+}
+
+export function buildUpdatedRegistrationControls(
+  current: RegistrationControls,
+  update: {
+    setPauseAll?: boolean;
+    toggleRole?: RegistrablePersonaRole;
+    pauseMessage?: string;
+    updatedBy?: string;
+  }
+): RegistrationControls {
+  const safeCurrent = sanitizeRegistrationControls(current);
+  let nextPauseAll = safeCurrent.pauseAll;
+  let nextRoles: Record<RegistrablePersonaRole, boolean> = { ...safeCurrent.pausedRoles };
+
+  if (typeof update.setPauseAll === 'boolean') {
+    nextPauseAll = update.setPauseAll;
+    // When unpausing all, also reopen individual persona switches so resume actually opens intake
+    if (!update.setPauseAll) {
+      nextRoles = {
+        student: false,
+        parent: false,
+        tutor: false,
+        school_admin: false,
+        growth_partner: false
+      };
+    }
+  }
+
+  if (update.toggleRole) {
+    const role = update.toggleRole;
+    if (nextPauseAll) {
+      // Admin tapped a specific persona while global Pause All was active ->
+      // switch to selective mode with ONLY that persona reopened and the other 4 paused.
+      nextPauseAll = false;
+      nextRoles = {
+        student: role !== 'student',
+        parent: role !== 'parent',
+        tutor: role !== 'tutor',
+        school_admin: role !== 'school_admin',
+        growth_partner: role !== 'growth_partner'
+      };
+    } else {
+      nextRoles[role] = !nextRoles[role];
+      // If all 5 personas are now individually paused, reflect pauseAll = true for clarity
+      const allFivePaused = REGISTRABLE_PERSONA_ROLES.every((p) => nextRoles[p.role]);
+      if (allFivePaused) {
+        nextPauseAll = true;
+      }
+    }
+  }
+
+  const nextMessage =
+    typeof update.pauseMessage === 'string'
+      ? update.pauseMessage.trim().slice(0, 300) || DEFAULT_REGISTRATION_PAUSE_MESSAGE
+      : safeCurrent.pauseMessage;
+
+  return {
+    pauseAll: nextPauseAll,
+    pausedRoles: nextRoles,
+    pauseMessage: nextMessage,
+    updatedAt: new Date().toISOString(),
+    updatedBy: (update.updatedBy || safeCurrent.updatedBy || 'martorefe@gmail.com')
+      .trim()
+      .slice(0, 150)
+  };
+}
+
 function sanitizeReleaseConfig(raw: Partial<OTAAppReleaseConfig> | null | undefined): OTAAppReleaseConfig {
   const rawFlags = (raw?.featureFlags || {}) as Partial<OTAFeatureFlags>;
   const sanitizedFlags: OTAFeatureFlags = { ...DEFAULT_OTA_FEATURE_FLAGS };
@@ -893,6 +1106,7 @@ function sanitizeReleaseConfig(raw: Partial<OTAAppReleaseConfig> | null | undefi
     pausedFeatureNotes: sanitizedNotes,
     maintenanceMode: Boolean(raw?.maintenanceMode),
     maintenanceMessage: (raw?.maintenanceMessage || DEFAULT_OTA_APP_RELEASE.maintenanceMessage).trim().slice(0, 500),
+    registrationControls: sanitizeRegistrationControls(raw?.registrationControls),
     publishedAt: raw?.publishedAt || new Date().toISOString(),
     publishedBy: (raw?.publishedBy || 'martorefe@gmail.com').trim().slice(0, 150)
   };

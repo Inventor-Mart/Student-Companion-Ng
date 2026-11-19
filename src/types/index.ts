@@ -1050,6 +1050,21 @@ export type OTAFeatureKey =
 
 export type OTAFeatureFlags = Record<OTAFeatureKey, boolean>;
 
+export type RegistrablePersonaRole =
+  | 'student'
+  | 'parent'
+  | 'tutor'
+  | 'school_admin'
+  | 'growth_partner';
+
+export interface RegistrationControls {
+  pauseAll: boolean;
+  pausedRoles: Record<RegistrablePersonaRole, boolean>;
+  pauseMessage: string;
+  updatedAt: string;
+  updatedBy: string;
+}
+
 export interface OTAAppReleaseConfig {
   id: string; // 'active_release'
   latestVersion: string; // Semantic version e.g. '2.4.0'
@@ -1064,6 +1079,7 @@ export interface OTAAppReleaseConfig {
   pausedFeatureNotes: Partial<Record<OTAFeatureKey, string>>;
   maintenanceMode: boolean;
   maintenanceMessage: string;
+  registrationControls?: RegistrationControls;
   publishedAt: string;
   publishedBy: string;
 }

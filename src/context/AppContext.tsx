@@ -54,6 +54,8 @@ import {
   AspirantReferralReward,
   OTAAppReleaseConfig,
   OTAFeatureKey,
+  RegistrablePersonaRole,
+  RegistrationControls,
   AppNotificationItem,
   OTANotificationBroadcast,
   NotificationPreferences,
@@ -87,6 +89,12 @@ import {
   resolvePausedFeatureMessage,
   subscribeToOTAAppRelease,
   fetchLiveOTAAppRelease,
+  saveOTAAppRelease,
+  getRegistrationControls,
+  isRegistrationPausedForRole as checkRegistrationPausedForRole,
+  areAllRegistrationsPaused as checkAllRegistrationsPaused,
+  getRegistrationPauseMessage as resolveRegistrationPauseMessage,
+  buildUpdatedRegistrationControls,
   getInstalledAppVersion,
   applyInAppOTAUpgrade,
   dismissReleasePrompt,
@@ -620,6 +628,15 @@ interface AppContextType {
   pausedFeatureNotice: { featureKey: OTAFeatureKey; title: string; message: string } | null;
   openPausedFeatureNotice: (key: OTAFeatureKey, customTitle?: string) => void;
   closePausedFeatureNotice: () => void;
+  registrationControls: RegistrationControls;
+  isRegistrationPausedForRole: (role: UserRole) => boolean;
+  areAllRegistrationsPaused: boolean;
+  getRegistrationPauseMessage: (role?: UserRole) => string;
+  updateRegistrationControls: (update: {
+    setPauseAll?: boolean;
+    toggleRole?: RegistrablePersonaRole;
+    pauseMessage?: string;
+  }) => Promise<{ success: boolean; error?: string }>;
 
   // Cross-Persona Notifications, Streak Reminders & Browser Push
   notifications: AppNotificationItem[];
@@ -1813,6 +1830,62 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const closePausedFeatureNotice = useCallback(() => {
     setPausedFeatureNotice(null);
   }, []);
+
+  const registrationControls = React.useMemo(
+    () => getRegistrationControls(otaAppRelease),
+    [otaAppRelease]
+  );
+
+  const isRegistrationPausedForRole = useCallback(
+    (role: UserRole): boolean => checkRegistrationPausedForRole(otaAppRelease, role),
+    [otaAppRelease]
+  );
+
+  const areAllRegistrationsPaused = React.useMemo(
+    () => checkAllRegistrationsPaused(otaAppRelease),
+    [otaAppRelease]
+  );
+
+  const getRegistrationPauseMessage = useCallback(
+    (role?: UserRole): string => resolveRegistrationPauseMessage(otaAppRelease, role),
+    [otaAppRelease]
+  );
+
+  const updateRegistrationControls = useCallback(
+    async (update: {
+      setPauseAll?: boolean;
+      toggleRole?: RegistrablePersonaRole;
+      pauseMessage?: string;
+    }): Promise<{ success: boolean; error?: string }> => {
+      if (!isSuperAdmin) {
+        return {
+          success: false,
+          error: 'Only Super Admin can change registration intake controls.'
+        };
+      }
+      const nextControls = buildUpdatedRegistrationControls(registrationControls, {
+        ...update,
+        updatedBy: currentUser?.email || currentUserProfile?.email || 'martorefe@gmail.com'
+      });
+      const nextRelease: OTAAppReleaseConfig = {
+        ...otaAppRelease,
+        registrationControls: nextControls,
+        publishedAt: new Date().toISOString(),
+        publishedBy: currentUser?.email || currentUserProfile?.email || 'martorefe@gmail.com'
+      };
+      try {
+        const saved = await saveOTAAppRelease(nextRelease);
+        setOtaAppRelease(saved.release);
+        return { success: true };
+      } catch (err: any) {
+        return {
+          success: false,
+          error: err?.message || 'Unable to save registration controls right now.'
+        };
+      }
+    },
+    [isSuperAdmin, registrationControls, otaAppRelease, currentUser?.email, currentUserProfile?.email]
+  );
 
   const setIsUniformModalOpen = useCallback(
     (open: boolean) => {
@@ -5747,6 +5820,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const registerNewUser = (role: UserRole, profileData: any) => {
+    if (!isSuperAdmin && checkRegistrationPausedForRole(otaAppRelease, role)) {
+      return;
+    }
     const newId =
       (profileData.firebaseUid && String(profileData.firebaseUid).trim()) ||
       `usr_${role}_${Date.now()}`;
@@ -9554,6 +9630,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         pausedFeatureNotice,
         openPausedFeatureNotice,
         closePausedFeatureNotice,
+        registrationControls,
+        isRegistrationPausedForRole,
+        areAllRegistrationsPaused,
+        getRegistrationPauseMessage,
+        updateRegistrationControls,
         notifications,
         unreadNotificationCount,
         notificationPreferences,

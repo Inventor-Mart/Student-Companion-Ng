@@ -1654,13 +1654,25 @@ async function dispatchOtpEmail(params: {
 // 4. Verification Email Dispatch (Gmail SMTP direct to any user + Resend fallback)
 app.post('/api/send-verification-code', async (req, res) => {
   try {
-    const { email, code, name } = req.body;
+    const { email, code, name, role } = req.body;
 
     if (!email || !code) {
       return res.status(400).json({ success: false, error: 'Email and 6-digit verification code are required' });
     }
 
     const trimmedEmail = String(email).trim().toLowerCase();
+    const pauseCheck = await checkServerRegistrationPausedForRole(
+      typeof role === 'string' ? role : undefined,
+      trimmedEmail
+    );
+    if (pauseCheck.paused) {
+      return res.status(403).json({
+        success: false,
+        registrationPaused: true,
+        error: pauseCheck.message
+      });
+    }
+
     const cleanCode = String(code).trim();
     recordEmailOtpChallenge(trimmedEmail, cleanCode, 'signup');
 
@@ -7546,6 +7558,69 @@ function writeServerOTAState(state: ServerOTAState): void {
   }
 }
 
+const DEFAULT_SERVER_REG_PAUSE_MSG =
+  'New account registrations are temporarily paused while we complete platform updates. Existing members can sign in normally.';
+
+let lastServerOtaSyncMs = 0;
+
+async function getLatestServerOtaRelease(): Promise<Record<string, any> | null> {
+  const state = readServerOTAState();
+  const now = Date.now();
+  if (!state.appRelease || now - lastServerOtaSyncMs > 15_000) {
+    lastServerOtaSyncMs = now;
+    try {
+      const remoteSnap = await Promise.race([
+        getDoc(doc(serverDb, 'otaAppReleases', 'active_release')),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 2000))
+      ]);
+      if (remoteSnap && remoteSnap.exists()) {
+        const remoteRelease = remoteSnap.data() as Record<string, any>;
+        const remotePublishedMs = new Date(String(remoteRelease?.publishedAt || 0)).getTime() || 0;
+        const localPublishedMs = new Date(String(state.appRelease?.publishedAt || 0)).getTime() || 0;
+        if (!state.appRelease || remotePublishedMs >= localPublishedMs) {
+          state.appRelease = {
+            ...remoteRelease,
+            id: 'active_release'
+          };
+          writeServerOTAState(state);
+        }
+      }
+    } catch {
+      // Keep local mirror on transient Firestore timeout
+    }
+  }
+  return state.appRelease;
+}
+
+async function checkServerRegistrationPausedForRole(
+  rawRole?: string,
+  email?: string
+): Promise<{ paused: boolean; message: string }> {
+  const normalizedEmail = String(email || '').trim().toLowerCase();
+  if (normalizedEmail && AUTHORIZED_SUPER_ADMINS.includes(normalizedEmail)) {
+    return { paused: false, message: '' };
+  }
+  const release = await getLatestServerOtaRelease();
+  const ctrl = release?.registrationControls;
+  if (!ctrl || typeof ctrl !== 'object') {
+    return { paused: false, message: '' };
+  }
+  const customMessage =
+    typeof ctrl.pauseMessage === 'string' && ctrl.pauseMessage.trim().length > 0
+      ? ctrl.pauseMessage.trim().slice(0, 300)
+      : DEFAULT_SERVER_REG_PAUSE_MSG;
+
+  if (ctrl.pauseAll === true) {
+    return { paused: true, message: customMessage };
+  }
+  const role = String(rawRole || '').trim().toLowerCase();
+  const pausedRoles = (ctrl.pausedRoles && typeof ctrl.pausedRoles === 'object') ? ctrl.pausedRoles : {};
+  if (role && pausedRoles[role] === true) {
+    return { paused: true, message: customMessage };
+  }
+  return { paused: false, message: '' };
+}
+
 app.get('/api/ota/state', async (_req, res) => {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
   const state = readServerOTAState();
@@ -8016,8 +8091,30 @@ app.post('/api/users/register', async (req, res) => {
 
     const email = String(profileInput.email || '').trim().toLowerCase();
     const userId = String(profileInput.id || '').trim();
+    const role = String(profileInput.role || '').trim().toLowerCase();
     const ip = extractClientIp(req);
     const fp = extractDeviceFingerprint(req);
+
+    const existingUser =
+      email || userId
+        ? await findServerUserByEmailOrId({
+            identifier: email || userId,
+            linkingMemoryStore,
+            referralMemoryStore,
+            ledgerState: getLedgerState(),
+            serverDb
+          })
+        : null;
+    if (!existingUser) {
+      const pauseCheck = await checkServerRegistrationPausedForRole(role, email);
+      if (pauseCheck.paused) {
+        return res.status(403).json({
+          success: false,
+          registrationPaused: true,
+          error: pauseCheck.message
+        });
+      }
+    }
 
     const activeBlock = findActiveBlock({
       ip,

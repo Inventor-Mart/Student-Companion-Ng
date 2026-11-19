@@ -1029,6 +1029,10 @@
         "pausedFeatureNotes": { "type": "object" },
         "maintenanceMode": { "type": "boolean" },
         "maintenanceMessage": { "type": "string", "maxLength": 500 },
+        "registrationControls": {
+          "type": "object",
+          "description": "Global and per-persona pause switches and custom notice for new user registrations"
+        },
         "publishedAt": { "type": "string", "maxLength": 100 },
         "publishedBy": { "type": "string", "maxLength": 150 }
       },

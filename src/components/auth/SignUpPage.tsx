@@ -37,8 +37,11 @@ import {
   UserCheck,
   Bell,
   Heart,
-  Scale
+  Scale,
+  PauseCircle,
+  LogIn
 } from 'lucide-react';
+import { getOpenRegistrableRoles } from '../../services/otaService';
 import { NairaSign, NairaText } from '../../utils/currency';
 import { DeviceImageUploader } from '../admin/DeviceImageUploader';
 import { SubjectMultiSelector } from '../common/SubjectMultiSelector';
@@ -80,12 +83,31 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
     targetSignUpRole,
     allRegisteredUsers,
     appliedReferralCode,
-    applyReferralCode
+    applyReferralCode,
+    otaAppRelease,
+    areAllRegistrationsPaused,
+    isRegistrationPausedForRole,
+    getRegistrationPauseMessage,
+    refreshOTAStatus,
+    setCurrentScreen
   } = useApp();
 
   const effectiveRole = initialRole || targetSignUpRole;
   const [step, setStep] = useState<1 | 2 | 3>(effectiveRole ? 2 : 1);
   const [selectedRole, setSelectedRole] = useState<UserRole>(effectiveRole || 'student');
+
+  useEffect(() => {
+    void refreshOTAStatus();
+  }, [refreshOTAStatus]);
+
+  useEffect(() => {
+    if (step === 1 && !areAllRegistrationsPaused && isRegistrationPausedForRole(selectedRole)) {
+      const openRoles = getOpenRegistrableRoles(otaAppRelease);
+      if (openRoles.length > 0) {
+        setSelectedRole(openRoles[0]);
+      }
+    }
+  }, [step, areAllRegistrationsPaused, isRegistrationPausedForRole, selectedRole, otaAppRelease]);
 
   // Common Fields
   const [firstName, setFirstName] = useState('');
@@ -543,6 +565,13 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
     firstName?: string;
     lastName?: string;
   }) => {
+    if (isRegistrationPausedForRole(selectedRole)) {
+      const pauseNotice = getRegistrationPauseMessage(selectedRole);
+      setEmailDeliveryError(pauseNotice);
+      setVerificationError(pauseNotice);
+      return;
+    }
+
     const trimmedFirst = (overrides?.firstName ?? firstName).trim();
     const trimmedLast = (overrides?.lastName ?? lastName).trim();
     const computedFullName = `${trimmedFirst} ${trimmedLast}`.trim() || 'User';
@@ -737,6 +766,14 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
     targetEmail: string,
     overrideDisplayName?: string
   ): Promise<{ mode: 'otp' | 'firebase_link' | 'already_verified' | 'error'; firebaseUid?: string }> => {
+    if (isRegistrationPausedForRole(selectedRole)) {
+      const pauseNotice = getRegistrationPauseMessage(selectedRole);
+      setEmailDeliveryError(pauseNotice);
+      setVerificationError(pauseNotice);
+      setCodeNotification(null);
+      return { mode: 'error' };
+    }
+
     setIsSendingCode(true);
     setVerificationError(null);
     setEmailDeliveryError(null);
@@ -757,10 +794,21 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
           email: targetEmail,
           code,
           name: displayName,
+          role: selectedRole,
         }),
       });
 
       const result = await response.json().catch(() => ({}));
+
+      if (result.registrationPaused) {
+        const pauseMsg = result.error || getRegistrationPauseMessage(selectedRole);
+        setEmailDeliveryError(pauseMsg);
+        setVerificationError(pauseMsg);
+        setCodeNotification(null);
+        setIsSendingCode(false);
+        void refreshOTAStatus();
+        return { mode: 'error' };
+      }
 
       if (response.ok && result.success && result.delivered) {
         const providerText = result.provider === 'gmail-smtp' ? 'Gmail' : 'Email Service';
@@ -851,6 +899,16 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
       }
 
       if (res.status === 'new_google_user' && res.googleUser) {
+        if (isRegistrationPausedForRole(selectedRole)) {
+          const pauseMsg = getRegistrationPauseMessage(selectedRole);
+          if (fromStep === 1 || fromStep === 2) {
+            setEmailDeliveryError(pauseMsg);
+          } else {
+            setVerificationError(pauseMsg);
+          }
+          return;
+        }
+
         const parts = res.googleUser.displayName.split(/\s+/).filter(Boolean);
         const gFirst = firstName.trim() || parts[0] || 'Student';
         const gLast = lastName.trim() || parts.slice(1).join(' ') || 'Learner';
@@ -940,6 +998,11 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
 
   const handleProceedToVerification = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (isRegistrationPausedForRole(selectedRole)) {
+      setEmailDeliveryError(getRegistrationPauseMessage(selectedRole));
+      return;
+    }
 
     const trimmedFirst = firstName.trim();
     const trimmedLast = lastName.trim();
@@ -1036,7 +1099,90 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
 
         {/* Content Box */}
         <div className="w-full my-6 bg-[#0B1526]/80 backdrop-blur-md rounded-3xl p-6 sm:p-8 border border-[#1A2C49] shadow-2xl">
-          
+          {(() => {
+            const selectedRolePaused = isRegistrationPausedForRole(selectedRole);
+            const selectedRoleTitle =
+              roleCards.find((r) => r.role === selectedRole)?.title || 'Selected Role';
+            const openRoles = getOpenRegistrableRoles(otaAppRelease);
+            const showPausedGate =
+              areAllRegistrationsPaused || ((step === 2 || step === 3) && selectedRolePaused);
+
+            if (showPausedGate) {
+              const pauseNotice = getRegistrationPauseMessage(
+                areAllRegistrationsPaused ? undefined : selectedRole
+              );
+              return (
+                <div className="py-4 space-y-6">
+                  <div className="flex items-start gap-3.5 pb-4 border-b border-[#1E304F]">
+                    <div className="p-3 rounded-2xl bg-amber-500/15 border border-amber-500/30 shrink-0">
+                      <PauseCircle className="w-6 h-6 text-amber-400" />
+                    </div>
+                    <div>
+                      <span className="text-[11px] font-bold text-amber-400 uppercase tracking-wider block">
+                        Registrations Paused
+                      </span>
+                      <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight mt-0.5">
+                        {areAllRegistrationsPaused
+                          ? 'New Registrations Temporarily Paused'
+                          : `${selectedRoleTitle} Registrations Paused`}
+                      </h2>
+                    </div>
+                  </div>
+
+                  <div className="p-4 rounded-2xl bg-[#091222] border border-amber-500/25 space-y-2.5">
+                    <p className="text-sm text-slate-200 leading-relaxed">{pauseNotice}</p>
+                    <p className="text-xs text-slate-400 leading-relaxed">
+                      Already have an account on Student Companion? Existing members can continue signing in and using the platform normally.
+                    </p>
+                  </div>
+
+                  <div className="space-y-2.5 pt-1">
+                    <button
+                      type="button"
+                      onClick={onBackToSignIn}
+                      className="w-full min-h-[44px] py-3.5 px-4 rounded-full bg-[#84E000] hover:bg-[#75c900] active:scale-[0.98] text-[#0A1322] font-black text-sm tracking-wider uppercase shadow-lg shadow-[#84E000]/25 transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap"
+                    >
+                      <LogIn className="w-4 h-4 stroke-[2.5]" />
+                      <span>Sign In to Existing Account</span>
+                    </button>
+
+                    {!areAllRegistrationsPaused && openRoles.length > 0 ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedRole(openRoles[0]);
+                          setEmailDeliveryError(null);
+                          setVerificationError(null);
+                          setStep(1);
+                        }}
+                        className="w-full min-h-[44px] py-3 px-4 rounded-full bg-[#14233C] hover:bg-[#1B2E4E] border border-[#2A436D] text-white font-bold text-xs transition-colors flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap"
+                      >
+                        <ArrowLeft className="w-4 h-4" />
+                        <span>Choose Another Available Role ({openRoles.length} Open)</span>
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setCurrentScreen('landing')}
+                        className="w-full min-h-[44px] py-3 px-4 rounded-full bg-[#14233C] hover:bg-[#1B2E4E] border border-[#2A436D] text-slate-200 font-bold text-xs transition-colors flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap"
+                      >
+                        <ArrowLeft className="w-4 h-4" />
+                        <span>Return to Home</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            }
+
+            return null;
+          })()}
+
+          {!(
+            areAllRegistrationsPaused ||
+            ((step === 2 || step === 3) && isRegistrationPausedForRole(selectedRole))
+          ) && (
+            <>
           {/* Progress Indicator */}
           <div className="flex items-center justify-between mb-6 pb-4 border-b border-[#1E304F]">
             <div>
@@ -1066,25 +1212,46 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
                 Choose the role that best describes how you will use the Student Companion platform:
               </p>
 
+              {roleCards.some((rc) => isRegistrationPausedForRole(rc.role)) && (
+                <div className="p-3 rounded-2xl bg-amber-950/40 border border-amber-500/30 flex items-start gap-2.5 text-xs text-amber-200">
+                  <PauseCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                  <p className="text-[11px] leading-relaxed">
+                    Some account roles are currently paused for new registrations. {getRegistrationPauseMessage()}
+                  </p>
+                </div>
+              )}
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {roleCards.map((rc) => {
-                  const isSelected = selectedRole === rc.role;
+                  const isRolePaused = isRegistrationPausedForRole(rc.role);
+                  const isSelected = selectedRole === rc.role && !isRolePaused;
                   return (
                     <button
                       key={rc.role}
                       type="button"
-                      onClick={() => setSelectedRole(rc.role)}
-                      className={`p-4 rounded-2xl border-2 text-left transition-all flex flex-col justify-between cursor-pointer ${
-                        isSelected
-                          ? `${rc.color} bg-[#14233C] shadow-lg shadow-black/40 scale-[1.01]`
-                          : 'border-[#1C2F4D] bg-[#0E1B30] hover:bg-[#12223D]'
+                      disabled={isRolePaused}
+                      onClick={() => {
+                        if (isRolePaused) return;
+                        setSelectedRole(rc.role);
+                        setEmailDeliveryError(null);
+                      }}
+                      className={`p-4 rounded-2xl border-2 text-left transition-all flex flex-col justify-between ${
+                        isRolePaused
+                          ? 'border-amber-500/25 bg-[#091222]/80 opacity-70 cursor-not-allowed'
+                          : isSelected
+                          ? `${rc.color} bg-[#14233C] shadow-lg shadow-black/40 scale-[1.01] cursor-pointer`
+                          : 'border-[#1C2F4D] bg-[#0E1B30] hover:bg-[#12223D] cursor-pointer'
                       }`}
                     >
-                      <div className="flex items-start justify-between mb-2">
+                      <div className="flex items-start justify-between mb-2 gap-2">
                         <div className="p-2.5 rounded-xl bg-[#091222]">
                           {rc.icon}
                         </div>
-                        {isSelected ? (
+                        {isRolePaused ? (
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 rounded whitespace-nowrap">
+                            Paused
+                          </span>
+                        ) : isSelected ? (
                           <div className="w-5 h-5 rounded-full bg-[#84E000] flex items-center justify-center text-slate-950">
                             <Check className="w-3.5 h-3.5 stroke-[3]" />
                           </div>
@@ -1097,7 +1264,11 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
 
                       <div>
                         <h3 className="font-bold text-white text-sm mb-1">{rc.title}</h3>
-                        <p className="text-[11px] text-slate-400 leading-snug">{rc.description}</p>
+                        <p className="text-[11px] text-slate-400 leading-snug">
+                          {isRolePaused
+                            ? 'New registrations for this role are temporarily paused.'
+                            : rc.description}
+                        </p>
                       </div>
                     </button>
                   );
@@ -1114,8 +1285,15 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
               <div className="space-y-2.5 pt-4">
                 <button
                   type="button"
-                  onClick={() => setStep(2)}
-                  className="w-full min-h-[44px] py-3.5 px-4 rounded-full bg-[#84E000] hover:bg-[#75c900] active:scale-[0.98] text-[#0A1322] font-black text-sm tracking-wider uppercase shadow-lg shadow-[#84E000]/25 transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap"
+                  disabled={isRegistrationPausedForRole(selectedRole)}
+                  onClick={() => {
+                    if (isRegistrationPausedForRole(selectedRole)) {
+                      setEmailDeliveryError(getRegistrationPauseMessage(selectedRole));
+                      return;
+                    }
+                    setStep(2);
+                  }}
+                  className="w-full min-h-[44px] py-3.5 px-4 rounded-full bg-[#84E000] hover:bg-[#75c900] active:scale-[0.98] text-[#0A1322] font-black text-sm tracking-wider uppercase shadow-lg shadow-[#84E000]/25 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
                 >
                   <span>Continue to Profile Setup</span>
                   <ChevronRight className="w-4 h-4 stroke-[3]" />
@@ -1123,9 +1301,9 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
 
                 <button
                   type="button"
-                  disabled={isGoogleAuthenticating}
+                  disabled={isGoogleAuthenticating || isRegistrationPausedForRole(selectedRole)}
                   onClick={() => void handleGoogleQuickSignUp(1)}
-                  className="w-full min-h-[44px] py-3 px-4 rounded-full bg-[#14233C] hover:bg-[#1B2E4E] border border-[#2A436D] text-white font-bold text-xs transition-colors flex items-center justify-center gap-2.5 cursor-pointer disabled:opacity-60 whitespace-nowrap"
+                  className="w-full min-h-[44px] py-3 px-4 rounded-full bg-[#14233C] hover:bg-[#1B2E4E] border border-[#2A436D] text-white font-bold text-xs transition-colors flex items-center justify-center gap-2.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
                 >
                   {isGoogleAuthenticating ? (
                     <>
@@ -3203,6 +3381,8 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
                 </>
               )}
             </form>
+          )}
+            </>
           )}
 
         </div>
