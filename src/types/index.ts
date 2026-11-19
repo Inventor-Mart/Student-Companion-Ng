@@ -278,6 +278,9 @@ export interface TutorBooking {
   scheduledEndIso?: string;
   status: BookingStatus;
   amountNaira: number;
+  commissionRatePercent?: number;
+  platformFeeNaira?: number;
+  tutorNetNaira?: number;
   isParentApproved: boolean;
   parentApprovalDate?: string;
   isTutorApproved: boolean;
@@ -495,9 +498,17 @@ export interface RegisteredUserProfile {
   deletionReason?: string;
   walletFrozen?: boolean;
   walletFrozenReason?: string;
+  legalConsent?: LegalConsentRecord;
   directorySource?: 'local' | 'backend' | 'firestore' | 'recovered';
   recoveredFrom?: string;
   lastSyncedAt?: string;
+}
+
+export interface LegalConsentRecord {
+  accepted: boolean;
+  version: string;
+  acceptedAt: string;
+  roleAcceptedAs: UserRole;
 }
 
 export interface SchoolMaterial {

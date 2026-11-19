@@ -36,11 +36,20 @@ import {
   Search,
   UserCheck,
   Bell,
-  Heart
+  Heart,
+  Scale
 } from 'lucide-react';
-import { NairaSign } from '../../utils/currency';
+import { NairaSign, NairaText } from '../../utils/currency';
 import { DeviceImageUploader } from '../admin/DeviceImageUploader';
 import { SubjectMultiSelector } from '../common/SubjectMultiSelector';
+import { LegalAgreementModal } from '../common/LegalAgreementModal';
+import {
+  TUTOR_NET_PAYOUT_PERCENT,
+  TUTOR_PLATFORM_COMMISSION_PERCENT,
+  USER_AGREEMENT_VERSION,
+  calculateTutorBookingSplit,
+  createLegalConsentRecord
+} from '../../utils/platformLegalAndFees';
 import {
   NIGERIAN_HIGHER_EDUCATION_OPTIONS,
   dedupeSubjects,
@@ -99,6 +108,9 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
   const [isSendingCode, setIsSendingCode] = useState<boolean>(false);
   const [isCheckingFirebaseLink, setIsCheckingFirebaseLink] = useState<boolean>(false);
   const [codeNotification, setCodeNotification] = useState<string | null>(null);
+  const [hasAcceptedAgreement, setHasAcceptedAgreement] = useState<boolean>(false);
+  const [agreementError, setAgreementError] = useState<string | null>(null);
+  const [isAgreementModalOpen, setIsAgreementModalOpen] = useState<boolean>(false);
 
   // Student Fields
   const [classLevel, setClassLevel] = useState<NigerianClassLevel>('SS 3');
@@ -537,11 +549,13 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
     const resolvedEmail = (overrides?.email ?? email).trim();
     const resolvedUid = overrides?.firebaseUid ?? verifiedFirebaseUid ?? undefined;
     const resolvedAvatar = overrides?.avatarUrl ?? googleAvatarUrl;
+    const legalConsent = createLegalConsentRecord(selectedRole);
 
     if (selectedRole === 'student') {
       registerNewUser('student', {
         firebaseUid: resolvedUid,
         avatarUrl: resolvedAvatar,
+        legalConsent,
         name: computedFullName,
         firstName: trimmedFirst,
         lastName: trimmedLast,
@@ -573,6 +587,7 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
       registerNewUser('parent', {
         firebaseUid: resolvedUid,
         avatarUrl: resolvedAvatar,
+        legalConsent,
         name: computedFullName,
         firstName: trimmedFirst,
         lastName: trimmedLast,
@@ -611,6 +626,7 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
 
       registerNewUser('tutor', {
         firebaseUid: resolvedUid,
+        legalConsent,
         name: fullLegalName,
         firstName: trimmedFirst,
         middleName: middleName.trim(),
@@ -661,6 +677,7 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
       registerNewUser('growth_partner', {
         firebaseUid: resolvedUid,
         avatarUrl: resolvedAvatar,
+        legalConsent,
         name: computedFullName,
         firstName: trimmedFirst,
         lastName: trimmedLast,
@@ -676,6 +693,7 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
       registerNewUser('admin', {
         firebaseUid: resolvedUid,
         avatarUrl: resolvedAvatar,
+        legalConsent,
         name: computedFullName,
         firstName: trimmedFirst,
         lastName: trimmedLast,
@@ -847,7 +865,7 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
         const tutorSubjectsReady =
           selectedRole !== 'tutor' || dedupeSubjects(proficientSubjects).length > 0;
 
-        if ((fromStep === 2 || fromStep === 3) && tutorSubjectsReady) {
+        if ((fromStep === 2 || fromStep === 3) && tutorSubjectsReady && hasAcceptedAgreement) {
           completeRegistration({
             firebaseUid: res.googleUser.uid,
             avatarUrl: res.googleUser.photoURL,
@@ -862,6 +880,8 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
         if (selectedRole === 'tutor' && !tutorSubjectsReady) {
           setTutorStage(2);
           setTutorSubjectError('Please select or add at least one teaching subject to complete your Tutor profile.');
+        } else if (!hasAcceptedAgreement) {
+          setAgreementError('Please review and accept the Student Companion User Agreement below to activate your Google-verified account.');
         }
       }
     } finally {
@@ -947,6 +967,14 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
       setNameError('Please select or add at least one teaching subject in Stage 2.');
       return;
     }
+
+    if (!hasAcceptedAgreement) {
+      setAgreementError(
+        `Please read and tick the Student Companion User Agreement (${USER_AGREEMENT_VERSION}) checkbox to continue.`
+      );
+      return;
+    }
+    setAgreementError(null);
 
     if (isGoogleVerified && verifiedFirebaseUid) {
       completeRegistration({ firebaseUid: verifiedFirebaseUid });
@@ -2239,6 +2267,50 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
                         </div>
                       </div>
 
+                      {/* Transparent 80/20 Tutor Rate & Platform Fee Preview */}
+                      {(() => {
+                        const ratePreview = calculateTutorBookingSplit(parseInt(hourlyRate, 10) || 3500);
+                        return (
+                          <div className="p-3 rounded-xl bg-[#081220] border border-sky-500/30 space-y-2">
+                            <div className="flex items-center justify-between gap-2 text-[11px]">
+                              <span className="font-bold text-sky-300">
+                                Transparent {TUTOR_NET_PAYOUT_PERCENT}/{TUTOR_PLATFORM_COMMISSION_PERCENT} Booking Settlement Preview
+                              </span>
+                              <span className="font-mono tabular-nums text-slate-400">
+                                Per Hour Fixed
+                              </span>
+                            </div>
+                            <div className="grid grid-cols-3 gap-2 pt-1 text-xs font-mono tabular-nums">
+                              <div>
+                                <span className="text-[10px] font-sans text-slate-400 block">Quoted Rate (100%)</span>
+                                <span className="font-bold text-white">
+                                  <NairaText amount={ratePreview.grossAmountNaira} />
+                                </span>
+                              </div>
+                              <div>
+                                <span className="text-[10px] font-sans text-slate-400 block">
+                                  System Fee (-{ratePreview.commissionRatePercent}%)
+                                </span>
+                                <span className="font-bold text-amber-300">
+                                  -<NairaText amount={ratePreview.platformFeeNaira} />
+                                </span>
+                              </div>
+                              <div>
+                                <span className="text-[10px] font-sans text-slate-400 block">
+                                  Your Net Payout ({TUTOR_NET_PAYOUT_PERCENT}%)
+                                </span>
+                                <span className="font-black text-[#84E000]">
+                                  <NairaText amount={ratePreview.tutorNetNaira} />
+                                </span>
+                              </div>
+                            </div>
+                            <p className="text-[10px] text-slate-400 leading-relaxed">
+                              Student Companion deducts a flat {TUTOR_PLATFORM_COMMISSION_PERCENT}% platform service fee from every booking amount you set to cover escrow safety, NIN vetting, virtual whiteboard hosting, and payment settlement.
+                            </p>
+                          </div>
+                        );
+                      })()}
+
                       {/* Proficient Subjects Multi-Select + Custom Entry */}
                       <SubjectMultiSelector
                         selectedSubjects={proficientSubjects}
@@ -2818,6 +2890,60 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
                 </div>
               )}
 
+              {/* Mandatory Platform User Agreement Consent */}
+              <div className="p-4 rounded-2xl bg-[#081220] border border-[#1F3559] space-y-2.5">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <div className="flex items-center gap-2 text-xs font-bold text-white">
+                    <Scale className="w-4 h-4 text-[#84E000] shrink-0" />
+                    <span>Student Companion User Agreement ({USER_AGREEMENT_VERSION})</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsAgreementModalOpen(true)}
+                    className="text-xs font-bold text-[#84E000] hover:underline flex items-center gap-1 cursor-pointer"
+                  >
+                    <FileText className="w-3.5 h-3.5" />
+                    <span>Read Full Agreement</span>
+                  </button>
+                </div>
+
+                <label className="flex items-start gap-2.5 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={hasAcceptedAgreement}
+                    onChange={(e) => {
+                      setHasAcceptedAgreement(e.target.checked);
+                      if (e.target.checked) setAgreementError(null);
+                    }}
+                    className="mt-0.5 w-4 h-4 rounded accent-[#84E000] cursor-pointer shrink-0"
+                  />
+                  <span className="text-[11px] text-slate-300 leading-relaxed">
+                    I have read and agree to the{' '}
+                    <button
+                      type="button"
+                      onClick={() => setIsAgreementModalOpen(true)}
+                      className="text-white font-semibold underline hover:text-[#84E000] cursor-pointer"
+                    >
+                      Student Companion User Agreement ({USER_AGREEMENT_VERSION})
+                    </button>
+                    , including escrow protection, child safeguarding, anti-circumvention rules, NDPA 2023 privacy terms
+                    {selectedRole === 'tutor'
+                      ? `, and the ${TUTOR_PLATFORM_COMMISSION_PERCENT}% platform service fee on tutor bookings (${TUTOR_NET_PAYOUT_PERCENT}% net tutor payout)`
+                      : selectedRole === 'growth_partner'
+                      ? ', and the 10% Growth Partner referral compliance rules'
+                      : ''}
+                    .
+                  </span>
+                </label>
+
+                {agreementError && (
+                  <div className="p-2.5 rounded-xl bg-rose-950/60 border border-rose-500/40 text-[11px] text-rose-200 flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                    <span>{agreementError}</span>
+                  </div>
+                )}
+              </div>
+
               {/* Navigation buttons */}
               <div className="flex items-center gap-3 pt-4">
                 <button
@@ -3095,6 +3221,18 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
         </div>
 
       </div>
+
+      <LegalAgreementModal
+        isOpen={isAgreementModalOpen}
+        mode="sign_up_review"
+        role={selectedRole}
+        onClose={() => setIsAgreementModalOpen(false)}
+        onAccept={() => {
+          setHasAcceptedAgreement(true);
+          setAgreementError(null);
+          setIsAgreementModalOpen(false);
+        }}
+      />
     </div>
   );
 };

@@ -26,6 +26,14 @@ import {
   parseSubjectString,
   rebuildTutorDegrees
 } from '../../utils/nigerianSubjects';
+import {
+  TUTOR_NET_PAYOUT_PERCENT,
+  TUTOR_PLATFORM_COMMISSION_PERCENT,
+  USER_AGREEMENT_VERSION,
+  formatConsentDate,
+  getBookingFinancialSplit,
+  hasAcceptedCurrentAgreement
+} from '../../utils/platformLegalAndFees';
 import { calculateRank as calculateRankFromXP } from '../../utils/xpEconomy';
 import { useBackHandler } from '../../lib/backNavigation';
 import {
@@ -73,6 +81,7 @@ import {
   Check,
   ChevronDown,
   ChevronUp,
+  Scale,
   Server,
   Globe
 } from 'lucide-react';
@@ -108,7 +117,8 @@ export const SuperAdminPortal: React.FC = () => {
     isSyncingDirectory,
     directorySyncStats,
     syncUserDirectoryFromCloud,
-    loginWithGoogle
+    loginWithGoogle,
+    tutorBookings
   } = useApp();
 
   const [portalView, setPortalView] = useState<'directory' | 'school_admin' | 'forum_moderation' | 'ota_competitions' | 'lesson_notes' | 'class_directory' | 'past_questions' | 'security_trust' | 'aspirant_rewards'>(() => {
@@ -1885,6 +1895,153 @@ export const SuperAdminPortal: React.FC = () => {
         </div>
       </div>
 
+      {/* Platform Tutor Commissions (20% System Revenue Ledger) */}
+      {(() => {
+        const activeOrCompletedBookings = tutorBookings.filter(b => b.status !== 'cancelled');
+        const completedList = activeOrCompletedBookings.filter(b => b.status === 'completed');
+        const escrowList = activeOrCompletedBookings.filter(b => b.status !== 'completed');
+
+        const grossVolume = activeOrCompletedBookings.reduce(
+          (sum, b) => sum + getBookingFinancialSplit(b).grossAmountNaira,
+          0
+        );
+        const systemFeeEarned = completedList.reduce(
+          (sum, b) => sum + getBookingFinancialSplit(b).platformFeeNaira,
+          0
+        );
+        const systemFeeEscrow = escrowList.reduce(
+          (sum, b) => sum + getBookingFinancialSplit(b).platformFeeNaira,
+          0
+        );
+        const tutorNetTotal = activeOrCompletedBookings.reduce(
+          (sum, b) => sum + getBookingFinancialSplit(b).tutorNetNaira,
+          0
+        );
+        const consentedUsersCount = allRegisteredUsers.filter(
+          u => !u.isSuperAdmin && !u.isDeveloper && hasAcceptedCurrentAgreement(u)
+        ).length;
+        const nonAdminUsersCount = allRegisteredUsers.filter(
+          u => !u.isSuperAdmin && !u.isDeveloper
+        ).length;
+
+        return (
+          <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2.5 border-b border-slate-800">
+              <div>
+                <h2 className="text-sm font-bold text-white tracking-tight flex items-center gap-2">
+                  <Wallet className="w-4 h-4 text-[#84E000]" />
+                  <span>Platform Tutor Commissions ({TUTOR_PLATFORM_COMMISSION_PERCENT}% System Revenue Ledger)</span>
+                </h2>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Automatic {TUTOR_PLATFORM_COMMISSION_PERCENT}% system commission on every tutor booking · {TUTOR_NET_PAYOUT_PERCENT}% net payable to tutors
+                </p>
+              </div>
+              <div className="flex items-center gap-2 text-[11px] text-slate-300 font-mono tabular-nums">
+                <Scale className="w-3.5 h-3.5 text-[#84E000]" />
+                <span>
+                  User Agreement {USER_AGREEMENT_VERSION}: <strong className="text-white">{consentedUsersCount}/{nonAdminUsersCount}</strong> Signed
+                </span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
+              <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-3">
+                <span className="text-[11px] text-slate-400 block">Gross Bookings Volume</span>
+                <div className="text-lg font-black font-mono tabular-nums text-white mt-0.5">
+                  <NairaText amount={grossVolume} />
+                </div>
+                <span className="text-[10px] text-slate-500 tabular-nums">
+                  {activeOrCompletedBookings.length} active/completed session(s)
+                </span>
+              </div>
+
+              <div className="bg-slate-950/80 border border-emerald-500/35 rounded-xl p-3">
+                <span className="text-[11px] text-emerald-300 block">
+                  {TUTOR_PLATFORM_COMMISSION_PERCENT}% System Share (Earned)
+                </span>
+                <div className="text-lg font-black font-mono tabular-nums text-[#84E000] mt-0.5">
+                  <NairaText amount={systemFeeEarned} />
+                </div>
+                <span className="text-[10px] text-slate-500 tabular-nums">
+                  {completedList.length} released session(s)
+                </span>
+              </div>
+
+              <div className="bg-slate-950/80 border border-amber-500/35 rounded-xl p-3">
+                <span className="text-[11px] text-amber-300 block">
+                  {TUTOR_PLATFORM_COMMISSION_PERCENT}% System Share (Escrow)
+                </span>
+                <div className="text-lg font-black font-mono tabular-nums text-amber-300 mt-0.5">
+                  <NairaText amount={systemFeeEscrow} />
+                </div>
+                <span className="text-[10px] text-slate-500 tabular-nums">
+                  {escrowList.length} pending/confirmed
+                </span>
+              </div>
+
+              <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-3">
+                <span className="text-[11px] text-slate-400 block">
+                  {TUTOR_NET_PAYOUT_PERCENT}% Tutor Net Share
+                </span>
+                <div className="text-lg font-black font-mono tabular-nums text-sky-300 mt-0.5">
+                  <NairaText amount={tutorNetTotal} />
+                </div>
+                <span className="text-[10px] text-slate-500">
+                  Allocated to verified tutors
+                </span>
+              </div>
+            </div>
+
+            {activeOrCompletedBookings.length > 0 ? (
+              <div className="overflow-x-auto border border-slate-800 rounded-xl">
+                <table className="w-full text-left text-[11px]">
+                  <thead className="bg-slate-950/90 text-slate-400 border-b border-slate-800">
+                    <tr>
+                      <th className="py-2 px-3 font-semibold">Tutor &amp; Subject</th>
+                      <th className="py-2 px-3 font-semibold">Student</th>
+                      <th className="py-2 px-3 font-semibold text-right">Gross (100%)</th>
+                      <th className="py-2 px-3 font-semibold text-right">System (20%)</th>
+                      <th className="py-2 px-3 font-semibold text-right">Tutor Net (80%)</th>
+                      <th className="py-2 px-3 font-semibold text-right">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/70">
+                    {activeOrCompletedBookings.slice(0, 8).map((b) => {
+                      const split = getBookingFinancialSplit(b);
+                      return (
+                        <tr key={b.id} className="bg-slate-900/40">
+                          <td className="py-2 px-3">
+                            <span className="font-semibold text-white block">{b.tutorName}</span>
+                            <span className="text-[10px] text-slate-400">{b.subject}</span>
+                          </td>
+                          <td className="py-2 px-3 text-slate-300">{b.studentName}</td>
+                          <td className="py-2 px-3 text-right font-mono tabular-nums text-white">
+                            <NairaText amount={split.grossAmountNaira} />
+                          </td>
+                          <td className="py-2 px-3 text-right font-mono tabular-nums font-bold text-[#84E000]">
+                            <NairaText amount={split.platformFeeNaira} />
+                          </td>
+                          <td className="py-2 px-3 text-right font-mono tabular-nums text-sky-300">
+                            <NairaText amount={split.tutorNetNaira} />
+                          </td>
+                          <td className="py-2 px-3 text-right capitalize text-slate-300">
+                            {b.status.replace('_', ' ')}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="text-xs text-slate-400">
+                No tutor bookings recorded yet. Every new booking automatically logs its {TUTOR_PLATFORM_COMMISSION_PERCENT}% system commission and {TUTOR_NET_PAYOUT_PERCENT}% net tutor share here.
+              </p>
+            )}
+          </div>
+        );
+      })()}
+
       {/* Live Integrations & Secrets Readiness Diagnostic */}
       <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 space-y-3">
         {(() => {
@@ -3189,6 +3346,25 @@ export const SuperAdminPortal: React.FC = () => {
                       </div>
                     </div>
                   )}
+
+                  {/* User Agreement Compliance Audit Row */}
+                  <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-800/50">
+                    <span className="text-slate-400 flex items-center gap-1">
+                      <Scale className="w-3 h-3 text-slate-400" />
+                      <span>User Agreement:</span>
+                    </span>
+                    {hasAcceptedCurrentAgreement(u) ? (
+                      <span className="font-semibold text-[#84E000] font-mono tabular-nums">
+                        {u.legalConsent?.acceptedAt
+                          ? `Agreed ${u.legalConsent.version} · ${formatConsentDate(u.legalConsent.acceptedAt)}`
+                          : 'Admin Exempt'}
+                      </span>
+                    ) : (
+                      <span className="font-semibold text-amber-400">
+                        Pending {USER_AGREEMENT_VERSION}
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 {/* Card Action Buttons */}

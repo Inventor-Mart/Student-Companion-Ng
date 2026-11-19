@@ -37,6 +37,8 @@ import { SplashScreen } from './components/common/SplashScreen';
 import { ShieldAlert, LogOut, X, Clock, Trash2, AlertTriangle } from 'lucide-react';
 import { AppUpdateGate, OTAModulePausedCard, PausedFeatureModal } from './components/common/AppUpdateGate';
 import { OfflineIndicator } from './components/common/OfflineIndicator';
+import { LegalAgreementModal } from './components/common/LegalAgreementModal';
+import { hasAcceptedCurrentAgreement } from './utils/platformLegalAndFees';
 import { useBackHandler } from './lib/backNavigation';
 
 const AppContent: React.FC = () => {
@@ -66,6 +68,7 @@ const AppContent: React.FC = () => {
     isFeatureEnabled,
     getPausedFeatureMessage,
     signOutApp,
+    acceptUserAgreement,
     isStudentSubscriptionModalOpen,
     targetSubscriptionPlan,
     closeStudentSubscriptionModal,
@@ -373,6 +376,27 @@ const AppContent: React.FC = () => {
             </button>
           </div>
         </div>
+      </div>
+    );
+  }
+
+  // Mandatory one-time User Agreement (v1.0) consent gate for existing logged-in non-Super-Admin accounts
+  if (
+    isAuthenticated &&
+    !isSuperAdmin &&
+    currentUserProfile &&
+    !hasAcceptedCurrentAgreement(currentUserProfile)
+  ) {
+    return (
+      <div className="w-full min-h-screen bg-[#070D18] text-slate-100 font-sans">
+        <LegalAgreementModal
+          isOpen
+          mode="mandatory_gate"
+          role={currentUserProfile.role || currentRole}
+          userName={currentUserProfile.fullName}
+          onAccept={acceptUserAgreement}
+          onSignOut={signOutApp}
+        />
       </div>
     );
   }

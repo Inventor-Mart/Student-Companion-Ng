@@ -45,6 +45,12 @@ import {
   parseSubjectString,
   rebuildTutorDegrees
 } from '../../utils/nigerianSubjects';
+import {
+  TUTOR_NET_PAYOUT_PERCENT,
+  TUTOR_PLATFORM_COMMISSION_PERCENT,
+  calculateTutorBookingSplit,
+  getBookingFinancialSplit
+} from '../../utils/platformLegalAndFees';
 
 type TutorTab = 'overview' | 'sessions' | 'profile' | 'chat';
 type TutorSheet = 'earnings' | 'profile-core' | 'profile-credentials' | 'profile-exams' | 'timetable' | null;
@@ -350,14 +356,37 @@ export const TutorPortal: React.FC = () => {
   const currentMessages = chatMessages[currentChatId] || [];
   const latestMessage = currentMessages[currentMessages.length - 1];
 
-  // Calculate real earnings from real bookings
-  const availablePayout = myBookings
-    .filter(b => b.status === 'completed')
-    .reduce((sum, b) => sum + b.amountNaira, 0);
+  // Calculate real 80% net tutor earnings and 20% system service fee from real bookings
+  const completedBookings = myBookings.filter(b => b.status === 'completed');
+  const escrowBookings = myBookings.filter(
+    b => b.status === 'confirmed' || b.status === 'pending_parent' || b.status === 'pending_tutor'
+  );
 
-  const heldInEscrow = myBookings
-    .filter(b => b.status === 'confirmed' || b.status === 'pending_parent' || b.status === 'pending_tutor')
-    .reduce((sum, b) => sum + b.amountNaira, 0);
+  const grossCompletedVolume = completedBookings.reduce(
+    (sum, b) => sum + getBookingFinancialSplit(b).grossAmountNaira,
+    0
+  );
+  const systemFeeCompleted = completedBookings.reduce(
+    (sum, b) => sum + getBookingFinancialSplit(b).platformFeeNaira,
+    0
+  );
+  const availablePayout = completedBookings.reduce(
+    (sum, b) => sum + getBookingFinancialSplit(b).tutorNetNaira,
+    0
+  );
+
+  const grossEscrowVolume = escrowBookings.reduce(
+    (sum, b) => sum + getBookingFinancialSplit(b).grossAmountNaira,
+    0
+  );
+  const systemFeeEscrow = escrowBookings.reduce(
+    (sum, b) => sum + getBookingFinancialSplit(b).platformFeeNaira,
+    0
+  );
+  const heldInEscrow = escrowBookings.reduce(
+    (sum, b) => sum + getBookingFinancialSplit(b).tutorNetNaira,
+    0
+  );
 
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
@@ -566,7 +595,7 @@ export const TutorPortal: React.FC = () => {
                   <div className="mt-2 flex items-baseline gap-4 flex-wrap">
                     <div>
                       <span className="text-[10px] text-white/85 block font-semibold">
-                        Available for Payout
+                        Available Net Payout ({TUTOR_NET_PAYOUT_PERCENT}%)
                       </span>
                       <div className="text-2xl sm:text-3xl font-black font-mono tabular-nums text-white drop-shadow-sm">
                         <NairaText amount={availablePayout} />
@@ -574,7 +603,7 @@ export const TutorPortal: React.FC = () => {
                     </div>
                     <div className="bg-[#101C34]/40 border border-white/20 rounded-2xl px-3 py-1.5">
                       <span className="text-[10px] text-white/85 block font-semibold">
-                        Held in Escrow
+                        Net Held in Escrow ({TUTOR_NET_PAYOUT_PERCENT}%)
                       </span>
                       <div className="text-sm font-black font-mono tabular-nums text-[#84CC16]">
                         <NairaText amount={heldInEscrow} />
@@ -596,9 +625,11 @@ export const TutorPortal: React.FC = () => {
                 </button>
               </div>
 
-              <div className="mt-3 pt-2.5 border-t border-white/20 flex items-center justify-between text-[11px] font-bold text-white/95 relative z-10">
-                <span>Tap to inspect escrow &amp; Nigerian Payout Bank Account</span>
-                <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+              <div className="mt-3 pt-2.5 border-t border-white/20 flex items-center justify-between gap-2 text-[11px] font-bold text-white/95 relative z-10">
+                <span>
+                  {TUTOR_NET_PAYOUT_PERCENT}% net to you · {TUTOR_PLATFORM_COMMISSION_PERCENT}% system service fee · Tap for ledger
+                </span>
+                <ArrowRight className="w-4 h-4 shrink-0 group-hover:translate-x-1 transition-transform" />
               </div>
             </motion.div>
 
@@ -906,15 +937,66 @@ export const TutorPortal: React.FC = () => {
                           </div>
                         </div>
 
-                        <div className="text-right shrink-0">
-                          <span className="text-sm font-black font-mono text-[#84CC16]">
-                            <NairaText amount={b.amountNaira} />
-                          </span>
-                          <span className="text-[10px] text-[#FF5B00] font-black block uppercase">
-                            {b.bookingType}
-                          </span>
-                        </div>
+                        {(() => {
+                          const split = getBookingFinancialSplit(b);
+                          return (
+                            <div className="text-right shrink-0">
+                              <span className="text-sm font-black font-mono tabular-nums text-[#84CC16] block">
+                                <NairaText amount={split.tutorNetNaira} />
+                              </span>
+                              <span className="text-[10px] text-slate-400 font-mono tabular-nums block">
+                                Net ({TUTOR_NET_PAYOUT_PERCENT}%) of <NairaText amount={split.grossAmountNaira} />
+                              </span>
+                              <span className="text-[10px] text-[#FF5B00] font-black block uppercase mt-0.5">
+                                {b.bookingType}
+                              </span>
+                            </div>
+                          );
+                        })()}
                       </div>
+
+                      {needsTutorDecision && (() => {
+                        const split = getBookingFinancialSplit(b);
+                        return (
+                          <div className="p-3 rounded-xl bg-[#0D1527] border border-amber-500/35 space-y-2">
+                            <div className="flex items-center justify-between text-[11px]">
+                              <span className="font-bold text-amber-300">
+                                Payout Breakdown Before Accepting
+                              </span>
+                              <span className="font-mono tabular-nums text-slate-400">
+                                {TUTOR_NET_PAYOUT_PERCENT}/{split.commissionRatePercent} Split
+                              </span>
+                            </div>
+                            <div className="grid grid-cols-3 gap-2 text-xs font-mono tabular-nums">
+                              <div>
+                                <span className="text-[10px] font-sans text-slate-400 block">Booking Total</span>
+                                <span className="font-bold text-white">
+                                  <NairaText amount={split.grossAmountNaira} />
+                                </span>
+                              </div>
+                              <div>
+                                <span className="text-[10px] font-sans text-slate-400 block">
+                                  System Fee (-{split.commissionRatePercent}%)
+                                </span>
+                                <span className="font-bold text-amber-300">
+                                  -<NairaText amount={split.platformFeeNaira} />
+                                </span>
+                              </div>
+                              <div>
+                                <span className="text-[10px] font-sans text-slate-400 block">
+                                  Your Net ({TUTOR_NET_PAYOUT_PERCENT}%)
+                                </span>
+                                <span className="font-black text-[#84CC16]">
+                                  <NairaText amount={split.tutorNetNaira} />
+                                </span>
+                              </div>
+                            </div>
+                            <p className="text-[10px] text-slate-400 leading-relaxed">
+                              By accepting this session, you confirm the {split.commissionRatePercent}% Student Companion system service fee and will receive <strong className="text-white font-mono tabular-nums"><NairaText amount={split.tutorNetNaira} /></strong> net upon completion.
+                            </p>
+                          </div>
+                        );
+                      })()}
 
                       <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-300 pt-2.5 border-t border-slate-800">
                         <span className="flex items-center gap-1.5 text-[11px]">
@@ -933,7 +1015,7 @@ export const TutorPortal: React.FC = () => {
                                   playSound.tileTap();
                                   tutorRespondToBooking(b.id, 'decline', 'Declined by Tutor');
                                 }}
-                                className="px-3 py-1.5 rounded-xl bg-rose-950/70 hover:bg-rose-900 text-rose-200 border border-rose-700 font-black text-[11px] cursor-pointer active:scale-95"
+                                className="min-h-[40px] px-3 py-1.5 rounded-xl bg-rose-950/70 hover:bg-rose-900 text-rose-200 border border-rose-700 font-black text-[11px] cursor-pointer active:scale-95"
                               >
                                 Decline &amp; Refund
                               </button>
@@ -943,7 +1025,7 @@ export const TutorPortal: React.FC = () => {
                                   playSound.levelUp();
                                   tutorRespondToBooking(b.id, 'accept');
                                 }}
-                                className="px-3 py-1.5 rounded-xl bg-[#84CC16] hover:bg-[#A3E635] text-slate-950 font-black text-[11px] cursor-pointer active:scale-95 shadow-md"
+                                className="min-h-[40px] px-3.5 py-1.5 rounded-xl bg-[#84CC16] hover:bg-[#A3E635] text-slate-950 font-black text-[11px] cursor-pointer active:scale-95 shadow-md"
                               >
                                 Accept Session
                               </button>
@@ -1359,23 +1441,61 @@ export const TutorPortal: React.FC = () => {
 
                   <div className="grid grid-cols-2 gap-3">
                     <div className="bg-[#14203D] rounded-2xl p-4 border border-[#84CC16]/40 space-y-1">
-                      <span className="text-[11px] text-slate-300 block">Available for Payout</span>
+                      <span className="text-[11px] text-slate-300 block">
+                        Available Net Payout ({TUTOR_NET_PAYOUT_PERCENT}%)
+                      </span>
                       <div className="text-xl font-black font-mono tabular-nums text-[#84CC16]">
                         <NairaText amount={availablePayout} />
                       </div>
                       <span className="text-[10px] text-slate-400 block">
-                        {availablePayout > 0 ? 'Ready to withdraw' : 'Completed sessions payout'}
+                        {availablePayout > 0 ? 'Ready to withdraw' : 'Completed sessions net share'}
                       </span>
                     </div>
 
                     <div className="bg-[#14203D] rounded-2xl p-4 border border-[#FF5B00]/40 space-y-1">
-                      <span className="text-[11px] text-slate-300 block">Held in Escrow</span>
+                      <span className="text-[11px] text-slate-300 block">
+                        Net Held in Escrow ({TUTOR_NET_PAYOUT_PERCENT}%)
+                      </span>
                       <div className="text-xl font-black font-mono tabular-nums text-[#FF5B00]">
                         <NairaText amount={heldInEscrow} />
                       </div>
                       <span className="text-[10px] text-slate-400 block">
-                        {confirmedCount} active session(s)
+                        {confirmedCount} active · {pendingCount} pending
                       </span>
+                    </div>
+                  </div>
+
+                  {/* Transparent 80/20 Settlement Summary */}
+                  <div className="bg-[#0D1527] rounded-2xl p-3.5 border border-slate-800 space-y-2 text-xs">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-white">Settlement Breakdown</span>
+                      <span className="text-[11px] font-mono tabular-nums text-slate-400">
+                        {TUTOR_NET_PAYOUT_PERCENT}% Tutor · {TUTOR_PLATFORM_COMMISSION_PERCENT}% System Fee
+                      </span>
+                    </div>
+                    <div className="space-y-1.5 pt-1 border-t border-slate-800/80 font-mono tabular-nums text-[11px]">
+                      <div className="flex items-center justify-between text-slate-300">
+                        <span className="font-sans">Gross Booking Volume (Completed + Escrow)</span>
+                        <span className="font-bold text-white">
+                          <NairaText amount={grossCompletedVolume + grossEscrowVolume} />
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-slate-300">
+                        <span className="font-sans">
+                          System Service Fee ({TUTOR_PLATFORM_COMMISSION_PERCENT}% deducted)
+                        </span>
+                        <span className="font-bold text-amber-300">
+                          -<NairaText amount={systemFeeCompleted + systemFeeEscrow} />
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-slate-200 pt-1 border-t border-slate-800/60">
+                        <span className="font-sans font-bold text-white">
+                          Your Net Earnings ({TUTOR_NET_PAYOUT_PERCENT}%)
+                        </span>
+                        <span className="font-black text-[#84CC16]">
+                          <NairaText amount={availablePayout + heldInEscrow} />
+                        </span>
+                      </div>
                     </div>
                   </div>
 
@@ -1576,6 +1696,24 @@ export const TutorPortal: React.FC = () => {
                       </select>
                     </div>
                   </div>
+
+                  {/* Live 80/20 Rate Split Preview */}
+                  {(() => {
+                    const liveSplit = calculateTutorBookingSplit(Number(editHourlyRate) || 0);
+                    return (
+                      <div className="p-3 rounded-xl bg-[#0D1527] border border-[#84CC16]/30 flex flex-wrap items-center justify-between gap-2 text-[11px] font-mono tabular-nums">
+                        <span className="font-sans text-slate-300">
+                          Quoted Rate: <strong className="font-mono text-white"><NairaText amount={liveSplit.grossAmountNaira} />/hr</strong>
+                        </span>
+                        <span className="text-amber-300">
+                          -{liveSplit.commissionRatePercent}% System Fee (<NairaText amount={liveSplit.platformFeeNaira} />)
+                        </span>
+                        <span className="text-[#84CC16] font-black">
+                          Your Net ({TUTOR_NET_PAYOUT_PERCENT}%): <NairaText amount={liveSplit.tutorNetNaira} />/hr
+                        </span>
+                      </div>
+                    );
+                  })()}
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
