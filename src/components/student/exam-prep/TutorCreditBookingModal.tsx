@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../../../context/AppContext';
 import { Tutor, BookingType } from '../../../types';
 import { NairaText } from '../../../utils/currency';
+import { fetchLivePaystackConfig, prewarmLivePaystackConfig } from '../../../utils/paystackConfig';
 import { PersonaAvatar } from '../../common/PersonaAvatar';
 import {
   X,
@@ -72,6 +73,12 @@ export const TutorCreditBookingModal: React.FC<TutorCreditBookingModalProps> = (
       setSelectedTutor(displayTutors[0]);
     }
   }, [displayTutors, selectedTutor]);
+
+  useEffect(() => {
+    if (isOpen) {
+      prewarmLivePaystackConfig();
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -180,20 +187,16 @@ export const TutorCreditBookingModal: React.FC<TutorCreditBookingModalProps> = (
         return;
       }
 
-      let activeKey = '';
-      let liveConfigured = false;
-      const cfgRes = await fetch('/api/paystack/config');
-      if (cfgRes.ok) {
-        const cfg = await cfgRes.json();
-        activeKey = typeof cfg.publicKey === 'string' ? cfg.publicKey.trim() : '';
-        liveConfigured = Boolean(cfg.liveConfigured && cfg.isLive);
-      }
-
-      if (!activeKey || !activeKey.startsWith('pk_live_') || !liveConfigured) {
-        setErrorMsg('Live Paystack keys (pk_live_ & sk_live_) are required before booking.');
+      const paystackCfg = await fetchLivePaystackConfig();
+      if (paystackCfg.status !== 'live' || !paystackCfg.publicKey) {
+        setErrorMsg(
+          paystackCfg.errorMessage ||
+            'Live Paystack checkout is temporarily unavailable. Please retry in a moment.'
+        );
         setIsSubmitting(false);
         return;
       }
+      const activeKey = paystackCfg.publicKey;
 
       const payerEmail = currentUserProfile?.email || '';
       if (!payerEmail || !payerEmail.includes('@')) {

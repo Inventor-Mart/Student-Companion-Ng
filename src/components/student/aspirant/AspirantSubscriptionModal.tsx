@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useApp } from '../../../context/AppContext';
 import { AspirantTier } from '../../../types';
 import { NairaText } from '../../../utils/currency';
+import { fetchLivePaystackConfig, prewarmLivePaystackConfig } from '../../../utils/paystackConfig';
 import { AspirantReferralRewardCard } from './AspirantReferralRewardCard';
 import {
   X,
@@ -48,6 +49,12 @@ export const AspirantSubscriptionModal: React.FC<AspirantSubscriptionModalProps>
   const [isProcessing, setIsProcessing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [showRewardStep, setShowRewardStep] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      prewarmLivePaystackConfig();
+    }
+  }, [isOpen]);
 
   const existingRefCode = (student.referredByCode || appliedReferralCode || '').trim().toUpperCase();
   const [referralInput, setReferralInput] = useState<string>(existingRefCode);
@@ -129,23 +136,16 @@ export const AspirantSubscriptionModal: React.FC<AspirantSubscriptionModalProps>
           return;
         }
 
-        let activeKey = '';
-        let liveConfigured = false;
-        try {
-          const cfgRes = await fetch('/api/paystack/config');
-          if (cfgRes.ok) {
-            const cfg = await cfgRes.json();
-            activeKey = typeof cfg.publicKey === 'string' ? cfg.publicKey.trim() : '';
-            liveConfigured = Boolean(cfg.liveConfigured && cfg.isLive);
-          }
-        } catch {
-          // handled below
-        }
-        if (!activeKey || !activeKey.startsWith('pk_live_') || !liveConfigured) {
+        const paystackCfg = await fetchLivePaystackConfig();
+        if (paystackCfg.status !== 'live' || !paystackCfg.publicKey) {
           setIsProcessing(false);
-          setErrorMessage('Live Paystack keys (pk_live_ & sk_live_) are required. Test mode is disabled.');
+          setErrorMessage(
+            paystackCfg.errorMessage ||
+              'Live Paystack checkout is temporarily unavailable. Please retry in a moment.'
+          );
           return;
         }
+        const activeKey = paystackCfg.publicKey;
 
         const payerEmail = currentUserProfile?.email || '';
         if (!payerEmail || !payerEmail.includes('@')) {

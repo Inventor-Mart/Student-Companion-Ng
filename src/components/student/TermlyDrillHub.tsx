@@ -28,6 +28,7 @@ import {
   PauseCircle
 } from 'lucide-react';
 import { PausedBadge } from '../common/AppUpdateGate';
+import { fetchLivePaystackConfig } from '../../utils/paystackConfig';
 
 interface TermlyDrillHubProps {
   onStartExam: (exam: CBTExam) => void;
@@ -384,22 +385,16 @@ export const TermlyDrillHub: React.FC<TermlyDrillHubProps> = ({ onStartExam, onO
       return;
     }
 
-    let activeKey = import.meta.env.VITE_PAYSTACK_PUBLIC_KEY || '';
-    let liveConfigured = false;
-    try {
-      const cfgRes = await fetch('/api/paystack/config');
-      if (cfgRes.ok) {
-        const cfg = await cfgRes.json();
-        if (cfg.publicKey) activeKey = cfg.publicKey;
-        liveConfigured = Boolean(cfg.liveConfigured && cfg.isLive);
-      }
-    } catch {}
-
-    if (!activeKey || !activeKey.startsWith('pk_live_') || !liveConfigured) {
-      setPaymentError('Live Paystack gateway (pk_live_ / sk_live_) is not yet active. Please configure live keys in Super Admin settings or pay with your Parent Escrow Wallet.');
+    const paystackCfg = await fetchLivePaystackConfig();
+    if (paystackCfg.status !== 'live' || !paystackCfg.publicKey) {
+      setPaymentError(
+        paystackCfg.errorMessage ||
+          'Live Paystack checkout is temporarily unavailable. Please retry or pay with your Parent Escrow Wallet.'
+      );
       setIsProcessingPayment(false);
       return;
     }
+    const activeKey = paystackCfg.publicKey;
 
     const txRef = `PSTK_DRILL_${Date.now()}_${Math.floor(Math.random() * 100000)}`;
     const payerEmail = currentUserProfile?.email || currentUser?.email || 'student@studentcompanion.ng';

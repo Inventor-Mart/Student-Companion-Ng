@@ -35,6 +35,7 @@ import {
   hasAcceptedCurrentAgreement
 } from '../../utils/platformLegalAndFees';
 import { calculateRank as calculateRankFromXP } from '../../utils/xpEconomy';
+import { forceClearAppCacheAndReload } from '../../utils/pwaCacheRefresh';
 import { useBackHandler } from '../../lib/backNavigation';
 import {
   Users,
@@ -559,6 +560,7 @@ export const SuperAdminPortal: React.FC = () => {
   const [copiedSecretKey, setCopiedSecretKey] = useState<string | null>(null);
   const [testEmailRecipient, setTestEmailRecipient] = useState<string>(authorizedAdminEmail || '');
   const [isSendingTestEmail, setIsSendingTestEmail] = useState(false);
+  const [isForceRefreshingCache, setIsForceRefreshingCache] = useState(false);
   const [testEmailResult, setTestEmailResult] = useState<{
     success: boolean;
     message: string;
@@ -566,6 +568,12 @@ export const SuperAdminPortal: React.FC = () => {
     sandboxRestricted?: boolean;
     testedAt?: string;
   } | null>(null);
+
+  const handleForceRefreshAppCache = async () => {
+    if (isForceRefreshingCache) return;
+    setIsForceRefreshingCache(true);
+    await forceClearAppCacheAndReload();
+  };
 
   const handleCopySecretKey = (keyName: string) => {
     if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
@@ -1851,6 +1859,17 @@ export const SuperAdminPortal: React.FC = () => {
             >
               <School className="w-3.5 h-3.5" />
               <span>School Admin View</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => void handleForceRefreshAppCache()}
+              disabled={isForceRefreshingCache}
+              className="flex items-center gap-1.5 px-3 min-h-[44px] rounded-xl bg-slate-900 hover:bg-slate-800 disabled:opacity-60 border border-slate-700 text-slate-100 text-xs font-bold transition-all cursor-pointer shadow-sm whitespace-nowrap"
+              title="Clears stale Service Worker / PWA caches and loads the latest Netlify deploy without signing you out"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 text-sky-400 ${isForceRefreshingCache ? 'animate-spin' : ''}`} />
+              <span>{isForceRefreshingCache ? 'Clearing cache & reloading...' : 'Force Refresh & Clear App Cache'}</span>
             </button>
           </div>
         </div>

@@ -8,6 +8,7 @@ import {
 } from '../../../data/examPrepCurriculumData';
 import { NairaText } from '../../../utils/currency';
 import { playSound } from '../../../utils/audioSynthesis';
+import { fetchLivePaystackConfig, prewarmLivePaystackConfig } from '../../../utils/paystackConfig';
 import {
   Lock,
   Sparkles,
@@ -60,6 +61,7 @@ export const ExamPrepUnlockModal: React.FC<ExamPrepUnlockModalProps> = ({
       if (initialPlanType) setPlanType(initialPlanType);
       if (initialSubject) setSelectedSubject(initialSubject);
       setCheckoutError(null);
+      prewarmLivePaystackConfig();
     }
   }, [isOpen, initialPlanType, initialSubject]);
 
@@ -87,24 +89,16 @@ export const ExamPrepUnlockModal: React.FC<ExamPrepUnlockModalProps> = ({
           return;
         }
 
-        let activeKey = '';
-        let liveConfigured = false;
-        try {
-          const cfgRes = await fetch('/api/paystack/config');
-          if (cfgRes.ok) {
-            const cfg = await cfgRes.json();
-            activeKey = typeof cfg.publicKey === 'string' ? cfg.publicKey.trim() : '';
-            liveConfigured = Boolean(cfg.liveConfigured && cfg.isLive);
-          }
-        } catch {
-          // handled below
-        }
-
-        if (!activeKey || !activeKey.startsWith('pk_live_') || !liveConfigured) {
+        const paystackCfg = await fetchLivePaystackConfig();
+        if (paystackCfg.status !== 'live' || !paystackCfg.publicKey) {
           setIsProcessing(false);
-          setCheckoutError('Live Paystack keys (pk_live_ & sk_live_) are required. Test mode is disabled.');
+          setCheckoutError(
+            paystackCfg.errorMessage ||
+              'Live Paystack checkout is temporarily unavailable. Please retry in a moment.'
+          );
           return;
         }
+        const activeKey = paystackCfg.publicKey;
 
         const payerEmail = currentUserProfile?.email || '';
         if (!payerEmail || !payerEmail.includes('@')) {

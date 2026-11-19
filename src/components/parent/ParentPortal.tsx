@@ -40,6 +40,7 @@ import { ParentCommunityForum } from './ParentCommunityForum';
 import { ExamPrepUnlockModal } from '../student/exam-prep/ExamPrepUnlockModal';
 import { LinkedWard } from '../../types';
 import { playSound, toggleSoundMuted, getSoundMuted } from '../../utils/audioSynthesis';
+import { fetchLivePaystackConfig, clearPaystackConfigCache } from '../../utils/paystackConfig';
 
 type ParentTab = 'overview' | 'approvals' | 'community';
 type DetailSheet = 'wallet' | 'exam-prep' | 'championship' | 'academic' | 'transactions' | null;
@@ -213,10 +214,9 @@ export const ParentPortal: React.FC = () => {
     currentUserProfile?.email === 'wowrealities@gmail.com' ||
     currentUserProfile?.email === 'martorefe@gmail.com';
 
-  const fetchPaystackConfig = async () => {
+  const fetchPaystackConfig = async (forceRefresh = false) => {
     try {
-      const res = await fetch('/api/paystack/config');
-      const data = await res.json();
+      const data = await fetchLivePaystackConfig({ forceRefresh });
       setPaystackConfig({
         publicKey: data.publicKey || '',
         isLive: Boolean(data.isLive),
@@ -225,11 +225,13 @@ export const ParentPortal: React.FC = () => {
         hasSecretKey: Boolean(data.hasSecretKey),
         mode: data.mode || 'unconfigured'
       });
-      if (data.publicKey && String(data.publicKey).startsWith('pk_live_')) {
+      if (data.publicKey && data.publicKey.startsWith('pk_live_')) {
         setInputPublicKey(data.publicKey);
       }
+      return data;
     } catch (err) {
       console.warn('Could not fetch Paystack config:', err);
+      return null;
     }
   };
 
@@ -267,8 +269,9 @@ export const ParentPortal: React.FC = () => {
       const data = await res.json();
       if (data.success) {
         playSound.correct();
+        clearPaystackConfigCache();
         setKeySaveMsg('Paystack Live gateway configuration updated successfully!');
-        await fetchPaystackConfig();
+        await fetchPaystackConfig(true);
         setTimeout(() => {
           setIsKeySettingsOpen(false);
           setKeySaveMsg('');
@@ -435,17 +438,36 @@ export const ParentPortal: React.FC = () => {
       return;
     }
 
-    const activeKey = paystackConfig.publicKey;
-    if (!activeKey || !activeKey.startsWith('pk_live_') || !paystackConfig.liveConfigured) {
-      playSound.buzz();
-      if (isAdmin) {
-        setIsKeySettingsOpen(true);
-        setPaystackError('Live Paystack keys (pk_live_ & sk_live_) are required. Please configure your live keys below.');
+    let activeKey = paystackConfig.publicKey;
+    let isLiveReady = Boolean(activeKey && activeKey.startsWith('pk_live_') && paystackConfig.liveConfigured);
+
+    if (!isLiveReady) {
+      const freshCfg = await fetchPaystackConfig(true);
+      if (freshCfg && freshCfg.status === 'live' && freshCfg.publicKey) {
+        activeKey = freshCfg.publicKey;
+        isLiveReady = true;
       } else {
-        setPaystackError('Live Paystack payment gateway is not yet configured. Please notify the administrator.');
+        playSound.buzz();
+        if (freshCfg?.status === 'server_waking') {
+          setPaystackError(
+            freshCfg.errorMessage ||
+              'Payment server is waking up or temporarily unreachable. Please wait a few seconds and retry.'
+          );
+        } else if (isAdmin) {
+          setIsKeySettingsOpen(true);
+          setPaystackError(
+            freshCfg?.errorMessage ||
+              'Live Paystack keys (pk_live_ & sk_live_) are required. Please configure your live keys below.'
+          );
+        } else {
+          setPaystackError(
+            freshCfg?.errorMessage ||
+              'Live Paystack payment gateway is not yet configured. Please notify the administrator.'
+          );
+        }
+        setIsProcessingPaystack(false);
+        return;
       }
-      setIsProcessingPaystack(false);
-      return;
     }
 
     const payerEmail = currentUserProfile?.email || '';

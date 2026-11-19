@@ -6,6 +6,7 @@ import { DeviceImageUploader } from './DeviceImageUploader';
 import { PersonaAvatar } from '../common/PersonaAvatar';
 import { motion, AnimatePresence } from 'motion/react';
 import { playSound, toggleSoundMuted, getSoundMuted } from '../../utils/audioSynthesis';
+import { fetchLivePaystackConfig, prewarmLivePaystackConfig } from '../../utils/paystackConfig';
 import { useBackHandler } from '../../lib/backNavigation';
 import {
   LayoutDashboard,
@@ -186,6 +187,10 @@ export const SchoolAdminPortal: React.FC = () => {
     if (!nextMuted) playSound.tileTap();
   };
 
+  useEffect(() => {
+    prewarmLivePaystackConfig();
+  }, []);
+
   const handleDirectSchoolSubscription = async (plan: 'monthly' | 'termly') => {
     playSound.tileTap();
     setPaystackError(null);
@@ -208,27 +213,17 @@ export const SchoolAdminPortal: React.FC = () => {
     }
     const txRef = `SCHL_${plan.toUpperCase()}_${Date.now()}_${Math.floor(Math.random() * 100000)}`;
 
-    let activeKey = '';
-    let liveConfigured = false;
-    try {
-      const configRes = await fetch('/api/paystack/config');
-      if (configRes.ok) {
-        const configData = await configRes.json();
-        activeKey = typeof configData.publicKey === 'string' ? configData.publicKey.trim() : '';
-        liveConfigured = Boolean(configData.liveConfigured && configData.isLive);
-      }
-    } catch {
-      // handled below
-    }
-
-    if (!activeKey || !activeKey.startsWith('pk_live_') || !liveConfigured) {
+    const paystackCfg = await fetchLivePaystackConfig();
+    if (paystackCfg.status !== 'live' || !paystackCfg.publicKey) {
       playSound.buzz();
       setIsProcessingPaystack(false);
       setPaystackError(
-        'Live Paystack keys (pk_live_ & sk_live_) are required. Test mode is disabled.'
+        paystackCfg.errorMessage ||
+          'Live Paystack checkout is temporarily unavailable. Please retry in a moment.'
       );
       return;
     }
+    const activeKey = paystackCfg.publicKey;
 
     try {
       const handler = (window as any).PaystackPop.setup({

@@ -27,6 +27,7 @@ import { TutorProfileView } from './TutorProfileView';
 import { NairaText } from '../../utils/currency';
 import { formatPrimaryDegreeSummary, formatTutorLocation } from '../../utils/nigerianSubjects';
 import { playSound } from '../../utils/audioSynthesis';
+import { fetchLivePaystackConfig, prewarmLivePaystackConfig } from '../../utils/paystackConfig';
 import { motion } from 'motion/react';
 import { useBackHandler } from '../../lib/backNavigation';
 
@@ -135,6 +136,7 @@ export const TutorDiscovery: React.FC = () => {
   const [bookingPaymentMethod, setBookingPaymentMethod] = useState<'paystack' | 'wallet'>('paystack');
   const [parentPinInput, setParentPinInput] = useState<string>('');
   const [bookingError, setBookingError] = useState<string | null>(null);
+  const [bookingStatusNote, setBookingStatusNote] = useState<string | null>(null);
   const [isProcessingBooking, setIsProcessingBooking] = useState<boolean>(false);
   const [bookingConfirmed, setBookingConfirmed] = useState<boolean>(false);
   const [confirmedBookingId, setConfirmedBookingId] = useState<string>('');
@@ -144,6 +146,13 @@ export const TutorDiscovery: React.FC = () => {
     const timer = setInterval(() => setBoardClockMs(Date.now()), 15000);
     return () => clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    if (selectedTutorForBooking) {
+      setBookingStatusNote(null);
+      prewarmLivePaystackConfig();
+    }
+  }, [selectedTutorForBooking]);
 
   const classroomEligibility = getStudentClassroomEligibility(boardClockMs);
 
@@ -302,36 +311,32 @@ export const TutorDiscovery: React.FC = () => {
       return;
     }
 
-    // Strict Live Paystack Checkout
+    // Strict Live Paystack Checkout (with Render cold-start wake-retry)
     setIsProcessingBooking(true);
+    setBookingStatusNote('Connecting to Paystack Live gateway...');
     if (typeof (window as any).PaystackPop === 'undefined') {
       playSound.buzz();
       setBookingError('Paystack Live SDK is still loading. Check your internet connection and retry.');
+      setBookingStatusNote(null);
       setIsProcessingBooking(false);
       return;
     }
 
-    let activeKey = '';
-    let liveConfigured = false;
-    try {
-      const cfgRes = await fetch('/api/paystack/config');
-      if (cfgRes.ok) {
-        const cfg = await cfgRes.json();
-        activeKey = typeof cfg.publicKey === 'string' ? cfg.publicKey.trim() : '';
-        liveConfigured = Boolean(cfg.liveConfigured && cfg.isLive);
-      }
-    } catch {
-      // handled below
-    }
+    const paystackCfg = await fetchLivePaystackConfig({
+      onStatus: (msg) => setBookingStatusNote(msg)
+    });
+    setBookingStatusNote(null);
 
-    if (!activeKey || !activeKey.startsWith('pk_live_') || !liveConfigured) {
+    if (paystackCfg.status !== 'live' || !paystackCfg.publicKey) {
       playSound.buzz();
       setBookingError(
-        'Live Paystack checkout is required (pk_live_ & sk_live_ keys not configured on server). No test payments allowed.'
+        paystackCfg.errorMessage ||
+          'Live Paystack checkout is temporarily unavailable. Please retry in a moment.'
       );
       setIsProcessingBooking(false);
       return;
     }
+    const activeKey = paystackCfg.publicKey;
 
     const payerEmail = currentUserProfile?.email || '';
     if (!payerEmail || !payerEmail.includes('@')) {
@@ -1079,6 +1084,12 @@ export const TutorDiscovery: React.FC = () => {
                     />
                   </div>
 
+                  {bookingStatusNote && isProcessingBooking && (
+                    <div className="p-2.5 rounded-xl bg-sky-950/70 border border-sky-700/70 text-sky-200 text-[11px] font-medium">
+                      {bookingStatusNote}
+                    </div>
+                  )}
+
                   {bookingError && (
                     <div className="p-2.5 rounded-xl bg-rose-950/80 border border-rose-700 text-rose-200 text-[11px] font-medium">
                       {bookingError}
@@ -1088,7 +1099,7 @@ export const TutorDiscovery: React.FC = () => {
                   {/* Cost Summary */}
                   <div className="bg-[#0D1527] p-3.5 rounded-2xl border border-slate-800 flex items-center justify-between text-xs">
                     <span className="text-slate-300 font-medium">Escrow Total (2 hrs):</span>
-                    <span className="font-extrabold text-[#84CC16] text-sm font-mono">
+                    <span className="font-extrabold text-[#84CC16] text-sm font-mono tabular-nums">
                       <NairaText amount={selectedTutorForBooking.hourlyRateNaira * 2} />
                     </span>
                   </div>

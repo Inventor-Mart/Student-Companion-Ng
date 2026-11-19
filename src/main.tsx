@@ -2,6 +2,7 @@ import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
 import 'katex/dist/katex.min.css';
+import { initPwaAutoUpdateLifecycle } from './utils/pwaCacheRefresh';
 
 const DEFAULT_LIVE_BACKEND_ORIGIN = 'https://student-companion-api-b373.onrender.com';
 const EXPLICIT_API_ORIGIN = String(import.meta.env.VITE_API_ORIGIN || '').trim().replace(/\/+$/, '');
@@ -28,6 +29,7 @@ if (typeof window !== 'undefined') {
 
 if (typeof window !== 'undefined' && typeof window.fetch === 'function') {
   const nativeFetch = window.fetch.bind(window);
+  (window as any).__SC_NATIVE_FETCH__ = nativeFetch;
   let activeSlowCloudRequests = 0;
 
   const notifyCloudWakeState = () => {
@@ -198,29 +200,6 @@ if (typeof window !== 'undefined' && typeof window.fetch === 'function') {
   }
 }
 
-if (typeof window !== 'undefined' && 'serviceWorker' in navigator && !isBundledAndroidApk) {
-  if ('caches' in window) {
-    caches
-      .keys()
-      .then((names) =>
-        Promise.all(
-          names
-            .filter((name) => name === 'sc-shell-v2' || name === 'sc-runtime-v2' || name === 'sc-api-v2')
-            .map((name) => caches.delete(name))
-        )
-      )
-      .catch(() => {});
-  }
-  window.addEventListener('load', () => {
-    navigator.serviceWorker
-      .register('/sw.js', { scope: '/', updateViaCache: 'none' })
-      .then((reg) => {
-        reg.update().catch(() => {});
-      })
-      .catch(() => {
-        // Ignore transient SW registration failures inside restricted frames
-      });
-  });
-}
+initPwaAutoUpdateLifecycle(isBundledAndroidApk);
 
 createRoot(document.getElementById('root')!).render(<App />);

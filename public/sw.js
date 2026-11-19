@@ -1,7 +1,8 @@
 // Student Companion Service Worker — Full Offline App Shell, Asset Runtime Caching, Sync & OTA Control
-const APP_SHELL_CACHE = 'sc-shell-v3';
-const RUNTIME_CACHE = 'sc-runtime-v3';
-const API_CACHE = 'sc-api-v3';
+const SW_VERSION = 'v4';
+const APP_SHELL_CACHE = 'sc-shell-v4';
+const RUNTIME_CACHE = 'sc-runtime-v4';
+const API_CACHE = 'sc-api-v4';
 
 const CORE_PRECACHE_URLS = [
   '/',
@@ -50,6 +51,19 @@ self.addEventListener('activate', (event) => {
         )
       )
       .then(() => self.clients.claim())
+      .then(async () => {
+        const clientList = await self.clients.matchAll({
+          type: 'window',
+          includeUncontrolled: true
+        });
+        for (const client of clientList) {
+          try {
+            client.postMessage({ type: 'SC_SW_UPDATED', version: SW_VERSION });
+          } catch {
+            // Ignore disconnected client
+          }
+        }
+      })
   );
 });
 
@@ -62,7 +76,7 @@ async function warmOfflineAssets(extraUrls = []) {
   await Promise.allSettled(
     allUrls.map(async (url) => {
       try {
-        const res = await fetch(url, { credentials: 'same-origin' });
+        const res = await fetch(url, { credentials: 'same-origin', cache: 'no-store' });
         if (res && res.ok) {
           const targetCache = CORE_PRECACHE_URLS.includes(url) ? shellCache : runtimeCache;
           await targetCache.put(url, res.clone());
@@ -124,11 +138,21 @@ self.addEventListener('message', (event) => {
             totalEntries += keys.length;
           }
           if (event.ports && event.ports[0]) {
-            event.ports[0].postMessage({ active: true, totalEntries, cacheNames: names });
+            event.ports[0].postMessage({
+              active: true,
+              version: SW_VERSION,
+              totalEntries,
+              cacheNames: names
+            });
           }
         } catch {
           if (event.ports && event.ports[0]) {
-            event.ports[0].postMessage({ active: true, totalEntries: 0, cacheNames: [] });
+            event.ports[0].postMessage({
+              active: true,
+              version: SW_VERSION,
+              totalEntries: 0,
+              cacheNames: []
+            });
           }
         }
       })()
@@ -149,16 +173,19 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Never intercept Firebase auth, sensitive payment/auth callbacks, or Vite dev-server module/dependency graphs
+  // Never intercept Firebase auth, sensitive payment/auth/health probes, cache-bust probes, or Vite dev graphs
   if (
     isSameOrigin &&
     (url.pathname.startsWith('/__/') ||
       url.pathname.startsWith('/api/auth/') ||
       url.pathname.startsWith('/api/paystack/') ||
+      url.pathname.startsWith('/api/health') ||
       url.pathname.startsWith('/src/') ||
       url.pathname.startsWith('/node_modules/') ||
       url.pathname.startsWith('/@') ||
       url.pathname === '/sw.js' ||
+      url.searchParams.has('_vcheck') ||
+      url.searchParams.has('_refresh') ||
       url.searchParams.has('v') ||
       url.searchParams.has('t') ||
       url.searchParams.has('import'))
@@ -166,12 +193,13 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 1. Document navigation requests -> NetworkFirst with guaranteed offline shell fallback
-  if (isSameOrigin && request.mode === 'navigate') {
+  // 1. Document navigation requests -> strict NetworkFirst (bypassing HTTP cache) with offline fallback
+  if (isSameOrigin && (request.mode === 'navigate' || url.pathname === '/index.html')) {
     event.respondWith(
-      fetch(request)
+      fetch(new Request(request.url, { cache: 'no-store', credentials: 'same-origin' }))
         .then((networkRes) => {
-          if (networkRes && networkRes.ok) {
+          const ct = (networkRes.headers.get('content-type') || '').toLowerCase();
+          if (networkRes && networkRes.ok && ct.includes('text/html')) {
             const copy = networkRes.clone();
             caches.open(APP_SHELL_CACHE).then((cache) => {
               cache.put('/index.html', copy).catch(() => {});
@@ -182,9 +210,9 @@ self.addEventListener('fetch', (event) => {
         .catch(async () => {
           const shellCache = await caches.open(APP_SHELL_CACHE);
           const cachedIndex =
-            (await shellCache.match(request)) ||
+            (await shellCache.match('/index.html')) ||
             (await shellCache.match('/')) ||
-            (await shellCache.match('/index.html'));
+            (await shellCache.match(request));
           if (cachedIndex) return cachedIndex;
           return new Response(
             '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Student Companion Offline</title></head><body style="background:#0B1526;color:#f8fafc;font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px;text-align:center;"><div><h1 style="color:#84E000;margin-bottom:8px;">Student Companion</h1><p>You are offline. Reconnect once to load this page into your offline cache.</p></div></body></html>',
@@ -203,9 +231,10 @@ self.addEventListener('fetch', (event) => {
     if (!isCacheableApi) return;
 
     event.respondWith(
-      fetch(request)
+      fetch(request, { cache: 'no-store' })
         .then((networkRes) => {
-          if (networkRes && networkRes.ok) {
+          const ct = (networkRes.headers.get('content-type') || '').toLowerCase();
+          if (networkRes && networkRes.ok && ct.includes('application/json')) {
             const copy = networkRes.clone();
             caches.open(API_CACHE).then((cache) => cache.put(request, copy).catch(() => {}));
           }
@@ -244,29 +273,45 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 4. Same-origin scripts, styles, icons, manifest & media -> StaleWhileRevalidate / Cache fallback
-  event.respondWith(
-    caches.open(RUNTIME_CACHE).then(async (cache) => {
-      const shellCache = await caches.open(APP_SHELL_CACHE);
-      const cached = (await cache.match(request)) || (await shellCache.match(request));
-      const networkPromise = fetch(request)
-        .then((networkRes) => {
-          if (networkRes && networkRes.ok) {
+  // 4. Vite immutable content-hashed bundles (/assets/*) -> CacheFirst (new deploy = new filename)
+  if (isSameOrigin && url.pathname.startsWith('/assets/')) {
+    event.respondWith(
+      caches.open(RUNTIME_CACHE).then(async (cache) => {
+        const cached = await cache.match(request);
+        if (cached) return cached;
+        try {
+          const networkRes = await fetch(request);
+          const ct = (networkRes.headers.get('content-type') || '').toLowerCase();
+          // Guard against caching HTML SPA fallback for a missing stale chunk
+          if (networkRes && networkRes.ok && !ct.includes('text/html')) {
             cache.put(request, networkRes.clone()).catch(() => {});
           }
           return networkRes;
-        })
-        .catch(() => null);
+        } catch {
+          return new Response('', { status: 504, statusText: 'Offline asset unavailable' });
+        }
+      })
+    );
+    return;
+  }
 
-      if (cached) {
-        event.waitUntil(networkPromise);
-        return cached;
-      }
-
-      const fresh = await networkPromise;
-      if (fresh) return fresh;
-      return new Response('', { status: 504, statusText: 'Offline asset unavailable' });
-    })
+  // 5. Other non-hashed same-origin static files (manifest, icons, images) -> NetworkFirst with cache fallback
+  event.respondWith(
+    fetch(request)
+      .then((networkRes) => {
+        if (networkRes && networkRes.ok) {
+          const copy = networkRes.clone();
+          caches.open(RUNTIME_CACHE).then((cache) => cache.put(request, copy).catch(() => {}));
+        }
+        return networkRes;
+      })
+      .catch(async () => {
+        const runtimeCache = await caches.open(RUNTIME_CACHE);
+        const shellCache = await caches.open(APP_SHELL_CACHE);
+        const cached = (await runtimeCache.match(request)) || (await shellCache.match(request));
+        if (cached) return cached;
+        return new Response('', { status: 504, statusText: 'Offline asset unavailable' });
+      })
   );
 });
 

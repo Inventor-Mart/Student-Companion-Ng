@@ -31,6 +31,7 @@ import {
   warmOfflineAppCache,
   OfflineCacheSummary
 } from '../../services/offlineSyncService';
+import { forceClearAppCacheAndReload } from '../../utils/pwaCacheRefresh';
 
 interface InAppControlsDrawerProps {
   isOpen: boolean;
@@ -71,6 +72,7 @@ export const InAppControlsDrawer: React.FC<InAppControlsDrawerProps> = ({
   const [isLegalModalOpen, setIsLegalModalOpen] = React.useState(false);
   const [cacheSummary, setCacheSummary] = React.useState<OfflineCacheSummary | null>(null);
   const [isWarmingCache, setIsWarmingCache] = React.useState(false);
+  const [isForceRefreshing, setIsForceRefreshing] = React.useState(false);
 
   React.useEffect(() => {
     if (!isOpen) return;
@@ -88,6 +90,12 @@ export const InAppControlsDrawer: React.FC<InAppControlsDrawerProps> = ({
     } finally {
       setIsWarmingCache(false);
     }
+  };
+
+  const handleForceRefreshCache = async () => {
+    if (isForceRefreshing) return;
+    setIsForceRefreshing(true);
+    await forceClearAppCacheAndReload();
   };
 
   if (!isOpen && !isReportModalOpen && !isLegalModalOpen) return null;
@@ -531,6 +539,19 @@ export const InAppControlsDrawer: React.FC<InAppControlsDrawerProps> = ({
               >
                 <Scale className="w-4 h-4 text-[#84E000] shrink-0" />
                 <span className="font-semibold">User Agreement &amp; Legal Terms</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => void handleForceRefreshCache()}
+                disabled={isForceRefreshing}
+                className="w-full flex items-center gap-2.5 px-3 min-h-[44px] rounded-xl bg-[#101C31] hover:bg-[#162846] disabled:opacity-60 border border-slate-700/80 text-slate-100 transition-all cursor-pointer"
+                title="Purges stale PWA cache and reloads the latest deployed release without signing you out"
+              >
+                <RefreshCw className={`w-4 h-4 text-sky-400 shrink-0 ${isForceRefreshing ? 'animate-spin' : ''}`} />
+                <span className="font-semibold">
+                  {isForceRefreshing ? 'Clearing cache & reloading...' : 'Force Refresh & Clear App Cache'}
+                </span>
               </button>
 
               <button

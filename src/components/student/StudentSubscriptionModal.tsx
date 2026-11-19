@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { StudentSubscriptionPlan } from '../../types';
 import { getStudentTierPricing, isReferralPromoActive } from '../../utils/referralPromoPolicy';
+import { fetchLivePaystackConfig, prewarmLivePaystackConfig } from '../../utils/paystackConfig';
 import {
   X,
   Check,
@@ -50,6 +51,12 @@ export const StudentSubscriptionModal: React.FC<StudentSubscriptionModalProps> =
   const [paymentMethod, setPaymentMethod] = useState<'paystack' | 'wallet'>('paystack');
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      prewarmLivePaystackConfig();
+    }
+  }, [isOpen]);
   const [successReceipt, setSuccessReceipt] = useState<{
     plan: string;
     amount: number;
@@ -163,24 +170,16 @@ export const StudentSubscriptionModal: React.FC<StudentSubscriptionModalProps> =
       return;
     }
 
-    let activeKey = '';
-    let liveConfigured = false;
-    try {
-      const configRes = await fetch('/api/paystack/config');
-      if (configRes.ok) {
-        const configData = await configRes.json();
-        activeKey = typeof configData.publicKey === 'string' ? configData.publicKey.trim() : '';
-        liveConfigured = Boolean(configData.liveConfigured && configData.isLive);
-      }
-    } catch {
-      // handled below
-    }
-
-    if (!activeKey || !activeKey.startsWith('pk_live_') || !liveConfigured) {
-      setErrorMessage('Live Paystack keys (pk_live_ & sk_live_) must be configured by Admin before live checkout. Test keys are blocked.');
+    const paystackCfg = await fetchLivePaystackConfig();
+    if (paystackCfg.status !== 'live' || !paystackCfg.publicKey) {
+      setErrorMessage(
+        paystackCfg.errorMessage ||
+          'Live Paystack checkout is temporarily unavailable. Please retry in a moment.'
+      );
       setIsProcessing(false);
       return;
     }
+    const activeKey = paystackCfg.publicKey;
 
     const payerEmail = currentUserProfile?.email || '';
     if (!payerEmail || !payerEmail.includes('@')) {
@@ -303,24 +302,16 @@ export const StudentSubscriptionModal: React.FC<StudentSubscriptionModalProps> =
       return;
     }
 
-    let activeKey = '';
-    let liveConfigured = false;
-    try {
-      const configRes = await fetch('/api/paystack/config');
-      if (configRes.ok) {
-        const configData = await configRes.json();
-        activeKey = typeof configData.publicKey === 'string' ? configData.publicKey.trim() : '';
-        liveConfigured = Boolean(configData.liveConfigured && configData.isLive);
-      }
-    } catch {
-      // handled below
-    }
-
-    if (!activeKey || !activeKey.startsWith('pk_live_') || !liveConfigured) {
-      setErrorMessage('Live Paystack keys (pk_live_ & sk_live_) are required. Test mode is disabled.');
+    const paystackCfg = await fetchLivePaystackConfig();
+    if (paystackCfg.status !== 'live' || !paystackCfg.publicKey) {
+      setErrorMessage(
+        paystackCfg.errorMessage ||
+          'Live Paystack checkout is temporarily unavailable. Please retry in a moment.'
+      );
       setIsProcessing(false);
       return;
     }
+    const activeKey = paystackCfg.publicKey;
 
     const payerEmail = currentUserProfile?.email || '';
     if (!payerEmail || !payerEmail.includes('@')) {
