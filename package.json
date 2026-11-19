@@ -1,16 +1,17 @@
 {
   "name": "react-example",
+  "private": true,
   "version": "2.4.0",
   "type": "module",
   "scripts": {
-    "build": "vite build",
-    "clean": "rm -rf dist server.js",
     "dev": "tsx server.ts",
-    "git:push": "node scripts/git-push.js",
-    "lint": "tsc --noEmit",
-    "preview": "vite preview",
+    "build": "vite build",
     "start": "tsx server.ts",
-    "test:rules": "tsx --test firestore.rules.test.ts"
+    "preview": "vite preview",
+    "clean": "rm -rf dist server.js",
+    "lint": "tsc --noEmit",
+    "test:rules": "tsx --test firestore.rules.test.ts",
+    "git:push": "node scripts/git-push.js"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
