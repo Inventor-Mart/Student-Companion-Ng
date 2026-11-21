@@ -46,6 +46,16 @@ service cloud.firestore {
       );
     }
 
+    function isValidAvatarUrl(val) {
+      return val == null ||
+             (val is string &&
+              val.size() <= 50000 &&
+              (val.size() == 0 ||
+               (val.size() >= 8 && val[0:8] == 'https://') ||
+               (val.size() >= 7 && val[0:7] == 'http://') ||
+               (val.size() >= 11 && val[0:11] == 'data:image/')));
+    }
+
     // --- ENTITY VALIDATION BLUEPRINTS ---
     function isValidStudentProfile(data) {
       return data.keys().hasAll(['id', 'name', 'school', 'classLevel', 'stream', 'xp', 'rank', 'streakDays']) &&
@@ -69,7 +79,7 @@ service cloud.firestore {
              data.streakDays is number && data.streakDays >= 0 &&
              (!('lastStudyDate' in data) || (data.lastStudyDate is string && data.lastStudyDate.size() <= 50)) &&
              (!('uniformVerified' in data) || data.uniformVerified is bool) &&
-             (!('uniformPhotoUrl' in data) || data.uniformPhotoUrl == null || (data.uniformPhotoUrl is string && data.uniformPhotoUrl.size() <= 500)) &&
+             (!('uniformPhotoUrl' in data) || isValidAvatarUrl(data.uniformPhotoUrl)) &&
              (!('downloadedSubjectIds' in data) || (data.downloadedSubjectIds is list && data.downloadedSubjectIds.size() <= 50)) &&
              (!('completedQuizIds' in data) || (data.completedQuizIds is list && data.completedQuizIds.size() <= 100)) &&
              (!('completedReadNoteIds' in data) || (data.completedReadNoteIds is list && data.completedReadNoteIds.size() <= 200 && (data.completedReadNoteIds.size() == 0 || data.completedReadNoteIds[0] is string))) &&
@@ -106,7 +116,7 @@ service cloud.firestore {
              data.role in ['student', 'parent', 'tutor', 'admin', 'growth_partner', 'school_admin'] &&
              data.fullName is string && data.fullName.size() >= 1 && data.fullName.size() <= 120 &&
              data.email is string && data.email.size() <= 150 &&
-             (!('avatarUrl' in data) || data.avatarUrl == null || (data.avatarUrl is string && data.avatarUrl.size() <= 500)) &&
+             (!('avatarUrl' in data) || isValidAvatarUrl(data.avatarUrl)) &&
              data.emailVerified is bool &&
              (!('verifiedAt' in data) || data.verifiedAt == null || (data.verifiedAt is string && data.verifiedAt.size() <= 50)) &&
              data.createdAt is string && data.createdAt.size() <= 50 &&

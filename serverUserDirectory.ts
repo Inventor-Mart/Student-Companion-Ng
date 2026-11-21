@@ -263,6 +263,23 @@ function stripUndefinedDeep<T>(val: T): T {
   return val;
 }
 
+const MAX_AVATAR_URL_LENGTH = 50000;
+
+function sanitizeAvatarUrl(raw: unknown): string | undefined {
+  if (typeof raw !== 'string') return undefined;
+  const trimmed = raw.trim();
+  if (trimmed === '') return '';
+  if (trimmed.length > MAX_AVATAR_URL_LENGTH) return undefined;
+  if (
+    trimmed.startsWith('https://') ||
+    trimmed.startsWith('http://') ||
+    trimmed.startsWith('data:image/')
+  ) {
+    return trimmed;
+  }
+  return undefined;
+}
+
 export function toFirestoreUserAccountPayload(user: ServerRegisteredUser): Record<string, any> {
   const payload: Record<string, any> = {
     id: sanitizeDirectoryDocId(user.id),
@@ -272,7 +289,8 @@ export function toFirestoreUserAccountPayload(user: ServerRegisteredUser): Recor
     emailVerified: Boolean(user.emailVerified),
     createdAt: String(user.createdAt || new Date().toISOString()).slice(0, 50)
   };
-  if (user.avatarUrl && user.avatarUrl.length <= 500) payload.avatarUrl = user.avatarUrl;
+  const safeAvatar = sanitizeAvatarUrl(user.avatarUrl);
+  if (safeAvatar !== undefined) payload.avatarUrl = safeAvatar;
   if (user.verifiedAt) payload.verifiedAt = String(user.verifiedAt).slice(0, 50);
   if (user.studentData && typeof user.studentData === 'object') {
     payload.studentData = stripUndefinedDeep(user.studentData);
@@ -453,10 +471,7 @@ function normalizeRawUser(
     role: safeRole,
     fullName: String(raw?.fullName || raw?.name || 'Student Companion User').trim().slice(0, 120) || 'User',
     email: rawEmail,
-    avatarUrl:
-      typeof raw?.avatarUrl === 'string' && raw.avatarUrl.length <= 500
-        ? raw.avatarUrl
-        : undefined,
+    avatarUrl: sanitizeAvatarUrl(raw?.avatarUrl),
     emailVerified: Boolean(raw?.emailVerified ?? true),
     verifiedAt: typeof raw?.verifiedAt === 'string' ? raw.verifiedAt.slice(0, 50) : undefined,
     createdAt:

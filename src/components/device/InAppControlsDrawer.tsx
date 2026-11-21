@@ -21,11 +21,13 @@ import {
   ShieldAlert,
   RefreshCw,
   HardDriveDownload,
-  Scale
+  Scale,
+  Trash2
 } from 'lucide-react';
 import { ReportSecurityModal } from '../security/ReportSecurityModal';
 import { LegalAgreementModal } from '../common/LegalAgreementModal';
 import { PWAInstallButton } from '../common/PWAInstallButton';
+import { EditablePersonaAvatar } from '../common/EditablePersonaAvatar';
 import {
   getOfflineCacheSummary,
   warmOfflineAppCache,
@@ -65,7 +67,8 @@ export const InAppControlsDrawer: React.FC<InAppControlsDrawerProps> = ({
     pendingSyncCount,
     isSyncingOfflineQueue,
     lastOfflineSyncedAt,
-    syncOfflineQueue
+    syncOfflineQueue,
+    updateUserAvatar
   } = useApp();
 
   const [isReportModalOpen, setIsReportModalOpen] = React.useState(false);
@@ -73,6 +76,7 @@ export const InAppControlsDrawer: React.FC<InAppControlsDrawerProps> = ({
   const [cacheSummary, setCacheSummary] = React.useState<OfflineCacheSummary | null>(null);
   const [isWarmingCache, setIsWarmingCache] = React.useState(false);
   const [isForceRefreshing, setIsForceRefreshing] = React.useState(false);
+  const [avatarStatus, setAvatarStatus] = React.useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   React.useEffect(() => {
     if (!isOpen) return;
@@ -186,23 +190,82 @@ export const InAppControlsDrawer: React.FC<InAppControlsDrawerProps> = ({
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-5 text-xs">
           
           {/* Active Account Card */}
-          <div className="p-3.5 rounded-2xl bg-[#091222] border border-[#1E304F]">
-            <span className="text-[10px] font-bold tracking-wider text-slate-400 block mb-1">
-              Active Account
-            </span>
-            <div className="flex items-center justify-between gap-2">
-              <div className="min-w-0">
+          <div className="p-3.5 rounded-2xl bg-[#091222] border border-[#1E304F] space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold tracking-wider text-slate-400">
+                Active Account
+              </span>
+              <span className="text-[11px] font-bold text-[#84E000]">
+                Active
+              </span>
+            </div>
+            <div className="flex items-center gap-3">
+              <EditablePersonaAvatar
+                name={
+                  currentUserProfile?.fullName ||
+                  (student?.name && student.name !== '' ? student.name : 'Registered Member')
+                }
+                src={
+                  currentUserProfile?.avatarUrl !== undefined
+                    ? currentUserProfile.avatarUrl
+                    : currentRole === 'student'
+                    ? student?.uniformPhotoUrl
+                    : undefined
+                }
+                alt={currentUserProfile?.fullName || 'Account avatar'}
+                className="w-12 h-12 rounded-2xl ring-2 ring-[#84E000]/70"
+                textClassName="text-sm"
+                title="Tap to change your profile picture"
+                onAvatarUpdated={async (dataUrl) => {
+                  setAvatarStatus(null);
+                  await updateUserAvatar(dataUrl);
+                  setAvatarStatus({
+                    type: 'success',
+                    text: dataUrl ? 'Profile photo updated.' : 'Profile photo removed.'
+                  });
+                  setTimeout(() => setAvatarStatus(null), 3500);
+                }}
+                onError={(msg) => setAvatarStatus({ type: 'error', text: msg })}
+              />
+              <div className="min-w-0 flex-1">
                 <h4 className="font-bold text-white text-sm truncate">
                   {currentUserProfile?.fullName || (student?.name && student.name !== '' ? student.name : 'Registered Member')}
                 </h4>
                 <p className="text-[11px] text-slate-400 capitalize truncate">
-                  {roleLabelFormatted} • {currentRole === 'student' ? student?.classLevel || 'Student' : 'Portal Access'}
+                  {roleLabelFormatted} · {currentRole === 'student' ? student?.classLevel || 'Student' : 'Portal Access'}
                 </p>
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="text-[10px] text-slate-400">Tap photo to change</span>
+                  {Boolean(
+                    currentUserProfile?.avatarUrl ||
+                      (currentRole === 'student' && student?.uniformPhotoUrl)
+                  ) && (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        setAvatarStatus(null);
+                        await updateUserAvatar('');
+                        setAvatarStatus({ type: 'success', text: 'Profile photo removed.' });
+                        setTimeout(() => setAvatarStatus(null), 3500);
+                      }}
+                      className="text-[10px] font-semibold text-rose-400 hover:text-rose-300 inline-flex items-center gap-0.5 cursor-pointer"
+                    >
+                      <Trash2 className="w-2.5 h-2.5" />
+                      <span>Remove</span>
+                    </button>
+                  )}
+                </div>
               </div>
-              <span className="text-[11px] font-bold text-[#84E000] shrink-0">
-                Active
-              </span>
             </div>
+            {avatarStatus && (
+              <p
+                className={`text-[11px] font-semibold ${
+                  avatarStatus.type === 'success' ? 'text-[#84E000]' : 'text-rose-400'
+                }`}
+              >
+                {avatarStatus.text}
+              </p>
+            )}
           </div>
 
           {/* Section 1: Active Portal & Security Gate */}

@@ -71,6 +71,39 @@ export async function compressImage(
   });
 }
 
+export const MAX_AVATAR_URL_LENGTH = 50000;
+const TARGET_AVATAR_MAX_CHARS = 45000;
+
+/**
+ * Compresses an uploaded profile photo into a lightweight JPEG data URL
+ * guaranteed to stay safely within Firestore and localStorage avatar limits.
+ */
+export async function compressAvatarImage(file: File): Promise<string> {
+  if (!file || !file.type.startsWith('image/')) {
+    throw new Error('Please choose a valid image file (JPG, PNG, or WebP).');
+  }
+  const attempts: Array<{ maxDim: number; quality: number }> = [
+    { maxDim: 256, quality: 0.78 },
+    { maxDim: 224, quality: 0.68 },
+    { maxDim: 192, quality: 0.58 },
+    { maxDim: 160, quality: 0.5 }
+  ];
+
+  let lastResult = '';
+  for (const step of attempts) {
+    const compressed = await compressImage(file, step.maxDim, step.quality);
+    if (compressed && compressed.startsWith('data:image/') && compressed.length <= TARGET_AVATAR_MAX_CHARS) {
+      return compressed;
+    }
+    lastResult = compressed;
+  }
+
+  if (lastResult && lastResult.startsWith('data:image/') && lastResult.length <= MAX_AVATAR_URL_LENGTH) {
+    return lastResult;
+  }
+  throw new Error('Selected photo is too large to optimize. Please choose a smaller image.');
+}
+
 /**
  * Strips huge base64 image strings from serialized JSON objects
  * to ensure profile and student data never exceed quota.
@@ -81,15 +114,15 @@ function sanitizePayloadForStorage(jsonString: string): string {
     let modified = false;
 
     if (parsed && typeof parsed === 'object') {
-      if (typeof parsed.avatarUrl === 'string' && parsed.avatarUrl.length > 50000) {
+      if (typeof parsed.avatarUrl === 'string' && parsed.avatarUrl.length > MAX_AVATAR_URL_LENGTH) {
         parsed.avatarUrl = '';
         modified = true;
       }
-      if (typeof parsed.uniformPhotoUrl === 'string' && parsed.uniformPhotoUrl.length > 50000) {
+      if (typeof parsed.uniformPhotoUrl === 'string' && parsed.uniformPhotoUrl.length > MAX_AVATAR_URL_LENGTH) {
         parsed.uniformPhotoUrl = '';
         modified = true;
       }
-      if (parsed.studentData && typeof parsed.studentData.uniformPhotoUrl === 'string' && parsed.studentData.uniformPhotoUrl.length > 50000) {
+      if (parsed.studentData && typeof parsed.studentData.uniformPhotoUrl === 'string' && parsed.studentData.uniformPhotoUrl.length > MAX_AVATAR_URL_LENGTH) {
         parsed.studentData.uniformPhotoUrl = '';
         modified = true;
       }

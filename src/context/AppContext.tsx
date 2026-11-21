@@ -172,7 +172,8 @@ import {
   safeSetItem,
   safeGetItem,
   safeRemoveItem,
-  cleanupBloatedStorage
+  cleanupBloatedStorage,
+  MAX_AVATAR_URL_LENGTH
 } from '../lib/storage';
 import {
   getOfflineSyncQueue,
@@ -380,6 +381,7 @@ interface AppContextType {
   dismissLastXPAward: () => void;
   verifySchoolUniform: (photoUrl: string) => void;
   updateStudentAvatar: (photoUrl: string) => void;
+  updateUserAvatar: (photoUrl: string) => Promise<void>;
   toggleDownloadNote: (topicId: string) => void;
   examResults: CBTExamResult[];
   saveExamResult: (result: CBTExamResult) => void;
@@ -745,6 +747,32 @@ const sanitizeFirestoreDocId = (raw: string): string =>
     .replace(/[^a-zA-Z0-9_-]/g, '_')
     .slice(0, 120) || `usr_${Date.now()}`;
 
+const sanitizeAvatarForCloud = (raw?: string | null): string | undefined => {
+  if (typeof raw !== 'string') return undefined;
+  const trimmed = raw.trim();
+  if (trimmed === '') return '';
+  if (trimmed.length > MAX_AVATAR_URL_LENGTH) return undefined;
+  if (
+    trimmed.startsWith('https://') ||
+    trimmed.startsWith('http://') ||
+    trimmed.startsWith('data:image/')
+  ) {
+    return trimmed;
+  }
+  return undefined;
+};
+
+const resolveGoogleLoginAvatar = (
+  existingAvatar: string | undefined,
+  googlePhotoUrl?: string | null
+): string | undefined => {
+  const safeExisting = sanitizeAvatarForCloud(existingAvatar);
+  if (safeExisting !== undefined) {
+    return safeExisting;
+  }
+  return sanitizeAvatarForCloud(googlePhotoUrl);
+};
+
 const sanitizeUserAccountForFirestore = (profile: RegisteredUserProfile): Record<string, any> => {
   const payload: Record<string, any> = {
     id: sanitizeFirestoreDocId(profile.id),
@@ -754,7 +782,8 @@ const sanitizeUserAccountForFirestore = (profile: RegisteredUserProfile): Record
     emailVerified: Boolean(profile.emailVerified ?? true),
     createdAt: String(profile.createdAt || new Date().toISOString()).slice(0, 50)
   };
-  if (profile.avatarUrl && profile.avatarUrl.length <= 500) payload.avatarUrl = profile.avatarUrl;
+  const safeAvatar = sanitizeAvatarForCloud(profile.avatarUrl);
+  if (safeAvatar !== undefined) payload.avatarUrl = safeAvatar;
   if (profile.verifiedAt) payload.verifiedAt = String(profile.verifiedAt).slice(0, 50);
   if (profile.studentData) payload.studentData = profile.studentData;
   if (profile.parentData) payload.parentData = profile.parentData;
@@ -812,10 +841,24 @@ const mergeUserProfiles = (
 
   const resolvedTutorData = mergeTutorDataSafely(existing.tutorData, incoming.tutorData);
 
+  const existingAvatar = sanitizeAvatarForCloud(existing.avatarUrl);
+  const incomingAvatar = sanitizeAvatarForCloud(incoming.avatarUrl);
+  const isGoogleDefaultUrl = (url?: string) =>
+    Boolean(url && /googleusercontent\.com/i.test(url));
+  const resolvedAvatarUrl =
+    incomingAvatar !== undefined
+      ? existingAvatar &&
+        existingAvatar.startsWith('data:image/') &&
+        isGoogleDefaultUrl(incomingAvatar)
+        ? existingAvatar
+        : incomingAvatar
+      : existingAvatar;
+
   return {
     ...existing,
     ...incoming,
     id: existing.id || incoming.id,
+    avatarUrl: resolvedAvatarUrl,
     role: !incomingIsStub && incoming.role ? incoming.role : existing.role || incoming.role,
     fullName: preferExistingOverStaleIncoming
       ? existing.fullName || incoming.fullName
@@ -2156,12 +2199,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             { merge: true }
           ).catch(() => {});
 
+          let savedSuperAvatar: string | undefined;
+          try {
+            const rawSaved = safeGetItem('sc_user_profile');
+            if (rawSaved) {
+              const parsedSaved = JSON.parse(rawSaved);
+              if (
+                parsedSaved &&
+                String(parsedSaved.email || '').toLowerCase() === normalizedAdminEmail &&
+                parsedSaved.avatarUrl !== undefined
+              ) {
+                savedSuperAvatar = sanitizeAvatarForCloud(parsedSaved.avatarUrl);
+              }
+            }
+          } catch {}
+
           const superProfile: RegisteredUserProfile = {
             id: user.uid,
             role: 'admin',
             fullName: user.displayName || 'Martin Omorefe (Lead Developer)',
             email: normalizedAdminEmail,
-            avatarUrl: user.photoURL || undefined,
+            avatarUrl: resolveGoogleLoginAvatar(savedSuperAvatar, user.photoURL),
             emailVerified: true,
             createdAt: new Date().toISOString(),
             isSuperAdmin: true,
@@ -2224,8 +2282,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 } catch {}
               }
 
-              const safePhotoUrl =
-                user.photoURL && user.photoURL.length <= 500 ? user.photoURL : null;
+              const safePhotoUrl = sanitizeAvatarForCloud(user.photoURL) ?? null;
               const safeDisplayName =
                 (user.displayName || '').trim().slice(0, 100) || 'Registered Student';
 
@@ -2461,9 +2518,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const rawProfile: RegisteredUserProfile = existing
       ? {
           ...existing,
-          fullName: user.displayName || existing.fullName || 'Student Companion Learner',
-          avatarUrl:
-            user.photoURL && user.photoURL.length <= 500 ? user.photoURL : existing.avatarUrl,
+          fullName: existing.fullName || user.displayName || 'Student Companion Learner',
+          avatarUrl: resolveGoogleLoginAvatar(existing.avatarUrl, user.photoURL),
           emailVerified: user.emailVerified ?? existing.emailVerified ?? true
         }
       : {
@@ -2471,7 +2527,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           role: currentUserProfile?.role || 'student',
           fullName: user.displayName || 'Student Companion Learner',
           email: user.email || '',
-          avatarUrl: user.photoURL && user.photoURL.length <= 500 ? user.photoURL : undefined,
+          avatarUrl: sanitizeAvatarForCloud(user.photoURL),
           emailVerified: user.emailVerified ?? true,
           verifiedAt: new Date().toISOString(),
           createdAt: new Date().toISOString(),
@@ -2499,8 +2555,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const ownerUpdate: Record<string, any> = {
           fullName: String(profile.fullName || 'Student Companion Learner').slice(0, 120)
         };
-        if (profile.avatarUrl && profile.avatarUrl.length <= 500) {
-          ownerUpdate.avatarUrl = profile.avatarUrl;
+        const safeProfileAvatar = sanitizeAvatarForCloud(profile.avatarUrl);
+        if (safeProfileAvatar !== undefined) {
+          ownerUpdate.avatarUrl = safeProfileAvatar;
         }
         if (repairedResult.changed && profile.tutorData) {
           ownerUpdate.tutorData = profile.tutorData;
@@ -3695,7 +3752,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (currentUser && !isOffline && !isSuperAdminEmail(currentUser.email)) {
         const docRef = doc(db, 'students', currentUser.uid);
         const path = `students/${currentUser.uid}`;
-        const safeFirestorePhotoUrl = photoUrl && photoUrl.length <= 500 ? photoUrl : null;
+        const safeFirestorePhotoUrl = sanitizeAvatarForCloud(photoUrl) ?? null;
         updateDoc(docRef, {
           uniformVerified: true,
           uniformPhotoUrl: safeFirestorePhotoUrl
@@ -3742,31 +3799,58 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } catch {}
   };
 
-  const updateStudentAvatar = (photoUrl: string) => {
-    setStudent(prev => {
-      const updated = {
-        ...prev,
-        uniformPhotoUrl: photoUrl
-      };
+  const updateUserAvatar = async (photoUrl: string) => {
+    const safePhoto = sanitizeAvatarForCloud(photoUrl);
+    if (safePhoto === undefined) return;
+
+    const isStudentPersona =
+      currentRole === 'student' || currentUserProfile?.role === 'student';
+
+    if (isStudentPersona) {
+      setStudent(prev => {
+        const updated = {
+          ...prev,
+          uniformPhotoUrl: safePhoto || null
+        };
+        safeSetItem('sc_student', JSON.stringify(updated));
+        return updated;
+      });
 
       if (currentUser && !isOffline && !isSuperAdminEmail(currentUser.email)) {
         const docRef = doc(db, 'students', currentUser.uid);
         const path = `students/${currentUser.uid}`;
-        const safeFirestorePhotoUrl = photoUrl && photoUrl.length <= 500 ? photoUrl : null;
         updateDoc(docRef, {
-          uniformPhotoUrl: safeFirestorePhotoUrl
+          uniformPhotoUrl: safePhoto || null
         }).catch(err => {
           handleFirestoreError(err, OperationType.UPDATE, path);
         });
       }
+    }
 
-      return updated;
-    });
+    if (currentUserProfile) {
+      await updateUserRecord(currentUserProfile.id, {
+        avatarUrl: safePhoto,
+        ...(isStudentPersona && currentUserProfile.studentData
+          ? {
+              studentData: {
+                ...currentUserProfile.studentData,
+                uniformPhotoUrl: safePhoto || null
+              }
+            }
+          : {})
+      });
+    } else {
+      setCurrentUserProfile(prev => {
+        if (!prev) return null;
+        const updated = { ...prev, avatarUrl: safePhoto };
+        safeSetItem('sc_user_profile', JSON.stringify(updated));
+        return updated;
+      });
+    }
+  };
 
-    setCurrentUserProfile(prev => {
-      if (!prev) return null;
-      return { ...prev, avatarUrl: photoUrl };
-    });
+  const updateStudentAvatar = (photoUrl: string) => {
+    void updateUserAvatar(photoUrl);
   };
 
   const toggleDownloadNote = (topicId: string) => {
@@ -5828,7 +5912,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       `usr_${role}_${Date.now()}`;
     const fullName = profileData.fullName || profileData.name || 'User';
     const email = profileData.email || '';
-    const rawAvatarUrl = String(profileData.avatarUrl || '').trim();
 
     const syncProfileToServer = (
       profileSnapshot: RegisteredUserProfile,
@@ -5847,12 +5930,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }).catch(() => {});
     };
 
+    const safeRawAvatar = sanitizeAvatarForCloud(profileData.avatarUrl);
     const newProfile: RegisteredUserProfile = {
       id: newId,
       role,
       fullName,
       email,
-      ...(rawAvatarUrl && rawAvatarUrl.length <= 500 ? { avatarUrl: rawAvatarUrl } : {}),
+      ...(safeRawAvatar !== undefined ? { avatarUrl: safeRawAvatar } : {}),
       emailVerified: true,
       verifiedAt: new Date().toISOString(),
       createdAt: new Date().toISOString(),
@@ -7697,9 +7781,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       profileRepairVersion: REPAIRED_TUTOR_PROFILE_VERSION
     };
 
-    const nextAvatar = updatedTutorData.idDocumentUrl || currentUserProfile.avatarUrl;
+    const nextAvatar =
+      currentUserProfile.avatarUrl !== undefined
+        ? currentUserProfile.avatarUrl
+        : updatedTutorData.idDocumentUrl;
     void updateUserRecord(currentUserProfile.id, {
-      ...(nextAvatar ? { avatarUrl: nextAvatar } : {}),
+      ...(nextAvatar !== undefined ? { avatarUrl: nextAvatar } : {}),
       tutorData: nextTutorData
     });
   };
@@ -9510,6 +9597,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         dismissLastXPAward,
         verifySchoolUniform,
         updateStudentAvatar,
+        updateUserAvatar,
         toggleDownloadNote,
         examResults,
         saveExamResult,

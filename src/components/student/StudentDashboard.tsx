@@ -2,7 +2,7 @@ import React, { useRef, useState, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { NIGERIAN_CURRICULUM_TOPICS } from '../../data/curriculumData';
 import { CBT_EXAMS_DATABASE } from '../../data/cbtExamData';
-import { compressImage } from '../../lib/storage';
+import { compressAvatarImage } from '../../lib/storage';
 import { NigerianClassLevel, OTAFeatureKey } from '../../types';
 import { ExamPrepUnlockModal } from './exam-prep/ExamPrepUnlockModal';
 import { PersonaAvatar } from '../common/PersonaAvatar';
@@ -184,9 +184,10 @@ export const StudentDashboard: React.FC = () => {
 
   const handleAvatarFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    e.target.value = '';
     if (file) {
       try {
-        const compressed = await compressImage(file, 256, 0.7);
+        const compressed = await compressAvatarImage(file);
         if (compressed) {
           updateStudentAvatar(compressed);
         }
@@ -297,7 +298,11 @@ export const StudentDashboard: React.FC = () => {
               >
                 <PersonaAvatar
                   name={displayName}
-                  src={student.uniformPhotoUrl}
+                  src={
+                    currentUserProfile?.avatarUrl !== undefined
+                      ? currentUserProfile.avatarUrl
+                      : student.uniformPhotoUrl
+                  }
                   alt={displayName}
                   className="w-full h-full rounded-full"
                   textClassName="text-lg"

@@ -784,21 +784,43 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
     const displayName =
       overrideDisplayName || `${firstName.trim()} ${lastName.trim()}`.trim() || 'Student';
 
-    let shouldFallbackToFirebase = false;
+    const payloadBody = JSON.stringify({
+      email: targetEmail,
+      code,
+      name: displayName,
+      role: selectedRole,
+    });
 
-    try {
-      const response = await fetch('/api/send-verification-code', {
+    const postVerificationCode = async (url: string, useNativeFetch = false) => {
+      const fetchFn: typeof fetch =
+        useNativeFetch && typeof window !== 'undefined' && typeof (window as any).__SC_NATIVE_FETCH__ === 'function'
+          ? (window as any).__SC_NATIVE_FETCH__
+          : fetch;
+      const response = await fetchFn(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: targetEmail,
-          code,
-          name: displayName,
-          role: selectedRole,
-        }),
+        body: payloadBody,
       });
-
       const result = await response.json().catch(() => ({}));
+      return { response, result };
+    };
+
+    const isRecoverableEndpointFailure = (status: number, result: any): boolean =>
+      Boolean(result?.fallbackRecommended) ||
+      status === 403 ||
+      status === 404 ||
+      status === 405 ||
+      status === 502 ||
+      status === 503 ||
+      status === 504 ||
+      status >= 500;
+
+    let shouldTryRenderFallback = false;
+    let shouldFallbackToFirebase = false;
+
+    // Tier 1: Same-origin / configured API endpoint
+    try {
+      const { response, result } = await postVerificationCode('/api/send-verification-code');
 
       if (result.registrationPaused) {
         const pauseMsg = result.error || getRegistrationPauseMessage(selectedRole);
@@ -821,11 +843,13 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
         return { mode: 'otp' };
       }
 
-      if (result.fallbackRecommended || response.status === 403 || response.status === 503 || response.status >= 500) {
-        shouldFallbackToFirebase = true;
+      if (isRecoverableEndpointFailure(response.status, result)) {
+        shouldTryRenderFallback = true;
       } else {
         const safeMsg =
-          result.error ||
+          (result.error && !/endpoint not found/i.test(String(result.error))
+            ? result.error
+            : null) ||
           `Unable to deliver verification code to ${targetEmail}. Please check that the email address is correct.`;
         setEmailDeliveryError(safeMsg);
         setVerificationError(safeMsg);
@@ -834,10 +858,73 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
         return { mode: 'error' };
       }
     } catch (err) {
-      console.warn('Server OTP unavailable, switching to Firebase email verification:', err);
-      shouldFallbackToFirebase = true;
+      console.warn('Primary verification endpoint unreachable, retrying live Render email API:', err);
+      shouldTryRenderFallback = true;
     }
 
+    // Tier 2: Retry live Render backend API when same-origin preview/host returned 404/5xx/unconfigured
+    if (shouldTryRenderFallback) {
+      const runtimeMeta = typeof window !== 'undefined' ? (window as any).__SC_RUNTIME_META__ : null;
+      const remoteOrigin = String(
+        runtimeMeta?.apiOrigin || 'https://student-companion-api-b373.onrender.com'
+      ).replace(/\/+$/, '');
+      const alreadyTargetedRemote = Boolean(runtimeMeta?.shouldRouteApiToRemoteOrigin);
+      const isCurrentlyOnRemoteHost =
+        typeof window !== 'undefined' &&
+        remoteOrigin.toLowerCase().includes(window.location.hostname.toLowerCase());
+
+      if (!alreadyTargetedRemote && !isCurrentlyOnRemoteHost && remoteOrigin.startsWith('https://')) {
+        const remoteUrl = `${remoteOrigin}/api/send-verification-code`;
+        const maxRemoteAttempts = 2;
+        for (let attempt = 0; attempt < maxRemoteAttempts; attempt++) {
+          try {
+            const { response, result } = await postVerificationCode(remoteUrl, true);
+
+            if (result.registrationPaused) {
+              const pauseMsg = result.error || getRegistrationPauseMessage(selectedRole);
+              setEmailDeliveryError(pauseMsg);
+              setVerificationError(pauseMsg);
+              setCodeNotification(null);
+              setIsSendingCode(false);
+              void refreshOTAStatus();
+              return { mode: 'error' };
+            }
+
+            if (response.ok && result.success && result.delivered) {
+              const providerText = result.provider === 'gmail-smtp' ? 'Gmail' : 'Email Service';
+              setVerificationMode('otp');
+              setCodeNotification(
+                `Verification code successfully sent to ${targetEmail} via ${providerText}. Check your inbox or spam.`
+              );
+              setEmailDeliveryError(null);
+              setIsSendingCode(false);
+              return { mode: 'otp' };
+            }
+
+            const isColdStart =
+              response.status === 502 || response.status === 503 || response.status === 504;
+            if (isColdStart && attempt < maxRemoteAttempts - 1) {
+              await new Promise((resolve) => window.setTimeout(resolve, 2500));
+              continue;
+            }
+
+            shouldFallbackToFirebase = true;
+            break;
+          } catch (remoteErr) {
+            if (attempt < maxRemoteAttempts - 1) {
+              await new Promise((resolve) => window.setTimeout(resolve, 2000));
+              continue;
+            }
+            console.warn('Live Render email API retry unavailable, falling back to Firebase link:', remoteErr);
+            shouldFallbackToFirebase = true;
+          }
+        }
+      } else {
+        shouldFallbackToFirebase = true;
+      }
+    }
+
+    // Tier 3: Automatic Firebase Email Verification Link fallback
     if (shouldFallbackToFirebase) {
       try {
         const fbRes = await registerWithFirebaseEmailVerification({
@@ -861,7 +948,7 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
       } catch (fbErr: any) {
         const fbMessage =
           fbErr?.message ||
-          'Unable to send verification email right now. Please try "Verify Instantly with Google" below.';
+          'Unable to send verification email right now. Please try "Continue & Verify Instantly with Google" below.';
         setEmailDeliveryError(fbMessage);
         setVerificationError(fbMessage);
         setCodeNotification(null);

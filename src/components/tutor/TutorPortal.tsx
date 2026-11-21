@@ -25,15 +25,18 @@ import {
   Check,
   X,
   Volume2,
-  VolumeX
+  VolumeX,
+  Camera,
+  Loader2
 } from 'lucide-react';
 
 import { TutorSecurityVerificationModal } from '../auth/VerificationModals';
 import { NairaText, NairaSign, formatNaira } from '../../utils/currency';
 import { NigerianHighestEducation, TimetableSlot } from '../../types';
 import { playSound, toggleSoundMuted, getSoundMuted } from '../../utils/audioSynthesis';
-import { PersonaAvatar } from '../common/PersonaAvatar';
+import { EditablePersonaAvatar } from '../common/EditablePersonaAvatar';
 import { SubjectMultiSelector } from '../common/SubjectMultiSelector';
+import { compressAvatarImage } from '../../lib/storage';
 import {
   NIGERIAN_HIGHER_EDUCATION_OPTIONS,
   REPAIRED_TUTOR_PROFILE_VERSION,
@@ -68,9 +71,57 @@ export const TutorPortal: React.FC = () => {
     tutorRespondToBooking,
     getBookingJoinStatus,
     updateTutorProfile,
+    updateUserAvatar,
     pendingPortalTab,
     clearPendingPortalTab
   } = useApp();
+
+  const [avatarNotice, setAvatarNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [isUpdatingAvatar, setIsUpdatingAvatar] = useState(false);
+  const profileTabAvatarInputRef = React.useRef<HTMLInputElement>(null);
+
+  const handleSaveTutorAvatar = async (dataUrl: string) => {
+    setIsUpdatingAvatar(true);
+    setAvatarNotice(null);
+    try {
+      await updateUserAvatar(dataUrl);
+      playSound.correct();
+      setAvatarNotice({
+        type: 'success',
+        text: dataUrl
+          ? 'Profile picture updated across your portal and Tutor Discovery.'
+          : 'Profile picture removed. Your initials are now displayed.'
+      });
+      setTimeout(() => setAvatarNotice(null), 4500);
+    } catch (err: any) {
+      playSound.buzz();
+      setAvatarNotice({
+        type: 'error',
+        text: err?.message || 'Unable to update profile picture right now.'
+      });
+    } finally {
+      setIsUpdatingAvatar(false);
+    }
+  };
+
+  const handleProfileTabAvatarFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setIsUpdatingAvatar(true);
+    setAvatarNotice(null);
+    try {
+      const compressed = await compressAvatarImage(file);
+      await handleSaveTutorAvatar(compressed);
+    } catch (err: any) {
+      playSound.buzz();
+      setAvatarNotice({
+        type: 'error',
+        text: err?.message || 'Please choose a valid JPG, PNG, or WebP photo.'
+      });
+      setIsUpdatingAvatar(false);
+    }
+  };
 
   const [sessionClockMs, setSessionClockMs] = useState<number>(() => Date.now());
   useEffect(() => {
@@ -467,13 +518,19 @@ export const TutorPortal: React.FC = () => {
 
           <div className="flex items-start justify-between gap-3 relative z-10">
             <div className="flex items-center gap-3 min-w-0">
-              <PersonaAvatar
+              <EditablePersonaAvatar
                 name={tutorName}
                 src={currentUserProfile?.avatarUrl}
                 alt={tutorName}
                 fallbackInitials="ED"
                 className="w-12 h-12 rounded-2xl ring-2 ring-[#84CC16] shadow-lg"
                 textClassName="text-sm"
+                title="Tap to change your profile picture"
+                onAvatarUpdated={handleSaveTutorAvatar}
+                onError={(msg) => {
+                  playSound.buzz();
+                  setAvatarNotice({ type: 'error', text: msg });
+                }}
               />
 
               <div className="min-w-0">
@@ -522,8 +579,37 @@ export const TutorPortal: React.FC = () => {
           </div>
         </div>
 
-        {/* Saved Feedback & Payout Status Toast Banners */}
+        {/* Saved Feedback, Avatar Notice & Payout Status Toast Banners */}
         <AnimatePresence>
+          {avatarNotice && (
+            <motion.div
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              className={`shrink-0 p-3 rounded-2xl border-2 flex items-center justify-between gap-2 text-xs shadow-lg ${
+                avatarNotice.type === 'success'
+                  ? 'bg-[#142B22] border-[#84CC16]/60 text-[#84CC16]'
+                  : 'bg-rose-950/80 border-rose-500/60 text-rose-200'
+              }`}
+            >
+              <div className="flex items-center gap-2 font-bold min-w-0">
+                {avatarNotice.type === 'success' ? (
+                  <Check className="w-4 h-4 stroke-[3] shrink-0" />
+                ) : (
+                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+                )}
+                <span className="leading-snug">{avatarNotice.text}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAvatarNotice(null)}
+                aria-label="Dismiss photo notice"
+                className="p-1 text-slate-300 hover:text-white cursor-pointer shrink-0"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </motion.div>
+          )}
           {profileSaveSuccess && (
             <motion.div
               initial={{ opacity: 0, y: -8 }}
@@ -1087,6 +1173,82 @@ export const TutorPortal: React.FC = () => {
             animate="visible"
             className="space-y-3.5"
           >
+            {/* PROFILE PHOTO MANAGER */}
+            <motion.div
+              variants={tileVariants}
+              className="rounded-3xl p-4 bg-[#14203D] border border-slate-700/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3.5"
+            >
+              <div className="flex items-center gap-3.5 min-w-0">
+                <EditablePersonaAvatar
+                  name={tutorName}
+                  src={currentUserProfile?.avatarUrl}
+                  alt={tutorName}
+                  fallbackInitials="ED"
+                  className="w-14 h-14 rounded-2xl ring-2 ring-[#84CC16]/80"
+                  textClassName="text-base"
+                  title="Tap to upload a new profile picture"
+                  onAvatarUpdated={handleSaveTutorAvatar}
+                  onError={(msg) => {
+                    playSound.buzz();
+                    setAvatarNotice({ type: 'error', text: msg });
+                  }}
+                />
+                <div className="min-w-0">
+                  <h3 className="text-sm font-black text-white">Educator Profile Picture</h3>
+                  <p className="text-[11px] text-slate-300 mt-0.5 leading-snug">
+                    Displayed to parents and students on Tutor Discovery and Tutor Map. Custom photos stay saved even if you sign in with Google.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  disabled={isUpdatingAvatar}
+                  onClick={() => {
+                    playSound.tileTap();
+                    profileTabAvatarInputRef.current?.click();
+                  }}
+                  className="min-h-[44px] px-3.5 py-2 rounded-xl bg-[#84CC16] hover:bg-[#A3E635] text-slate-950 font-black text-xs flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-60 whitespace-nowrap shrink-0"
+                >
+                  {isUpdatingAvatar ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>Saving...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Camera className="w-3.5 h-3.5" />
+                      <span>Change Photo</span>
+                    </>
+                  )}
+                </button>
+
+                {Boolean(currentUserProfile?.avatarUrl) && (
+                  <button
+                    type="button"
+                    disabled={isUpdatingAvatar}
+                    onClick={() => {
+                      playSound.tileTap();
+                      void handleSaveTutorAvatar('');
+                    }}
+                    className="min-h-[44px] px-3 py-2 rounded-xl bg-[#0D1527] hover:bg-rose-950/60 border border-slate-700 hover:border-rose-500/50 text-slate-200 hover:text-rose-200 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-60 whitespace-nowrap shrink-0"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Remove</span>
+                  </button>
+                )}
+
+                <input
+                  ref={profileTabAvatarInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleProfileTabAvatarFile}
+                  className="hidden"
+                />
+              </div>
+            </motion.div>
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
               {/* BENTO CARD 1: PUBLIC MARKETPLACE PROFILE */}
               <motion.div
