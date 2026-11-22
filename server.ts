@@ -47,6 +47,8 @@ import {
   findServerUserByEmailOrId,
   findActiveRegisteredEmailConflict,
   removeServerUserPermanently,
+  resolveServerUserSingleRole,
+  toFirestoreUserAccountPayload,
   formatRoleDisplayName,
   normalizeRoleFamily,
   hashEmailSha256,
@@ -3585,6 +3587,34 @@ app.post('/api/partners/code/issue', async (req, res) => {
   }
 });
 
+const isPlaceholderPartnerAccountNumber = (val: unknown): boolean => {
+  const s = String(val || '').trim();
+  return !s || s === '0123456789' || s === '0712345678';
+};
+
+const isPlaceholderPartnerBankName = (bank: unknown, acct: unknown): boolean => {
+  const b = String(bank || '').trim();
+  if (!b) return true;
+  const lower = b.toLowerCase();
+  return (lower === 'access bank' || lower === 'access bank nigeria') && isPlaceholderPartnerAccountNumber(acct);
+};
+
+const sanitizePartnerBankPayload = (partner: Record<string, any>): Record<string, any> => {
+  const cleanAcct = isPlaceholderPartnerAccountNumber(partner.accountNumber)
+    ? ''
+    : String(partner.accountNumber).trim();
+  const cleanBank = isPlaceholderPartnerBankName(partner.bankName, partner.accountNumber)
+    ? ''
+    : String(partner.bankName).trim();
+  const cleanAcctName = String(partner.accountName || '').trim();
+  return {
+    ...partner,
+    bankName: cleanBank,
+    accountNumber: cleanAcct,
+    accountName: cleanAcctName
+  };
+};
+
 // 3. Get or Onboard Growth Partner Profile
 app.post('/api/partners/onboard', async (req, res) => {
   try {
@@ -3606,32 +3636,99 @@ app.post('/api/partners/onboard', async (req, res) => {
       });
     }
 
+    const cleanEmail = String(email).trim().toLowerCase();
     const partnerId =
       providedPartnerId ||
-      `gp_${String(email).toLowerCase().replace(/[^a-z0-9]/g, '_').slice(0, 32)}`;
+      `gp_${cleanEmail.replace(/[^a-z0-9]/g, '_').slice(0, 32)}`;
+
+    const incomingAcct = isPlaceholderPartnerAccountNumber(accountNumber)
+      ? ''
+      : String(accountNumber).trim();
+    const incomingBank = isPlaceholderPartnerBankName(bankName, accountNumber)
+      ? ''
+      : String(bankName).trim();
+    const incomingAcctName = String(accountName || '').trim();
+    const incomingPhone = String(phone || '').trim();
+
+    const reconcilePartnerBank = (existingRaw: Record<string, any>): { partner: Record<string, any>; changed: boolean } => {
+      const existing = sanitizePartnerBankPayload(existingRaw);
+      let changed = false;
+      const next = { ...existing };
+
+      if (!next.accountNumber && incomingAcct) {
+        next.accountNumber = incomingAcct;
+        changed = true;
+      }
+      if (!next.bankName && incomingBank) {
+        next.bankName = incomingBank;
+        changed = true;
+      }
+      if ((!next.accountName || next.accountName === 'Growth Partner') && incomingAcctName) {
+        next.accountName = incomingAcctName;
+        changed = true;
+      }
+      if (!next.phone && incomingPhone) {
+        next.phone = incomingPhone;
+        changed = true;
+      }
+      if (
+        existingRaw.bankName !== next.bankName ||
+        existingRaw.accountNumber !== next.accountNumber
+      ) {
+        changed = true;
+      }
+      if (changed) {
+        next.updatedAt = new Date().toISOString();
+      }
+      return { partner: next, changed };
+    };
 
     try {
       const partnerRef = doc(serverDb, 'growthPartners', partnerId);
       const partnerSnap = await getDoc(partnerRef);
       if (partnerSnap.exists()) {
-        const existing = partnerSnap.data();
-        referralMemoryStore.partners[partnerId] = {
+        const mergedBase = {
           ...(referralMemoryStore.partners[partnerId] || {}),
-          ...existing
+          ...partnerSnap.data()
         };
+        const { partner: reconciled, changed } = reconcilePartnerBank(mergedBase);
+        referralMemoryStore.partners[partnerId] = reconciled;
         saveReferralStore();
+        if (changed) {
+          try {
+            await setDoc(partnerRef, reconciled, { merge: true });
+          } catch {}
+        }
         return res.json({
           success: true,
-          partner: existing,
+          partner: reconciled,
           message: 'Existing Growth Partner profile retrieved',
         });
       }
     } catch {}
 
-    if (referralMemoryStore.partners[partnerId]) {
+    // Also match existing partner by partnerId or email so UID mismatches never spawn blank duplicates
+    const existingByIdOrEmailKey = referralMemoryStore.partners[partnerId]
+      ? partnerId
+      : Object.keys(referralMemoryStore.partners).find((k) => {
+          const rec = referralMemoryStore.partners[k];
+          return rec && String(rec.email || '').trim().toLowerCase() === cleanEmail;
+        });
+
+    if (existingByIdOrEmailKey && referralMemoryStore.partners[existingByIdOrEmailKey]) {
+      const { partner: reconciled, changed } = reconcilePartnerBank(
+        referralMemoryStore.partners[existingByIdOrEmailKey]
+      );
+      referralMemoryStore.partners[existingByIdOrEmailKey] = reconciled;
+      if (existingByIdOrEmailKey !== partnerId) {
+        referralMemoryStore.partners[partnerId] = { ...reconciled, id: partnerId };
+      }
+      if (changed || existingByIdOrEmailKey !== partnerId) {
+        saveReferralStore();
+      }
       return res.json({
         success: true,
-        partner: referralMemoryStore.partners[partnerId],
+        partner: referralMemoryStore.partners[partnerId] || reconciled,
         message: 'Existing Growth Partner profile retrieved',
       });
     }
@@ -3645,17 +3742,17 @@ app.post('/api/partners/onboard', async (req, res) => {
     const newPartner = {
       id: partnerId,
       name,
-      email,
-      phone: phone || '',
+      email: cleanEmail,
+      phone: incomingPhone,
       referralCode,
       commissionRatePercent: 10,
       totalEarningsNaira: 0,
       balanceNaira: 0,
       totalPaidOutNaira: 0,
       activeReferralsCount: 0,
-      bankName: bankName || 'Access Bank',
-      accountNumber: accountNumber || '0123456789',
-      accountName: accountName || name,
+      bankName: incomingBank,
+      accountNumber: incomingAcct,
+      accountName: incomingAcctName || name,
       status: 'active',
       createdAt: new Date().toISOString(),
     };
@@ -3688,10 +3785,153 @@ app.post('/api/partners/onboard', async (req, res) => {
   }
 });
 
+// 3b. Authenticated Growth Partner Settlement Bank Details Update
+app.post('/api/partners/bank-details', async (req, res) => {
+  try {
+    const partnerId = String(req.body?.partnerId || '').trim();
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    const bankName = String(req.body?.bankName || '').trim().slice(0, 100);
+    const accountNumber = String(req.body?.accountNumber || '').replace(/\D/g, '').slice(0, 10);
+    const accountName = String(req.body?.accountName || '').trim().slice(0, 100);
+    const phone = typeof req.body?.phone === 'string' ? req.body.phone.trim().slice(0, 50) : undefined;
+
+    if (!partnerId && !email) {
+      return res.status(400).json({ success: false, error: 'Partner identifier is required.' });
+    }
+    if (!bankName || bankName.length < 2) {
+      return res.status(400).json({ success: false, error: 'Please select or enter a valid Nigerian bank name.' });
+    }
+    if (!/^\d{10}$/.test(accountNumber) || isPlaceholderPartnerAccountNumber(accountNumber)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Please enter your valid 10-digit NUBAN bank account number.'
+      });
+    }
+    if (!accountName || accountName.length < 2) {
+      return res.status(400).json({ success: false, error: 'Please enter the exact account holder name.' });
+    }
+
+    const adminCheck = await verifySuperAdminRequest(req);
+    if (!adminCheck.ok) {
+      const ownerCheck = await verifyAccountOwnerRequest(req, partnerId, email);
+      if (!ownerCheck.ok) {
+        return res.status(403).json({
+          success: false,
+          error: ownerCheck.error || 'Please sign in as the account owner to update settlement bank details.'
+        });
+      }
+    }
+
+    const nowIso = new Date().toISOString();
+    const matchedKeys = new Set<string>();
+    if (partnerId && referralMemoryStore.partners[partnerId]) {
+      matchedKeys.add(partnerId);
+    }
+    if (email) {
+      for (const [k, rec] of Object.entries(referralMemoryStore.partners || {})) {
+        if (rec && String(rec.email || '').trim().toLowerCase() === email) {
+          matchedKeys.add(k);
+        }
+      }
+    }
+
+    const primaryKey = partnerId || Array.from(matchedKeys)[0] || `gp_${email.replace(/[^a-z0-9]/g, '_').slice(0, 32)}`;
+    let updatedPartner: Record<string, any> | null = null;
+
+    if (matchedKeys.size === 0) {
+      const referralCode = await generateUniquePartnerReferralCode({
+        name: accountName,
+        excludePartnerId: primaryKey
+      });
+      updatedPartner = {
+        id: primaryKey,
+        name: accountName,
+        email,
+        phone: phone || '',
+        referralCode,
+        commissionRatePercent: 10,
+        totalEarningsNaira: 0,
+        balanceNaira: 0,
+        totalPaidOutNaira: 0,
+        activeReferralsCount: 0,
+        bankName,
+        accountNumber,
+        accountName,
+        status: 'active',
+        createdAt: nowIso,
+        updatedAt: nowIso
+      };
+      referralMemoryStore.partners[primaryKey] = updatedPartner;
+    } else {
+      for (const key of matchedKeys) {
+        const prev = referralMemoryStore.partners[key];
+        const nextRec = {
+          ...prev,
+          bankName,
+          accountNumber,
+          accountName,
+          ...(phone !== undefined ? { phone } : {}),
+          updatedAt: nowIso
+        };
+        referralMemoryStore.partners[key] = nextRec;
+        if (key === primaryKey || !updatedPartner) {
+          updatedPartner = nextRec;
+        }
+      }
+      if (partnerId && !referralMemoryStore.partners[partnerId] && updatedPartner) {
+        referralMemoryStore.partners[partnerId] = { ...updatedPartner, id: partnerId };
+        updatedPartner = referralMemoryStore.partners[partnerId];
+      }
+    }
+    saveReferralStore();
+
+    // Sync updated bank details into serverUserDirectory so Super Admin & reloads stay consistent
+    if (updatedPartner) {
+      upsertServerUser(
+        {
+          id: primaryKey,
+          role: 'growth_partner',
+          fullName: updatedPartner.name || accountName,
+          email: updatedPartner.email || email,
+          emailVerified: true,
+          growthPartnerData: updatedPartner
+        },
+        { defaultSource: 'backend' }
+      );
+      try {
+        await setDoc(
+          doc(serverDb, 'growthPartners', primaryKey),
+          {
+            bankName,
+            accountNumber,
+            accountName,
+            ...(phone !== undefined ? { phone } : {}),
+            updatedAt: nowIso
+          },
+          { merge: true }
+        );
+      } catch {}
+    }
+
+    return res.json({
+      success: true,
+      partner: updatedPartner,
+      message: 'Settlement bank details saved successfully.'
+    });
+  } catch (error: any) {
+    console.error('Error in /api/partners/bank-details:', error);
+    return res.status(500).json({
+      success: false,
+      error: error?.message || 'Failed to save settlement bank details.'
+    });
+  }
+});
+
 // 4. Partner Dashboard Summary & Analytics
 app.get('/api/partners/:partnerId/summary', async (req, res) => {
   try {
     const { partnerId } = req.params;
+    const queryEmail = String(req.query?.email || '').trim().toLowerCase();
 
     if (!partnerId) {
       return res.status(400).json({ error: 'partnerId is required' });
@@ -3717,9 +3957,22 @@ app.get('/api/partners/:partnerId/summary', async (req, res) => {
         const transactions = txSnap.docs.map((d) => d.data());
         transactions.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
+        const localCached = referralMemoryStore.partners[partnerId] || {};
+        const mergedPartner = sanitizePartnerBankPayload({
+          ...partnerDoc.data(),
+          ...(isPlaceholderPartnerAccountNumber(partnerDoc.data()?.accountNumber) &&
+          !isPlaceholderPartnerAccountNumber(localCached.accountNumber)
+            ? {
+                bankName: localCached.bankName,
+                accountNumber: localCached.accountNumber,
+                accountName: localCached.accountName
+              }
+            : {})
+        });
+
         return res.json({
           success: true,
-          partner: partnerDoc.data(),
+          partner: mergedPartner,
           wallet: walletData,
           referralsCount: referrals.length,
           referrals,
@@ -3728,13 +3981,24 @@ app.get('/api/partners/:partnerId/summary', async (req, res) => {
       }
     } catch {}
 
-    const localPartner = referralMemoryStore.partners[partnerId];
-    if (!localPartner) {
+    const localPartnerRaw =
+      referralMemoryStore.partners[partnerId] ||
+      (queryEmail
+        ? Object.values(referralMemoryStore.partners || {}).find(
+            (p: any) => String(p?.email || '').trim().toLowerCase() === queryEmail
+          )
+        : undefined);
+    if (!localPartnerRaw) {
       return res.status(404).json({ error: 'Growth Partner profile not found' });
     }
 
-    const localReferrals = Object.values(referralMemoryStore.bindings).filter(b => b.partnerId === partnerId);
-    const localTransactions = referralMemoryStore.transactions.filter(t => t.partnerId === partnerId);
+    const localPartner = sanitizePartnerBankPayload(localPartnerRaw);
+    const localReferrals = Object.values(referralMemoryStore.bindings).filter(
+      (b) => b.partnerId === partnerId || b.partnerId === localPartner.id
+    );
+    const localTransactions = referralMemoryStore.transactions.filter(
+      (t) => t.partnerId === partnerId || t.partnerId === localPartner.id
+    );
 
     return res.json({
       success: true,
@@ -8540,6 +8804,282 @@ app.post('/api/users/self-delete', async (req, res) => {
     return res.status(500).json({
       success: false,
       error: err?.message || 'Unable to complete account deletion right now.'
+    });
+  }
+});
+
+// Super Admin: Resolve Legacy Multi-Role Conflict (Pick Single Role to Keep & Purge Secondary Role Records)
+app.post('/api/admin/users/resolve-role', async (req, res) => {
+  try {
+    const authCheck = await verifySuperAdminRequest(req);
+    if (!authCheck.ok) {
+      return res.status(403).json({
+        success: false,
+        error: authCheck.error || 'Super Admin verification required.'
+      });
+    }
+
+    const userId = String(req.body?.userId || '').trim();
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    const keepRoleRaw = String(req.body?.keepRole || '').trim();
+    const extraUserIds: string[] = Array.isArray(req.body?.extraUserIds)
+      ? req.body.extraUserIds.map((v: unknown) => String(v || '').trim()).filter(Boolean)
+      : [];
+    const fallbackProfile =
+      req.body?.fallbackProfile && typeof req.body.fallbackProfile === 'object'
+        ? req.body.fallbackProfile
+        : undefined;
+
+    const allowedKeepRoles = ['student', 'parent', 'tutor', 'admin', 'growth_partner', 'school_admin'] as const;
+    if (!allowedKeepRoles.includes(keepRoleRaw as any)) {
+      return res.status(400).json({ success: false, error: 'Please select a valid single role to keep.' });
+    }
+    if (!userId && !email) {
+      return res.status(400).json({ success: false, error: 'User identifier is required.' });
+    }
+    if (email && AUTHORIZED_SUPER_ADMINS.includes(email)) {
+      return res.status(403).json({ success: false, error: 'Super Admin accounts cannot be reassigned here.' });
+    }
+
+    const keepRole = keepRoleRaw as (typeof allowedKeepRoles)[number];
+    const keepFamily = normalizeRoleFamily(keepRole);
+
+    const resolved = resolveServerUserSingleRole({
+      userId: userId || undefined,
+      email: email || undefined,
+      extraUserIds,
+      keepRole,
+      fallbackProfile
+    });
+
+    const targetIds = new Set<string>([
+      ...(userId ? [userId] : []),
+      ...extraUserIds,
+      ...resolved.affectedUserIds
+    ]);
+    const targetEmails = new Set<string>([
+      ...(email ? [email] : []),
+      ...resolved.affectedEmails
+    ]);
+    const targetEmailHashes = new Set<string>(
+      Array.from(targetEmails)
+        .map((e) => hashEmailSha256(e))
+        .filter((h): h is string => Boolean(h))
+    );
+
+    // Strip unwanted secondary registries so harvested directory & login stay 100% single-role
+    let linkingChanged = false;
+    let referralChanged = false;
+
+    if (keepFamily !== 'growth_partner') {
+      for (const [pKey, partner] of Object.entries(referralMemoryStore.partners || {})) {
+        const pEmail = String((partner as any)?.email || '').trim().toLowerCase();
+        if (
+          targetIds.has(pKey) ||
+          ((partner as any)?.id && targetIds.has(String((partner as any).id))) ||
+          (pEmail && targetEmails.has(pEmail))
+        ) {
+          delete referralMemoryStore.partners[pKey];
+          referralChanged = true;
+        }
+      }
+    }
+
+    if (keepFamily !== 'student') {
+      for (const [code, link] of Object.entries(linkingMemoryStore.studentLinks || {})) {
+        if (
+          (link?.studentId && targetIds.has(String(link.studentId))) ||
+          (link?.emailHash && targetEmailHashes.has(String(link.emailHash)))
+        ) {
+          delete linkingMemoryStore.studentLinks[code];
+          linkingChanged = true;
+        }
+      }
+      for (const [enrKey, enr] of Object.entries(linkingMemoryStore.enrollments || {})) {
+        if (enr?.studentId && targetIds.has(String(enr.studentId))) {
+          delete linkingMemoryStore.enrollments[enrKey];
+          linkingChanged = true;
+        }
+      }
+      for (const [bKey, binding] of Object.entries(referralMemoryStore.bindings || {})) {
+        if (
+          targetIds.has(bKey) ||
+          ((binding as any)?.studentId && targetIds.has(String((binding as any).studentId)))
+        ) {
+          delete referralMemoryStore.bindings[bKey];
+          referralChanged = true;
+        }
+      }
+    }
+
+    if (keepFamily !== 'school_admin') {
+      for (const [schKey, sch] of Object.entries(linkingMemoryStore.schools || {})) {
+        if (sch?.adminId && targetIds.has(String(sch.adminId))) {
+          delete linkingMemoryStore.schools[schKey];
+          linkingChanged = true;
+        }
+      }
+    }
+
+    if (linkingChanged) saveLinkingStore();
+    if (referralChanged) saveReferralStore();
+
+    if (resolved.user) {
+      try {
+        const fsPayload = toFirestoreUserAccountPayload(resolved.user);
+        await setDoc(doc(serverDb, 'users', resolved.user.id), fsPayload);
+      } catch {}
+    }
+
+    await securityService.recordIncident({
+      category: 'abuse',
+      severity: 'low',
+      status: 'resolved',
+      source: 'server_guard',
+      title: `Multi-Role Conflict Resolved (${email || userId})`,
+      description: `Super Admin ${authCheck.email || 'admin'} resolved multi-role conflict for ${email || userId} to single role: ${formatRoleDisplayName(keepRole)}.`,
+      actorUserId: resolved.user?.id || userId || undefined,
+      actorEmail: email || undefined,
+      actorRole: keepRole,
+      endpoint: '/api/admin/users/resolve-role',
+      actionTaken: `Kept ${formatRoleDisplayName(keepRole)} Only`,
+      resolvedBy: authCheck.email || 'super_admin',
+      resolvedAt: new Date().toISOString()
+    });
+
+    return res.json({
+      success: true,
+      user: resolved.user,
+      keepRole,
+      affectedUserIds: Array.from(targetIds),
+      message: `Account locked to ${formatRoleDisplayName(keepRole)} and secondary role records cleaned up.`
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      success: false,
+      error: err?.message || 'Could not resolve multi-role conflict.'
+    });
+  }
+});
+
+// Super Admin: Permanently Delete Account & Release Email for Fresh Registration
+app.post('/api/admin/users/delete-release', async (req, res) => {
+  try {
+    const authCheck = await verifySuperAdminRequest(req);
+    if (!authCheck.ok) {
+      return res.status(403).json({
+        success: false,
+        error: authCheck.error || 'Super Admin verification required.'
+      });
+    }
+
+    const requestedUserId = String(req.body?.userId || '').trim();
+    const requestedEmail = String(req.body?.email || '').trim().toLowerCase();
+    const reason = String(req.body?.reason || 'Account deleted and email released by Super Admin').trim();
+    const extraUserIds: string[] = Array.isArray(req.body?.extraUserIds)
+      ? req.body.extraUserIds.map((v: unknown) => String(v || '').trim()).filter(Boolean)
+      : [];
+
+    if (!requestedUserId && !requestedEmail) {
+      return res.status(400).json({ success: false, error: 'Account identifier is required.' });
+    }
+    if (requestedEmail && AUTHORIZED_SUPER_ADMINS.includes(requestedEmail)) {
+      return res.status(403).json({ success: false, error: 'Verified Super Admin accounts cannot be deleted.' });
+    }
+
+    const removedDir = removeServerUserPermanently({
+      userId: requestedUserId || undefined,
+      email: requestedEmail || undefined
+    });
+    for (const extraId of extraUserIds) {
+      removeServerUserPermanently({ userId: extraId });
+    }
+
+    const targetIds = new Set<string>([
+      ...(requestedUserId ? [requestedUserId] : []),
+      ...extraUserIds,
+      ...removedDir.removedUserIds
+    ]);
+    const targetEmails = new Set<string>([
+      ...(requestedEmail ? [requestedEmail] : []),
+      ...removedDir.removedEmails
+    ]);
+    const targetEmailHashes = new Set<string>(
+      Array.from(targetEmails)
+        .map((e) => hashEmailSha256(e))
+        .filter((h): h is string => Boolean(h))
+    );
+
+    let linkingChanged = false;
+    for (const [code, link] of Object.entries(linkingMemoryStore.studentLinks || {})) {
+      if (
+        (link?.studentId && targetIds.has(String(link.studentId))) ||
+        (link?.emailHash && targetEmailHashes.has(String(link.emailHash)))
+      ) {
+        delete linkingMemoryStore.studentLinks[code];
+        linkingChanged = true;
+      }
+    }
+    for (const [enrKey, enr] of Object.entries(linkingMemoryStore.enrollments || {})) {
+      if (enr?.studentId && targetIds.has(String(enr.studentId))) {
+        delete linkingMemoryStore.enrollments[enrKey];
+        linkingChanged = true;
+      }
+    }
+    for (const [schKey, sch] of Object.entries(linkingMemoryStore.schools || {})) {
+      if (sch?.adminId && targetIds.has(String(sch.adminId))) {
+        delete linkingMemoryStore.schools[schKey];
+        linkingChanged = true;
+      }
+    }
+    if (linkingChanged) saveLinkingStore();
+
+    let referralChanged = false;
+    for (const [pKey, partner] of Object.entries(referralMemoryStore.partners || {})) {
+      const pEmail = String((partner as any)?.email || '').trim().toLowerCase();
+      if (
+        targetIds.has(pKey) ||
+        ((partner as any)?.id && targetIds.has(String((partner as any).id))) ||
+        (pEmail && targetEmails.has(pEmail))
+      ) {
+        delete referralMemoryStore.partners[pKey];
+        referralChanged = true;
+      }
+    }
+    for (const [bKey, binding] of Object.entries(referralMemoryStore.bindings || {})) {
+      if (
+        targetIds.has(bKey) ||
+        ((binding as any)?.studentId && targetIds.has(String((binding as any).studentId)))
+      ) {
+        delete referralMemoryStore.bindings[bKey];
+        referralChanged = true;
+      }
+    }
+    if (referralChanged) saveReferralStore();
+
+    // Clear any prior account_delete / suspend / lock security blocks & tombstones so email can register fresh
+    const releaseStats = await securityService.releaseDeletedEmailForReregistration({
+      userId: requestedUserId || undefined,
+      email: requestedEmail || undefined,
+      extraUserIds: Array.from(targetIds),
+      reason,
+      adminEmail: authCheck.email || 'super_admin'
+    });
+
+    return res.json({
+      success: true,
+      deleted: true,
+      emailReleased: true,
+      releasedEmail: requestedEmail || Array.from(targetEmails)[0] || undefined,
+      purgedIds: Array.from(targetIds),
+      clearedBlocks: releaseStats.clearedBlocks,
+      clearedTombstones: releaseStats.clearedTombstones,
+      message: 'Account permanently deleted and email released for fresh registration.'
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      success: false,
+      error: err?.message || 'Unable to delete and release account right now.'
     });
   }
 });

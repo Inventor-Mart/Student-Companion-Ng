@@ -29,6 +29,7 @@ import {
   RegisteredUserProfile,
   RegisteredTutorData,
   GrowthPartner,
+  MultiRoleConflictEntry,
   SchoolMaterial,
   TimetableSlot,
   ChampionshipRegistration,
@@ -511,6 +512,24 @@ interface AppContextType {
     reason: string,
     adminEmailOverride?: string
   ) => Promise<{ success: boolean; error?: string }>;
+  deleteAndReleaseUserRecord: (
+    user: RegisteredUserProfile,
+    reason?: string,
+    adminEmailOverride?: string
+  ) => Promise<{ success: boolean; releasedEmail?: string; error?: string }>;
+  resolveMultiRoleAccount: (
+    user: RegisteredUserProfile,
+    keepRole: UserRole,
+    adminEmailOverride?: string
+  ) => Promise<{ success: boolean; user?: RegisteredUserProfile; error?: string }>;
+  updateGrowthPartnerBankDetails: (details: {
+    bankName: string;
+    accountNumber: string;
+    accountName: string;
+    phone?: string;
+    partnerId?: string;
+    email?: string;
+  }) => Promise<{ success: boolean; partner?: GrowthPartner; error?: string }>;
   purgeAllTestAccountsAndCredits: (
     adminEmailOverride?: string
   ) => Promise<{
@@ -922,7 +941,42 @@ const mergeUserProfiles = (
         : undefined,
     growthPartnerData:
       existing.growthPartnerData || incoming.growthPartnerData
-        ? { ...(existing.growthPartnerData || ({} as GrowthPartner)), ...(incoming.growthPartnerData || {}) }
+        ? (() => {
+            const ex = existing.growthPartnerData || ({} as GrowthPartner);
+            const inc = incoming.growthPartnerData || ({} as GrowthPartner);
+            const isPlaceholderAcct = (v: unknown) => {
+              const s = String(v || '').trim();
+              return !s || s === '0123456789' || s === '0712345678';
+            };
+            const isPlaceholderBank = (bank: unknown, acct: unknown) => {
+              const b = String(bank || '').trim();
+              if (!b) return true;
+              const lower = b.toLowerCase();
+              return (
+                (lower === 'access bank' || lower === 'access bank nigeria') &&
+                isPlaceholderAcct(acct)
+              );
+            };
+            const resolvedAccountNumber = !isPlaceholderAcct(inc.accountNumber)
+              ? String(inc.accountNumber).trim()
+              : !isPlaceholderAcct(ex.accountNumber)
+                ? String(ex.accountNumber).trim()
+                : '';
+            const resolvedBankName = !isPlaceholderBank(inc.bankName, inc.accountNumber)
+              ? String(inc.bankName).trim()
+              : !isPlaceholderBank(ex.bankName, ex.accountNumber)
+                ? String(ex.bankName).trim()
+                : '';
+            const resolvedAccountName =
+              String(inc.accountName || '').trim() || String(ex.accountName || '').trim() || '';
+            return {
+              ...ex,
+              ...inc,
+              bankName: resolvedBankName,
+              accountNumber: resolvedAccountNumber,
+              accountName: resolvedAccountName
+            };
+          })()
         : undefined,
     legalConsent: (() => {
       const ex = existing.legalConsent;
@@ -941,9 +995,135 @@ const mergeUserProfiles = (
   };
 };
 
+const normalizeClientRoleFamily = (role?: string | null): string => {
+  const clean = String(role || '').trim().toLowerCase();
+  if (clean === 'admin' || clean === 'school_admin') return 'school_admin';
+  return clean;
+};
+
+const describeClientPersonaDetail = (
+  role: UserRole,
+  rec: RegisteredUserProfile
+): string | undefined => {
+  if (role === 'student') {
+    const cls = rec.studentData?.classLevel;
+    const sch = rec.studentData?.school;
+    return [cls, sch && sch !== 'Secondary School' ? sch : undefined].filter(Boolean).join(' · ') || undefined;
+  }
+  if (role === 'growth_partner') {
+    const code = rec.growthPartnerData?.referralCode;
+    return code ? `Code ${code}` : undefined;
+  }
+  if (role === 'tutor') {
+    const subj =
+      rec.tutorData?.subjectSpecialization ||
+      (Array.isArray(rec.tutorData?.proficientSubjects)
+        ? rec.tutorData.proficientSubjects.slice(0, 2).join(', ')
+        : undefined);
+    return subj || undefined;
+  }
+  if (role === 'parent') {
+    return rec.parentData?.wardName ? `Ward: ${rec.parentData.wardName}` : undefined;
+  }
+  if (role === 'admin' || role === 'school_admin') {
+    return rec.adminData?.schoolName || undefined;
+  }
+  return undefined;
+};
+
 const mergeUserProfileArrays = (lists: RegisteredUserProfile[][]): RegisteredUserProfile[] => {
   const byKey = new Map<string, RegisteredUserProfile>();
   const emailToKey = new Map<string, string>();
+  const conflictsByKey = new Map<string, Map<string, MultiRoleConflictEntry>>();
+
+  const recordConflictRoles = (targetKey: string, rec: RegisteredUserProfile) => {
+    if (rec.accountStatus === 'deleted') return;
+    const cleanEm = String(rec.email || '').trim().toLowerCase();
+    if (isSuperAdminEmail(cleanEm) || rec.isSuperAdmin) return;
+
+    let roleMap = conflictsByKey.get(targetKey);
+    if (!roleMap) {
+      roleMap = new Map<string, MultiRoleConflictEntry>();
+      conflictsByKey.set(targetKey, roleMap);
+    }
+
+    const addEntry = (entry: MultiRoleConflictEntry) => {
+      const fam = normalizeClientRoleFamily(entry.role);
+      const prev = roleMap!.get(fam);
+      if (!prev) {
+        roleMap!.set(fam, entry);
+      } else {
+        roleMap!.set(fam, {
+          role: prev.role,
+          userId: prev.userId || entry.userId,
+          source: prev.source.includes('Firestore') ? prev.source : entry.source,
+          detail: entry.detail || prev.detail
+        });
+      }
+    };
+
+    if (Array.isArray(rec.conflictingRoles)) {
+      for (const c of rec.conflictingRoles) {
+        if (c && c.role) addEntry(c);
+      }
+    }
+
+    const src =
+      rec.recoveredFrom ||
+      (rec.directorySource === 'firestore'
+        ? 'Firestore Users'
+        : rec.directorySource === 'backend'
+          ? 'Backend Directory'
+          : 'Local Cache');
+
+    addEntry({
+      role: rec.role,
+      userId: rec.id,
+      source: src,
+      detail: describeClientPersonaDetail(rec.role, rec)
+    });
+
+    if (rec.studentData && normalizeClientRoleFamily(rec.role) !== 'student') {
+      addEntry({
+        role: 'student',
+        userId: rec.studentData.id || rec.id,
+        source: 'Student Profile',
+        detail: describeClientPersonaDetail('student', rec)
+      });
+    }
+    if (rec.growthPartnerData && normalizeClientRoleFamily(rec.role) !== 'growth_partner') {
+      addEntry({
+        role: 'growth_partner',
+        userId: rec.growthPartnerData.id || rec.id,
+        source: 'Growth Partner Profile',
+        detail: describeClientPersonaDetail('growth_partner', rec)
+      });
+    }
+    if (rec.tutorData && normalizeClientRoleFamily(rec.role) !== 'tutor') {
+      addEntry({
+        role: 'tutor',
+        userId: rec.id,
+        source: 'Tutor Profile',
+        detail: describeClientPersonaDetail('tutor', rec)
+      });
+    }
+    if (rec.parentData && normalizeClientRoleFamily(rec.role) !== 'parent') {
+      addEntry({
+        role: 'parent',
+        userId: rec.id,
+        source: 'Parent Profile',
+        detail: describeClientPersonaDetail('parent', rec)
+      });
+    }
+    if (rec.adminData && normalizeClientRoleFamily(rec.role) !== 'school_admin') {
+      addEntry({
+        role: 'admin',
+        userId: rec.id,
+        source: 'School Admin Profile',
+        detail: describeClientPersonaDetail('admin', rec)
+      });
+    }
+  };
 
   for (const list of lists) {
     for (const rawInput of list) {
@@ -959,11 +1139,13 @@ const mergeUserProfileArrays = (lists: RegisteredUserProfile[][]): RegisteredUse
       if (targetKey && byKey.has(targetKey)) {
         const merged = repairSpecificTutorRecord(mergeUserProfiles(byKey.get(targetKey)!, raw)).user;
         byKey.set(targetKey, merged);
+        recordConflictRoles(targetKey, raw);
         if (!isPlaceholderRecoveredEmail(merged.email)) {
           emailToKey.set(merged.email.toLowerCase(), targetKey);
         }
       } else {
         byKey.set(raw.id, raw);
+        recordConflictRoles(raw.id, raw);
         if (!isPlaceholderRecoveredEmail(cleanEmail)) {
           emailToKey.set(cleanEmail, raw.id);
         }
@@ -971,9 +1153,16 @@ const mergeUserProfileArrays = (lists: RegisteredUserProfile[][]): RegisteredUse
     }
   }
 
-  return Array.from(byKey.values()).sort((a, b) =>
-    String(b.createdAt || '').localeCompare(String(a.createdAt || ''))
-  );
+  return Array.from(byKey.values())
+    .map((user) => {
+      if (user.accountStatus === 'deleted' || user.isSuperAdmin || isSuperAdminEmail(user.email)) {
+        return { ...user, conflictingRoles: undefined };
+      }
+      const roleMap = conflictsByKey.get(user.id);
+      const conflictList = roleMap && roleMap.size > 1 ? Array.from(roleMap.values()) : undefined;
+      return { ...user, conflictingRoles: conflictList };
+    })
+    .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
 };
 
 const isVerifiedSubscriptionRef = (ref?: string | null): boolean => {
@@ -6465,6 +6654,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ? requestedCode
         : buildFallbackPartnerCode(fullName);
 
+      const cleanBankName = String(profileData.bankName || '').trim();
+      const cleanAccountNumber = String(profileData.accountNumber || '').replace(/\D/g, '').slice(0, 10);
+      const cleanAccountName = String(profileData.accountName || fullName).trim();
+
       const partnerObj: GrowthPartner = {
         id: newId,
         name: fullName,
@@ -6475,9 +6668,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         totalEarningsNaira: 0,
         totalPaidOutNaira: 0,
         activeReferralsCount: 0,
-        bankName: profileData.bankName || 'Guaranty Trust Bank (GTBank)',
-        accountNumber: profileData.accountNumber || '',
-        accountName: profileData.accountName || fullName,
+        bankName: cleanBankName,
+        accountNumber: cleanAccountNumber,
+        accountName: cleanAccountName,
         status: 'active',
         createdAt: new Date().toISOString()
       };
@@ -6492,9 +6685,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           name: fullName,
           email,
           phone: profileData.phone || '',
-          bankName: profileData.bankName || 'Guaranty Trust Bank (GTBank)',
-          accountNumber: profileData.accountNumber || '',
-          accountName: profileData.accountName || fullName,
+          bankName: cleanBankName,
+          accountNumber: cleanAccountNumber,
+          accountName: cleanAccountName,
           referralCode: initialReferralCode
         })
       })
@@ -6506,7 +6699,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               if (!prev || prev.id !== newId || !prev.growthPartnerData) return prev;
               const nextProf: RegisteredUserProfile = {
                 ...prev,
-                growthPartnerData: { ...prev.growthPartnerData, referralCode: liveCode }
+                growthPartnerData: {
+                  ...prev.growthPartnerData,
+                  referralCode: liveCode,
+                  bankName: cleanBankName || prev.growthPartnerData.bankName || data?.partner?.bankName || '',
+                  accountNumber: cleanAccountNumber || prev.growthPartnerData.accountNumber || data?.partner?.accountNumber || '',
+                  accountName: cleanAccountName || prev.growthPartnerData.accountName || data?.partner?.accountName || fullName
+                }
               };
               safeSetItem('sc_user_profile', JSON.stringify(nextProf));
               syncProfileToServer(nextProf);
@@ -6515,7 +6714,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             setAllRegisteredUsers(prev => {
               const nextList = prev.map(u =>
                 u.id === newId && u.growthPartnerData
-                  ? { ...u, growthPartnerData: { ...u.growthPartnerData, referralCode: liveCode } }
+                  ? {
+                      ...u,
+                      growthPartnerData: {
+                        ...u.growthPartnerData,
+                        referralCode: liveCode,
+                        bankName: cleanBankName || u.growthPartnerData.bankName || data?.partner?.bankName || '',
+                        accountNumber: cleanAccountNumber || u.growthPartnerData.accountNumber || data?.partner?.accountNumber || '',
+                        accountName: cleanAccountName || u.growthPartnerData.accountName || data?.partner?.accountName || fullName
+                      }
+                    }
                   : u
               );
               safeSetItem('sc_all_users', JSON.stringify(nextList));
@@ -8999,6 +9207,378 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return { success: true };
   };
 
+  const deleteAndReleaseUserRecord = async (
+    user: RegisteredUserProfile,
+    reason?: string,
+    adminEmailOverride?: string
+  ): Promise<{ success: boolean; releasedEmail?: string; error?: string }> => {
+    const resolvedId = user.id;
+    const resolvedEmail = String(user.email || '').trim().toLowerCase();
+
+    if (isSuperAdminEmail(resolvedEmail) || user.isSuperAdmin) {
+      return { success: false, error: 'Verified Super Admin accounts cannot be deleted.' };
+    }
+
+    const adminEmail =
+      adminEmailOverride || currentUserProfile?.email || currentUser?.email || SUPER_ADMIN_EMAIL;
+    const cleanReason =
+      String(reason || '').trim() || 'Account deleted and email released for fresh registration by Super Admin';
+    const extraUserIds = Array.from(
+      new Set(
+        [
+          ...(user.conflictingRoles || []).map((c) => c.userId),
+          user.studentData?.id,
+          user.growthPartnerData?.id
+        ].filter((id): id is string => Boolean(id && id !== resolvedId))
+      )
+    );
+
+    let purgedIdsFromServer: string[] = [];
+    try {
+      const authHeaders = await getFirebaseAuthHeaders();
+      const res = await fetch('/api/admin/users/delete-release', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...authHeaders,
+          ...getSecurityHeaders({ userId: currentUserProfile?.id, userEmail: adminEmail })
+        },
+        body: JSON.stringify({
+          adminEmail,
+          userId: resolvedId,
+          email: resolvedEmail,
+          extraUserIds,
+          reason: cleanReason
+        })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) {
+        return { success: false, error: data.error || 'Server could not delete and release this account.' };
+      }
+      if (Array.isArray(data.purgedIds)) {
+        purgedIdsFromServer = data.purgedIds;
+      }
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Network error deleting and releasing account.' };
+    }
+
+    const allIdsToPurge = Array.from(
+      new Set([resolvedId, ...extraUserIds, ...purgedIdsFromServer].filter(Boolean))
+    );
+
+    // Purge all matching Firestore documents when signed in as verified Super Admin
+    if (
+      !isOffline &&
+      isFirebaseConnected &&
+      auth.currentUser?.emailVerified &&
+      isSuperAdminEmail(auth.currentUser.email)
+    ) {
+      for (const rawId of allIdsToPurge) {
+        const docId = sanitizeFirestoreDocId(rawId);
+        await Promise.allSettled([
+          deleteDoc(doc(db, 'users', docId)),
+          deleteDoc(doc(db, 'students', docId)),
+          deleteDoc(doc(db, 'wallets', docId)),
+          deleteDoc(doc(db, 'growthPartners', docId)),
+          deleteDoc(doc(db, 'partnerWallets', docId))
+        ]);
+      }
+      if (user.studentData?.studentLinkCode) {
+        await deleteDoc(
+          doc(db, 'studentLinkRegistry', sanitizeFirestoreDocId(user.studentData.studentLinkCode))
+        ).catch(() => {});
+      }
+    }
+
+    // Remove cleanly from local allRegisteredUsers so email is immediately free
+    const idSet = new Set(allIdsToPurge);
+    setAllRegisteredUsers((prev) => {
+      const updated = prev.filter((u) => {
+        if (idSet.has(u.id)) return false;
+        if (resolvedEmail && String(u.email || '').trim().toLowerCase() === resolvedEmail) return false;
+        return true;
+      });
+      safeSetItem('sc_all_users', JSON.stringify(updated));
+      return updated;
+    });
+
+    if (impersonatedUser && (idSet.has(impersonatedUser.id) || impersonatedUser.email.toLowerCase() === resolvedEmail)) {
+      stopImpersonation();
+    }
+
+    return { success: true, releasedEmail: resolvedEmail || undefined };
+  };
+
+  const resolveMultiRoleAccount = async (
+    user: RegisteredUserProfile,
+    keepRole: UserRole,
+    adminEmailOverride?: string
+  ): Promise<{ success: boolean; user?: RegisteredUserProfile; error?: string }> => {
+    const cleanEmail = String(user.email || '').trim().toLowerCase();
+    if (isSuperAdminEmail(cleanEmail) || user.isSuperAdmin) {
+      return { success: false, error: 'Super Admin accounts cannot be reassigned here.' };
+    }
+
+    const adminEmail =
+      adminEmailOverride || currentUserProfile?.email || currentUser?.email || SUPER_ADMIN_EMAIL;
+    const keepFamily = normalizeClientRoleFamily(keepRole);
+    const conflictingList = user.conflictingRoles || [];
+    const keptConflict = conflictingList.find((c) => normalizeClientRoleFamily(c.role) === keepFamily);
+
+    // Prefer a Firebase-style UID if present, otherwise keep the canonical user.id
+    const canonicalId =
+      user.directorySource === 'firestore'
+        ? user.id
+        : keptConflict?.userId || user.id;
+
+    const extraUserIds = Array.from(
+      new Set(
+        [
+          user.id,
+          ...conflictingList.map((c) => c.userId),
+          user.studentData?.id,
+          user.growthPartnerData?.id
+        ].filter((id): id is string => Boolean(id && id !== canonicalId))
+      )
+    );
+
+    const cleanedProfile: RegisteredUserProfile = {
+      ...user,
+      id: canonicalId,
+      role: keepRole,
+      email: cleanEmail || user.email,
+      studentData: keepFamily === 'student' ? user.studentData : undefined,
+      parentData: keepFamily === 'parent' ? user.parentData : undefined,
+      tutorData: keepFamily === 'tutor' ? user.tutorData : undefined,
+      adminData: keepFamily === 'school_admin' ? user.adminData : undefined,
+      growthPartnerData: keepFamily === 'growth_partner' ? user.growthPartnerData : undefined,
+      directorySource: 'firestore',
+      recoveredFrom: undefined,
+      conflictingRoles: undefined
+    };
+
+    try {
+      const authHeaders = await getFirebaseAuthHeaders();
+      const res = await fetch('/api/admin/users/resolve-role', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...authHeaders,
+          ...getSecurityHeaders({ userId: currentUserProfile?.id, userEmail: adminEmail })
+        },
+        body: JSON.stringify({
+          adminEmail,
+          userId: canonicalId,
+          email: cleanEmail,
+          keepRole,
+          extraUserIds,
+          fallbackProfile: cleanedProfile
+        })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) {
+        return { success: false, error: data.error || 'Server could not resolve multi-role conflict.' };
+      }
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Network error resolving multi-role conflict.' };
+    }
+
+    const allIds = Array.from(new Set([canonicalId, ...extraUserIds].filter(Boolean)));
+
+    // Synchronize Firestore so both sign-in and User Directory reflect the single kept role
+    if (
+      !isOffline &&
+      isFirebaseConnected &&
+      auth.currentUser?.emailVerified &&
+      isSuperAdminEmail(auth.currentUser.email)
+    ) {
+      const canonicalDocId = sanitizeFirestoreDocId(canonicalId);
+      const fsPayload = buildFirestoreUserAccountPayload(cleanedProfile);
+      // Full overwrite (no merge) removes unwanted persona blobs from users/{uid}
+      await setDoc(doc(db, 'users', canonicalDocId), fsPayload).catch(() => {});
+
+      for (const rawId of allIds) {
+        const docId = sanitizeFirestoreDocId(rawId);
+        if (docId !== canonicalDocId) {
+          await deleteDoc(doc(db, 'users', docId)).catch(() => {});
+        }
+        if (keepFamily !== 'growth_partner') {
+          await Promise.allSettled([
+            deleteDoc(doc(db, 'growthPartners', docId)),
+            deleteDoc(doc(db, 'partnerWallets', docId))
+          ]);
+        }
+        if (keepFamily !== 'student') {
+          await deleteDoc(doc(db, 'students', docId)).catch(() => {});
+        }
+      }
+      if (keepFamily !== 'student' && user.studentData?.studentLinkCode) {
+        await deleteDoc(
+          doc(db, 'studentLinkRegistry', sanitizeFirestoreDocId(user.studentData.studentLinkCode))
+        ).catch(() => {});
+      }
+    }
+
+    const idSet = new Set(allIds);
+    setAllRegisteredUsers((prev) => {
+      const withoutDupes = prev.filter((u) => {
+        if (idSet.has(u.id)) return false;
+        if (cleanEmail && String(u.email || '').trim().toLowerCase() === cleanEmail) return false;
+        return true;
+      });
+      const updated = [cleanedProfile, ...withoutDupes];
+      safeSetItem('sc_all_users', JSON.stringify(updated));
+      return updated;
+    });
+
+    if (impersonatedUser && (idSet.has(impersonatedUser.id) || impersonatedUser.email.toLowerCase() === cleanEmail)) {
+      stopImpersonation();
+    }
+
+    return { success: true, user: cleanedProfile };
+  };
+
+  const updateGrowthPartnerBankDetails = async (details: {
+    bankName: string;
+    accountNumber: string;
+    accountName: string;
+    phone?: string;
+    partnerId?: string;
+    email?: string;
+  }): Promise<{ success: boolean; partner?: GrowthPartner; error?: string }> => {
+    const cleanBankName = String(details.bankName || '').trim();
+    const cleanAccountNumber = String(details.accountNumber || '').replace(/\D/g, '').slice(0, 10);
+    const cleanAccountName = String(details.accountName || '').trim();
+    const cleanPhone = details.phone !== undefined ? String(details.phone).trim() : undefined;
+
+    if (!cleanBankName || cleanBankName.length < 2) {
+      return { success: false, error: 'Please select or enter your bank name.' };
+    }
+    if (!/^\d{10}$/.test(cleanAccountNumber) || cleanAccountNumber === '0123456789' || cleanAccountNumber === '0712345678') {
+      return { success: false, error: 'Please enter a valid 10-digit NUBAN account number.' };
+    }
+    if (!cleanAccountName || cleanAccountName.length < 2) {
+      return { success: false, error: 'Please enter the exact account holder name.' };
+    }
+
+    const targetPartnerId =
+      details.partnerId ||
+      impersonatedUser?.id ||
+      currentUser?.uid ||
+      currentUserProfile?.id ||
+      '';
+    const targetEmail = (
+      details.email ||
+      impersonatedUser?.email ||
+      currentUserProfile?.email ||
+      currentUser?.email ||
+      ''
+    )
+      .trim()
+      .toLowerCase();
+
+    if (!targetPartnerId && !targetEmail) {
+      return { success: false, error: 'Please sign in as a Growth Partner to update bank details.' };
+    }
+
+    let serverPartner: GrowthPartner | undefined;
+    try {
+      const authHeaders = await getFirebaseAuthHeaders().catch(() => ({}));
+      const res = await fetch('/api/partners/bank-details', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...authHeaders,
+          ...getSecurityHeaders({ userId: targetPartnerId, userEmail: targetEmail })
+        },
+        body: JSON.stringify({
+          partnerId: targetPartnerId,
+          email: targetEmail,
+          bankName: cleanBankName,
+          accountNumber: cleanAccountNumber,
+          accountName: cleanAccountName,
+          ...(cleanPhone !== undefined ? { phone: cleanPhone } : {})
+        })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) {
+        return { success: false, error: data.error || 'Could not save settlement bank details.' };
+      }
+      serverPartner = data.partner as GrowthPartner;
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Network error saving bank details.' };
+    }
+
+    const nowIso = new Date().toISOString();
+    const buildUpdatedPartnerData = (prev?: GrowthPartner): GrowthPartner => ({
+      id: prev?.id || serverPartner?.id || targetPartnerId,
+      name: prev?.name || serverPartner?.name || currentUserProfile?.fullName || cleanAccountName,
+      email: prev?.email || serverPartner?.email || targetEmail,
+      phone: cleanPhone !== undefined ? cleanPhone : prev?.phone || serverPartner?.phone || '',
+      referralCode: prev?.referralCode || serverPartner?.referralCode || '',
+      commissionRatePercent: prev?.commissionRatePercent ?? serverPartner?.commissionRatePercent ?? 10,
+      totalEarningsNaira: prev?.totalEarningsNaira ?? serverPartner?.totalEarningsNaira ?? 0,
+      totalPaidOutNaira: prev?.totalPaidOutNaira ?? serverPartner?.totalPaidOutNaira ?? 0,
+      activeReferralsCount: prev?.activeReferralsCount ?? serverPartner?.activeReferralsCount ?? 0,
+      status: prev?.status || serverPartner?.status || 'active',
+      createdAt: prev?.createdAt || serverPartner?.createdAt || nowIso,
+      bankName: cleanBankName,
+      accountNumber: cleanAccountNumber,
+      accountName: cleanAccountName
+    });
+
+    const nextPartnerData = buildUpdatedPartnerData(
+      (impersonatedUser?.id === targetPartnerId ? impersonatedUser.growthPartnerData : currentUserProfile?.growthPartnerData)
+    );
+
+    if (currentUserProfile && (currentUserProfile.id === targetPartnerId || currentUserProfile.email.toLowerCase() === targetEmail)) {
+      const updatedSelf: RegisteredUserProfile = {
+        ...currentUserProfile,
+        growthPartnerData: buildUpdatedPartnerData(currentUserProfile.growthPartnerData)
+      };
+      setCurrentUserProfile(updatedSelf);
+      safeSetItem('sc_user_profile', JSON.stringify(updatedSelf));
+    }
+
+    if (impersonatedUser && (impersonatedUser.id === targetPartnerId || impersonatedUser.email.toLowerCase() === targetEmail)) {
+      setImpersonatedUser({
+        ...impersonatedUser,
+        growthPartnerData: buildUpdatedPartnerData(impersonatedUser.growthPartnerData)
+      });
+    }
+
+    setAllRegisteredUsers((prev) => {
+      const updated = prev.map((u) =>
+        u.id === targetPartnerId || (targetEmail && u.email.toLowerCase() === targetEmail)
+          ? { ...u, growthPartnerData: buildUpdatedPartnerData(u.growthPartnerData) }
+          : u
+      );
+      safeSetItem('sc_all_users', JSON.stringify(updated));
+      return updated;
+    });
+
+    // Persist directly to Firestore users/{uid} and growthPartners/{uid} when authenticated
+    if (!isOffline && isFirebaseConnected && auth.currentUser?.emailVerified) {
+      const docId = sanitizeFirestoreDocId(targetPartnerId);
+      const isOwnerOrAdmin =
+        auth.currentUser.uid === docId || isSuperAdminEmail(auth.currentUser.email);
+      if (isOwnerOrAdmin) {
+        updateDoc(doc(db, 'users', docId), {
+          growthPartnerData: nextPartnerData
+        }).catch(() => {});
+        updateDoc(doc(db, 'growthPartners', docId), {
+          bankName: cleanBankName,
+          accountNumber: cleanAccountNumber,
+          accountName: cleanAccountName,
+          ...(cleanPhone !== undefined ? { phone: cleanPhone } : {}),
+          updatedAt: nowIso
+        }).catch(() => {});
+      }
+    }
+
+    return { success: true, partner: nextPartnerData };
+  };
+
   const loginAsDeveloper = (emailInput?: string, options?: { skipNavigate?: boolean }): RegisteredUserProfile => {
     const targetEmail = (emailInput || SUPER_ADMIN_EMAIL).toLowerCase().trim();
     const displayName = 'Martin Omorefe (Lead Developer)';
@@ -9949,6 +10529,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         stopImpersonation,
         updateUserRecord,
         softDeleteUserRecord,
+        deleteAndReleaseUserRecord,
+        resolveMultiRoleAccount,
+        updateGrowthPartnerBankDetails,
         purgeAllTestAccountsAndCredits,
         purgeSimulatedSubscriptions,
         switchRole,

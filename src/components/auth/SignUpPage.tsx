@@ -444,7 +444,8 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
   }, [selectedRole, adminSchoolCode, isGeneratingSchoolCode]);
 
   // Growth Partner Fields (Live Application & Settlement)
-  const [partnerBankName, setPartnerBankName] = useState('Guaranty Trust Bank (GTBank)');
+  const [partnerBankName, setPartnerBankName] = useState('');
+  const [partnerCustomBankName, setPartnerCustomBankName] = useState('');
   const [partnerAccountNumber, setPartnerAccountNumber] = useState('');
   const [partnerAccountName, setPartnerAccountName] = useState('');
   const [partnerRegion, setPartnerRegion] = useState('Lagos State');
@@ -714,7 +715,10 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
         lastName: trimmedLast,
         email: resolvedEmail,
         phone: phone.trim(),
-        bankName: partnerBankName,
+        bankName:
+          partnerBankName === '__other__'
+            ? partnerCustomBankName.trim()
+            : partnerBankName.trim(),
         accountNumber: partnerAccountNumber.trim(),
         accountName: partnerAccountName.trim() || computedFullName,
         region: partnerRegion,
@@ -3135,31 +3139,62 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
 
                     <div>
                       <label className="text-[11px] font-semibold text-slate-300 block mb-1">
-                        Select Nigerian Commercial Bank
+                        Select Nigerian Commercial / Digital Bank
                       </label>
                       <select
+                        required
                         value={partnerBankName}
                         onChange={(e) => setPartnerBankName(e.target.value)}
                         className="w-full bg-[#060D17] border border-[#1E304F] focus:border-emerald-500 rounded-xl py-2 px-3 text-xs text-white focus:outline-none"
                       >
+                        <option value="">Select your bank...</option>
                         {[
                           'Access Bank',
-                          'First Bank of Nigeria',
-                          'Guaranty Trust Bank (GTBank)',
-                          'United Bank for Africa (UBA)',
-                          'Zenith Bank',
-                          'Stanbic IBTC Bank',
+                          'Citibank Nigeria',
+                          'Ecobank Nigeria',
                           'Fidelity Bank',
+                          'First Bank of Nigeria',
+                          'First City Monument Bank (FCMB)',
+                          'Globus Bank',
+                          'Guaranty Trust Bank (GTBank)',
+                          'Keystone Bank',
                           'Kuda Microfinance Bank',
+                          'Moniepoint Microfinance Bank',
                           'OPay Digital Services',
-                          'Palmpay Limited'
+                          'PalmPay Limited',
+                          'Polaris Bank',
+                          'Providus Bank',
+                          'Stanbic IBTC Bank',
+                          'Sterling Bank',
+                          'Union Bank of Nigeria',
+                          'United Bank for Africa (UBA)',
+                          'Unity Bank',
+                          'Wema Bank / ALAT',
+                          'Zenith Bank'
                         ].map((b) => (
                           <option key={b} value={b}>
                             {b}
                           </option>
                         ))}
+                        <option value="__other__">Other Nigerian Bank (Enter Name)</option>
                       </select>
                     </div>
+
+                    {partnerBankName === '__other__' && (
+                      <div>
+                        <label className="text-[11px] font-semibold text-slate-300 block mb-1">
+                          Enter Bank Name
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={partnerCustomBankName}
+                          onChange={(e) => setPartnerCustomBankName(e.target.value)}
+                          placeholder="e.g. Jaiz Bank, Rubies MFB"
+                          className="w-full bg-[#060D17] border border-[#1E304F] focus:border-emerald-500 rounded-xl py-2 px-3 text-xs text-white placeholder-slate-500 focus:outline-none"
+                        />
+                      </div>
+                    )}
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>

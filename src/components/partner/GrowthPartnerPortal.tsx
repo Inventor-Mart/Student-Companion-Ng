@@ -25,8 +25,46 @@ import {
   X,
   AlertCircle,
   Volume2,
-  VolumeX
+  VolumeX,
+  Pencil
 } from 'lucide-react';
+
+const NIGERIAN_BANKS = [
+  'Access Bank',
+  'Citibank Nigeria',
+  'Ecobank Nigeria',
+  'Fidelity Bank',
+  'First Bank of Nigeria',
+  'First City Monument Bank (FCMB)',
+  'Globus Bank',
+  'Guaranty Trust Bank (GTBank)',
+  'Keystone Bank',
+  'Kuda Microfinance Bank',
+  'Moniepoint Microfinance Bank',
+  'OPay Digital Services',
+  'PalmPay Limited',
+  'Polaris Bank',
+  'Providus Bank',
+  'Stanbic IBTC Bank',
+  'Sterling Bank',
+  'Union Bank of Nigeria',
+  'United Bank for Africa (UBA)',
+  'Unity Bank',
+  'Wema Bank / ALAT',
+  'Zenith Bank'
+];
+
+const isPlaceholderAcctNum = (val?: string | null): boolean => {
+  const s = String(val || '').trim();
+  return !s || s === '0123456789' || s === '0712345678';
+};
+
+const isPlaceholderBank = (bank?: string | null, acct?: string | null): boolean => {
+  const b = String(bank || '').trim();
+  if (!b) return true;
+  const lower = b.toLowerCase();
+  return (lower === 'access bank' || lower === 'access bank nigeria') && isPlaceholderAcctNum(acct);
+};
 
 interface PartnerSummaryData {
   partner: {
@@ -84,11 +122,20 @@ type PartnerTab = 'overview' | 'referrals' | 'transactions' | 'marketing';
 type PartnerSheet = 'referral-hub' | 'trigger-info' | null;
 
 export const GrowthPartnerPortal: React.FC = () => {
-  const { currentUserProfile, currentUser, pendingPortalTab, clearPendingPortalTab } = useApp();
+  const {
+    currentUserProfile,
+    impersonatedUser,
+    currentUser,
+    pendingPortalTab,
+    clearPendingPortalTab,
+    updateGrowthPartnerBankDetails
+  } = useApp();
 
-  const partnerId = currentUser?.uid || currentUserProfile?.id || '';
-  const partnerName = currentUserProfile?.fullName || currentUser?.displayName || '';
-  const partnerEmail = currentUserProfile?.email || currentUser?.email || '';
+  const activeProfile = impersonatedUser || currentUserProfile;
+  const partnerId = impersonatedUser?.id || currentUser?.uid || currentUserProfile?.id || '';
+  const partnerName = activeProfile?.fullName || currentUser?.displayName || '';
+  const partnerEmail = activeProfile?.email || currentUser?.email || '';
+  const savedProfilePartner = activeProfile?.growthPartnerData;
 
   const [loading, setLoading] = useState<boolean>(true);
   const [refreshing, setRefreshing] = useState<boolean>(false);
@@ -123,9 +170,114 @@ export const GrowthPartnerPortal: React.FC = () => {
   const [withdrawSuccessMsg, setWithdrawSuccessMsg] = useState<string | null>(null);
   const [withdrawErrorMsg, setWithdrawErrorMsg] = useState<string | null>(null);
 
+  // Editable Payout Bank modal state
+  const [showBankModal, setShowBankModal] = useState<boolean>(false);
+  const [bankSelectValue, setBankSelectValue] = useState<string>('');
+  const [customBankName, setCustomBankName] = useState<string>('');
+  const [bankAccountNumberInput, setBankAccountNumberInput] = useState<string>('');
+  const [bankAccountNameInput, setBankAccountNameInput] = useState<string>('');
+  const [bankSaving, setBankSaving] = useState<boolean>(false);
+  const [bankSaveError, setBankSaveError] = useState<string | null>(null);
+  const [bankSaveSuccess, setBankSaveSuccess] = useState<string | null>(null);
+
   useBackHandler(activeTab !== 'overview', () => setActiveTab('overview'), 'partner-portal-tab');
   useBackHandler(Boolean(activeSheet), () => setActiveSheet(null), 'partner-detail-sheet');
   useBackHandler(showWithdrawModal, () => setShowWithdrawModal(false), 'partner-withdraw-modal');
+  useBackHandler(showBankModal, () => setShowBankModal(false), 'partner-bank-modal');
+
+  // Resolve clean bank details merging live backend data and saved user profile (never reverting to Access Bank placeholders)
+  const resolvedAccountNumber = !isPlaceholderAcctNum(data?.partner?.accountNumber)
+    ? String(data?.partner?.accountNumber).trim()
+    : !isPlaceholderAcctNum(savedProfilePartner?.accountNumber)
+      ? String(savedProfilePartner?.accountNumber).trim()
+      : '';
+  const resolvedBankName = !isPlaceholderBank(data?.partner?.bankName, data?.partner?.accountNumber)
+    ? String(data?.partner?.bankName).trim()
+    : !isPlaceholderBank(savedProfilePartner?.bankName, savedProfilePartner?.accountNumber)
+      ? String(savedProfilePartner?.bankName).trim()
+      : '';
+  const resolvedAccountName =
+    String(data?.partner?.accountName || '').trim() ||
+    String(savedProfilePartner?.accountName || '').trim() ||
+    partnerName;
+  const hasConfiguredBank = Boolean(resolvedBankName && /^\d{10}$/.test(resolvedAccountNumber));
+
+  const openBankEditor = () => {
+    playSound.tileTap();
+    setBankSaveError(null);
+    setBankSaveSuccess(null);
+    if (resolvedBankName && NIGERIAN_BANKS.includes(resolvedBankName)) {
+      setBankSelectValue(resolvedBankName);
+      setCustomBankName('');
+    } else if (resolvedBankName) {
+      setBankSelectValue('__other__');
+      setCustomBankName(resolvedBankName);
+    } else {
+      setBankSelectValue('');
+      setCustomBankName('');
+    }
+    setBankAccountNumberInput(resolvedAccountNumber);
+    setBankAccountNameInput(resolvedAccountName || partnerName);
+    setShowBankModal(true);
+  };
+
+  const handleSaveBankDetails = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBankSaveError(null);
+    setBankSaveSuccess(null);
+    const finalBankName = bankSelectValue === '__other__' ? customBankName.trim() : bankSelectValue.trim();
+    const cleanAcct = bankAccountNumberInput.replace(/\D/g, '').slice(0, 10);
+    const cleanName = bankAccountNameInput.trim();
+
+    if (!finalBankName) {
+      setBankSaveError('Please select your bank or enter your bank name.');
+      return;
+    }
+    if (!/^\d{10}$/.test(cleanAcct) || isPlaceholderAcctNum(cleanAcct)) {
+      setBankSaveError('Please enter a valid 10-digit NUBAN account number.');
+      return;
+    }
+    if (!cleanName || cleanName.length < 2) {
+      setBankSaveError('Please enter the exact account holder name.');
+      return;
+    }
+
+    setBankSaving(true);
+    const result = await updateGrowthPartnerBankDetails({
+      partnerId,
+      email: partnerEmail,
+      bankName: finalBankName,
+      accountNumber: cleanAcct,
+      accountName: cleanName
+    });
+    setBankSaving(false);
+
+    if (!result.success) {
+      playSound.buzz();
+      setBankSaveError(result.error || 'Could not update settlement bank details.');
+      return;
+    }
+
+    playSound.correct();
+    setData(prev =>
+      prev
+        ? {
+            ...prev,
+            partner: {
+              ...prev.partner,
+              bankName: finalBankName,
+              accountNumber: cleanAcct,
+              accountName: cleanName
+            }
+          }
+        : prev
+    );
+    setBankSaveSuccess(`Saved ${finalBankName} · ${cleanAcct}`);
+    setTimeout(() => {
+      setShowBankModal(false);
+      setBankSaveSuccess(null);
+    }, 900);
+  };
 
   // Fetch or onboard partner
   const fetchPartnerData = async (isSilent = false) => {
@@ -142,6 +294,16 @@ export const GrowthPartnerPortal: React.FC = () => {
     setError(null);
 
     try {
+      const profileBank = !isPlaceholderBank(
+        savedProfilePartner?.bankName,
+        savedProfilePartner?.accountNumber
+      )
+        ? String(savedProfilePartner?.bankName || '').trim()
+        : '';
+      const profileAcct = !isPlaceholderAcctNum(savedProfilePartner?.accountNumber)
+        ? String(savedProfilePartner?.accountNumber || '').trim()
+        : '';
+
       const onboardRes = await fetch('/api/partners/onboard', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -149,8 +311,11 @@ export const GrowthPartnerPortal: React.FC = () => {
           partnerId,
           name: partnerName || 'Growth Partner',
           email: partnerEmail,
-          phone: '',
-          accountName: partnerName || 'Growth Partner'
+          phone: savedProfilePartner?.phone || '',
+          bankName: profileBank,
+          accountNumber: profileAcct,
+          accountName: savedProfilePartner?.accountName || partnerName || 'Growth Partner',
+          referralCode: savedProfilePartner?.referralCode || undefined
         })
       });
 
@@ -159,7 +324,9 @@ export const GrowthPartnerPortal: React.FC = () => {
         console.warn('Partner onboarding note:', onboardErr);
       }
 
-      const res = await fetch(`/api/partners/${encodeURIComponent(partnerId)}/summary`);
+      const res = await fetch(
+        `/api/partners/${encodeURIComponent(partnerId)}/summary?email=${encodeURIComponent(partnerEmail)}`
+      );
       if (!res.ok) {
         const errJson = await res.json().catch(() => ({}));
         throw new Error(errJson.error || `Failed to load partner summary (${res.status})`);
@@ -516,8 +683,8 @@ export const GrowthPartnerPortal: React.FC = () => {
                     <div className="w-10 h-10 rounded-2xl bg-[#FF5B00]/20 border border-[#FF5B00]/50 flex items-center justify-center text-[#FF5B00]">
                       <Users className="w-5 h-5 stroke-[2.2]" />
                     </div>
-                    <span className="text-[9px] font-mono font-bold text-slate-300 bg-[#0D1527] border border-slate-700 px-2 py-0.5 rounded-lg truncate max-w-[95px]">
-                      {partner?.bankName || 'Access Bank'}
+                    <span className="text-[9px] font-mono font-bold text-slate-300 bg-[#0D1527] border border-slate-700 px-2 py-0.5 rounded-lg truncate max-w-[110px]">
+                      {resolvedBankName || 'Bank Not Set'}
                     </span>
                   </div>
 
@@ -616,6 +783,56 @@ export const GrowthPartnerPortal: React.FC = () => {
                 </div>
               </motion.div>
             </div>
+
+            {/* EDITABLE PAYOUT BANK SETTLEMENT CARD */}
+            <motion.div
+              variants={tileVariants}
+              className="rounded-3xl p-4 bg-[#14203D] border-2 border-slate-700/80 shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+            >
+              <div className="flex items-start gap-3 min-w-0">
+                <div className="w-10 h-10 rounded-2xl bg-[#84CC16]/15 border border-[#84CC16]/40 flex items-center justify-center text-[#84CC16] shrink-0">
+                  <Building className="w-5 h-5" />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="text-xs sm:text-sm font-black text-white tracking-tight">
+                      Payout Settlement Bank
+                    </h3>
+                    {hasConfiguredBank ? (
+                      <span className="text-[10px] font-bold text-[#84CC16] bg-[#84CC16]/15 border border-[#84CC16]/35 px-2 py-0.5 rounded-md">
+                        Verified NUBAN
+                      </span>
+                    ) : (
+                      <span className="text-[10px] font-bold text-amber-300 bg-amber-950/60 border border-amber-700/60 px-2 py-0.5 rounded-md">
+                        Action Needed
+                      </span>
+                    )}
+                  </div>
+                  {hasConfiguredBank ? (
+                    <div className="text-xs text-slate-200 mt-1 space-y-0.5">
+                      <div className="font-bold text-white truncate">
+                        {resolvedBankName} · <span className="font-mono text-[#84CC16]">{resolvedAccountNumber}</span>
+                      </div>
+                      <div className="text-[11px] text-slate-400 truncate">
+                        Account Name: {resolvedAccountName}
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-[11px] text-amber-200/90 mt-1 leading-snug">
+                      Add your Nigerian bank name, 10-digit account number, and account name to receive commission payouts.
+                    </p>
+                  )}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={openBankEditor}
+                className="px-3.5 py-2 rounded-xl bg-[#0D1527] hover:bg-[#1B2B4B] border border-[#84CC16]/50 text-[#84CC16] text-xs font-black inline-flex items-center justify-center gap-1.5 cursor-pointer shrink-0 transition-colors"
+              >
+                <Pencil className="w-3.5 h-3.5" />
+                <span>{hasConfiguredBank ? 'Edit Bank Details' : 'Add Bank Details'}</span>
+              </button>
+            </motion.div>
 
             {/* FULL-WIDTH BENTO TILE: RECENT COMMISSION CREDITS */}
             <motion.div
@@ -910,27 +1127,41 @@ export const GrowthPartnerPortal: React.FC = () => {
 
               {/* Settlement Account Banner */}
               <div className="p-3.5 rounded-2xl bg-[#0D1527] border border-slate-800 flex items-center justify-between text-xs text-slate-200 gap-2 flex-wrap">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 min-w-0">
                   <Building className="w-4 h-4 text-[#84CC16] shrink-0" />
-                  <span>
-                    Settlement Account: <strong>{partner?.bankName || 'Access Bank Nigeria'}</strong> (
-                    {partner?.accountNumber
-                      ? `${partner.accountNumber.slice(0, 3)}••••${partner.accountNumber.slice(-3)}`
-                      : '071••••678'}
-                    ) · {partner?.accountName || partnerName}
-                  </span>
+                  {hasConfiguredBank ? (
+                    <span className="truncate">
+                      Settlement Account: <strong>{resolvedBankName}</strong> (
+                      {`${resolvedAccountNumber.slice(0, 3)}••••${resolvedAccountNumber.slice(-3)}`}
+                      ) · {resolvedAccountName}
+                    </span>
+                  ) : (
+                    <span className="text-amber-300">
+                      Settlement Account not configured yet. Tap Edit Bank Details to save your payout account.
+                    </span>
+                  )}
                 </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    playSound.tileTap();
-                    setWithdrawErrorMsg(null);
-                    setShowWithdrawModal(true);
-                  }}
-                  className="text-[#84CC16] hover:underline font-black text-xs cursor-pointer shrink-0"
-                >
-                  Withdraw Funds →
-                </button>
+                <div className="flex items-center gap-3 shrink-0">
+                  <button
+                    type="button"
+                    onClick={openBankEditor}
+                    className="text-slate-200 hover:text-white underline font-bold text-xs cursor-pointer inline-flex items-center gap-1"
+                  >
+                    <Pencil className="w-3 h-3" />
+                    <span>{hasConfiguredBank ? 'Edit Bank' : 'Add Bank'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      playSound.tileTap();
+                      setWithdrawErrorMsg(null);
+                      setShowWithdrawModal(true);
+                    }}
+                    className="text-[#84CC16] hover:underline font-black text-xs cursor-pointer"
+                  >
+                    Withdraw Funds →
+                  </button>
+                </div>
               </div>
             </motion.div>
           </motion.div>
@@ -1209,12 +1440,33 @@ export const GrowthPartnerPortal: React.FC = () => {
               </div>
             ) : (
               <form onSubmit={handleWithdrawalSubmit} className="space-y-4">
-                <div className="p-3.5 rounded-2xl bg-[#14203D] border border-slate-800 space-y-1 text-xs">
-                  <div className="text-slate-400">Registered Nigerian Bank Account:</div>
-                  <div className="font-black text-white">
-                    {partner?.bankName || 'Access Bank Nigeria'} · {partner?.accountNumber || '0712345678'}
+                <div className="p-3.5 rounded-2xl bg-[#14203D] border border-slate-800 space-y-1.5 text-xs">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-slate-400">Registered Nigerian Bank Account:</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowWithdrawModal(false);
+                        openBankEditor();
+                      }}
+                      className="text-[11px] font-bold text-[#84CC16] hover:underline inline-flex items-center gap-1 cursor-pointer"
+                    >
+                      <Pencil className="w-3 h-3" />
+                      <span>{hasConfiguredBank ? 'Change' : 'Set Up'}</span>
+                    </button>
                   </div>
-                  <div className="text-slate-300 text-[11px]">{partner?.accountName || partner?.name}</div>
+                  {hasConfiguredBank ? (
+                    <>
+                      <div className="font-black text-white">
+                        {resolvedBankName} · <span className="font-mono">{resolvedAccountNumber}</span>
+                      </div>
+                      <div className="text-slate-300 text-[11px]">{resolvedAccountName}</div>
+                    </>
+                  ) : (
+                    <div className="text-amber-300 text-[11px] font-semibold">
+                      No payout bank account saved yet. Tap &quot;Set Up&quot; above before withdrawing.
+                    </div>
+                  )}
                 </div>
 
                 {withdrawErrorMsg && (
@@ -1258,6 +1510,7 @@ export const GrowthPartnerPortal: React.FC = () => {
                     type="submit"
                     disabled={
                       withdrawLoading ||
+                      !hasConfiguredBank ||
                       !withdrawAmount ||
                       Number(withdrawAmount) <= 0 ||
                       Number(withdrawAmount) > (wallet?.balanceNaira || 0)
@@ -1269,6 +1522,134 @@ export const GrowthPartnerPortal: React.FC = () => {
                 </div>
               </form>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          EDIT SETTLEMENT / PAYOUT BANK DETAILS MODAL
+         ========================================================================= */}
+      {showBankModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#101C34] border-2 border-[#84CC16]/50 rounded-3xl max-w-md w-full p-5 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2 text-white font-black text-sm">
+                <Building className="w-4 h-4 text-[#84CC16]" />
+                <span>Update Payout Settlement Bank</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  playSound.tileTap();
+                  setShowBankModal(false);
+                }}
+                className="text-slate-300 hover:text-white p-1 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveBankDetails} className="space-y-3.5">
+              {bankSaveError && (
+                <div className="p-3 rounded-xl bg-rose-950/60 border border-rose-600/60 text-xs text-rose-200 flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                  <span>{bankSaveError}</span>
+                </div>
+              )}
+
+              {bankSaveSuccess && (
+                <div className="p-3 rounded-xl bg-emerald-950/60 border border-emerald-600/60 text-xs text-emerald-200 flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-[#84CC16] shrink-0" />
+                  <span>{bankSaveSuccess}</span>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-300 mb-1">
+                  Nigerian Bank / Digital Wallet
+                </label>
+                <select
+                  required
+                  value={bankSelectValue}
+                  onChange={e => setBankSelectValue(e.target.value)}
+                  className="w-full px-3.5 py-2.5 text-xs rounded-xl bg-[#0D1527] border-2 border-slate-700 text-white focus:outline-none focus:border-[#84CC16]"
+                >
+                  <option value="">Select your bank...</option>
+                  {NIGERIAN_BANKS.map(bank => (
+                    <option key={bank} value={bank}>
+                      {bank}
+                    </option>
+                  ))}
+                  <option value="__other__">Other Nigerian Bank (Enter Name)</option>
+                </select>
+              </div>
+
+              {bankSelectValue === '__other__' && (
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-300 mb-1">
+                    Enter Bank Name
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={customBankName}
+                    onChange={e => setCustomBankName(e.target.value)}
+                    placeholder="e.g. Jaiz Bank, Heritage Bank, Rubies MFB"
+                    className="w-full px-3.5 py-2.5 text-xs rounded-xl bg-[#0D1527] border-2 border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:border-[#84CC16]"
+                  />
+                </div>
+              )}
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-300 mb-1">
+                  10-Digit Account Number (NUBAN)
+                </label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  required
+                  maxLength={10}
+                  value={bankAccountNumberInput}
+                  onChange={e => setBankAccountNumberInput(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                  placeholder="Enter your 10-digit NUBAN"
+                  className="w-full px-3.5 py-2.5 text-sm rounded-xl bg-[#0D1527] border-2 border-slate-700 text-white font-mono tracking-wider placeholder-slate-500 focus:outline-none focus:border-[#84CC16]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-300 mb-1">
+                  Account Holder Name (As on Bank Record)
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={bankAccountNameInput}
+                  onChange={e => setBankAccountNameInput(e.target.value)}
+                  placeholder="e.g. Amina Okon"
+                  className="w-full px-3.5 py-2.5 text-xs rounded-xl bg-[#0D1527] border-2 border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:border-[#84CC16]"
+                />
+              </div>
+
+              <div className="flex items-center gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    playSound.tileTap();
+                    setShowBankModal(false);
+                  }}
+                  className="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={bankSaving}
+                  className="flex-1 py-2.5 rounded-xl bg-[#84CC16] hover:bg-[#A3E635] disabled:opacity-50 text-slate-950 text-xs font-black transition-colors cursor-pointer"
+                >
+                  {bankSaving ? 'Saving...' : 'Save Bank Details'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

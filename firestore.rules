@@ -829,7 +829,7 @@ service cloud.firestore {
           (!('isDeveloper' in incoming()) || incoming().isDeveloper == existing().isDeveloper) &&
           (!('accountStatus' in incoming()) || incoming().accountStatus == existing().accountStatus) &&
           (!('walletFrozen' in incoming()) || incoming().walletFrozen == existing().walletFrozen) &&
-          incoming().diff(existing()).affectedKeys().hasOnly(['fullName', 'avatarUrl', 'parentData', 'tutorData', 'legalConsent'])
+          incoming().diff(existing()).affectedKeys().hasOnly(['fullName', 'avatarUrl', 'parentData', 'tutorData', 'growthPartnerData', 'legalConsent'])
         )
       );
       allow delete: if isAdmin() || isOwner(userId);
@@ -927,7 +927,21 @@ service cloud.firestore {
       allow get: if isValidId(partnerId) && (isAdmin() || isOwner(partnerId));
       allow list: if isAdmin();
       allow create: if isAdmin() && isValidId(partnerId) && incoming().id == partnerId && isValidGrowthPartner(incoming());
-      allow update: if isAdmin() && isValidId(partnerId) && incoming().id == existing().id && isValidGrowthPartner(incoming());
+      allow update: if isValidId(partnerId) && incoming().id == existing().id && isValidGrowthPartner(incoming()) && (
+        isAdmin() ||
+        (
+          isOwner(partnerId) &&
+          incoming().email == existing().email &&
+          incoming().referralCode == existing().referralCode &&
+          incoming().commissionRatePercent == existing().commissionRatePercent &&
+          incoming().totalEarningsNaira == existing().totalEarningsNaira &&
+          incoming().totalPaidOutNaira == existing().totalPaidOutNaira &&
+          incoming().activeReferralsCount == existing().activeReferralsCount &&
+          incoming().status == existing().status &&
+          incoming().createdAt == existing().createdAt &&
+          incoming().diff(existing()).affectedKeys().hasOnly(['bankName', 'accountNumber', 'accountName', 'phone', 'updatedAt'])
+        )
+      );
       allow delete: if isAdmin();
     }
 

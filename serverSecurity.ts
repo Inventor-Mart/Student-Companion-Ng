@@ -890,6 +890,83 @@ export class SecurityService {
     return { tombstone, blocks: createdBlocks };
   }
 
+  /**
+   * Release a deleted account's email and userId(s) from any prior account_delete/suspend/lock blocks
+   * and deleted tombstones so the person can immediately register a fresh account.
+   */
+  async releaseDeletedEmailForReregistration(params: {
+    userId?: string;
+    email?: string;
+    extraUserIds?: string[];
+    reason?: string;
+    adminEmail: string;
+  }): Promise<{ clearedBlocks: number; clearedTombstones: number }> {
+    const targetSet = new Set<string>(
+      [
+        params.userId,
+        params.email ? params.email.toLowerCase().trim() : undefined,
+        ...(Array.isArray(params.extraUserIds) ? params.extraUserIds : [])
+      ]
+        .map((v) => String(v || '').trim().toLowerCase())
+        .filter((v) => Boolean(v && v.length > 0))
+    );
+
+    if (targetSet.size === 0) {
+      return { clearedBlocks: 0, clearedTombstones: 0 };
+    }
+
+    const nowIso = new Date().toISOString();
+    let clearedBlocks = 0;
+
+    for (const blk of memoryStore.blocks) {
+      const normTarget = String(blk.targetValue || '').trim().toLowerCase();
+      if (
+        blk.active &&
+        targetSet.has(normTarget) &&
+        (blk.blockType === 'account_delete' ||
+          blk.blockType === 'account_suspend' ||
+          blk.blockType === 'account_lock' ||
+          blk.blockType === 'wallet_freeze')
+      ) {
+        blk.active = false;
+        blk.updatedAt = nowIso;
+        clearedBlocks += 1;
+        if (this.firestoreSecurityRulesAvailable) {
+          void setDoc(doc(this.db, 'security_blocks', blk.id), blk, { merge: true }).catch(() => {});
+        }
+      }
+    }
+
+    const beforeTombstones = memoryStore.deletedAccounts.length;
+    memoryStore.deletedAccounts = memoryStore.deletedAccounts.filter((t) => {
+      const tUid = String(t.userId || '').trim().toLowerCase();
+      const tEmail = String(t.originalEmail || '').trim().toLowerCase();
+      return !(tUid && targetSet.has(tUid)) && !(tEmail && targetSet.has(tEmail));
+    });
+    const clearedTombstones = beforeTombstones - memoryStore.deletedAccounts.length;
+
+    if (clearedBlocks > 0 || clearedTombstones > 0) {
+      saveDiskStore();
+    }
+
+    await this.recordIncident({
+      category: 'abuse',
+      severity: 'low',
+      status: 'resolved',
+      source: 'server_guard',
+      title: `Account Deleted & Email Released (${params.email || params.userId})`,
+      description: `Super Admin ${params.adminEmail} permanently deleted account "${params.email || params.userId}" and released the email for fresh registration (${params.reason || 'Admin account reset'}). Cleared ${clearedBlocks} block(s) and ${clearedTombstones} tombstone(s).`,
+      actorUserId: params.userId,
+      actorEmail: params.email?.toLowerCase().trim(),
+      endpoint: '/api/admin/users/delete-release',
+      actionTaken: 'Account Purged & Email Released',
+      resolvedBy: params.adminEmail,
+      resolvedAt: nowIso
+    });
+
+    return { clearedBlocks, clearedTombstones };
+  }
+
   async logUnauthorizedProbe(req: Request, endpoint: string, attemptedEmail?: string): Promise<void> {
     const ip = extractClientIp(req);
     const fp = extractDeviceFingerprint(req);

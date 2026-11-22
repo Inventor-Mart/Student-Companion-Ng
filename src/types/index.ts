@@ -451,6 +451,13 @@ export interface RegisteredParentData {
   wardName?: string; // Backward compatibility
 }
 
+export interface MultiRoleConflictEntry {
+  role: UserRole;
+  userId: string;
+  source: string;
+  detail?: string;
+}
+
 export interface RegisteredUserProfile {
   id: string;
   role: UserRole;
@@ -502,6 +509,7 @@ export interface RegisteredUserProfile {
   directorySource?: 'local' | 'backend' | 'firestore' | 'recovered';
   recoveredFrom?: string;
   lastSyncedAt?: string;
+  conflictingRoles?: MultiRoleConflictEntry[];
 }
 
 export interface LegalConsentRecord {

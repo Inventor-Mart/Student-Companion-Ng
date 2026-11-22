@@ -62,6 +62,13 @@ const PURGED_SAMPLE_PATTERNS = [
   'partner_tunde_001'
 ];
 
+export interface ServerConflictingRoleEntry {
+  role: (typeof VALID_ROLES)[number];
+  userId: string;
+  source: string;
+  detail?: string;
+}
+
 export interface ServerRegisteredUser {
   id: string;
   role: (typeof VALID_ROLES)[number];
@@ -98,6 +105,7 @@ export interface ServerRegisteredUser {
   };
   directorySource?: 'local' | 'backend' | 'firestore' | 'recovered';
   recoveredFrom?: string;
+  conflictingRoles?: ServerConflictingRoleEntry[];
 }
 
 interface OtpChallengeRecord {
@@ -415,7 +423,42 @@ function mergeTwoUsers(
         : undefined,
     growthPartnerData:
       existing.growthPartnerData || incoming.growthPartnerData
-        ? { ...(existing.growthPartnerData || {}), ...(incoming.growthPartnerData || {}) }
+        ? (() => {
+            const ex = existing.growthPartnerData || {};
+            const inc = incoming.growthPartnerData || {};
+            const isPlaceholderAcct = (v: unknown) => {
+              const s = String(v || '').trim();
+              return !s || s === '0123456789' || s === '0712345678';
+            };
+            const isPlaceholderBank = (bank: unknown, acct: unknown) => {
+              const b = String(bank || '').trim();
+              if (!b) return true;
+              const lower = b.toLowerCase();
+              return (
+                (lower === 'access bank' || lower === 'access bank nigeria') &&
+                isPlaceholderAcct(acct)
+              );
+            };
+            const resolvedAccountNumber = !isPlaceholderAcct(inc.accountNumber)
+              ? String(inc.accountNumber).trim()
+              : !isPlaceholderAcct(ex.accountNumber)
+                ? String(ex.accountNumber).trim()
+                : '';
+            const resolvedBankName = !isPlaceholderBank(inc.bankName, inc.accountNumber)
+              ? String(inc.bankName).trim()
+              : !isPlaceholderBank(ex.bankName, ex.accountNumber)
+                ? String(ex.bankName).trim()
+                : '';
+            const resolvedAccountName =
+              String(inc.accountName || '').trim() || String(ex.accountName || '').trim() || '';
+            return {
+              ...ex,
+              ...inc,
+              bankName: resolvedBankName,
+              accountNumber: resolvedAccountNumber,
+              accountName: resolvedAccountName
+            };
+          })()
         : undefined,
     legalConsent: (() => {
       const ex = existing.legalConsent;
@@ -733,9 +776,86 @@ export async function harvestAllDirectoryUsers(params: {
   const mergedByKey = new Map<string, ServerRegisteredUser>();
   const emailToKey = new Map<string, string>();
   const hashToKey = new Map<string, string>();
+  const conflictsByKey = new Map<string, Map<string, ServerConflictingRoleEntry>>();
   let directoryCount = 0;
   let firestoreCount = 0;
   let recoveredCount = 0;
+
+  const describePersonaDetail = (
+    role: ServerRegisteredUser['role'],
+    rec: ServerRegisteredUser
+  ): string | undefined => {
+    if (role === 'student') {
+      const cls = rec.studentData?.classLevel;
+      const sch = rec.studentData?.school;
+      return [cls, sch && sch !== 'Secondary School' ? sch : undefined].filter(Boolean).join(' · ') || undefined;
+    }
+    if (role === 'growth_partner') {
+      const code = rec.growthPartnerData?.referralCode;
+      return code ? `Code ${code}` : undefined;
+    }
+    if (role === 'tutor') {
+      const subj =
+        rec.tutorData?.subjectSpecialization ||
+        (Array.isArray(rec.tutorData?.proficientSubjects)
+          ? rec.tutorData.proficientSubjects.slice(0, 2).join(', ')
+          : undefined);
+      return subj || undefined;
+    }
+    if (role === 'parent') {
+      return rec.parentData?.wardName ? `Ward: ${rec.parentData.wardName}` : undefined;
+    }
+    if (role === 'admin' || role === 'school_admin') {
+      return rec.adminData?.schoolName || undefined;
+    }
+    return undefined;
+  };
+
+  const recordCandidateRoles = (targetKey: string, candidate: ServerRegisteredUser, sourceLabel: string) => {
+    if (candidate.accountStatus === 'deleted') return;
+    const cleanEm = String(candidate.email || '').trim().toLowerCase();
+    if (AUTHORIZED_SUPER_ADMINS.includes(cleanEm) || candidate.isSuperAdmin) return;
+
+    let roleMap = conflictsByKey.get(targetKey);
+    if (!roleMap) {
+      roleMap = new Map<string, ServerConflictingRoleEntry>();
+      conflictsByKey.set(targetKey, roleMap);
+    }
+
+    const addRoleEntry = (role: ServerRegisteredUser['role'], uid: string, src: string, detail?: string) => {
+      const fam = normalizeRoleFamily(role);
+      const prev = roleMap!.get(fam);
+      if (!prev) {
+        roleMap!.set(fam, { role, userId: uid, source: src, detail });
+      } else {
+        roleMap!.set(fam, {
+          role: prev.role,
+          userId: prev.userId || uid,
+          source: prev.source.includes('Firestore') || prev.source === 'Directory' ? prev.source : src,
+          detail: detail || prev.detail
+        });
+      }
+    };
+
+    addRoleEntry(candidate.role, candidate.id, sourceLabel, describePersonaDetail(candidate.role, candidate));
+
+    // Also inspect co-existing persona blobs already embedded on the same record
+    if (candidate.studentData && normalizeRoleFamily(candidate.role) !== 'student') {
+      addRoleEntry('student', String(candidate.studentData.id || candidate.id), 'Embedded Student Profile', describePersonaDetail('student', candidate));
+    }
+    if (candidate.growthPartnerData && normalizeRoleFamily(candidate.role) !== 'growth_partner') {
+      addRoleEntry('growth_partner', String(candidate.growthPartnerData.id || candidate.id), 'Embedded Growth Partner Profile', describePersonaDetail('growth_partner', candidate));
+    }
+    if (candidate.tutorData && normalizeRoleFamily(candidate.role) !== 'tutor') {
+      addRoleEntry('tutor', candidate.id, 'Embedded Tutor Profile', describePersonaDetail('tutor', candidate));
+    }
+    if (candidate.parentData && normalizeRoleFamily(candidate.role) !== 'parent') {
+      addRoleEntry('parent', candidate.id, 'Embedded Parent Profile', describePersonaDetail('parent', candidate));
+    }
+    if (candidate.adminData && normalizeRoleFamily(candidate.role) !== 'school_admin') {
+      addRoleEntry('admin', candidate.id, 'Embedded School Admin Profile', describePersonaDetail('admin', candidate));
+    }
+  };
 
   const insertOrMerge = (
     candidate: ServerRegisteredUser,
@@ -745,6 +865,13 @@ export async function harvestAllDirectoryUsers(params: {
 
     const cleanEmail = String(candidate.email || '').trim().toLowerCase();
     const cleanHash = candidate.emailHash || hashEmailSha256(cleanEmail);
+    const sourceLabel =
+      candidate.recoveredFrom ||
+      (sourceBucket === 'firestore'
+        ? 'Firestore Users'
+        : sourceBucket === 'directory'
+          ? 'Backend Directory'
+          : 'Recovered Registry');
 
     let targetKey: string | undefined;
     if (mergedByKey.has(candidate.id)) {
@@ -760,6 +887,7 @@ export async function harvestAllDirectoryUsers(params: {
         allowPrivilegedOverwrite: true
       });
       mergedByKey.set(targetKey, merged);
+      recordCandidateRoles(targetKey, candidate, sourceLabel);
       if (!isPlaceholderEmail(merged.email)) emailToKey.set(merged.email, targetKey);
       if (merged.emailHash) hashToKey.set(merged.emailHash, targetKey);
       return;
@@ -770,6 +898,7 @@ export async function harvestAllDirectoryUsers(params: {
       emailHash: cleanHash
     });
     mergedByKey.set(finalRec.id, finalRec);
+    recordCandidateRoles(finalRec.id, finalRec, sourceLabel);
     if (!isPlaceholderEmail(finalRec.email)) emailToKey.set(finalRec.email, finalRec.id);
     if (finalRec.emailHash) hashToKey.set(finalRec.emailHash, finalRec.id);
 
@@ -1130,7 +1259,13 @@ export async function harvestAllDirectoryUsers(params: {
       }
     }
 
-    return user;
+    const roleMap = conflictsByKey.get(user.id);
+    const conflictEntries =
+      roleMap && roleMap.size > 1 && !user.isSuperAdmin && !AUTHORIZED_SUPER_ADMINS.includes(String(user.email || '').toLowerCase())
+        ? Array.from(roleMap.values())
+        : undefined;
+
+    return conflictEntries ? { ...user, conflictingRoles: conflictEntries } : user;
   });
 
   results.sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
@@ -1330,6 +1465,106 @@ export function removeServerUserPermanently(params: {
     removed: removedUserIds.size > 0,
     removedUserIds: Array.from(removedUserIds),
     removedEmails: Array.from(removedEmails)
+  };
+}
+
+export function resolveServerUserSingleRole(params: {
+  userId?: string;
+  email?: string;
+  extraUserIds?: string[];
+  keepRole: (typeof VALID_ROLES)[number];
+  fallbackProfile?: Partial<ServerRegisteredUser>;
+}): {
+  user: ServerRegisteredUser | null;
+  affectedUserIds: string[];
+  affectedEmails: string[];
+} {
+  const cleanId = params.userId ? sanitizeDirectoryDocId(params.userId) : '';
+  const cleanEmail = String(params.email || '').trim().toLowerCase();
+  const cleanHash = cleanEmail ? hashEmailSha256(cleanEmail) : undefined;
+  const keepRole = normalizeRole(params.keepRole);
+  const keepFam = normalizeRoleFamily(keepRole);
+
+  const matchIdSet = new Set<string>(
+    [cleanId, ...(Array.isArray(params.extraUserIds) ? params.extraUserIds.map((x) => sanitizeDirectoryDocId(x)) : [])].filter(Boolean)
+  );
+  const affectedUserIds = new Set<string>(matchIdSet);
+  const affectedEmails = new Set<string>(cleanEmail ? [cleanEmail] : []);
+
+  const matchedKeys: string[] = [];
+  let combined: ServerRegisteredUser | null = null;
+
+  for (const [key, rec] of Object.entries(directoryUsers)) {
+    const recEmail = String(rec?.email || '').trim().toLowerCase();
+    const idMatches = matchIdSet.has(key) || (rec?.id ? matchIdSet.has(rec.id) : false);
+    const emailMatches = Boolean(cleanEmail && !isPlaceholderEmail(recEmail) && recEmail === cleanEmail);
+    const hashMatches = Boolean(cleanHash && rec?.emailHash && rec.emailHash === cleanHash);
+
+    if (idMatches || emailMatches || hashMatches) {
+      matchedKeys.push(key);
+      if (rec?.id) affectedUserIds.add(rec.id);
+      affectedUserIds.add(key);
+      if (recEmail && !isPlaceholderEmail(recEmail)) affectedEmails.add(recEmail);
+      combined = combined
+        ? mergeTwoUsers(combined, rec, { allowPrivilegedOverwrite: true })
+        : { ...rec };
+    }
+  }
+
+  if (!combined && params.fallbackProfile) {
+    combined = normalizeRawUser(
+      {
+        id: cleanId || params.fallbackProfile.id || `usr_${Date.now()}`,
+        email: cleanEmail || params.fallbackProfile.email || '',
+        ...params.fallbackProfile,
+        role: keepRole
+      },
+      { allowPrivilegedFields: true, defaultSource: 'backend' }
+    );
+  }
+
+  if (!combined) {
+    return {
+      user: null,
+      affectedUserIds: Array.from(affectedUserIds),
+      affectedEmails: Array.from(affectedEmails)
+    };
+  }
+
+  const canonicalId = cleanId || combined.id;
+  const canonicalEmail =
+    cleanEmail && !isPlaceholderEmail(cleanEmail)
+      ? cleanEmail
+      : combined.email;
+
+  const cleanedUser: ServerRegisteredUser = stripUndefinedDeep({
+    ...combined,
+    id: canonicalId,
+    role: keepRole,
+    email: canonicalEmail,
+    emailHash: hashEmailSha256(canonicalEmail) || combined.emailHash,
+    studentData: keepFam === 'student' ? combined.studentData : undefined,
+    parentData: keepFam === 'parent' ? combined.parentData : undefined,
+    tutorData: keepFam === 'tutor' ? combined.tutorData : undefined,
+    adminData: keepFam === 'school_admin' ? combined.adminData : undefined,
+    growthPartnerData: keepFam === 'growth_partner' ? combined.growthPartnerData : undefined,
+    directorySource: 'backend',
+    recoveredFrom: undefined,
+    conflictingRoles: undefined,
+    updatedAt: new Date().toISOString()
+  });
+
+  // Remove duplicate entries for the same email and persist single canonical record
+  for (const k of matchedKeys) {
+    delete directoryUsers[k];
+  }
+  directoryUsers[canonicalId] = cleanedUser;
+  saveDirectoryStore();
+
+  return {
+    user: cleanedUser,
+    affectedUserIds: Array.from(affectedUserIds),
+    affectedEmails: Array.from(affectedEmails)
   };
 }
 

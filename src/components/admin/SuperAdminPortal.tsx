@@ -109,6 +109,8 @@ export const SuperAdminPortal: React.FC = () => {
     startImpersonation,
     updateUserRecord,
     softDeleteUserRecord,
+    deleteAndReleaseUserRecord,
+    resolveMultiRoleAccount,
     purgeAllTestAccountsAndCredits,
     purgeSimulatedSubscriptions,
     isSuperAdmin,
@@ -132,7 +134,7 @@ export const SuperAdminPortal: React.FC = () => {
     return 'directory';
   });
   const [roleFilter, setRoleFilter] = useState<'all' | UserRole>('all');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'locked' | 'suspended' | 'deleted' | 'wallet_frozen'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'locked' | 'suspended' | 'deleted' | 'wallet_frozen' | 'conflicts'>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedUserForEdit, setSelectedUserForEdit] = useState<RegisteredUserProfile | null>(null);
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
@@ -145,11 +147,18 @@ export const SuperAdminPortal: React.FC = () => {
   const [actingUserId, setActingUserId] = useState<string | null>(null);
   const [isPurgingTestAccounts, setIsPurgingTestAccounts] = useState<boolean>(false);
   const [isPurgingSimSubs, setIsPurgingSimSubs] = useState<boolean>(false);
-  const [deleteModalTarget, setDeleteModalTarget] = useState<{ user: RegisteredUserProfile; reason: string } | null>(null);
+  const [deleteModalTarget, setDeleteModalTarget] = useState<{
+    user: RegisteredUserProfile;
+    reason: string;
+    banEmail: boolean;
+  } | null>(null);
+  const [conflictModalUser, setConflictModalUser] = useState<RegisteredUserProfile | null>(null);
+  const [resolvingRoleKey, setResolvingRoleKey] = useState<string | null>(null);
 
   useBackHandler(portalView !== 'directory', () => setPortalView('directory'), 'superadmin-portal-view');
   useBackHandler(Boolean(selectedUserForEdit), () => setSelectedUserForEdit(null), 'superadmin-edit-user');
   useBackHandler(Boolean(deleteModalTarget), () => setDeleteModalTarget(null), 'superadmin-delete-user');
+  useBackHandler(Boolean(conflictModalUser), () => setConflictModalUser(null), 'superadmin-resolve-conflict');
 
   // Aspirant Referral Rewards Queue State
   const [aspirantRewardsList, setAspirantRewardsList] = useState<AspirantReferralReward[]>([]);
@@ -811,8 +820,16 @@ export const SuperAdminPortal: React.FC = () => {
   const filteredUsers = allRegisteredUsers.filter(u => {
     if (roleFilter !== 'all' && u.role !== roleFilter) return false;
     const effStatus = getEffectiveStatus(u);
+    if (statusFilter === 'conflicts' && !(u.conflictingRoles && u.conflictingRoles.length > 1)) return false;
     if (statusFilter === 'wallet_frozen' && !u.walletFrozen) return false;
-    if (statusFilter !== 'all' && statusFilter !== 'wallet_frozen' && effStatus !== statusFilter) return false;
+    if (
+      statusFilter !== 'all' &&
+      statusFilter !== 'wallet_frozen' &&
+      statusFilter !== 'conflicts' &&
+      effStatus !== statusFilter
+    ) {
+      return false;
+    }
     if (!searchQuery.trim()) return true;
 
     const query = searchQuery.toLowerCase();
@@ -848,6 +865,18 @@ export const SuperAdminPortal: React.FC = () => {
   const tutorCount = allRegisteredUsers.filter(u => u.role === 'tutor').length;
   const growthPartnerCount = allRegisteredUsers.filter(u => u.role === 'growth_partner').length;
   const adminCount = allRegisteredUsers.filter(u => u.role === 'admin').length;
+  const conflictUsersCount = allRegisteredUsers.filter(
+    u => u.conflictingRoles && u.conflictingRoles.length > 1
+  ).length;
+
+  const formatConflictRoleLabel = (role: UserRole): string => {
+    if (role === 'student') return 'Student';
+    if (role === 'parent') return 'Parent';
+    if (role === 'tutor') return 'Tutor';
+    if (role === 'growth_partner') return 'Growth Partner';
+    if (role === 'admin' || role === 'school_admin') return 'School Admin';
+    return role;
+  };
 
   const handleOpenEditModal = (u: RegisteredUserProfile) => {
     setSelectedUserForEdit(u);
@@ -3016,12 +3045,36 @@ export const SuperAdminPortal: React.FC = () => {
           >
             <option value="all">All Account Statuses</option>
             <option value="active">Active Accounts</option>
+            {conflictUsersCount > 0 && (
+              <option value="conflicts">Multi-Role Conflicts ({conflictUsersCount})</option>
+            )}
             <option value="locked">Timed Locked</option>
             <option value="suspended">Suspended Accounts</option>
-            <option value="deleted">Soft-Deleted</option>
+            <option value="deleted">Soft-Deleted / Banned</option>
             <option value="wallet_frozen">Wallet Frozen</option>
           </select>
         </div>
+
+        {conflictUsersCount > 0 && (
+          <div className="px-3.5 py-2.5 rounded-xl bg-amber-950/50 border border-amber-700/70 text-xs text-amber-200 flex flex-wrap items-center justify-between gap-2.5">
+            <div className="flex items-center gap-2 min-w-0">
+              <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+              <span>
+                <strong className="text-white">{conflictUsersCount}</strong> legacy account{conflictUsersCount === 1 ? '' : 's'} registered under multiple roles on one email. Resolve each to a single role or delete &amp; release the email.
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setRoleFilter('all');
+                setStatusFilter(statusFilter === 'conflicts' ? 'all' : 'conflicts');
+              }}
+              className="px-3 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-[11px] cursor-pointer shrink-0 transition-colors"
+            >
+              {statusFilter === 'conflicts' ? 'Show All Users' : `Filter Conflicts (${conflictUsersCount})`}
+            </button>
+          </div>
+        )}
 
         {directoryNotice && (
           <div
@@ -3171,6 +3224,36 @@ export const SuperAdminPortal: React.FC = () => {
                       {u.role === 'growth_partner' ? 'partner' : u.role}
                     </span>
                   </div>
+
+                  {/* Legacy Multi-Role Conflict Badge & One-Click Resolver */}
+                  {u.conflictingRoles && u.conflictingRoles.length > 1 && effStatus !== 'deleted' && (
+                    <div className="p-2.5 rounded-xl bg-amber-950/50 border border-amber-600/60 space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-amber-300">
+                          <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                          <span>Multi-Role Conflict ({u.conflictingRoles.length} Roles)</span>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setConflictModalUser(u)}
+                          className="px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-[10px] cursor-pointer transition-colors shrink-0"
+                        >
+                          Resolve Role
+                        </button>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {u.conflictingRoles.map((entry, idx) => (
+                          <span
+                            key={`${entry.role}_${idx}`}
+                            className="text-[10px] px-2 py-0.5 rounded-md bg-slate-950/90 border border-amber-700/50 text-amber-100 font-medium"
+                          >
+                            {formatConflictRoleLabel(entry.role)}
+                            {entry.detail ? ` · ${entry.detail}` : ''}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Role-Specific Details */}
                   {isStudent && u.studentData && (
@@ -3489,7 +3572,8 @@ export const SuperAdminPortal: React.FC = () => {
                         onClick={() =>
                           setDeleteModalTarget({
                             user: u,
-                            reason: 'Account closed and PII scrubbed by Super Admin'
+                            reason: 'Account removed by Super Admin so user can register fresh',
+                            banEmail: false
                           })
                         }
                         className="px-2.5 py-1 rounded-lg bg-rose-950/40 hover:bg-rose-900 border border-rose-800/70 text-rose-300 font-bold inline-flex items-center gap-1 cursor-pointer whitespace-nowrap shrink-0 ml-auto"
@@ -4524,7 +4608,11 @@ export const SuperAdminPortal: React.FC = () => {
                   <Trash2 className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-white">Confirm Soft-Delete &amp; PII Scrub</h3>
+                  <h3 className="text-sm font-bold text-white">
+                    {deleteModalTarget.banEmail
+                      ? 'Confirm Soft-Delete & Permanent Email Ban'
+                      : 'Delete Account & Release Email'}
+                  </h3>
                   <p className="text-[11px] text-slate-400 font-mono">
                     {deleteModalTarget.user.fullName} · {deleteModalTarget.user.email}
                   </p>
@@ -4539,16 +4627,49 @@ export const SuperAdminPortal: React.FC = () => {
               </button>
             </div>
 
-            <p className="text-xs text-slate-300 leading-relaxed">
-              This will scrub profile PII to <span className="font-mono text-rose-300">Deleted Account</span>, clear student/parent/tutor data, and permanently block login while keeping fraud &amp; security audit logs intact.
-            </p>
+            {deleteModalTarget.banEmail ? (
+              <p className="text-xs text-rose-200/90 leading-relaxed bg-rose-950/40 border border-rose-800/60 rounded-xl p-3">
+                <strong>Ban Mode Enabled:</strong> This scrubs profile PII to <span className="font-mono text-rose-300">Deleted Account</span> and permanently blocks <span className="font-mono">{deleteModalTarget.user.email}</span> from signing in or registering again while preserving fraud &amp; security audit logs.
+              </p>
+            ) : (
+              <p className="text-xs text-slate-300 leading-relaxed bg-emerald-950/30 border border-emerald-800/50 rounded-xl p-3">
+                <strong className="text-emerald-300">Email Release Enabled (Default):</strong> Permanently deletes this user&apos;s records across the directory, cloud profiles, and any prior deletion locks so <span className="font-mono text-white">{deleteModalTarget.user.email}</span> can immediately register a fresh single-role account.
+              </p>
+            )}
+
+            <label className="flex items-start gap-2.5 p-3 rounded-xl bg-slate-950 border border-slate-800 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={deleteModalTarget.banEmail}
+                onChange={e =>
+                  setDeleteModalTarget(prev =>
+                    prev
+                      ? {
+                          ...prev,
+                          banEmail: e.target.checked,
+                          reason: e.target.checked
+                            ? 'Account permanently banned by Super Admin for policy/security violation'
+                            : 'Account removed by Super Admin so user can register fresh'
+                        }
+                      : null
+                  )
+                }
+                className="mt-0.5 w-4 h-4 accent-rose-600 rounded cursor-pointer"
+              />
+              <span className="text-xs text-slate-300 leading-snug">
+                <strong className="text-white block">Also permanently ban this email from re-registering</strong>
+                <span className="text-[11px] text-slate-400">
+                  Leave unchecked to let the user create a fresh account immediately after deletion.
+                </span>
+              </span>
+            </label>
 
             <div>
               <label className="block text-[11px] font-semibold text-slate-400 mb-1">
                 Audit Reason
               </label>
               <textarea
-                rows={3}
+                rows={2}
                 value={deleteModalTarget.reason}
                 onChange={e =>
                   setDeleteModalTarget(prev => (prev ? { ...prev, reason: e.target.value } : null))
@@ -4572,24 +4693,157 @@ export const SuperAdminPortal: React.FC = () => {
                   const target = deleteModalTarget;
                   setDeleteModalTarget(null);
                   setActingUserId(target.user.id);
-                  const res = await softDeleteUserRecord(target.user.id, target.reason, authorizedAdminEmail);
-                  setActingUserId(null);
-                  if (res.success) {
-                    setDirectoryNotice({
-                      type: 'success',
-                      text: `Soft-deleted ${target.user.email} and scrubbed profile while preserving audit logs.`
-                    });
+                  if (target.banEmail) {
+                    const res = await softDeleteUserRecord(target.user.id, target.reason, authorizedAdminEmail);
+                    setActingUserId(null);
+                    if (res.success) {
+                      setDirectoryNotice({
+                        type: 'success',
+                        text: `Soft-deleted and permanently banned ${target.user.email} while preserving audit logs.`
+                      });
+                    } else {
+                      setDirectoryNotice({
+                        type: 'error',
+                        text: res.error || 'Could not ban and soft-delete account.'
+                      });
+                    }
                   } else {
-                    setDirectoryNotice({
-                      type: 'error',
-                      text: res.error || 'Could not soft-delete account.'
-                    });
+                    const res = await deleteAndReleaseUserRecord(
+                      target.user,
+                      target.reason,
+                      authorizedAdminEmail
+                    );
+                    setActingUserId(null);
+                    if (res.success) {
+                      setDirectoryNotice({
+                        type: 'success',
+                        text: `Deleted ${target.user.email} and released the email for immediate fresh registration.`
+                      });
+                    } else {
+                      setDirectoryNotice({
+                        type: 'error',
+                        text: res.error || 'Could not delete and release account.'
+                      });
+                    }
                   }
                 }}
                 className="px-4 min-h-[38px] rounded-xl bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
               >
                 <Trash2 className="w-3.5 h-3.5" />
-                <span>Confirm Soft-Delete</span>
+                <span>{deleteModalTarget.banEmail ? 'Confirm Ban & Scrub' : 'Delete & Release Email'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Multi-Role Account Conflict Resolver Modal */}
+      {conflictModalUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xs">
+          <div className="bg-[#0B1526] border border-amber-700/80 w-full max-w-lg rounded-2xl p-5 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-amber-950/70 border border-amber-700/70 flex items-center justify-center text-amber-400">
+                  <AlertTriangle className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">Resolve Multi-Role Conflict</h3>
+                  <p className="text-[11px] text-slate-400 font-mono">
+                    {conflictModalUser.fullName} · {conflictModalUser.email}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setConflictModalUser(null)}
+                className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-300 leading-relaxed">
+              This email holds records under multiple roles from before single-role enforcement. Pick the <strong className="text-white">one role to keep</strong> — sign-in and User Directory will immediately align and the secondary role&apos;s records will be cleaned up — or delete the account completely to let the user re-register fresh.
+            </p>
+
+            <div className="space-y-2">
+              {(conflictModalUser.conflictingRoles || []).map((entry, idx) => {
+                const isWorking = resolvingRoleKey === `${conflictModalUser.id}_${entry.role}`;
+                return (
+                  <div
+                    key={`${entry.role}_${entry.userId}_${idx}`}
+                    className="p-3 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between gap-3"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold text-white flex items-center gap-2">
+                        <span>{formatConflictRoleLabel(entry.role)}</span>
+                        <span className="text-[10px] font-mono text-slate-400 bg-slate-900 border border-slate-800 px-1.5 py-0.5 rounded">
+                          {entry.source}
+                        </span>
+                      </div>
+                      {entry.detail && (
+                        <p className="text-[11px] text-slate-400 mt-0.5 truncate">{entry.detail}</p>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      disabled={Boolean(resolvingRoleKey)}
+                      onClick={async () => {
+                        const targetUser = conflictModalUser;
+                        const roleToKeep = entry.role;
+                        setResolvingRoleKey(`${targetUser.id}_${roleToKeep}`);
+                        const res = await resolveMultiRoleAccount(
+                          targetUser,
+                          roleToKeep,
+                          authorizedAdminEmail
+                        );
+                        setResolvingRoleKey(null);
+                        if (res.success) {
+                          setConflictModalUser(null);
+                          setDirectoryNotice({
+                            type: 'success',
+                            text: `Resolved ${targetUser.email} to ${formatConflictRoleLabel(roleToKeep)} only. Sign-in and User Directory are now synchronized.`
+                          });
+                        } else {
+                          setDirectoryNotice({
+                            type: 'error',
+                            text: res.error || 'Could not resolve multi-role conflict.'
+                          });
+                        }
+                      }}
+                      className="px-3 min-h-[34px] rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-bold whitespace-nowrap shrink-0 cursor-pointer transition-colors"
+                    >
+                      {isWorking ? 'Saving...' : `Keep ${formatConflictRoleLabel(entry.role)}`}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-slate-800">
+              <button
+                type="button"
+                disabled={Boolean(resolvingRoleKey)}
+                onClick={() => {
+                  const targetUser = conflictModalUser;
+                  setConflictModalUser(null);
+                  setDeleteModalTarget({
+                    user: targetUser,
+                    reason: 'Legacy multi-role account reset so user can register fresh under a single role',
+                    banEmail: false
+                  });
+                }}
+                className="px-3.5 min-h-[36px] rounded-xl bg-rose-950/60 hover:bg-rose-900 border border-rose-800/70 text-rose-200 text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Delete &amp; Release Email</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setConflictModalUser(null)}
+                className="px-4 min-h-[36px] rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 text-xs font-semibold cursor-pointer"
+              >
+                Close
               </button>
             </div>
           </div>
