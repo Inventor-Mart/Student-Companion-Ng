@@ -9393,7 +9393,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       isSuperAdminEmail(auth.currentUser.email)
     ) {
       const canonicalDocId = sanitizeFirestoreDocId(canonicalId);
-      const fsPayload = buildFirestoreUserAccountPayload(cleanedProfile);
+      const fsPayload = sanitizeUserAccountForFirestore(cleanedProfile);
       // Full overwrite (no merge) removes unwanted persona blobs from users/{uid}
       await setDoc(doc(db, 'users', canonicalDocId), fsPayload).catch(() => {});
 

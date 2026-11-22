@@ -4566,13 +4566,14 @@ export const SuperAdminPortal: React.FC = () => {
                         user: target,
                         reason:
                           editEnforcementReason.trim() ||
-                          'Account soft-deleted and PII scrubbed by Super Admin'
+                          'Account deleted by Super Admin',
+                        banEmail: false
                       });
                     }}
                     className="min-h-[44px] px-3.5 py-2 rounded-xl bg-rose-950/70 hover:bg-rose-900 border border-rose-800 text-rose-300 font-bold inline-flex items-center gap-1.5 cursor-pointer"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
-                    <span>Soft-Delete</span>
+                    <span>Delete</span>
                   </button>
                 ) : (
                   <div />
