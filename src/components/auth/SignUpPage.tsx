@@ -80,6 +80,7 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
   const {
     registerNewUser,
     authenticateGoogleForSignUp,
+    checkEmailAvailabilityForSignUp,
     targetSignUpRole,
     allRegisteredUsers,
     appliedReferralCode,
@@ -126,6 +127,7 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
   const [inputCode, setInputCode] = useState<string>('');
   const [verificationError, setVerificationError] = useState<string | null>(null);
   const [emailDeliveryError, setEmailDeliveryError] = useState<string | null>(null);
+  const [isEmailConflictError, setIsEmailConflictError] = useState<boolean>(false);
   const [resendTimer, setResendTimer] = useState<number>(30);
   const [isSendingCode, setIsSendingCode] = useState<boolean>(false);
   const [isCheckingFirebaseLink, setIsCheckingFirebaseLink] = useState<boolean>(false);
@@ -768,6 +770,7 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
   ): Promise<{ mode: 'otp' | 'firebase_link' | 'already_verified' | 'error'; firebaseUid?: string }> => {
     if (isRegistrationPausedForRole(selectedRole)) {
       const pauseNotice = getRegistrationPauseMessage(selectedRole);
+      setIsEmailConflictError(false);
       setEmailDeliveryError(pauseNotice);
       setVerificationError(pauseNotice);
       setCodeNotification(null);
@@ -777,6 +780,22 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
     setIsSendingCode(true);
     setVerificationError(null);
     setEmailDeliveryError(null);
+    setIsEmailConflictError(false);
+
+    // Authoritative single-role email uniqueness check before dispatching OTP or Firebase link
+    const availability = await checkEmailAvailabilityForSignUp(targetEmail, selectedRole);
+    if (!availability.available) {
+      const conflictMsg =
+        availability.error ||
+        `This email (${targetEmail}) is already registered. One email can only be used for one role. Please Sign In instead, or delete your existing account first to register fresh.`;
+      setIsEmailConflictError(Boolean(availability.emailAlreadyRegistered));
+      setEmailDeliveryError(conflictMsg);
+      setVerificationError(conflictMsg);
+      setCodeNotification(null);
+      setIsSendingCode(false);
+      return { mode: 'error' };
+    }
+
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     setVerificationCode(code);
     setResendTimer(30);
@@ -805,15 +824,21 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
       return { response, result };
     };
 
-    const isRecoverableEndpointFailure = (status: number, result: any): boolean =>
-      Boolean(result?.fallbackRecommended) ||
-      status === 403 ||
-      status === 404 ||
-      status === 405 ||
-      status === 502 ||
-      status === 503 ||
-      status === 504 ||
-      status >= 500;
+    const isRecoverableEndpointFailure = (status: number, result: any): boolean => {
+      if (result?.emailAlreadyRegistered || result?.blocked || result?.registrationPaused || status === 409) {
+        return false;
+      }
+      return (
+        Boolean(result?.fallbackRecommended) ||
+        status === 403 ||
+        status === 404 ||
+        status === 405 ||
+        status === 502 ||
+        status === 503 ||
+        status === 504 ||
+        status >= 500
+      );
+    };
 
     let shouldTryRenderFallback = false;
     let shouldFallbackToFirebase = false;
@@ -824,11 +849,24 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
 
       if (result.registrationPaused) {
         const pauseMsg = result.error || getRegistrationPauseMessage(selectedRole);
+        setIsEmailConflictError(false);
         setEmailDeliveryError(pauseMsg);
         setVerificationError(pauseMsg);
         setCodeNotification(null);
         setIsSendingCode(false);
         void refreshOTAStatus();
+        return { mode: 'error' };
+      }
+
+      if (response.status === 409 || result.emailAlreadyRegistered || result.blocked) {
+        const blockMsg =
+          result.error ||
+          `This email (${targetEmail}) is already registered. One email can only be used for one role. Please Sign In instead.`;
+        setIsEmailConflictError(Boolean(result.emailAlreadyRegistered || response.status === 409));
+        setEmailDeliveryError(blockMsg);
+        setVerificationError(blockMsg);
+        setCodeNotification(null);
+        setIsSendingCode(false);
         return { mode: 'error' };
       }
 
@@ -839,6 +877,7 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
           `Verification code successfully sent to ${targetEmail} via ${providerText}. Check your inbox or spam.`
         );
         setEmailDeliveryError(null);
+        setIsEmailConflictError(false);
         setIsSendingCode(false);
         return { mode: 'otp' };
       }
@@ -882,11 +921,24 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
 
             if (result.registrationPaused) {
               const pauseMsg = result.error || getRegistrationPauseMessage(selectedRole);
+              setIsEmailConflictError(false);
               setEmailDeliveryError(pauseMsg);
               setVerificationError(pauseMsg);
               setCodeNotification(null);
               setIsSendingCode(false);
               void refreshOTAStatus();
+              return { mode: 'error' };
+            }
+
+            if (response.status === 409 || result.emailAlreadyRegistered || result.blocked) {
+              const blockMsg =
+                result.error ||
+                `This email (${targetEmail}) is already registered. One email can only be used for one role. Please Sign In instead.`;
+              setIsEmailConflictError(Boolean(result.emailAlreadyRegistered || response.status === 409));
+              setEmailDeliveryError(blockMsg);
+              setVerificationError(blockMsg);
+              setCodeNotification(null);
+              setIsSendingCode(false);
               return { mode: 'error' };
             }
 
@@ -965,13 +1017,15 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
     if (isGoogleAuthenticating || isSendingCode) return;
     setIsGoogleAuthenticating(true);
     setEmailDeliveryError(null);
+    setIsEmailConflictError(false);
     setVerificationError(null);
     setNameError(null);
 
     try {
-      const res = await authenticateGoogleForSignUp();
+      const res = await authenticateGoogleForSignUp(selectedRole);
       if (!res.success) {
         const errMsg = res.error || 'Unable to verify with Google right now.';
+        setIsEmailConflictError(Boolean(res.emailAlreadyRegistered));
         if (fromStep === 1 || fromStep === 2) {
           setEmailDeliveryError(errMsg);
         } else {
@@ -1363,9 +1417,20 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
               </div>
 
               {emailDeliveryError && (
-                <div className="p-3 rounded-2xl bg-red-950/70 border border-red-500/40 flex items-start gap-2.5 text-xs text-red-200">
-                  <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
-                  <p className="text-[11px] leading-relaxed">{emailDeliveryError}</p>
+                <div className="p-3.5 rounded-2xl bg-red-950/70 border border-red-500/40 space-y-2.5 text-xs text-red-200">
+                  <div className="flex items-start gap-2.5">
+                    <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+                    <p className="text-[11px] leading-relaxed">{emailDeliveryError}</p>
+                  </div>
+                  {isEmailConflictError && (
+                    <button
+                      type="button"
+                      onClick={onBackToSignIn}
+                      className="w-full min-h-[40px] py-2 px-3 rounded-xl bg-[#84E000] hover:bg-[#75c900] text-[#0A1322] font-black text-xs transition-colors cursor-pointer"
+                    >
+                      Sign In to Existing Account
+                    </button>
+                  )}
                 </div>
               )}
 
@@ -3140,18 +3205,30 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
                   <div className="flex items-start gap-2.5">
                     <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
                     <div className="space-y-1">
-                      <span className="font-bold text-white block">Verification Notice</span>
+                      <span className="font-bold text-white block">
+                        {isEmailConflictError ? 'Email Already Registered' : 'Verification Notice'}
+                      </span>
                       <p className="text-[11px] leading-relaxed text-red-200/90">{emailDeliveryError}</p>
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    disabled={isGoogleAuthenticating}
-                    onClick={() => void handleGoogleQuickSignUp(2)}
-                    className="w-full min-h-[44px] py-2 px-3 rounded-xl bg-white/10 hover:bg-white/15 border border-white/20 text-white font-bold text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer"
-                  >
-                    <span>Continue &amp; Verify Instantly with Google</span>
-                  </button>
+                  {isEmailConflictError ? (
+                    <button
+                      type="button"
+                      onClick={onBackToSignIn}
+                      className="w-full min-h-[44px] py-2 px-3 rounded-xl bg-[#84E000] hover:bg-[#75c900] text-[#0A1322] font-black text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                    >
+                      <span>Sign In to Existing Account</span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={isGoogleAuthenticating}
+                      onClick={() => void handleGoogleQuickSignUp(2)}
+                      className="w-full min-h-[44px] py-2 px-3 rounded-xl bg-white/10 hover:bg-white/15 border border-white/20 text-white font-bold text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                    >
+                      <span>Continue &amp; Verify Instantly with Google</span>
+                    </button>
+                  )}
                 </div>
               )}
 

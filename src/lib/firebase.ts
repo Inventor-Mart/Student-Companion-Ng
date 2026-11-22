@@ -11,6 +11,7 @@ import {
   sendEmailVerification,
   updateProfile,
   signOut,
+  deleteUser,
   User
 } from 'firebase/auth';
 import {
@@ -27,17 +28,29 @@ import firebaseConfig from '../../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
 const firestoreDbId = (firebaseConfig as any).firestoreDatabaseId;
+const isEmbeddedIframe = (() => {
+  if (typeof window === 'undefined') return false;
+  try {
+    return window.self !== window.top;
+  } catch {
+    return true;
+  }
+})();
+const canUsePersistentIndexedDb =
+  typeof window !== 'undefined' &&
+  typeof indexedDB !== 'undefined' &&
+  !isEmbeddedIframe;
+
 let firestoreDb: Firestore;
 try {
   firestoreDb = initializeFirestore(
     app,
     {
-      experimentalAutoDetectLongPolling: true,
+      experimentalForceLongPolling: true,
       ignoreUndefinedProperties: true,
-      localCache:
-        typeof window !== 'undefined' && typeof indexedDB !== 'undefined'
-          ? persistentLocalCache({ tabManager: persistentMultipleTabManager() })
-          : memoryLocalCache()
+      localCache: canUsePersistentIndexedDb
+        ? persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+        : memoryLocalCache()
     },
     firestoreDbId
   );
@@ -46,7 +59,7 @@ try {
     firestoreDb = initializeFirestore(
       app,
       {
-        experimentalAutoDetectLongPolling: true,
+        experimentalForceLongPolling: true,
         ignoreUndefinedProperties: true,
         localCache: memoryLocalCache()
       },
@@ -656,6 +669,60 @@ export async function logOut() {
   }
 }
 
+export async function deleteCurrentFirebaseAuthUser(): Promise<{
+  deleted: boolean;
+  requiresRecentLogin?: boolean;
+  error?: string;
+}> {
+  const user = auth.currentUser;
+  if (!user) {
+    return { deleted: false };
+  }
+  try {
+    await deleteUser(user);
+    disconnectGoogleMedia();
+    return { deleted: true };
+  } catch (error: any) {
+    const code = String(error?.code || '');
+    if (code === 'auth/requires-recent-login') {
+      return {
+        deleted: false,
+        requiresRecentLogin: true,
+        error: 'Recent login required to delete Firebase Auth record.'
+      };
+    }
+    return {
+      deleted: false,
+      error: error?.message || 'Could not remove Firebase Auth record.'
+    };
+  }
+}
+
+export const USER_SESSION_TOKEN_KEY = 'sc_user_session_token_v1';
+
+export function setUserSessionToken(token: string | null): void {
+  if (typeof window === 'undefined') return;
+  try {
+    if (token && token.trim()) {
+      window.sessionStorage.setItem(USER_SESSION_TOKEN_KEY, token.trim());
+    } else {
+      window.sessionStorage.removeItem(USER_SESSION_TOKEN_KEY);
+    }
+  } catch {
+    // Ignore storage restriction
+  }
+}
+
+export function getUserSessionToken(): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const val = window.sessionStorage.getItem(USER_SESSION_TOKEN_KEY);
+    return val && val.trim() ? val.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function getFirebaseAuthHeaders(): Promise<Record<string, string>> {
   try {
     const user = auth.currentUser;
@@ -673,6 +740,10 @@ export async function getFirebaseAuthHeaders(): Promise<Record<string, string>> 
       const adminToken = window.sessionStorage.getItem('sc_ota_admin_token_v1');
       if (adminToken && adminToken.trim()) {
         return { Authorization: `Bearer ${adminToken.trim()}` };
+      }
+      const userToken = window.sessionStorage.getItem(USER_SESSION_TOKEN_KEY);
+      if (userToken && userToken.trim()) {
+        return { Authorization: `Bearer ${userToken.trim()}` };
       }
     }
   } catch {

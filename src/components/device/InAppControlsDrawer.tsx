@@ -22,7 +22,9 @@ import {
   RefreshCw,
   HardDriveDownload,
   Scale,
-  Trash2
+  Trash2,
+  Lock,
+  AlertTriangle
 } from 'lucide-react';
 import { ReportSecurityModal } from '../security/ReportSecurityModal';
 import { LegalAgreementModal } from '../common/LegalAgreementModal';
@@ -68,11 +70,15 @@ export const InAppControlsDrawer: React.FC<InAppControlsDrawerProps> = ({
     isSyncingOfflineQueue,
     lastOfflineSyncedAt,
     syncOfflineQueue,
-    updateUserAvatar
+    updateUserAvatar,
+    deleteAccount
   } = useApp();
 
   const [isReportModalOpen, setIsReportModalOpen] = React.useState(false);
   const [isLegalModalOpen, setIsLegalModalOpen] = React.useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = React.useState(false);
+  const [isDeletingAccount, setIsDeletingAccount] = React.useState(false);
+  const [deleteAccountError, setDeleteAccountError] = React.useState<string | null>(null);
   const [cacheSummary, setCacheSummary] = React.useState<OfflineCacheSummary | null>(null);
   const [isWarmingCache, setIsWarmingCache] = React.useState(false);
   const [isForceRefreshing, setIsForceRefreshing] = React.useState(false);
@@ -102,7 +108,26 @@ export const InAppControlsDrawer: React.FC<InAppControlsDrawerProps> = ({
     await forceClearAppCacheAndReload();
   };
 
-  if (!isOpen && !isReportModalOpen && !isLegalModalOpen) return null;
+  const handleConfirmDeleteAccount = async () => {
+    if (isDeletingAccount) return;
+    setIsDeletingAccount(true);
+    setDeleteAccountError(null);
+    try {
+      const res = await deleteAccount();
+      if (!res.success) {
+        setDeleteAccountError(res.error || 'Could not delete your account right now. Please try again.');
+        return;
+      }
+      setIsDeleteModalOpen(false);
+      onClose();
+    } catch (err: any) {
+      setDeleteAccountError(err?.message || 'Could not delete your account right now.');
+    } finally {
+      setIsDeletingAccount(false);
+    }
+  };
+
+  if (!isOpen && !isReportModalOpen && !isLegalModalOpen && !isDeleteModalOpen) return null;
 
   const showOfflineToggle = currentRole === 'student' || isSuperAdmin;
   const showDeviceFrameToggle = isSuperAdmin;
@@ -353,35 +378,51 @@ export const InAppControlsDrawer: React.FC<InAppControlsDrawerProps> = ({
             </div>
           </div>
 
-          {/* Student Class Switcher inside Menu Drawer */}
+          {/* Student Class Level (Locked for Students; Preview Switcher for Super Admin only) */}
           {currentRole === 'student' && (
             <div>
               <span className="text-[10px] font-bold tracking-wider text-slate-400 block mb-2 px-1">
-                Active Secondary Class Level
+                {isSuperAdmin ? 'Student Class Preview (Super Admin)' : 'Enrolled Class Level'}
               </span>
               <div className="p-3.5 rounded-2xl bg-[#101C31] border border-[#1C2F4D]">
-                <div className="flex items-center justify-between text-xs mb-2.5">
+                <div className="flex items-center justify-between text-xs">
                   <span className="text-slate-300 font-semibold">
-                    Active Class: <strong className="text-[#84E000]">{student.classLevel}</strong>
+                    Enrolled Class: <strong className="text-[#84E000]">{student.classLevel}</strong>
                   </span>
-                  <span className="text-[11px] text-slate-400">All 6 Unlocked</span>
+                  {isSuperAdmin ? (
+                    <span className="text-[11px] text-amber-300 font-semibold">Admin Override</span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-300">
+                      <Lock className="w-3 h-3 text-[#84E000]" />
+                      <span>Locked</span>
+                    </span>
+                  )}
                 </div>
-                <div className="grid grid-cols-3 gap-1.5">
-                  {(['JSS 1', 'JSS 2', 'JSS 3', 'SS 1', 'SS 2', 'SS 3'] as NigerianClassLevel[]).map(lvl => (
-                    <button
-                      key={lvl}
-                      type="button"
-                      onClick={() => updateStudentClass(lvl, lvl.startsWith('JSS') ? 'Junior' : (student.stream === 'Junior' ? 'Science' : (student.stream || 'Science')))}
-                      className={`min-h-[44px] px-2 rounded-xl text-xs font-bold transition-all text-center cursor-pointer whitespace-nowrap ${
-                        student.classLevel === lvl
-                          ? 'bg-[#84E000] text-slate-950 font-black shadow-sm ring-1 ring-white'
-                          : 'bg-[#15253F] hover:bg-[#1D3254] text-slate-200 border border-[#223B63]'
-                      }`}
-                    >
-                      {lvl}
-                    </button>
-                  ))}
-                </div>
+
+                {isSuperAdmin ? (
+                  <div className="grid grid-cols-3 gap-1.5 mt-2.5">
+                    {(['JSS 1', 'JSS 2', 'JSS 3', 'SS 1', 'SS 2', 'SS 3', 'University Aspirant'] as NigerianClassLevel[]).map(lvl => (
+                      <button
+                        key={lvl}
+                        type="button"
+                        onClick={() => updateStudentClass(lvl, lvl.startsWith('JSS') ? 'Junior' : (student.stream === 'Junior' ? 'Science' : (student.stream || 'Science')))}
+                        className={`min-h-[40px] px-2 rounded-xl text-[11px] font-bold transition-all text-center cursor-pointer whitespace-nowrap ${
+                          lvl === 'University Aspirant' ? 'col-span-3' : ''
+                        } ${
+                          student.classLevel === lvl
+                            ? 'bg-[#84E000] text-slate-950 font-black shadow-sm ring-1 ring-white'
+                            : 'bg-[#15253F] hover:bg-[#1D3254] text-slate-200 border border-[#223B63]'
+                        }`}
+                      >
+                        {lvl}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-slate-400 leading-relaxed mt-2">
+                    Your class is locked to the class selected during sign-up so your curriculum, drills, and exam prep stay tailored to your level.
+                  </p>
+                )}
               </div>
             </div>
           )}
@@ -638,6 +679,21 @@ export const InAppControlsDrawer: React.FC<InAppControlsDrawerProps> = ({
                 <LogOut className="w-4 h-4 text-rose-400 shrink-0" />
                 <span className="font-semibold">Log Out / Switch Account</span>
               </button>
+
+              {!isSuperAdmin && currentUserProfile && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDeleteAccountError(null);
+                    setIsDeleteModalOpen(true);
+                    onClose();
+                  }}
+                  className="w-full flex items-center gap-2.5 px-3 min-h-[44px] rounded-xl bg-[#101C31] hover:bg-rose-950/40 border border-rose-500/35 text-rose-300 transition-all cursor-pointer"
+                >
+                  <Trash2 className="w-4 h-4 text-rose-400 shrink-0" />
+                  <span className="font-semibold">Delete My Account</span>
+                </button>
+              )}
             </div>
           </div>
 
@@ -667,6 +723,71 @@ export const InAppControlsDrawer: React.FC<InAppControlsDrawerProps> = ({
         acceptedAt={currentUserProfile?.legalConsent?.acceptedAt}
         onClose={() => setIsLegalModalOpen(false)}
       />
+    )}
+    {isDeleteModalOpen && (
+      <div className="fixed inset-0 z-[260] flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm">
+        <div
+          className="w-full max-w-md rounded-2xl bg-[#0D1729] border border-rose-500/40 shadow-2xl p-5 space-y-4 text-slate-100"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-account-title"
+        >
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-xl bg-rose-500/15 border border-rose-500/40 flex items-center justify-center text-rose-400 shrink-0">
+              <AlertTriangle className="w-5 h-5" />
+            </div>
+            <div className="min-w-0">
+              <h3 id="delete-account-title" className="text-base font-black text-white">
+                Delete Your Account?
+              </h3>
+              <p className="text-xs text-slate-300 mt-1 leading-relaxed">
+                This will permanently remove your <strong className="text-white">{currentUserProfile?.role}</strong> profile and sign you out of Student Companion.
+              </p>
+            </div>
+          </div>
+
+          <div className="p-3 rounded-xl bg-[#101C31] border border-[#1C2F4D] text-xs text-slate-300 space-y-1.5">
+            <p>
+              Account email:{' '}
+              <strong className="text-white break-all">
+                {currentUserProfile?.email || currentUser?.email || 'Current account'}
+              </strong>
+            </p>
+            <p className="text-slate-400 leading-relaxed">
+              Once deleted, this email address will be released immediately so you can register a brand-new account in any role.
+            </p>
+          </div>
+
+          {deleteAccountError && (
+            <div className="p-3 rounded-xl bg-rose-950/60 border border-rose-500/40 text-xs text-rose-200">
+              {deleteAccountError}
+            </div>
+          )}
+
+          <div className="flex items-center justify-end gap-2.5 pt-1">
+            <button
+              type="button"
+              disabled={isDeletingAccount}
+              onClick={() => {
+                setDeleteAccountError(null);
+                setIsDeleteModalOpen(false);
+              }}
+              className="px-4 min-h-[42px] rounded-xl bg-[#15253F] hover:bg-[#1D3254] border border-[#223B63] text-xs font-bold text-slate-200 cursor-pointer disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={isDeletingAccount}
+              onClick={() => void handleConfirmDeleteAccount()}
+              className="px-4 min-h-[42px] rounded-xl bg-rose-600 hover:bg-rose-500 text-xs font-black text-white cursor-pointer disabled:opacity-60 inline-flex items-center gap-1.5"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>{isDeletingAccount ? 'Deleting Account...' : 'Yes, Delete My Account'}</span>
+            </button>
+          </div>
+        </div>
+      </div>
     )}
     </>
   );

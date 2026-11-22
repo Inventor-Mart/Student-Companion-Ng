@@ -784,15 +784,16 @@ service cloud.firestore {
         isAdmin() ||
         (
           isOwner(studentId) &&
+          incoming().classLevel == existing().classLevel &&
           incoming().diff(existing()).affectedKeys().hasOnly([
-            'name', 'school', 'classLevel', 'stream', 'lastStudyDate',
+            'name', 'school', 'stream', 'lastStudyDate',
             'uniformVerified', 'uniformPhotoUrl', 'downloadedSubjectIds',
             'completedQuizIds', 'completedReadNoteIds', 'verifiedReadingLogs',
             'dailyExploration', 'studentLinkCode', 'schoolCode', 'referredByCode'
           ])
         )
       );
-      allow delete: if isAdmin();
+      allow delete: if isAdmin() || isOwner(studentId);
 
       // Subcollection: Exam Results
       match /examResults/{resultId} {
@@ -831,7 +832,7 @@ service cloud.firestore {
           incoming().diff(existing()).affectedKeys().hasOnly(['fullName', 'avatarUrl', 'parentData', 'tutorData', 'legalConsent'])
         )
       );
-      allow delete: if isAdmin();
+      allow delete: if isAdmin() || isOwner(userId);
     }
 
     // 3. Parent Wallets Collection (balanceNaira locked against client writes; PIN-only owner update)
@@ -850,7 +851,7 @@ service cloud.firestore {
           incoming().diff(existing()).affectedKeys().hasOnly(['pin', 'updatedAt'])
         )
       );
-      allow delete: if isAdmin();
+      allow delete: if isAdmin() || isOwner(userId);
     }
 
     // 3b. Authoritative Parent Escrow Wallets & Transactions (Admin/Server write only; owner read)

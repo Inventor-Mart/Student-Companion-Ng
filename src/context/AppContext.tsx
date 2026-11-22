@@ -164,6 +164,8 @@ import {
   clearGoogleAuthReturnTarget,
   GoogleAuthReturnTarget,
   logOut,
+  deleteCurrentFirebaseAuthUser,
+  setUserSessionToken,
   handleFirestoreError,
   OperationType,
   getFirebaseAuthHeaders
@@ -229,7 +231,15 @@ interface AppContextType {
   registerNewUser: (role: UserRole, profileData: any) => void;
   updateTutorProfile: (tutorData: Partial<RegisteredTutorData>) => void;
   signOutApp: () => void;
-  deleteAccount: (userId?: string) => Promise<void>;
+  deleteAccount: (userId?: string) => Promise<{ success: boolean; error?: string }>;
+  checkEmailAvailabilityForSignUp: (email: string, requestedRole?: UserRole) => Promise<{
+    available: boolean;
+    emailAlreadyRegistered?: boolean;
+    blocked?: boolean;
+    registeredRole?: string;
+    roleLabel?: string;
+    error?: string;
+  }>;
 
   // Firebase & Credential Auth
   currentUser: User | null;
@@ -256,7 +266,7 @@ interface AppContextType {
     error?: string;
     code?: string;
   }>;
-  authenticateGoogleForSignUp: () => Promise<{
+  authenticateGoogleForSignUp: (requestedRole?: UserRole) => Promise<{
     success: boolean;
     status?: 'existing_signed_in' | 'new_google_user';
     profile?: RegisteredUserProfile;
@@ -266,6 +276,9 @@ interface AppContextType {
       displayName: string;
       photoURL?: string;
     };
+    emailAlreadyRegistered?: boolean;
+    registeredRole?: string;
+    roleLabel?: string;
     error?: string;
     code?: string;
   }>;
@@ -2792,7 +2805,111 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const authenticateGoogleForSignUp = async (): Promise<{
+  const formatRoleDisplayLabel = (role?: string | null): string => {
+    const clean = String(role || '').trim().toLowerCase();
+    if (clean === 'student') return 'Student';
+    if (clean === 'parent') return 'Parent';
+    if (clean === 'tutor') return 'Tutor';
+    if (clean === 'admin' || clean === 'school_admin') return 'School Admin';
+    if (clean === 'growth_partner') return 'Growth Partner';
+    return 'Registered';
+  };
+
+  const normalizeRoleFamilyClient = (role?: string | null): string => {
+    const clean = String(role || '').trim().toLowerCase();
+    if (clean === 'admin' || clean === 'school_admin') return 'school_admin';
+    return clean;
+  };
+
+  const checkEmailAvailabilityForSignUp = useCallback(async (
+    rawEmail: string,
+    requestedRole?: UserRole
+  ): Promise<{
+    available: boolean;
+    emailAlreadyRegistered?: boolean;
+    blocked?: boolean;
+    registeredRole?: string;
+    roleLabel?: string;
+    error?: string;
+  }> => {
+    const cleanEmail = String(rawEmail || '').trim().toLowerCase();
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      return { available: false, error: 'Please enter a valid email address.' };
+    }
+
+    const localActive = allRegisteredUsers.find(
+      u =>
+        u.accountStatus !== 'deleted' &&
+        !isPurgedRecord(u) &&
+        String(u.email || '').trim().toLowerCase() === cleanEmail
+    );
+    if (localActive) {
+      const roleLabel = formatRoleDisplayLabel(localActive.role);
+      return {
+        available: false,
+        emailAlreadyRegistered: true,
+        registeredRole: localActive.role,
+        roleLabel,
+        error: `This email (${cleanEmail}) is already registered as a ${roleLabel} account. One email can only be registered for one role. Please Sign In instead, or delete your existing account first to register fresh.`
+      };
+    }
+
+    const postCheck = async (url: string, useNativeFetch = false) => {
+      const fetchFn: typeof fetch =
+        useNativeFetch && typeof window !== 'undefined' && typeof (window as any).__SC_NATIVE_FETCH__ === 'function'
+          ? (window as any).__SC_NATIVE_FETCH__
+          : fetch;
+      const res = await fetchFn(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getSecurityHeaders({ userEmail: cleanEmail })
+        },
+        body: JSON.stringify({ email: cleanEmail, requestedRole })
+      });
+      const data = await res.json().catch(() => ({}));
+      return { res, data };
+    };
+
+    try {
+      const { res, data } = await postCheck('/api/users/check-email');
+      if (res.ok && data?.success) {
+        return {
+          available: Boolean(data.available),
+          emailAlreadyRegistered: Boolean(data.emailAlreadyRegistered),
+          blocked: Boolean(data.blocked),
+          registeredRole: data.registeredRole,
+          roleLabel: data.roleLabel,
+          error: data.error
+        };
+      }
+      if (res.status === 404 || res.status === 405 || res.status >= 500) {
+        const runtimeMeta = typeof window !== 'undefined' ? (window as any).__SC_RUNTIME_META__ : null;
+        const remoteOrigin = String(
+          runtimeMeta?.apiOrigin || 'https://student-companion-api-b373.onrender.com'
+        ).replace(/\/+$/, '');
+        if (remoteOrigin.startsWith('https://') && !runtimeMeta?.shouldRouteApiToRemoteOrigin) {
+          const remote = await postCheck(`${remoteOrigin}/api/users/check-email`, true);
+          if (remote.res.ok && remote.data?.success) {
+            return {
+              available: Boolean(remote.data.available),
+              emailAlreadyRegistered: Boolean(remote.data.emailAlreadyRegistered),
+              blocked: Boolean(remote.data.blocked),
+              registeredRole: remote.data.registeredRole,
+              roleLabel: remote.data.roleLabel,
+              error: remote.data.error
+            };
+          }
+        }
+      }
+    } catch {
+      // Allow server-side validation on /api/send-verification-code & /api/users/register to act as final guard
+    }
+
+    return { available: true };
+  }, [allRegisteredUsers]);
+
+  const authenticateGoogleForSignUp = async (requestedRole?: UserRole): Promise<{
     success: boolean;
     status?: 'existing_signed_in' | 'new_google_user';
     profile?: RegisteredUserProfile;
@@ -2802,6 +2919,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       displayName: string;
       photoURL?: string;
     };
+    emailAlreadyRegistered?: boolean;
+    registeredRole?: string;
+    roleLabel?: string;
     error?: string;
     code?: string;
   }> => {
@@ -2831,21 +2951,58 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
 
       const localExisting = allRegisteredUsers.find(
-        u => u.email.toLowerCase() === cleanEmail || u.id === user.uid
+        u =>
+          u.accountStatus !== 'deleted' &&
+          !isPurgedRecord(u) &&
+          (u.email.toLowerCase() === cleanEmail || u.id === user.uid)
       );
       let firestoreExisting: RegisteredUserProfile | null = null;
       if (!isOffline) {
         try {
           const snap = await getDoc(doc(db, 'users', user.uid));
           if (snap.exists()) {
-            firestoreExisting = snap.data() as RegisteredUserProfile;
+            const fsData = snap.data() as RegisteredUserProfile;
+            if (fsData?.accountStatus !== 'deleted') {
+              firestoreExisting = fsData;
+            }
           }
         } catch {
           // Non-fatal: fall back to local / backend check below
         }
       }
 
-      if (localExisting || firestoreExisting) {
+      const serverCheck = await checkEmailAvailabilityForSignUp(cleanEmail, requestedRole);
+      if (serverCheck.blocked) {
+        await logOut().catch(() => {});
+        return {
+          success: false,
+          error: serverCheck.error || 'This email is currently blocked from registering.'
+        };
+      }
+
+      const existingRole =
+        firestoreExisting?.role ||
+        localExisting?.role ||
+        (serverCheck.emailAlreadyRegistered ? serverCheck.registeredRole : undefined);
+
+      if (existingRole) {
+        const existingRoleLabel = formatRoleDisplayLabel(existingRole);
+        const requestedRoleLabel = formatRoleDisplayLabel(requestedRole);
+        const isDifferentRole =
+          Boolean(requestedRole) &&
+          normalizeRoleFamilyClient(existingRole) !== normalizeRoleFamilyClient(requestedRole);
+
+        if (isDifferentRole) {
+          await logOut().catch(() => {});
+          return {
+            success: false,
+            emailAlreadyRegistered: true,
+            registeredRole: existingRole,
+            roleLabel: existingRoleLabel,
+            error: `This Google email (${cleanEmail}) is already registered as a ${existingRoleLabel} account. One email cannot register as both ${existingRoleLabel} and ${requestedRoleLabel}. Please Sign In to your existing account, or delete it first to register fresh.`
+          };
+        }
+
         const res = await finalizeGoogleUserSession(user, { skipNavigate: false });
         return {
           success: res.success,
@@ -3236,6 +3393,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       if (typeof data.otaAdminToken === 'string') {
         setServerOTAAdminToken(data.otaAdminToken);
+      }
+      if (typeof data.sessionToken === 'string') {
+        setUserSessionToken(data.sessionToken);
       }
 
       const otpRepair = repairSpecificTutorRecord(data.profile as RegisteredUserProfile);
@@ -3699,6 +3859,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [student, currentUser, isOffline]);
 
   const updateStudentClass = (classLevel: any, stream?: any) => {
+    const canOverrideStudentClass =
+      isSuperAdmin ||
+      Boolean(impersonatedUser) ||
+      isSuperAdminEmail(currentUser?.email) ||
+      isSuperAdminEmail(currentUserProfile?.email);
+    if (!canOverrideStudentClass) {
+      return;
+    }
+
     const finalStream = stream || (typeof classLevel === 'string' && classLevel.startsWith('JSS') ? 'Junior' : 'Science');
     setStudent(prev => {
       const updated = {
@@ -5911,7 +6080,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       (profileData.firebaseUid && String(profileData.firebaseUid).trim()) ||
       `usr_${role}_${Date.now()}`;
     const fullName = profileData.fullName || profileData.name || 'User';
-    const email = profileData.email || '';
+    const email = String(profileData.email || '').trim().toLowerCase();
+
+    if (email) {
+      const existingActiveConflict = allRegisteredUsers.find(
+        u =>
+          u.accountStatus !== 'deleted' &&
+          !isPurgedRecord(u) &&
+          String(u.email || '').trim().toLowerCase() === email &&
+          (u.id !== newId || normalizeRoleFamilyClient(u.role) !== normalizeRoleFamilyClient(role))
+      );
+      if (existingActiveConflict) {
+        return;
+      }
+    }
 
     const syncProfileToServer = (
       profileSnapshot: RegisteredUserProfile,
@@ -5927,7 +6109,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           })
         },
         body: JSON.stringify({ profile: profileSnapshot })
-      }).catch(() => {});
+      })
+        .then(r => r.json().catch(() => ({})))
+        .then(data => {
+          if (typeof data?.sessionToken === 'string') {
+            setUserSessionToken(data.sessionToken);
+          }
+        })
+        .catch(() => {});
     };
 
     const safeRawAvatar = sanitizeAvatarForCloud(profileData.avatarUrl);
@@ -7791,21 +7980,109 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   };
 
-  const deleteAccount = async (userId?: string) => {
-    const targetUid = userId || currentUser?.uid;
-    if (targetUid && !isOffline) {
-      try {
-        await deleteDoc(doc(db, 'students', targetUid));
-        await deleteDoc(doc(db, 'wallets', targetUid));
-      } catch (err) {
-        console.warn('Could not delete firestore docs:', err);
+  const deleteAccount = async (userId?: string): Promise<{ success: boolean; error?: string }> => {
+    const targetUid = String(userId || currentUserProfile?.id || currentUser?.uid || '').trim();
+    const targetEmail = String(currentUserProfile?.email || currentUser?.email || '').trim().toLowerCase();
+
+    if (isSuperAdmin || isSuperAdminEmail(targetEmail)) {
+      return {
+        success: false,
+        error: 'Super Admin accounts cannot be self-deleted.'
+      };
+    }
+
+    if (!targetUid && !targetEmail) {
+      return {
+        success: false,
+        error: 'No active account found to delete.'
+      };
+    }
+
+    // 1. Delete from authoritative backend shared directory (releases email for fresh registration)
+    try {
+      const authHeaders = await getFirebaseAuthHeaders();
+      const postSelfDelete = async (url: string, useNativeFetch = false) => {
+        const fetchFn: typeof fetch =
+          useNativeFetch && typeof window !== 'undefined' && typeof (window as any).__SC_NATIVE_FETCH__ === 'function'
+            ? (window as any).__SC_NATIVE_FETCH__
+            : fetch;
+        const res = await fetchFn(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...authHeaders,
+            ...getSecurityHeaders({
+              userId: targetUid || undefined,
+              userEmail: targetEmail || undefined
+            })
+          },
+          body: JSON.stringify({
+            userId: targetUid,
+            email: targetEmail
+          })
+        });
+        const data = await res.json().catch(() => ({}));
+        return { res, data };
+      };
+
+      const primary = await postSelfDelete('/api/users/self-delete');
+      if (!primary.res.ok && (primary.res.status === 404 || primary.res.status === 405 || primary.res.status >= 500)) {
+        const runtimeMeta = typeof window !== 'undefined' ? (window as any).__SC_RUNTIME_META__ : null;
+        const remoteOrigin = String(
+          runtimeMeta?.apiOrigin || 'https://student-companion-api-b373.onrender.com'
+        ).replace(/\/+$/, '');
+        if (remoteOrigin.startsWith('https://') && !runtimeMeta?.shouldRouteApiToRemoteOrigin) {
+          await postSelfDelete(`${remoteOrigin}/api/users/self-delete`, true).catch(() => {});
+        }
+      } else if (!primary.res.ok && primary.res.status === 403 && primary.data?.error) {
+        return {
+          success: false,
+          error: primary.data.error
+        };
+      }
+    } catch (err) {
+      console.warn('Backend self-delete cleanup encountered a network issue:', err);
+    }
+
+    // 2. Delete Firestore documents owned by this user so cloud sync cannot revive the deleted profile
+    const firestoreUid = currentUser?.uid || targetUid;
+    if (firestoreUid && !isOffline && auth.currentUser) {
+      await Promise.allSettled([
+        deleteDoc(doc(db, 'users', firestoreUid)),
+        deleteDoc(doc(db, 'students', firestoreUid)),
+        deleteDoc(doc(db, 'wallets', firestoreUid))
+      ]);
+    }
+
+    // 3. Remove Firebase Auth account so the email can register fresh cleanly
+    if (auth.currentUser) {
+      const fbDel = await deleteCurrentFirebaseAuthUser();
+      if (!fbDel.deleted) {
+        await logOut().catch(() => {});
       }
     }
+
+    // 4. Purge from local directory & browser storage so same device immediately accepts fresh registration
+    setAllRegisteredUsers(prev => {
+      const next = prev.filter(u => {
+        const uEmail = String(u.email || '').trim().toLowerCase();
+        if (targetUid && u.id === targetUid) return false;
+        if (firestoreUid && u.id === firestoreUid) return false;
+        if (targetEmail && uEmail === targetEmail) return false;
+        return true;
+      });
+      safeSetItem('sc_all_users', JSON.stringify(next));
+      return next;
+    });
+
+    setUserSessionToken(null);
     signOutApp();
+    return { success: true };
   };
 
   const signOutApp = () => {
     setServerOTAAdminToken(null);
+    setUserSessionToken(null);
     authoritativeStudentOverlayRef.current = null;
     authoritativeWalletOverlayRef.current = null;
     setCurrentUserProfile(null);
@@ -9560,6 +9837,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateTutorProfile,
         signOutApp,
         deleteAccount,
+        checkEmailAvailabilityForSignUp,
         currentUser,
         authLoading,
         googleAuthError,

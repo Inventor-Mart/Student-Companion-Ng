@@ -45,6 +45,11 @@ import {
   verifyEmailOtpChallenge,
   harvestAllDirectoryUsers,
   findServerUserByEmailOrId,
+  findActiveRegisteredEmailConflict,
+  removeServerUserPermanently,
+  formatRoleDisplayName,
+  normalizeRoleFamily,
+  hashEmailSha256,
   purgeSampleUsersFromDirectory,
   isPlaceholderEmail
 } from './serverUserDirectory';
@@ -1670,6 +1675,39 @@ app.post('/api/send-verification-code', async (req, res) => {
         success: false,
         registrationPaused: true,
         error: pauseCheck.message
+      });
+    }
+
+    const activeBlock = findActiveBlock({
+      ip: extractClientIp(req),
+      fingerprint: extractDeviceFingerprint(req),
+      email: trimmedEmail,
+      blockTypes: ['account_delete', 'account_suspend', 'account_lock']
+    });
+    if (activeBlock) {
+      return res.status(403).json({
+        success: false,
+        blocked: true,
+        error: `Registration blocked: ${activeBlock.reason}`
+      });
+    }
+
+    const emailConflict = await findActiveRegisteredEmailConflict({
+      email: trimmedEmail,
+      linkingMemoryStore,
+      referralMemoryStore,
+      ledgerState: getLedgerState(),
+      serverDb,
+      deletedAccounts: getDeletedAccountsSnapshot()
+    });
+    if (emailConflict.exists) {
+      const existingRoleLabel = emailConflict.roleLabel || formatRoleDisplayName(emailConflict.role);
+      return res.status(409).json({
+        success: false,
+        emailAlreadyRegistered: true,
+        registeredRole: emailConflict.role,
+        roleLabel: existingRoleLabel,
+        error: `This email (${trimmedEmail}) is already registered as a ${existingRoleLabel} account. One email can only be registered for one role. Please Sign In instead, or delete your existing account first to register fresh.`
       });
     }
 
@@ -7481,6 +7519,111 @@ function verifyAdminHmacToken(token: string): { ok: boolean; email?: string; err
   }
 }
 
+function issueUserSessionToken(userId: string, email: string): string {
+  const payload = Buffer.from(
+    JSON.stringify({
+      uid: String(userId || '').trim(),
+      email: String(email || '').toLowerCase().trim(),
+      exp: Date.now() + 7 * 24 * 60 * 60 * 1000,
+    }),
+    'utf8'
+  ).toString('base64url');
+  const sig = crypto
+    .createHmac('sha256', SERVER_OTA_HMAC_SECRET)
+    .update(`user:${payload}`)
+    .digest('base64url');
+  return `scuser.${payload}.${sig}`;
+}
+
+function verifyUserSessionToken(token: string): { ok: boolean; uid?: string; email?: string; error?: string } {
+  const parts = token.split('.');
+  if (parts.length !== 3 || parts[0] !== 'scuser') {
+    return { ok: false, error: 'Malformed user session token.' };
+  }
+  const [, payloadB64, sigB64] = parts;
+  const expectedSig = crypto
+    .createHmac('sha256', SERVER_OTA_HMAC_SECRET)
+    .update(`user:${payloadB64}`)
+    .digest('base64url');
+  const a = Buffer.from(sigB64, 'utf8');
+  const b = Buffer.from(expectedSig, 'utf8');
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+    return { ok: false, error: 'Invalid user session signature.' };
+  }
+  try {
+    const parsed = JSON.parse(Buffer.from(payloadB64, 'base64url').toString('utf8'));
+    if (!parsed?.exp || Number(parsed.exp) < Date.now()) {
+      return { ok: false, error: 'User session expired. Please sign in again.' };
+    }
+    return {
+      ok: true,
+      uid: String(parsed?.uid || '').trim(),
+      email: String(parsed?.email || '').toLowerCase().trim(),
+    };
+  } catch {
+    return { ok: false, error: 'Corrupted user session payload.' };
+  }
+}
+
+async function verifyAccountOwnerRequest(
+  req: express.Request,
+  targetUserId: string,
+  targetEmail: string
+): Promise<{ ok: boolean; uid?: string; email?: string; error?: string }> {
+  const authHeader = String(req.headers.authorization || '').trim();
+  if (!authHeader.startsWith('Bearer ')) {
+    return { ok: false, error: 'Authentication required to delete your account.' };
+  }
+  const token = authHeader.slice(7).trim();
+  if (!token) {
+    return { ok: false, error: 'Missing authentication token.' };
+  }
+
+  const cleanTargetId = String(targetUserId || '').trim();
+  const cleanTargetEmail = String(targetEmail || '').trim().toLowerCase();
+
+  if (token.startsWith('scuser.')) {
+    const verified = verifyUserSessionToken(token);
+    if (!verified.ok) return verified;
+    const matchesUid = Boolean(cleanTargetId && verified.uid && verified.uid === cleanTargetId);
+    const matchesEmail = Boolean(cleanTargetEmail && verified.email && verified.email === cleanTargetEmail);
+    if (!matchesUid && !matchesEmail) {
+      return { ok: false, error: 'You can only delete your own account.' };
+    }
+    return { ok: true, uid: verified.uid || cleanTargetId, email: verified.email || cleanTargetEmail };
+  }
+
+  try {
+    const verifyRes = await fetch(
+      `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${encodeURIComponent(firebaseConfig.apiKey)}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken: token }),
+        signal: AbortSignal.timeout(10000),
+      }
+    );
+    if (!verifyRes.ok) {
+      return { ok: false, error: 'Session verification failed. Please sign in again and retry.' };
+    }
+    const verifyData: any = await verifyRes.json();
+    const fbUser = Array.isArray(verifyData?.users) ? verifyData.users[0] : null;
+    const fbUid = String(fbUser?.localId || '').trim();
+    const fbEmail = String(fbUser?.email || '').trim().toLowerCase();
+    if (!fbUser || (!fbUid && !fbEmail)) {
+      return { ok: false, error: 'Could not verify authenticated user.' };
+    }
+    const matchesUid = Boolean(cleanTargetId && fbUid && fbUid === cleanTargetId);
+    const matchesEmail = Boolean(cleanTargetEmail && fbEmail && fbEmail === cleanTargetEmail);
+    if (!matchesUid && !matchesEmail) {
+      return { ok: false, error: 'You can only delete your own account.' };
+    }
+    return { ok: true, uid: fbUid || cleanTargetId, email: fbEmail || cleanTargetEmail };
+  } catch {
+    return { ok: false, error: 'Unable to verify account ownership right now.' };
+  }
+}
+
 async function verifySuperAdminRequest(
   req: express.Request
 ): Promise<{ ok: boolean; email?: string; error?: string }> {
@@ -8082,6 +8225,65 @@ app.post('/api/auth/login', async (req, res) => {
 // SHARED USER DIRECTORY, LEGACY RECOVERY & EMAIL OTP LOGIN
 // ==========================================
 
+app.post('/api/users/check-email', async (req, res) => {
+  try {
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    if (!email || !email.includes('@')) {
+      return res.status(400).json({ success: false, available: false, error: 'Please enter a valid email address.' });
+    }
+
+    const activeBlock = findActiveBlock({
+      ip: extractClientIp(req),
+      fingerprint: extractDeviceFingerprint(req),
+      email,
+      blockTypes: ['account_delete', 'account_suspend', 'account_lock']
+    });
+    if (activeBlock) {
+      return res.status(200).json({
+        success: true,
+        available: false,
+        blocked: true,
+        emailAlreadyRegistered: false,
+        error: `Registration blocked: ${activeBlock.reason}`
+      });
+    }
+
+    const conflict = await findActiveRegisteredEmailConflict({
+      email,
+      linkingMemoryStore,
+      referralMemoryStore,
+      ledgerState: getLedgerState(),
+      serverDb,
+      deletedAccounts: getDeletedAccountsSnapshot()
+    });
+    if (conflict.exists) {
+      const roleLabel = conflict.roleLabel || formatRoleDisplayName(conflict.role);
+      return res.status(200).json({
+        success: true,
+        available: false,
+        blocked: false,
+        emailAlreadyRegistered: true,
+        registeredRole: conflict.role,
+        roleLabel,
+        error: `This email (${email}) is already registered as a ${roleLabel} account. One email can only be registered for one role. Please Sign In instead, or delete your existing account first to register fresh.`
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      available: true,
+      blocked: false,
+      emailAlreadyRegistered: false
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      success: false,
+      available: false,
+      error: err?.message || 'Unable to check email availability right now.'
+    });
+  }
+});
+
 app.post('/api/users/register', async (req, res) => {
   try {
     const profileInput = req.body?.profile;
@@ -8095,16 +8297,58 @@ app.post('/api/users/register', async (req, res) => {
     const ip = extractClientIp(req);
     const fp = extractDeviceFingerprint(req);
 
+    const activeBlock = findActiveBlock({
+      ip,
+      fingerprint: fp,
+      userId: userId || undefined,
+      email: email || undefined,
+      blockTypes: ['account_delete', 'account_suspend', 'account_lock']
+    });
+    if (activeBlock) {
+      return res.status(403).json({
+        success: false,
+        blocked: true,
+        error: `Registration blocked: ${activeBlock.reason}`
+      });
+    }
+
+    const emailConflict = email
+      ? await findActiveRegisteredEmailConflict({
+          email,
+          linkingMemoryStore,
+          referralMemoryStore,
+          ledgerState: getLedgerState(),
+          serverDb,
+          deletedAccounts: getDeletedAccountsSnapshot()
+        })
+      : { exists: false };
+
+    if (emailConflict.exists && emailConflict.user) {
+      const sameUser = Boolean(userId && emailConflict.user.id === userId);
+      const sameRoleFamily = normalizeRoleFamily(emailConflict.user.role) === normalizeRoleFamily(role);
+      if (!sameUser || !sameRoleFamily) {
+        const existingRoleLabel = emailConflict.roleLabel || formatRoleDisplayName(emailConflict.role);
+        return res.status(409).json({
+          success: false,
+          emailAlreadyRegistered: true,
+          registeredRole: emailConflict.role,
+          roleLabel: existingRoleLabel,
+          error: `This email (${email}) is already registered as a ${existingRoleLabel} account. One email can only be registered for one role. Please Sign In instead, or delete your existing account first to register fresh.`
+        });
+      }
+    }
+
     const existingUser =
-      email || userId
+      emailConflict.user ||
+      (userId
         ? await findServerUserByEmailOrId({
-            identifier: email || userId,
+            identifier: userId,
             linkingMemoryStore,
             referralMemoryStore,
             ledgerState: getLedgerState(),
             serverDb
           })
-        : null;
+        : null);
     if (!existingUser) {
       const pauseCheck = await checkServerRegistrationPausedForRole(role, email);
       if (pauseCheck.paused) {
@@ -8116,26 +8360,16 @@ app.post('/api/users/register', async (req, res) => {
       }
     }
 
-    const activeBlock = findActiveBlock({
-      ip,
-      fingerprint: fp,
-      userId: userId || undefined,
-      email: email || undefined,
-      blockTypes: ['account_delete', 'account_suspend', 'account_lock']
-    });
-    if (activeBlock) {
-      return res.status(403).json({
-        success: false,
-        error: `Registration blocked: ${activeBlock.reason}`
-      });
-    }
-
     const saved = upsertServerUser(profileInput, { defaultSource: 'backend' });
     if (!saved) {
       return res.status(400).json({ success: false, error: 'Unable to register user profile.' });
     }
 
-    return res.json({ success: true, user: saved });
+    return res.json({
+      success: true,
+      user: saved,
+      sessionToken: issueUserSessionToken(saved.id, saved.email)
+    });
   } catch (err: any) {
     return res.status(500).json({
       success: false,
@@ -8150,6 +8384,34 @@ app.post('/api/users/sync-profile', async (req, res) => {
     if (!profileInput || typeof profileInput !== 'object') {
       return res.status(400).json({ success: false, error: 'Valid profile payload is required.' });
     }
+    const cleanEmail = String(profileInput.email || '').trim().toLowerCase();
+    const cleanId = String(profileInput.id || '').trim();
+    const requestedRole = String(profileInput.role || '').trim().toLowerCase();
+    if (cleanEmail && !isPlaceholderEmail(cleanEmail)) {
+      const conflict = await findActiveRegisteredEmailConflict({
+        email: cleanEmail,
+        linkingMemoryStore,
+        referralMemoryStore,
+        ledgerState: getLedgerState(),
+        serverDb,
+        deletedAccounts: getDeletedAccountsSnapshot()
+      });
+      if (
+        conflict.exists &&
+        conflict.user &&
+        conflict.user.id !== cleanId &&
+        normalizeRoleFamily(conflict.user.role) !== normalizeRoleFamily(requestedRole)
+      ) {
+        const existingRoleLabel = conflict.roleLabel || formatRoleDisplayName(conflict.role);
+        return res.status(409).json({
+          success: false,
+          emailAlreadyRegistered: true,
+          registeredRole: conflict.role,
+          roleLabel: existingRoleLabel,
+          error: `This email (${cleanEmail}) is already registered as a ${existingRoleLabel} account.`
+        });
+      }
+    }
     const saved = upsertServerUser(profileInput, {
       defaultSource: profileInput.directorySource || 'backend'
     });
@@ -8161,6 +8423,123 @@ app.post('/api/users/sync-profile', async (req, res) => {
     return res.status(500).json({
       success: false,
       error: err?.message || 'Failed to sync user profile.'
+    });
+  }
+});
+
+app.post('/api/users/self-delete', async (req, res) => {
+  try {
+    const requestedUserId = String(req.body?.userId || '').trim();
+    const requestedEmail = String(req.body?.email || '').trim().toLowerCase();
+
+    if (!requestedUserId && !requestedEmail) {
+      return res.status(400).json({ success: false, error: 'Account identifier is required.' });
+    }
+
+    const ownerCheck = await verifyAccountOwnerRequest(req, requestedUserId, requestedEmail);
+    if (!ownerCheck.ok) {
+      return res.status(403).json({
+        success: false,
+        error: ownerCheck.error || 'Unauthorized account deletion request.'
+      });
+    }
+
+    const resolvedEmail = (ownerCheck.email || requestedEmail).toLowerCase().trim();
+    const resolvedUserId = (ownerCheck.uid || requestedUserId).trim();
+
+    if (resolvedEmail && AUTHORIZED_SUPER_ADMINS.includes(resolvedEmail)) {
+      return res.status(403).json({
+        success: false,
+        error: 'Super Admin accounts cannot be self-deleted.'
+      });
+    }
+
+    const removedDir = removeServerUserPermanently({
+      userId: resolvedUserId || undefined,
+      email: resolvedEmail || undefined
+    });
+
+    const targetIds = new Set<string>([
+      ...(resolvedUserId ? [resolvedUserId] : []),
+      ...(requestedUserId ? [requestedUserId] : []),
+      ...removedDir.removedUserIds
+    ]);
+    const targetEmails = new Set<string>([
+      ...(resolvedEmail ? [resolvedEmail] : []),
+      ...(requestedEmail ? [requestedEmail] : []),
+      ...removedDir.removedEmails
+    ]);
+    const targetEmailHashes = new Set<string>(
+      Array.from(targetEmails)
+        .map((e) => hashEmailSha256(e))
+        .filter((h): h is string => Boolean(h))
+    );
+
+    // Clean up auxiliary linking & referral registries so harvested directory never revives the deleted email
+    let linkingChanged = false;
+    for (const [code, link] of Object.entries(linkingMemoryStore.studentLinks || {})) {
+      if (
+        (link?.studentId && targetIds.has(String(link.studentId))) ||
+        (link?.emailHash && targetEmailHashes.has(String(link.emailHash)))
+      ) {
+        delete linkingMemoryStore.studentLinks[code];
+        linkingChanged = true;
+      }
+    }
+    for (const [enrKey, enr] of Object.entries(linkingMemoryStore.enrollments || {})) {
+      if (enr?.studentId && targetIds.has(String(enr.studentId))) {
+        delete linkingMemoryStore.enrollments[enrKey];
+        linkingChanged = true;
+      }
+    }
+    for (const [schKey, sch] of Object.entries(linkingMemoryStore.schools || {})) {
+      if (sch?.adminId && targetIds.has(String(sch.adminId))) {
+        delete linkingMemoryStore.schools[schKey];
+        linkingChanged = true;
+      }
+    }
+    if (linkingChanged) {
+      saveLinkingStore();
+    }
+
+    let referralChanged = false;
+    for (const [pKey, partner] of Object.entries(referralMemoryStore.partners || {})) {
+      const pEmail = String((partner as any)?.email || '').trim().toLowerCase();
+      if (
+        targetIds.has(pKey) ||
+        ((partner as any)?.id && targetIds.has(String((partner as any).id))) ||
+        (pEmail && targetEmails.has(pEmail))
+      ) {
+        delete referralMemoryStore.partners[pKey];
+        referralChanged = true;
+      }
+    }
+    for (const [bKey, binding] of Object.entries(referralMemoryStore.bindings || {})) {
+      if (
+        targetIds.has(bKey) ||
+        ((binding as any)?.studentId && targetIds.has(String((binding as any).studentId)))
+      ) {
+        delete referralMemoryStore.bindings[bKey];
+        referralChanged = true;
+      }
+    }
+    if (referralChanged) {
+      saveReferralStore();
+    }
+
+    // Notice: voluntary self-deletion does NOT create an account_delete security block or tombstone,
+    // allowing the email address to immediately register a fresh account in any role.
+    return res.json({
+      success: true,
+      deleted: true,
+      emailReleased: true,
+      releasedEmail: resolvedEmail || undefined,
+      message: 'Your account has been permanently deleted and your email is now available for fresh registration.'
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      success: false,
+      error: err?.message || 'Unable to complete account deletion right now.'
     });
   }
 });
@@ -8323,6 +8702,7 @@ app.post('/api/auth/verify-otp-login', async (req, res) => {
       success: true,
       authenticated: true,
       profile,
+      sessionToken: issueUserSessionToken(profile.id, profile.email),
       ...(isSuperAdminAccount ? { otaAdminToken: issueSuperAdminSessionToken(cleanEmail) } : {}),
       message: 'Email OTP login verified.'
     });

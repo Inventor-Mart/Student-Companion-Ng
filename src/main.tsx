@@ -82,7 +82,7 @@ if (typeof window !== 'undefined' && typeof window.fetch === 'function') {
     }
   };
 
-  const wrappedFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+  const wrappedFetch = (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const rawUrl =
       typeof input === 'string'
         ? input
@@ -93,80 +93,89 @@ if (typeof window !== 'undefined' && typeof window.fetch === 'function') {
     const isRemoteConfiguredApi =
       Boolean(REMOTE_API_ORIGIN) && rawUrl.startsWith(`${REMOTE_API_ORIGIN}/api/`);
     const isApiCall = isRelativeApi || isRemoteConfiguredApi;
-    const targetInput =
-      shouldRouteApiToRemoteOrigin && isRelativeApi
-        ? `${REMOTE_API_ORIGIN}${rawUrl}`
-        : input;
-    const method = String(
-      init?.method || (input instanceof Request ? input.method : 'GET')
-    ).toUpperCase();
-    const isIdempotentAiCoachPost =
-      method === 'POST' &&
-      (rawUrl.startsWith('/api/gemini/study-tutor') || rawUrl.startsWith('/api/ai/study-coach'));
-    const canRetryTransient =
-      (typeof navigator === 'undefined' || navigator.onLine !== false) &&
-      (isRelativeApi || isRemoteConfiguredApi) &&
-      !rawUrl.includes('prewarm=1') &&
-      (method === 'GET' || method === 'HEAD' || isIdempotentAiCoachPost);
-    const retryDelaysMs =
-      shouldRouteApiToRemoteOrigin || isIdempotentAiCoachPost
-        ? [2500, 4500, 6500, 8500, 10000]
-        : [2000, 3500, 5500, 7500];
-    const healthUrl = shouldRouteApiToRemoteOrigin
-      ? `${REMOTE_API_ORIGIN}/api/health?wake=1`
-      : '/api/health?wake=1';
 
-    let markedSlow = false;
-    let slowTimer: number | null = null;
-    const markSlowNow = () => {
-      if (markedSlow) return;
-      if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
-      markedSlow = true;
-      activeSlowCloudRequests += 1;
-      notifyCloudWakeState();
-    };
-
-    if (isApiCall && !rawUrl.includes('prewarm=1')) {
-      slowTimer = window.setTimeout(markSlowNow, 2200);
+    // Pass all non-API traffic (including Cloud Firestore, Firebase Auth, Paystack, Google APIs)
+    // directly through nativeFetch without async wrapper or stream interference.
+    if (!isApiCall) {
+      return nativeFetch(input, init);
     }
 
-    try {
-      const maxAttempts = canRetryTransient ? retryDelaysMs.length + 1 : 1;
-      for (let attempt = 0; attempt < maxAttempts; attempt++) {
-        try {
-          const response = await nativeFetch(targetInput, init);
-          const isGatewayColdStart =
-            response.status === 502 || response.status === 503 || response.status === 504;
-          if (canRetryTransient && isGatewayColdStart && attempt < maxAttempts - 1) {
-            markSlowNow();
-            const okToContinue = await waitWithSignal(retryDelaysMs[attempt], init?.signal);
-            if (!okToContinue) return response;
-            await probeHealthReady(healthUrl, 4500);
-            continue;
+    return (async () => {
+      const targetInput =
+        shouldRouteApiToRemoteOrigin && isRelativeApi
+          ? `${REMOTE_API_ORIGIN}${rawUrl}`
+          : input;
+      const method = String(
+        init?.method || (input instanceof Request ? input.method : 'GET')
+      ).toUpperCase();
+      const isIdempotentAiCoachPost =
+        method === 'POST' &&
+        (rawUrl.startsWith('/api/gemini/study-tutor') || rawUrl.startsWith('/api/ai/study-coach'));
+      const canRetryTransient =
+        (typeof navigator === 'undefined' || navigator.onLine !== false) &&
+        (isRelativeApi || isRemoteConfiguredApi) &&
+        !rawUrl.includes('prewarm=1') &&
+        (method === 'GET' || method === 'HEAD' || isIdempotentAiCoachPost);
+      const retryDelaysMs =
+        shouldRouteApiToRemoteOrigin || isIdempotentAiCoachPost
+          ? [2500, 4500, 6500, 8500, 10000]
+          : [2000, 3500, 5500, 7500];
+      const healthUrl = shouldRouteApiToRemoteOrigin
+        ? `${REMOTE_API_ORIGIN}/api/health?wake=1`
+        : '/api/health?wake=1';
+
+      let markedSlow = false;
+      let slowTimer: number | null = null;
+      const markSlowNow = () => {
+        if (markedSlow) return;
+        if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+        markedSlow = true;
+        activeSlowCloudRequests += 1;
+        notifyCloudWakeState();
+      };
+
+      if (!rawUrl.includes('prewarm=1')) {
+        slowTimer = window.setTimeout(markSlowNow, 2200);
+      }
+
+      try {
+        const maxAttempts = canRetryTransient ? retryDelaysMs.length + 1 : 1;
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
+          try {
+            const response = await nativeFetch(targetInput, init);
+            const isGatewayColdStart =
+              response.status === 502 || response.status === 503 || response.status === 504;
+            if (canRetryTransient && isGatewayColdStart && attempt < maxAttempts - 1) {
+              markSlowNow();
+              const okToContinue = await waitWithSignal(retryDelaysMs[attempt], init?.signal);
+              if (!okToContinue) return response;
+              await probeHealthReady(healthUrl, 4500);
+              continue;
+            }
+            return response;
+          } catch (err) {
+            const isAbort = (err as any)?.name === 'AbortError' || init?.signal?.aborted;
+            if (canRetryTransient && !isAbort && attempt < maxAttempts - 1) {
+              markSlowNow();
+              const okToContinue = await waitWithSignal(retryDelaysMs[attempt], init?.signal);
+              if (!okToContinue) throw err;
+              await probeHealthReady(healthUrl, 4500);
+              continue;
+            }
+            throw err;
           }
-          return response;
-        } catch (err) {
-          const isAbort = (err as any)?.name === 'AbortError' || init?.signal?.aborted;
-          if (canRetryTransient && !isAbort && attempt < maxAttempts - 1) {
-            markSlowNow();
-            const okToContinue = await waitWithSignal(retryDelaysMs[attempt], init?.signal);
-            if (!okToContinue) throw err;
-            await probeHealthReady(healthUrl, 4500);
-            continue;
-          }
-          throw err;
+        }
+        return await nativeFetch(targetInput, init);
+      } finally {
+        if (slowTimer !== null) {
+          window.clearTimeout(slowTimer);
+        }
+        if (markedSlow) {
+          activeSlowCloudRequests = Math.max(0, activeSlowCloudRequests - 1);
+          notifyCloudWakeState();
         }
       }
-      return await nativeFetch(targetInput, init);
-    } finally {
-      if (slowTimer !== null) {
-        window.clearTimeout(slowTimer);
-      }
-      if (markedSlow) {
-        activeSlowCloudRequests = Math.max(0, activeSlowCloudRequests - 1);
-        notifyCloudWakeState();
-      }
-    }
+    })();
   };
 
   try {

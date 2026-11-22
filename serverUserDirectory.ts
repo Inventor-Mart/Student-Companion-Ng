@@ -352,9 +352,13 @@ function mergeTwoUsers(
       : existing.fullName || incoming.fullName || 'Student Companion User';
 
   const resolvedRole =
-    (!incomingIsRecoveredPlaceholder && incoming.role)
-      ? incoming.role
-      : existing.role || incoming.role || 'student';
+    allowPriv
+      ? (!incomingIsRecoveredPlaceholder && incoming.role
+          ? incoming.role
+          : existing.role || incoming.role || 'student')
+      : (!existingIsRecoveredPlaceholder && existing.role
+          ? existing.role
+          : incoming.role || existing.role || 'student');
 
   const merged: ServerRegisteredUser = {
     ...existing,
@@ -1193,6 +1197,140 @@ export async function findServerUserByEmailOrId(params: {
   }
 
   return matched;
+}
+
+export function formatRoleDisplayName(role?: string | null): string {
+  const clean = String(role || '').trim().toLowerCase();
+  if (clean === 'student') return 'Student';
+  if (clean === 'parent') return 'Parent';
+  if (clean === 'tutor') return 'Tutor';
+  if (clean === 'admin' || clean === 'school_admin') return 'School Admin';
+  if (clean === 'growth_partner') return 'Growth Partner';
+  return 'Registered';
+}
+
+export function normalizeRoleFamily(role?: string | null): string {
+  const clean = String(role || '').trim().toLowerCase();
+  if (clean === 'admin' || clean === 'school_admin') return 'school_admin';
+  return clean;
+}
+
+export async function findActiveRegisteredEmailConflict(params: {
+  email: string;
+  linkingMemoryStore: {
+    studentLinks: Record<string, any>;
+    schools: Record<string, any>;
+    enrollments: Record<string, any>;
+  };
+  referralMemoryStore: {
+    partners: Record<string, any>;
+    bindings: Record<string, any>;
+  };
+  ledgerState: AuthoritativeLedgerState;
+  serverDb: Firestore;
+  deletedAccounts?: DeletedAccountTombstone[];
+}): Promise<{
+  exists: boolean;
+  user?: ServerRegisteredUser;
+  role?: ServerRegisteredUser['role'];
+  roleLabel?: string;
+}> {
+  const cleanEmail = String(params.email || '').trim().toLowerCase();
+  if (!cleanEmail || !cleanEmail.includes('@') || isPlaceholderEmail(cleanEmail)) {
+    return { exists: false };
+  }
+  const emailHash = hashEmailSha256(cleanEmail);
+
+  const harvested = await harvestAllDirectoryUsers({
+    linkingMemoryStore: params.linkingMemoryStore,
+    referralMemoryStore: params.referralMemoryStore,
+    ledgerState: params.ledgerState,
+    serverDb: params.serverDb,
+    deletedAccounts: params.deletedAccounts
+  });
+
+  const matched = harvested.users.find((u) => {
+    if (u.accountStatus === 'deleted') return false;
+    const recEmail = String(u.email || '').trim().toLowerCase();
+    if (!isPlaceholderEmail(recEmail) && recEmail === cleanEmail) return true;
+    if (emailHash && u.emailHash && u.emailHash === emailHash) return true;
+    return false;
+  });
+
+  if (!matched) {
+    return { exists: false };
+  }
+
+  return {
+    exists: true,
+    user: matched,
+    role: matched.role,
+    roleLabel: formatRoleDisplayName(matched.role)
+  };
+}
+
+export function removeServerUserPermanently(params: {
+  userId?: string;
+  email?: string;
+}): {
+  removed: boolean;
+  removedUserIds: string[];
+  removedEmails: string[];
+} {
+  const cleanId = params.userId ? sanitizeDirectoryDocId(params.userId) : '';
+  const cleanEmail = String(params.email || '').trim().toLowerCase();
+  const cleanHash = cleanEmail ? hashEmailSha256(cleanEmail) : undefined;
+  const removedUserIds = new Set<string>();
+  const removedEmails = new Set<string>();
+
+  for (const [key, rec] of Object.entries(directoryUsers)) {
+    const recEmail = String(rec?.email || '').trim().toLowerCase();
+    const idMatches = Boolean(cleanId && (key === cleanId || rec?.id === cleanId));
+    const emailMatches = Boolean(
+      cleanEmail && !isPlaceholderEmail(recEmail) && recEmail === cleanEmail
+    );
+    const hashMatches = Boolean(cleanHash && rec?.emailHash && rec.emailHash === cleanHash);
+
+    if (idMatches || emailMatches || hashMatches) {
+      if (rec?.id) removedUserIds.add(rec.id);
+      removedUserIds.add(key);
+      if (recEmail && !isPlaceholderEmail(recEmail)) {
+        removedEmails.add(recEmail);
+      }
+      delete directoryUsers[key];
+    }
+  }
+
+  if (cleanEmail) {
+    removedEmails.add(cleanEmail);
+  }
+  if (cleanId) {
+    removedUserIds.add(cleanId);
+  }
+
+  if (removedUserIds.size > 0) {
+    saveDirectoryStore();
+  }
+
+  let otpChanged = false;
+  for (const targetEmail of removedEmails) {
+    for (const purpose of ['signup', 'login'] as const) {
+      const otpKey = `${purpose}:${targetEmail}`;
+      if (otpChallenges[otpKey]) {
+        delete otpChallenges[otpKey];
+        otpChanged = true;
+      }
+    }
+  }
+  if (otpChanged) {
+    saveOtpStore();
+  }
+
+  return {
+    removed: removedUserIds.size > 0,
+    removedUserIds: Array.from(removedUserIds),
+    removedEmails: Array.from(removedEmails)
+  };
 }
 
 export function purgeSampleUsersFromDirectory(): number {

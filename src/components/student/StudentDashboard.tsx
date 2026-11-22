@@ -78,7 +78,9 @@ export const StudentDashboard: React.FC = () => {
     openStudentSubscriptionModal,
     checkStudentFeatureAccess,
     isFeatureEnabled,
-    getPausedFeatureMessage
+    getPausedFeatureMessage,
+    isSuperAdmin,
+    refreshOTAStatus
   } = useApp();
 
   const [isLinkSchoolModalOpen, setIsLinkSchoolModalOpen] = useState(false);
@@ -236,8 +238,14 @@ export const StudentDashboard: React.FC = () => {
         <OTAModulePausedCard
           moduleName="JAMB & Aspirant CBT Hub"
           message={getPausedFeatureMessage('aspirantHub')}
-          actionLabel="Switch to SS 3 View"
-          onBackToDashboard={() => updateStudentClass('SS 3', 'Science')}
+          actionLabel={isSuperAdmin ? 'Switch to SS 3 Preview' : 'Refresh Status'}
+          onBackToDashboard={() => {
+            if (isSuperAdmin) {
+              updateStudentClass('SS 3', 'Science');
+            } else {
+              void refreshOTAStatus();
+            }
+          }}
         />
       );
     }
@@ -483,18 +491,20 @@ export const StudentDashboard: React.FC = () => {
             </div>
           </div>
 
-          {/* Aspirant Hub Switch */}
-          <button
-            type="button"
-            onClick={() => {
-              playSound.tileTap();
-              updateStudentClass('University Aspirant', 'Science');
-            }}
-            className="text-[11px] text-amber-300 font-black bg-gradient-to-r from-amber-500/20 to-orange-500/20 hover:from-amber-500/30 hover:to-orange-500/30 px-2.5 py-1 rounded-xl border border-amber-500/40 shrink-0 cursor-pointer transition-all shadow-xs inline-flex items-center gap-1.5 whitespace-nowrap"
-          >
-            <span>★ Aspirant Hub</span>
-            {!isFeatureEnabled('aspirantHub') && <PausedBadge />}
-          </button>
+          {/* Aspirant Hub Preview Switch (Super Admin only; regular students stay locked to sign-up class) */}
+          {isSuperAdmin && (
+            <button
+              type="button"
+              onClick={() => {
+                playSound.tileTap();
+                updateStudentClass('University Aspirant', 'Science');
+              }}
+              className="text-[11px] text-amber-300 font-black bg-gradient-to-r from-amber-500/20 to-orange-500/20 hover:from-amber-500/30 hover:to-orange-500/30 px-2.5 py-1 rounded-xl border border-amber-500/40 shrink-0 cursor-pointer transition-all shadow-xs inline-flex items-center gap-1.5 whitespace-nowrap"
+            >
+              <span>★ Aspirant Hub (Admin)</span>
+              {!isFeatureEnabled('aspirantHub') && <PausedBadge />}
+            </button>
+          )}
         </div>
 
         {/* Enrolled Class Indicator (Locked) */}
