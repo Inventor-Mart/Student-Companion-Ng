@@ -16,6 +16,7 @@ import {
 import { PersonaAvatar } from '../common/PersonaAvatar';
 import { SubjectMultiSelector } from '../common/SubjectMultiSelector';
 import { RegistrationGateCard } from './RegistrationGateCard';
+import { WeeklyTournamentPrizeManager } from './WeeklyTournamentPrizeManager';
 import {
   NIGERIAN_HIGHER_EDUCATION_OPTIONS,
   REPAIRED_TUTOR_PROFILE_VERSION,
@@ -1559,6 +1560,7 @@ export const SuperAdminPortal: React.FC = () => {
           </button>
         </div>
 
+        <WeeklyTournamentPrizeManager />
         <OTACompetitionManager />
       </div>
     );

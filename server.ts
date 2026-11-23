@@ -78,6 +78,16 @@ import {
   clearAiCoachQuotaStore,
   verifyFirebaseBearerToken
 } from './serverLedger';
+import {
+  ensureStarterMockExamsSeeded,
+  getOrAdvanceWeeklyTournament,
+  getTournamentRegistration,
+  recordTournamentRegistration,
+  submitTournamentScore,
+  updateTournamentPrizesByAdmin,
+  archiveTournamentPaperToMockBank,
+  WEEKLY_TOURNAMENT_ENTRY_FEE_NAIRA
+} from './serverAspirantExams';
 
 dotenv.config();
 
@@ -9377,6 +9387,318 @@ app.post('/api/admin/email-test', async (req, res) => {
     message: `Live test email delivered to ${delivery.deliveredTo} via ${delivery.provider === 'gmail-smtp' ? 'Gmail SMTP' : 'Resend'}.`,
     testedAt: new Date().toISOString()
   });
+});
+
+// ==========================================
+// ASPIRANT STORED MOCK EXAMS (6 PERMANENT STARTERS + WEEKLY TOURNAMENT ARCHIVES)
+// ==========================================
+app.get('/api/aspirant/mock-exams', async (_req, res) => {
+  try {
+    await getOrAdvanceWeeklyTournament(serverDb);
+    const exams = await ensureStarterMockExamsSeeded(serverDb);
+    return res.json({
+      success: true,
+      count: exams.length,
+      exams
+    });
+  } catch (err: any) {
+    console.error('[Aspirant Mock Exams GET Error]:', err);
+    return res.status(500).json({
+      success: false,
+      error: err?.message || 'Unable to load stored Aspirant mock exams.'
+    });
+  }
+});
+
+// Active & Archived Weekly National Mock Tournaments (Auto-scheduled weekly)
+app.get('/api/aspirant/tournaments/current', async (req, res) => {
+  try {
+    const userId = String(req.query?.userId || '').trim();
+    const { activeTournament, activePaper, archivedTournaments } = await getOrAdvanceWeeklyTournament(serverDb);
+    const registration = userId ? getTournamentRegistration(activeTournament.id, userId) : null;
+    return res.json({
+      success: true,
+      tournament: activeTournament,
+      activePaper,
+      registration,
+      archivedTournaments
+    });
+  } catch (err: any) {
+    console.error('[Weekly Tournament GET Error]:', err);
+    return res.status(500).json({
+      success: false,
+      error: err?.message || 'Unable to load the current Weekly National Mock Tournament.'
+    });
+  }
+});
+
+// Weekly National Mock Tournament ₦500 Registration (Wallet or Live Paystack)
+app.post('/api/aspirant/tournaments/register', async (req, res) => {
+  try {
+    const {
+      tournamentId,
+      userId,
+      userName,
+      userEmail,
+      state,
+      paymentMethod,
+      paystackReference
+    } = req.body || {};
+
+    const cleanUserId = String(userId || '').trim();
+    const cleanEmail = String(userEmail || '').trim().toLowerCase();
+    if (!cleanUserId) {
+      return res.status(400).json({ success: false, error: 'Missing student userId for tournament registration.' });
+    }
+
+    const ownerCheck = await verifyAccountOwnerRequest(req, cleanUserId, cleanEmail);
+    if (!ownerCheck.ok) {
+      return res.status(401).json({
+        success: false,
+        error: ownerCheck.error || 'Please sign in to register for the weekly National Mock Tournament.'
+      });
+    }
+
+    const { activeTournament } = await getOrAdvanceWeeklyTournament(serverDb);
+    const targetTournamentId = String(tournamentId || activeTournament.id).trim();
+    const existingReg = getTournamentRegistration(targetTournamentId, cleanUserId);
+    if (existingReg) {
+      return res.json({
+        success: true,
+        alreadyRegistered: true,
+        registration: existingReg,
+        tournament: activeTournament
+      });
+    }
+
+    const method = paymentMethod === 'paystack' ? 'paystack' : 'wallet';
+    const feeNaira = activeTournament.entryFeeNaira || WEEKLY_TOURNAMENT_ENTRY_FEE_NAIRA;
+    let verifiedRef = '';
+    let newWalletBalanceNaira: number | undefined;
+
+    if (method === 'wallet') {
+      const debitRef = `nmt_wallet_${targetTournamentId}_${cleanUserId}_${Date.now()}`;
+      const debitRes = debitWalletLedger({
+        userId: cleanUserId,
+        amountNaira: feeNaira,
+        purpose: 'national_mock_tournament_entry',
+        description: `Weekly National Mock Tournament Entry (${activeTournament.weekKey})`,
+        reference: debitRef
+      });
+      if (!debitRes.ok) {
+        return res.status(400).json({
+          success: false,
+          insufficientBalance: true,
+          error: debitRes.error || `Insufficient Wallet balance. You need at least ₦${feeNaira.toLocaleString()} to enter this week's National Mock Tournament.`
+        });
+      }
+      verifiedRef = debitRef;
+      newWalletBalanceNaira = debitRes.wallet.balanceNaira;
+    } else {
+      const ref = String(paystackReference || '').trim();
+      if (!ref) {
+        return res.status(400).json({ success: false, error: 'Paystack payment reference is required.' });
+      }
+      const secretKey = (runtimePaystackSecretKey || process.env.PAYSTACK_SECRET_KEY || '').trim();
+      if (!secretKey || !secretKey.startsWith('sk_live_')) {
+        return res.status(400).json({
+          success: false,
+          liveRequired: true,
+          error: 'Live Paystack verification is not configured on the server yet. Please use Wallet payment or contact Admin.'
+        });
+      }
+      const verifyRes = await fetch(`https://api.paystack.co/transaction/verify/${encodeURIComponent(ref)}`, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${secretKey}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      const verifyJson: any = await verifyRes.json();
+      if (!verifyRes.ok || !verifyJson?.status || verifyJson?.data?.status !== 'success') {
+        return res.status(400).json({
+          success: false,
+          error: verifyJson?.message || 'Paystack verification failed for tournament entry.'
+        });
+      }
+      const paidNaira = Number(verifyJson.data.amount || 0) / 100;
+      if (paidNaira < feeNaira) {
+        return res.status(400).json({
+          success: false,
+          error: `Verified Paystack amount (₦${paidNaira}) is below the ₦${feeNaira} tournament entry fee.`
+        });
+      }
+      verifiedRef = ref;
+    }
+
+    const result = await recordTournamentRegistration({
+      serverDb,
+      tournamentId: targetTournamentId,
+      userId: cleanUserId,
+      userName: String(userName || 'Aspirant').trim().slice(0, 100),
+      userEmail: cleanEmail || undefined,
+      state: String(state || 'Lagos').trim().slice(0, 60),
+      paymentMethod: method,
+      paymentReference: verifiedRef,
+      amountPaidNaira: feeNaira
+    });
+
+    return res.json({
+      success: true,
+      alreadyRegistered: result.alreadyRegistered,
+      registration: result.registration,
+      tournament: result.tournament,
+      newWalletBalanceNaira
+    });
+  } catch (err: any) {
+    console.error('[Weekly Tournament Register Error]:', err);
+    return res.status(500).json({
+      success: false,
+      error: err?.message || 'Unable to process tournament registration.'
+    });
+  }
+});
+
+// Submit Official Weekly National Mock Tournament Score
+app.post('/api/aspirant/tournaments/submit', async (req, res) => {
+  try {
+    const {
+      tournamentId,
+      userId,
+      userName,
+      userEmail,
+      state,
+      score,
+      maxScore,
+      timeTakenSeconds
+    } = req.body || {};
+
+    const cleanUserId = String(userId || '').trim();
+    const cleanEmail = String(userEmail || '').trim().toLowerCase();
+    if (!cleanUserId) {
+      return res.status(400).json({ success: false, error: 'Missing student userId.' });
+    }
+
+    const ownerCheck = await verifyAccountOwnerRequest(req, cleanUserId, cleanEmail);
+    if (!ownerCheck.ok) {
+      return res.status(401).json({
+        success: false,
+        error: ownerCheck.error || 'Authentication required to submit tournament score.'
+      });
+    }
+
+    const { activeTournament } = await getOrAdvanceWeeklyTournament(serverDb);
+    const targetId = String(tournamentId || activeTournament.id).trim();
+    const reg = getTournamentRegistration(targetId, cleanUserId);
+    const isAdminActor = Boolean(cleanEmail && AUTHORIZED_SUPER_ADMINS.includes(cleanEmail));
+
+    if (!reg && !isAdminActor) {
+      return res.status(403).json({
+        success: false,
+        error: 'You must pay the ₦500 weekly entry fee and register before submitting a tournament score.'
+      });
+    }
+
+    const submitted = await submitTournamentScore({
+      serverDb,
+      tournamentId: targetId,
+      userId: cleanUserId,
+      userName: String(userName || reg?.userName || 'Aspirant').trim().slice(0, 100),
+      state: String(state || reg?.state || 'Nigeria').trim().slice(0, 60),
+      score: Number(score) || 0,
+      maxScore: Number(maxScore) || 400,
+      timeTakenSeconds: Number(timeTakenSeconds) || 60
+    });
+
+    return res.json({
+      success: true,
+      tournament: submitted.tournament,
+      entry: submitted.entry,
+      rank: submitted.rank
+    });
+  } catch (err: any) {
+    console.error('[Weekly Tournament Submit Error]:', err);
+    return res.status(500).json({
+      success: false,
+      error: err?.message || 'Unable to submit tournament score.'
+    });
+  }
+});
+
+// Super Admin: Manually Replace/Update Weekly National Mock Tournament Prizes
+app.post('/api/admin/tournaments/update-prizes', async (req, res) => {
+  try {
+    const authCheck = await verifySuperAdminRequest(req);
+    if (!authCheck.ok) {
+      return res.status(403).json({
+        success: false,
+        error: authCheck.error || 'Unauthorized: Super Admin authentication required.'
+      });
+    }
+
+    const {
+      tournamentId,
+      title,
+      subtitle,
+      prizePoolLabel,
+      prizePoolSubtext,
+      prizeNote,
+      prizes
+    } = req.body || {};
+
+    const updated = await updateTournamentPrizesByAdmin({
+      serverDb,
+      tournamentId,
+      adminEmail: authCheck.email || 'martorefe@gmail.com',
+      title,
+      subtitle,
+      prizePoolLabel,
+      prizePoolSubtext,
+      prizeNote,
+      prizes
+    });
+
+    return res.json({
+      success: true,
+      tournament: updated
+    });
+  } catch (err: any) {
+    console.error('[Admin Update Tournament Prizes Error]:', err);
+    return res.status(500).json({
+      success: false,
+      error: err?.message || 'Failed to update weekly tournament prizes.'
+    });
+  }
+});
+
+// Super Admin: Archive a Weekly Tournament's Unique Exam Paper Permanently into the Mock Bank
+app.post('/api/admin/tournaments/archive-to-bank', async (req, res) => {
+  try {
+    const authCheck = await verifySuperAdminRequest(req);
+    if (!authCheck.ok) {
+      return res.status(403).json({
+        success: false,
+        error: authCheck.error || 'Unauthorized: Super Admin authentication required.'
+      });
+    }
+
+    const result = await archiveTournamentPaperToMockBank({
+      serverDb,
+      tournamentId: req.body?.tournamentId
+    });
+
+    return res.json({
+      success: true,
+      tournament: result.tournament,
+      archivedPaper: result.archivedPaper
+    });
+  } catch (err: any) {
+    console.error('[Admin Archive Tournament Paper Error]:', err);
+    return res.status(500).json({
+      success: false,
+      error: err?.message || 'Failed to archive tournament paper to mock bank.'
+    });
+  }
 });
 
 // Vite Middleware for Dev or Static Files for Prod

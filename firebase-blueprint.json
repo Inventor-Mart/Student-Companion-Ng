@@ -739,8 +739,8 @@
         "id": { "type": "string", "maxLength": 128 },
         "title": { "type": "string", "maxLength": 100 },
         "description": { "type": "string", "maxLength": 300 },
-        "audience": { "type": "string", "enum": ["student", "parent"] },
-        "category": { "type": "string", "enum": ["academics", "competitions", "general", "parenting", "exams"] },
+        "audience": { "type": "string", "enum": ["student", "aspirant", "parent"] },
+        "category": { "type": "string", "enum": ["academics", "competitions", "general", "parenting", "exams", "aspirant_jamb", "aspirant_waec_neco", "aspirant_admissions", "aspirant_general"] },
         "iconName": { "type": "string", "maxLength": 50 }
       },
       "required": ["id", "title", "audience", "category"]
@@ -1437,6 +1437,80 @@
         "status": { "type": "string", "enum": ["active", "expired"] }
       },
       "required": ["id", "adminId", "schoolName", "plan", "amountNaira", "reference", "paidAt", "expiresAt", "status"]
+    },
+    "AspirantMockExam": {
+      "title": "AspirantMockExam",
+      "description": "Permanent stored mock exam paper for JAMB, WAEC, NECO, or archived weekly National Mock Tournament",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+        "board": { "type": "string", "enum": ["JAMB", "WAEC", "NECO"] },
+        "paperNumber": { "type": "number" },
+        "orderIndex": { "type": "number" },
+        "title": { "type": "string", "maxLength": 200 },
+        "subtitle": { "type": "string", "maxLength": 260 },
+        "source": { "type": "string", "enum": ["starter", "tournament"] },
+        "isFreeStarter": { "type": "boolean" },
+        "tournamentId": { "type": "string", "maxLength": 128 },
+        "weekKey": { "type": "string", "maxLength": 32 },
+        "durationMinutes": { "type": "number" },
+        "totalQuestions": { "type": "number" },
+        "subjects": { "type": "array", "items": { "type": "string" } },
+        "questions": { "type": "array", "items": { "type": "object" } },
+        "createdAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "board", "paperNumber", "orderIndex", "title", "source", "isFreeStarter", "durationMinutes", "totalQuestions", "subjects", "questions", "createdAt"]
+    },
+    "NationalMockTournament": {
+      "title": "NationalMockTournament",
+      "description": "Auto-scheduled weekly weekend National Mock Tournament with Super Admin editable prize pool",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+        "weekKey": { "type": "string", "maxLength": 32 },
+        "title": { "type": "string", "maxLength": 200 },
+        "subtitle": { "type": "string", "maxLength": 260 },
+        "board": { "type": "string", "enum": ["JAMB", "WAEC", "NECO"] },
+        "entryFeeNaira": { "type": "number" },
+        "startsAt": { "type": "string", "maxLength": 64 },
+        "endsAt": { "type": "string", "maxLength": 64 },
+        "status": { "type": "string", "enum": ["upcoming", "live", "completed"] },
+        "prizePoolLabel": { "type": "string", "maxLength": 160 },
+        "prizePoolSubtext": { "type": "string", "maxLength": 300 },
+        "prizeNote": { "type": "string", "maxLength": 400 },
+        "prizes": { "type": "array", "items": { "type": "object" } },
+        "examPaperId": { "type": "string", "maxLength": 128 },
+        "archivedToMockBank": { "type": "boolean" },
+        "participantCount": { "type": "number" },
+        "leaderboard": { "type": "array", "items": { "type": "object" } },
+        "prizeUpdatedBy": { "type": "string", "maxLength": 150 },
+        "createdAt": { "type": "string", "maxLength": 64 },
+        "updatedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "weekKey", "title", "board", "entryFeeNaira", "startsAt", "endsAt", "status", "prizePoolLabel", "prizes", "examPaperId", "archivedToMockBank", "participantCount", "leaderboard", "createdAt", "updatedAt"]
+    },
+    "TournamentRegistration": {
+      "title": "TournamentRegistration",
+      "description": "Verified ₦500 paid registration for a weekly National Mock Tournament",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+        "tournamentId": { "type": "string", "maxLength": 128 },
+        "weekKey": { "type": "string", "maxLength": 32 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "userName": { "type": "string", "maxLength": 120 },
+        "userEmail": { "type": "string", "maxLength": 150 },
+        "state": { "type": "string", "maxLength": 64 },
+        "amountPaidNaira": { "type": "number" },
+        "paymentMethod": { "type": "string", "enum": ["wallet", "paystack"] },
+        "paymentReference": { "type": "string", "maxLength": 150 },
+        "registeredAt": { "type": "string", "maxLength": 64 },
+        "hasSubmitted": { "type": "boolean" },
+        "submittedScore": { "type": "number" },
+        "timeTakenSeconds": { "type": "number" },
+        "submittedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "tournamentId", "weekKey", "userId", "userName", "amountPaidNaira", "paymentMethod", "paymentReference", "registeredAt"]
     }
   },
   "firestore": {
@@ -1661,6 +1735,24 @@
         "$ref": "#/entities/SchoolSubscription"
       },
       "description": "Verified institutional direct Paystack subscription receipts"
+    },
+    "/aspirantMockExams/{examId}": {
+      "schema": {
+        "$ref": "#/entities/AspirantMockExam"
+      },
+      "description": "Permanent stored Aspirant mock examination papers (6 fixed starter papers + archived weekly National Mock Tournament papers)"
+    },
+    "/nationalMockTournaments/{tournamentId}": {
+      "schema": {
+        "$ref": "#/entities/NationalMockTournament"
+      },
+      "description": "Auto-scheduled weekly National Mock Tournaments with Super Admin editable prizes and live leaderboards"
+    },
+    "/tournamentRegistrations/{regId}": {
+      "schema": {
+        "$ref": "#/entities/TournamentRegistration"
+      },
+      "description": "Verified ₦500 weekly National Mock Tournament entry receipts isolated to owner and Super Admin"
     }
   }
 }

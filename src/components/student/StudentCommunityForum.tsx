@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { ForumChannel, ForumMessage, ForumReport } from '../../types';
 import {
@@ -31,14 +31,26 @@ import {
 } from 'lucide-react';
 
 export const StudentCommunityForum: React.FC = () => {
-  const { student, currentUser, openStudentSubscriptionModal, checkStudentFeatureAccess, submitSecurityReport } = useApp();
+  const { student, aspirantGoal, currentUser, openStudentSubscriptionModal, checkStudentFeatureAccess, submitSecurityReport } = useApp();
 
-  // Channels for students
-  const studentChannels = useMemo(() => {
-    return INITIAL_FORUM_CHANNELS.filter(c => c.audience === 'student');
-  }, []);
+  const isAspirant = student.classLevel === 'University Aspirant';
+  const forumAudience: 'aspirant' | 'student' = isAspirant ? 'aspirant' : 'student';
 
-  const [activeChannelId, setActiveChannelId] = useState<string>(studentChannels[0]?.id || 'student-academics');
+  // Strictly isolate University Aspirant chat rooms from JSS 1–SS 3 secondary student chat rooms
+  const visibleChannels = useMemo(() => {
+    return INITIAL_FORUM_CHANNELS.filter(c => c.audience === forumAudience);
+  }, [forumAudience]);
+
+  const [activeChannelId, setActiveChannelId] = useState<string>(
+    visibleChannels[0]?.id || (isAspirant ? 'aspirant-jamb-utme' : 'student-academics')
+  );
+
+  useEffect(() => {
+    if (!visibleChannels.some(c => c.id === activeChannelId)) {
+      setActiveChannelId(visibleChannels[0]?.id || (isAspirant ? 'aspirant-jamb-utme' : 'student-academics'));
+    }
+  }, [visibleChannels, activeChannelId, isAspirant]);
+
   const [messages, setMessages] = useState<ForumMessage[]>(() => getStoredForumMessages());
   const [inputText, setInputText] = useState('');
   const [inputWarning, setInputWarning] = useState<string | null>(null);
@@ -49,8 +61,8 @@ export const StudentCommunityForum: React.FC = () => {
   const [reportReason, setReportReason] = useState<ForumReport['reason']>('bullying');
   const [reportSubmitted, setReportSubmitted] = useState(false);
 
-  // Filter messages for current active channel
-  const currentChannel = studentChannels.find(c => c.id === activeChannelId) || studentChannels[0];
+  // Filter messages strictly for current active isolated channel
+  const currentChannel = visibleChannels.find(c => c.id === activeChannelId) || visibleChannels[0];
   const channelMessages = messages.filter(m => m.channelId === activeChannelId);
 
   // Handle reaction toggle
@@ -102,11 +114,13 @@ export const StudentCommunityForum: React.FC = () => {
       id: `msg-${Date.now()}`,
       channelId: activeChannelId,
       senderId,
-      senderName: student.name || 'Scholar Student',
+      senderName: student.name || (isAspirant ? 'University Aspirant' : 'Scholar Student'),
       senderRole: 'student',
-      senderClassLevel: student.classLevel,
+      senderClassLevel: isAspirant ? 'University Aspirant' : student.classLevel,
       senderRank: student.rank,
-      senderSchool: student.school,
+      senderSchool: isAspirant
+        ? (aspirantGoal?.targetUniversity ? `Target: ${aspirantGoal.targetUniversity}` : 'University Aspirant')
+        : student.school,
       text: filterResult.sanitizedText,
       reactions: {
         thumbsUp: [],
@@ -191,19 +205,27 @@ export const StudentCommunityForum: React.FC = () => {
       <div className="bg-slate-900/95 border-b border-slate-800 px-4 py-3 shrink-0">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-emerald-600 to-teal-700 flex items-center justify-center text-white shadow-md shadow-emerald-950/50">
-              <MessageSquare className="w-4 h-4" />
+            <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-white shadow-md ${
+              isAspirant
+                ? 'bg-gradient-to-br from-[#FF5B00] to-amber-600 shadow-orange-950/50'
+                : 'bg-gradient-to-br from-emerald-600 to-teal-700 shadow-emerald-950/50'
+            }`}>
+              {isAspirant ? <GraduationCap className="w-4 h-4" /> : <MessageSquare className="w-4 h-4" />}
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-sm font-bold text-white">Student Scholar Community</h1>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h1 className="text-sm font-bold text-white">
+                  {isAspirant ? 'University Aspirants Chat Rooms' : 'Student Scholar Community'}
+                </h1>
                 <span className="text-[10px] bg-emerald-950 text-emerald-400 font-semibold px-2 py-0.5 rounded-full border border-emerald-800/60 flex items-center gap-1">
                   <ShieldCheck className="w-3 h-3" />
-                  Verified Safe
+                  {isAspirant ? 'Aspirants Only' : 'Secondary Students Only'}
                 </span>
               </div>
               <p className="text-[11px] text-slate-400">
-                Connect with students nationwide across secondary school classes
+                {isAspirant
+                  ? 'Dedicated JAMB UTME, WAEC/NECO GCE & Post-UTME rooms — separate from secondary school students'
+                  : 'Connect with students nationwide across JSS 1 – SS 3 secondary school classes'}
               </p>
             </div>
           </div>
@@ -211,7 +233,7 @@ export const StudentCommunityForum: React.FC = () => {
 
         {/* Channel Selector Pills */}
         <div className="flex items-center gap-2 mt-3 overflow-x-auto pb-1 scrollbar-none">
-          {studentChannels.map(ch => {
+          {visibleChannels.map(ch => {
             const isActive = ch.id === activeChannelId;
             return (
               <button

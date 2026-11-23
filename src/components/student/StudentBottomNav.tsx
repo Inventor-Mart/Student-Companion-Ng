@@ -72,22 +72,44 @@ export const StudentBottomNav: React.FC = () => {
     },
   ];
 
+  const isAspirant = student.classLevel === 'University Aspirant';
+
   // Secondary hubs accessible in quick-access drawer; paused hubs remain visible with Paused indicator
   const secondaryHubs: Array<{
-    id: 'ai-coach' | 'cbt' | 'exam-prep' | 'syllabus' | 'formulas' | 'community' | 'competitions';
+    id:
+      | 'ai-coach'
+      | 'cbt'
+      | 'exam-prep'
+      | 'syllabus'
+      | 'formulas'
+      | 'community'
+      | 'competitions'
+      | 'aspirant-cbt'
+      | 'aspirant-past-questions'
+      | 'mock-tournaments'
+      | 'admission-guide';
     label: string;
     icon: React.ComponentType<{ className?: string }>;
     color: string;
     featureKey: OTAFeatureKey;
-  }> = [
-    { id: 'ai-coach', label: 'AI Study Coach', icon: Sparkles, color: 'text-[#84CC16] bg-[#84CC16]/10 border-[#84CC16]/30', featureKey: 'aiCoach' },
-    { id: 'cbt', label: 'CBT Exam Drills', icon: Trophy, color: 'text-[#FF5B00] bg-[#FF5B00]/10 border-[#FF5B00]/30', featureKey: 'cbtExams' },
-    { id: 'exam-prep', label: 'Prepare For Exam', icon: Calendar, color: 'text-amber-400 bg-amber-400/10 border-amber-400/30', featureKey: 'examPrep' },
-    { id: 'syllabus', label: 'Lesson Notes & NERDC', icon: BookOpen, color: 'text-cyan-400 bg-cyan-400/10 border-cyan-400/30', featureKey: 'lessonNotes' },
-    { id: 'formulas', label: 'STEM Formulas Sheet', icon: Atom, color: 'text-purple-400 bg-purple-400/10 border-purple-400/30', featureKey: 'scienceFormulas' },
-    { id: 'community', label: 'Student Forum', icon: MessageSquare, color: 'text-emerald-400 bg-emerald-400/10 border-emerald-400/30', featureKey: 'communityForum' },
-    { id: 'competitions', label: 'Competitions & League', icon: Trophy, color: 'text-yellow-400 bg-yellow-400/10 border-yellow-400/30', featureKey: 'competitions' },
-  ];
+  }> = isAspirant
+    ? [
+        { id: 'aspirant-cbt', label: 'CBT Mock Simulator', icon: Trophy, color: 'text-[#84CC16] bg-[#84CC16]/10 border-[#84CC16]/30', featureKey: 'aspirantHub' },
+        { id: 'aspirant-past-questions', label: '15+ Yrs Past Questions', icon: BookOpen, color: 'text-amber-400 bg-amber-400/10 border-amber-400/30', featureKey: 'aspirantHub' },
+        { id: 'mock-tournaments', label: 'Weekly Mock Tournaments', icon: Calendar, color: 'text-cyan-400 bg-cyan-400/10 border-cyan-400/30', featureKey: 'aspirantHub' },
+        { id: 'admission-guide', label: 'Admission & Cut-Offs', icon: Atom, color: 'text-purple-400 bg-purple-400/10 border-purple-400/30', featureKey: 'aspirantHub' },
+        { id: 'community', label: 'Aspirant Chat Rooms', icon: MessageSquare, color: 'text-emerald-400 bg-emerald-400/10 border-emerald-400/30', featureKey: 'communityForum' },
+        { id: 'ai-coach', label: 'AI Study Coach', icon: Sparkles, color: 'text-[#FF5B00] bg-[#FF5B00]/10 border-[#FF5B00]/30', featureKey: 'aiCoach' },
+      ]
+    : [
+        { id: 'ai-coach', label: 'AI Study Coach', icon: Sparkles, color: 'text-[#84CC16] bg-[#84CC16]/10 border-[#84CC16]/30', featureKey: 'aiCoach' },
+        { id: 'cbt', label: 'CBT Exam Drills', icon: Trophy, color: 'text-[#FF5B00] bg-[#FF5B00]/10 border-[#FF5B00]/30', featureKey: 'cbtExams' },
+        { id: 'exam-prep', label: 'Prepare For Exam', icon: Calendar, color: 'text-amber-400 bg-amber-400/10 border-amber-400/30', featureKey: 'examPrep' },
+        { id: 'syllabus', label: 'Lesson Notes & NERDC', icon: BookOpen, color: 'text-cyan-400 bg-cyan-400/10 border-cyan-400/30', featureKey: 'lessonNotes' },
+        { id: 'formulas', label: 'STEM Formulas Sheet', icon: Atom, color: 'text-purple-400 bg-purple-400/10 border-purple-400/30', featureKey: 'scienceFormulas' },
+        { id: 'community', label: 'Student Forum', icon: MessageSquare, color: 'text-emerald-400 bg-emerald-400/10 border-emerald-400/30', featureKey: 'communityForum' },
+        { id: 'competitions', label: 'Competitions & League', icon: Trophy, color: 'text-yellow-400 bg-yellow-400/10 border-yellow-400/30', featureKey: 'competitions' },
+      ];
 
   return (
     <>

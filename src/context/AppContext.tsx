@@ -312,8 +312,22 @@ interface AppContextType {
   isFirebaseConnected: boolean;
 
   // Student Navigation
-  activeStudentTab: 'dashboard' | 'syllabus' | 'cbt' | 'competitions' | 'formulas' | 'tutors' | 'games' | 'ai-coach' | 'community' | 'exam-prep' | 'aspirant-cbt' | 'admission-guide' | 'mock-tournaments' | 'educator-importer';
-  setActiveStudentTab: (tab: 'dashboard' | 'syllabus' | 'cbt' | 'competitions' | 'formulas' | 'tutors' | 'games' | 'ai-coach' | 'community' | 'exam-prep' | 'aspirant-cbt' | 'admission-guide' | 'mock-tournaments' | 'educator-importer') => void;
+  activeStudentTab: 'dashboard' | 'syllabus' | 'cbt' | 'competitions' | 'formulas' | 'tutors' | 'games' | 'ai-coach' | 'community' | 'exam-prep' | 'aspirant-cbt' | 'aspirant-past-questions' | 'admission-guide' | 'mock-tournaments' | 'educator-importer';
+  setActiveStudentTab: (tab: 'dashboard' | 'syllabus' | 'cbt' | 'competitions' | 'formulas' | 'tutors' | 'games' | 'ai-coach' | 'community' | 'exam-prep' | 'aspirant-cbt' | 'aspirant-past-questions' | 'admission-guide' | 'mock-tournaments' | 'educator-importer') => void;
+  pendingTournamentExam: {
+    tournamentId: string;
+    examPaperId: string;
+    title: string;
+    weekKey: string;
+  } | null;
+  setPendingTournamentExam: (
+    payload: {
+      tournamentId: string;
+      examPaperId: string;
+      title: string;
+      weekKey: string;
+    } | null
+  ) => void;
   activeReadingNote: CurriculumTopic | null;
   openNoteReader: (topic: CurriculumTopic) => void;
   closeNoteReader: () => void;
@@ -1318,7 +1332,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const dismissOfflineSyncNotice = useCallback(() => setOfflineSyncNotice(null), []);
   const [isLandingView, setIsLandingView] = useState<boolean>(false);
   type AppScreenType = 'splash' | 'landing' | 'signin' | 'signup' | 'know_more' | 'app';
-  type StudentTabType = 'dashboard' | 'syllabus' | 'cbt' | 'competitions' | 'formulas' | 'tutors' | 'games' | 'ai-coach' | 'community' | 'exam-prep' | 'aspirant-cbt' | 'admission-guide' | 'mock-tournaments' | 'educator-importer';
+  type StudentTabType = 'dashboard' | 'syllabus' | 'cbt' | 'competitions' | 'formulas' | 'tutors' | 'games' | 'ai-coach' | 'community' | 'exam-prep' | 'aspirant-cbt' | 'aspirant-past-questions' | 'admission-guide' | 'mock-tournaments' | 'educator-importer';
 
   const [currentScreen, setCurrentScreenRaw] = useState<AppScreenType>(() => {
     const returnTarget = peekGoogleAuthReturnTarget();
@@ -1334,6 +1348,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [googleAuthError, setGoogleAuthError] = useState<string | null>(null);
   const clearGoogleAuthError = useCallback(() => setGoogleAuthError(null), []);
   const [activeStudentTab, setActiveStudentTabRaw] = useState<StudentTabType>('dashboard');
+  const [pendingTournamentExam, setPendingTournamentExam] = useState<{
+    tournamentId: string;
+    examPaperId: string;
+    title: string;
+    weekKey: string;
+  } | null>(null);
   const studentTabHistoryRef = React.useRef<StudentTabType[]>(['dashboard']);
   const [activeReadingNote, setActiveReadingNote] = useState<CurriculumTopic | null>(null);
   const [activeExam, setActiveExam] = useState<CBTExam | null>(null);
@@ -7937,6 +7957,59 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (effectiveGamesBypass) return { hasAccess: true };
 
       const gameId = options?.gameId || '';
+      const isAspirantAccount = student.classLevel === 'University Aspirant';
+
+      if (isAspirantAccount) {
+        const aspirantTier = aspirantGoal.tier || 'free';
+        const aspirantFreeGames = [
+          'math_sprint',
+          'maths_sprint',
+          'maths-sprint',
+          'spelling_bee',
+          'periodic_table',
+          'periodic-table',
+          'speed_concord',
+          'speed-concord'
+        ];
+        const aspirantBasicGames = [
+          ...aspirantFreeGames,
+          'word_scramble',
+          'nigerian_geo',
+          'nigerian_geo_civic',
+          'nigerian-geo-civic',
+          'formula_master',
+          'bio_sort'
+        ];
+
+        if (aspirantTier === 'elite') {
+          return { hasAccess: true };
+        }
+        if (aspirantTier === 'basic') {
+          if (aspirantBasicGames.includes(gameId)) {
+            return { hasAccess: true };
+          }
+          return {
+            hasAccess: false,
+            requiredPlan: 'elite',
+            reason: 'Aspirant Basic unlocks 8 arcade study games. Upgrade to Aspirant Elite (₦10,000 / month) to unlock all 12 games.',
+            unlockPriceNaira: 10000
+          };
+        }
+        // Free Aspirant: 4 games unlocked
+        if (aspirantFreeGames.includes(gameId)) {
+          return { hasAccess: true };
+        }
+        const needsElite = !aspirantBasicGames.includes(gameId);
+        return {
+          hasAccess: false,
+          requiredPlan: needsElite ? 'elite' : 'basic',
+          reason: needsElite
+            ? 'Free Aspirants have 4 study games unlocked. Upgrade to Aspirant Elite (₦10,000 / month) to unlock all 12 games.'
+            : 'Free Aspirants have 4 study games unlocked. Upgrade to Aspirant Basic (₦5,000 / month) for 8 games or Elite for all 12.',
+          unlockPriceNaira: needsElite ? 10000 : 5000
+        };
+      }
+
       if (plan === 'free') {
         const freeGames = ['math_sprint', 'maths_sprint', 'periodic_table', 'maths-sprint', 'periodic-table'];
         if (freeGames.includes(gameId)) {
@@ -8082,6 +8155,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     student.subscriptionPlan,
     student.isSubscribed,
     student.addOns,
+    student.classLevel,
+    aspirantGoal.tier,
     effectiveTermBypass,
     effectiveGamesBypass,
     effectiveAiCoachBypass,
@@ -9660,6 +9735,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         'community',
         'exam-prep',
         'aspirant-cbt',
+        'aspirant-past-questions',
         'admission-guide',
         'mock-tournaments'
       ]);
@@ -10432,6 +10508,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         isFirebaseConnected,
         activeStudentTab,
         setActiveStudentTab,
+        pendingTournamentExam,
+        setPendingTournamentExam,
         activeReadingNote,
         openNoteReader,
         closeNoteReader,

@@ -37,6 +37,50 @@ export const INITIAL_FORUM_CHANNELS: ForumChannel[] = [
   },
 
   // ==========================================
+  // UNIVERSITY ASPIRANT FORUM CHANNELS (ISOLATED FROM JSS/SS SECONDARY STUDENTS)
+  // ==========================================
+  {
+    id: 'aspirant-jamb-utme',
+    title: 'JAMB UTME Prep Hall',
+    description: 'UTME 4-subject drills, CBT speed strategy, syllabus breakdown, and 300+ score targets.',
+    audience: 'aspirant',
+    category: 'aspirant_jamb',
+    iconName: 'Target',
+    messageCount: 3,
+    lastActivityAt: '12 mins ago'
+  },
+  {
+    id: 'aspirant-waec-neco',
+    title: 'WAEC & NECO Study Room',
+    description: 'WASSCE and NECO SSCE objective/theory tactics, practical tips, and past-paper solutions.',
+    audience: 'aspirant',
+    category: 'aspirant_waec_neco',
+    iconName: 'BookOpen',
+    messageCount: 2,
+    lastActivityAt: '28 mins ago'
+  },
+  {
+    id: 'aspirant-admissions',
+    title: 'Post-UTME & Admissions Desk',
+    description: 'UNILAG, UI, OAU, UNN, ABU, LASU cut-off marks, CAPS status updates, and screening alerts.',
+    audience: 'aspirant',
+    category: 'aspirant_admissions',
+    iconName: 'GraduationCap',
+    messageCount: 2,
+    lastActivityAt: '45 mins ago'
+  },
+  {
+    id: 'aspirant-lounge',
+    title: 'Aspirant Motivation & Gist',
+    description: 'Accountability check-ins, daily study targets, weekly National Mock banter, and encouragement.',
+    audience: 'aspirant',
+    category: 'aspirant_general',
+    iconName: 'Flame',
+    messageCount: 2,
+    lastActivityAt: '1 hour ago'
+  },
+
+  // ==========================================
   // PARENT FORUM CHANNELS
   // ==========================================
   {
@@ -239,6 +283,100 @@ export const INITIAL_FORUM_MESSAGES: ForumMessage[] = [
       clap: ['par-seed-1']
     },
     createdAt: '40 mins ago'
+  },
+
+  // ==========================================
+  // UNIVERSITY ASPIRANT ROOM MESSAGES (ISOLATED FROM SECONDARY STUDENTS)
+  // ==========================================
+  {
+    id: 'msg-asp-jamb-1',
+    channelId: 'aspirant-jamb-utme',
+    senderId: 'asp-seed-1',
+    senderName: 'Ibrahim Musa',
+    senderRole: 'student',
+    senderClassLevel: 'University Aspirant',
+    senderRank: 'Scholar',
+    senderSchool: 'Target: UNILAG · Medicine & Surgery',
+    text: 'Tip for anyone gunning for 310+ in JAMB UTME: practice using keyboard shortcuts (A, B, C, D, N, P, R) on the Authentic CBT Mock Simulator. It saved me nearly 18 minutes on Use of English and Physics!',
+    reactions: {
+      thumbsUp: ['asp-seed-2', 'asp-seed-3'],
+      lightbulb: ['asp-seed-2'],
+      fire: ['asp-seed-3'],
+      clap: []
+    },
+    createdAt: '18 mins ago'
+  },
+  {
+    id: 'msg-asp-jamb-2',
+    channelId: 'aspirant-jamb-utme',
+    senderId: 'asp-seed-2',
+    senderName: 'Chidinma Okafor',
+    senderRole: 'student',
+    senderClassLevel: 'University Aspirant',
+    senderRank: 'Senior Prefect',
+    senderSchool: 'Target: UI · Pharmacy',
+    text: 'Just finished JAMB Complete Mock #1 with 304/400! Zero repeated questions made it feel like the real exam hall. Reviewing my Organic Chemistry misses before the weekend National Mock.',
+    reactions: {
+      thumbsUp: ['asp-seed-1'],
+      lightbulb: [],
+      fire: ['asp-seed-1', 'asp-seed-3'],
+      clap: ['asp-seed-1']
+    },
+    createdAt: '12 mins ago'
+  },
+  {
+    id: 'msg-asp-waec-1',
+    channelId: 'aspirant-waec-neco',
+    senderId: 'asp-seed-3',
+    senderName: 'Oluwaseun Balogun',
+    senderRole: 'student',
+    senderClassLevel: 'University Aspirant',
+    senderRank: 'Prefect',
+    senderSchool: 'Target: OAU · Computer Science',
+    text: 'For WAEC and NECO candidates combining with UTME, remember to balance your objective speed with theory diagrams—especially in Biology osmosis and Physics ray optics.',
+    reactions: {
+      thumbsUp: ['asp-seed-1'],
+      lightbulb: ['asp-seed-1', 'asp-seed-2'],
+      fire: [],
+      clap: []
+    },
+    createdAt: '28 mins ago'
+  },
+  {
+    id: 'msg-asp-adm-1',
+    channelId: 'aspirant-admissions',
+    senderId: 'asp-seed-2',
+    senderName: 'Chidinma Okafor',
+    senderRole: 'student',
+    senderClassLevel: 'University Aspirant',
+    senderRank: 'Senior Prefect',
+    senderSchool: 'Target: UI · Pharmacy',
+    text: 'Please double-check that your O-Level results are uploaded cleanly to JAMB CAPS before Post-UTME screening begins. Use the University Admission Guide here to verify your 4-subject combination too.',
+    reactions: {
+      thumbsUp: ['asp-seed-1', 'asp-seed-3'],
+      lightbulb: ['asp-seed-3'],
+      fire: [],
+      clap: ['asp-seed-1']
+    },
+    createdAt: '45 mins ago'
+  },
+  {
+    id: 'msg-asp-lounge-1',
+    channelId: 'aspirant-lounge',
+    senderId: 'asp-seed-4',
+    senderName: 'Amina Abdullahi',
+    senderRole: 'student',
+    senderClassLevel: 'University Aspirant',
+    senderRank: 'Scholar',
+    senderSchool: 'Target: ABU Zaria · Law',
+    text: 'Accountability check-in! Who else is registering for this weekend’s ₦500 National Mock Tournament? Let’s push each other to hit our target scores before exam day!',
+    reactions: {
+      thumbsUp: ['asp-seed-1', 'asp-seed-2'],
+      lightbulb: [],
+      fire: ['asp-seed-1', 'asp-seed-2', 'asp-seed-3'],
+      clap: ['asp-seed-3']
+    },
+    createdAt: '1 hour ago'
   }
 ];
 

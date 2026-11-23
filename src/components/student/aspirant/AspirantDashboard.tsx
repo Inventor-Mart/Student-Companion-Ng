@@ -5,6 +5,7 @@ import { generateAspirantDailyDrill, ASPIRANT_PAST_QUESTION_YEARS } from '../../
 import { AspirantSubscriptionModal } from './AspirantSubscriptionModal';
 import { AspirantReferralRewardCard } from './AspirantReferralRewardCard';
 import { DailyExplorerHUD } from '../DailyExplorerHUD';
+import { EditablePersonaAvatar } from '../../common/EditablePersonaAvatar';
 import {
   Calendar,
   Clock,
@@ -25,7 +26,8 @@ import {
   X,
   FileQuestion,
   ExternalLink,
-  Gift
+  Gift,
+  Trash2
 } from 'lucide-react';
 import { NairaSign } from '../../../utils/currency';
 
@@ -36,15 +38,23 @@ export const AspirantDashboard: React.FC = () => {
     completedAspirantDrillIds,
     toggleAspirantDrillCompleted,
     setActiveStudentTab,
-    startExam,
     aspirantRewardStatus,
     appliedReferralCode,
-    student
+    student,
+    currentUserProfile,
+    updateUserAvatar,
+    isSuperAdmin
   } = useApp();
 
   const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
   const [isGoalModalOpen, setIsGoalModalOpen] = useState(false);
+  const [avatarStatus, setAvatarStatus] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const hasReferralCode = Boolean((student.referredByCode || appliedReferralCode || '').trim());
+  const isPaidAspirant = isSuperAdmin || aspirantGoal.tier === 'basic' || aspirantGoal.tier === 'elite';
+  const currentAvatarUrl =
+    currentUserProfile?.avatarUrl !== undefined
+      ? currentUserProfile.avatarUrl
+      : student?.uniformPhotoUrl;
 
   const activeExamDate = aspirantGoal.targetExamDate || aspirantGoal.examDates?.jamb || '2026-04-18';
   const activeSubjects = aspirantGoal.jambSubjects || aspirantGoal.subjectCombination || ['Use of English', 'Mathematics', 'Physics', 'Chemistry'];
@@ -145,20 +155,70 @@ export const AspirantDashboard: React.FC = () => {
         <div className="absolute right-12 top-0 w-32 h-32 bg-[#FF5B00]/15 rounded-full blur-2xl pointer-events-none" />
 
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2 mb-2">
-              <span className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-[#008751]/30 text-[#00E676] border border-[#008751]/50">
-                School Leavers Hub
-              </span>
-              {getTierBadge()}
+          <div className="flex items-start gap-3.5">
+            <div className="flex flex-col items-center shrink-0">
+              <EditablePersonaAvatar
+                name={currentUserProfile?.fullName || student.name || 'University Aspirant'}
+                src={currentAvatarUrl}
+                alt={currentUserProfile?.fullName || student.name || 'Aspirant photo'}
+                className="w-16 h-16 rounded-2xl ring-2 ring-[#00E676]/70 shadow-lg"
+                textClassName="text-lg"
+                title="Tap to upload or change your profile picture"
+                onAvatarUpdated={async (dataUrl) => {
+                  setAvatarStatus(null);
+                  await updateUserAvatar(dataUrl);
+                  setAvatarStatus({
+                    type: 'success',
+                    text: dataUrl ? 'Profile photo saved.' : 'Profile photo removed.'
+                  });
+                  setTimeout(() => setAvatarStatus(null), 3500);
+                }}
+                onError={(msg) => setAvatarStatus({ type: 'error', text: msg })}
+              />
+              <div className="flex items-center gap-1.5 mt-1.5">
+                <span className="text-[10px] text-slate-300 font-semibold">Edit Photo</span>
+                {Boolean(currentAvatarUrl) && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setAvatarStatus(null);
+                      await updateUserAvatar('');
+                      setAvatarStatus({ type: 'success', text: 'Profile photo removed.' });
+                      setTimeout(() => setAvatarStatus(null), 3500);
+                    }}
+                    title="Remove profile photo"
+                    className="text-[10px] text-rose-400 hover:text-rose-300 inline-flex items-center cursor-pointer"
+                  >
+                    <Trash2 className="w-2.5 h-2.5" />
+                  </button>
+                )}
+              </div>
+              {avatarStatus && (
+                <span
+                  className={`text-[10px] font-bold mt-0.5 ${
+                    avatarStatus.type === 'success' ? 'text-[#00E676]' : 'text-rose-400'
+                  }`}
+                >
+                  {avatarStatus.text}
+                </span>
+              )}
             </div>
-            <h1 className="text-2xl md:text-3xl font-black text-white tracking-tight flex items-center gap-2">
-              Aspirant Command Center
-              <GraduationCap className="w-7 h-7 text-[#00E676]" />
-            </h1>
-            <p className="text-xs md:text-sm text-slate-300 mt-1 max-w-xl">
-              Targeted WAEC, NECO &amp; JAMB preparation for secondary school graduates racing towards university admission.
-            </p>
+
+            <div>
+              <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                <span className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-[#008751]/30 text-[#00E676] border border-[#008751]/50">
+                  School Leavers Hub
+                </span>
+                {getTierBadge()}
+              </div>
+              <h1 className="text-xl md:text-3xl font-black text-white tracking-tight flex items-center gap-2">
+                Aspirant Command Center
+                <GraduationCap className="w-6 h-6 md:w-7 md:h-7 text-[#00E676]" />
+              </h1>
+              <p className="text-xs md:text-sm text-slate-300 mt-1 max-w-xl">
+                Welcome, <span className="font-bold text-white">{currentUserProfile?.fullName || student.name}</span> — targeted WAEC, NECO &amp; JAMB preparation towards your university admission.
+              </p>
+            </div>
           </div>
 
           <div className="flex items-center gap-2.5 self-start md:self-auto">
@@ -345,11 +405,22 @@ export const AspirantDashboard: React.FC = () => {
               </div>
             </div>
 
-            <div className="bg-emerald-950/40 border border-emerald-800/40 rounded-xl p-2.5 text-center">
-              <span className="text-[11px] text-emerald-300 font-medium">
-                15+ Years Official WAEC &amp; NECO Past Questions Unlocked
+            <button
+              type="button"
+              onClick={() => setActiveStudentTab('aspirant-past-questions')}
+              className={`w-full rounded-xl p-2.5 text-center border cursor-pointer transition-colors ${
+                isPaidAspirant
+                  ? 'bg-emerald-950/40 border-emerald-800/40 hover:bg-emerald-950/70'
+                  : 'bg-amber-950/40 border-amber-700/50 hover:bg-amber-950/70'
+              }`}
+            >
+              <span className={`text-[11px] font-bold flex items-center justify-center gap-1.5 ${isPaidAspirant ? 'text-emerald-300' : 'text-amber-300'}`}>
+                {!isPaidAspirant && <Lock className="w-3 h-3" />}
+                {isPaidAspirant
+                  ? '15+ Years Official JAMB, WAEC & NECO Past Questions Unlocked'
+                  : '15+ Years Past Questions — Upgrade to Basic/Elite to Unlock'}
               </span>
-            </div>
+            </button>
           </div>
         </div>
       </div>
@@ -490,44 +561,49 @@ export const AspirantDashboard: React.FC = () => {
               <div className="w-10 h-10 rounded-xl bg-[#FF5B00]/20 border border-[#FF5B00]/40 flex items-center justify-center text-[#FF5B00] mb-3 group-hover:scale-105 transition-transform">
                 <Award className="w-5 h-5" />
               </div>
-              <h3 className="font-bold text-white text-base group-hover:text-[#FF5B00] transition-colors">
-                Authentic JAMB CBT Simulator
-              </h3>
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="font-bold text-white text-base group-hover:text-[#FF5B00] transition-colors">
+                  Authentic CBT Mock Simulator
+                </h3>
+                <span className="text-[10px] font-bold text-[#00E676] bg-[#00E676]/10 px-1.5 py-0.5 rounded border border-[#00E676]/30 shrink-0">
+                  2 Free Mocks
+                </span>
+              </div>
               <p className="text-xs text-slate-400 mt-1">
-                Strict 4-subject UTME engine with 180 questions, 120-minute countdown, question grid, and hotkeys (A, B, C, D, N, P, R, S).
+                6 permanent non-repeating complete mock exams (2 JAMB, 2 WAEC, 2 NECO) plus archived weekly National Mock Tournament papers.
               </p>
             </div>
             <div className="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs font-semibold text-[#FF5B00]">
-              <span>Launch Simulator</span>
+              <span>Launch Mock Bank</span>
               <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
             </div>
           </div>
 
-          {/* Pillar 2: 15+ Years Past Questions Database */}
+          {/* Pillar 2: 15+ Years Past Questions Database (Paid Only) */}
           <div
-            onClick={() => setActiveStudentTab('aspirant-cbt')}
+            onClick={() => setActiveStudentTab('aspirant-past-questions')}
             className="group p-4 rounded-2xl bg-[#0D192C] hover:bg-[#12223B] border border-slate-800 hover:border-sky-500/60 transition-all cursor-pointer shadow-md flex flex-col justify-between"
           >
             <div>
               <div className="w-10 h-10 rounded-xl bg-sky-500/20 border border-sky-500/40 flex items-center justify-center text-sky-400 mb-3 group-hover:scale-105 transition-transform">
                 <FileQuestion className="w-5 h-5" />
               </div>
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-2">
                 <h3 className="font-bold text-white text-base group-hover:text-sky-400 transition-colors">
                   15+ Years Past Questions
                 </h3>
-                {aspirantGoal.tier === 'free' && (
-                  <span className="text-[10px] font-bold text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/30">
-                    2 Yrs Free
+                {!isPaidAspirant && (
+                  <span className="text-[10px] font-bold text-amber-300 bg-amber-500/15 px-1.5 py-0.5 rounded border border-amber-500/40 inline-flex items-center gap-1 shrink-0">
+                    <Lock className="w-2.5 h-2.5" /> Paid Only
                   </span>
                 )}
               </div>
               <p className="text-xs text-slate-400 mt-1">
-                Comprehensive 2008–2024 archive for WAEC, NECO, and JAMB with verified step-by-step solutions and syllabus mapping.
+                Dedicated 2008–2024 past paper archive for JAMB, WAEC, and NECO with Chief Examiner explanations — completely separate from Mock Exams.
               </p>
             </div>
             <div className="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs font-semibold text-sky-400">
-              <span>{aspirantGoal.tier === 'free' ? 'Practice 2023–2024 Free (Unlock All 15+ Yrs)' : 'Browse Past Papers'}</span>
+              <span>{isPaidAspirant ? 'Browse 2008–2024 Archive' : 'Upgrade to Basic or Elite to Unlock'}</span>
               <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
             </div>
           </div>
@@ -541,20 +617,20 @@ export const AspirantDashboard: React.FC = () => {
               <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 mb-3 group-hover:scale-105 transition-transform">
                 <Trophy className="w-5 h-5" />
               </div>
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-2">
                 <h3 className="font-bold text-white text-base group-hover:text-amber-400 transition-colors">
                   National Mock Tournaments
                 </h3>
-                <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/30">
-                  <NairaSign />50k Prizes
+                <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/30 shrink-0">
+                  <NairaSign />500 Weekly
                 </span>
               </div>
               <p className="text-xs text-slate-400 mt-1">
-                Compete with 20,000+ Nigerian aspirants in weekend timed UTME mocks. National leaderboard, state rankings &amp; cash/airtime rewards.
+                Auto-scheduled every weekend with a fresh unique mock paper. Enter with ₦500, rank nationally, and win weekly Admin-announced prizes.
               </p>
             </div>
             <div className="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs font-semibold text-amber-400">
-              <span>View Leaderboard &amp; Register</span>
+              <span>Enter This Week&apos;s Tournament</span>
               <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
             </div>
           </div>
@@ -641,7 +717,7 @@ export const AspirantDashboard: React.FC = () => {
               : 'Upgrade to Aspirant Elite for Full SC AI Coaching & Mock Tournaments'}
           </h3>
           <p className="text-xs text-slate-300 mt-1 max-w-xl">
-            Choose from Free (2 yrs past questions), Basic (₦5,000/mo - 15+ yrs past questions &amp; full notes), or Elite (₦10,000/mo - 24/7 SC AI Drill Sergeant &amp; Weekend Tournaments).
+            Choose from Free (2 starter CBT mocks &amp; 4 games), Basic (₦5,000/mo — 15+ yrs past questions, all 6 stored mocks + tournament archives &amp; 8 games), or Elite (₦10,000/mo — all 12 games &amp; 24/7 SC AI Drill Sergeant).
           </p>
         </div>
 

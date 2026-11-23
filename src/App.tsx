@@ -26,6 +26,7 @@ import { GrowthPartnerPortal } from './components/partner/GrowthPartnerPortal';
 import { VirtualClassroomModal } from './components/classroom/VirtualClassroomModal';
 import { PrepareForExamHub } from './components/student/exam-prep/PrepareForExamHub';
 import { AspirantCBTSimulator } from './components/student/aspirant/AspirantCBTSimulator';
+import { AspirantPastQuestionsHub } from './components/student/aspirant/AspirantPastQuestionsHub';
 import { UniversityAdmissionGuide } from './components/student/aspirant/UniversityAdmissionGuide';
 import { NationalMockTournaments } from './components/student/aspirant/NationalMockTournaments';
 import { EducatorQuestionImporter } from './components/admin/EducatorQuestionImporter';
@@ -485,6 +486,17 @@ const AppContent: React.FC = () => {
                     ) : (
                       <OTAModulePausedCard
                         moduleName="Aspirant CBT Simulator"
+                        message={getPausedFeatureMessage('aspirantHub')}
+                        onBackToDashboard={() => setActiveStudentTab('dashboard')}
+                      />
+                    )
+                  )}
+                  {activeStudentTab === 'aspirant-past-questions' && (
+                    isFeatureEnabled('aspirantHub') ? (
+                      <AspirantPastQuestionsHub />
+                    ) : (
+                      <OTAModulePausedCard
+                        moduleName="15+ Years Past Questions"
                         message={getPausedFeatureMessage('aspirantHub')}
                         onBackToDashboard={() => setActiveStudentTab('dashboard')}
                       />

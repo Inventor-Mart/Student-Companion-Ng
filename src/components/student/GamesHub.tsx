@@ -40,6 +40,8 @@ import { SnakeGame } from './games/SnakeGame';
 import { getSoundMuted, toggleSoundMuted, playSound } from '../../utils/audioSynthesis';
 import { motion } from 'motion/react';
 import { useBackHandler } from '../../lib/backNavigation';
+import { AspirantSubscriptionModal } from './aspirant/AspirantSubscriptionModal';
+import type { AspirantTier } from '../../types';
 
 type GameId =
   | 'hub'
@@ -59,6 +61,7 @@ type GameId =
 export const GamesHub: React.FC = () => {
   const {
     student,
+    aspirantGoal,
     addStudentXP,
     openStudentSubscriptionModal,
     checkStudentFeatureAccess,
@@ -71,6 +74,24 @@ export const GamesHub: React.FC = () => {
   const [activeGame, setActiveGame] = useState<GameId>('hub');
   const [filterCategory, setFilterCategory] = useState<'ALL' | 'RELAX' | 'STEM' | 'ARTS' | 'CIVICS'>('ALL');
   const [isMuted, setIsMuted] = useState<boolean>(getSoundMuted());
+  const [aspirantUpgradeTarget, setAspirantUpgradeTarget] = useState<AspirantTier | null>(null);
+
+  const isAspirantAccount = student.classLevel === 'University Aspirant';
+  const aspirantUnlockedCount = effectiveGamesBypass
+    ? 12
+    : aspirantGoal.tier === 'elite'
+    ? 12
+    : aspirantGoal.tier === 'basic'
+    ? 8
+    : 4;
+
+  const openLockedGameUpgrade = (requiredPlan?: string) => {
+    if (isAspirantAccount) {
+      setAspirantUpgradeTarget(requiredPlan === 'elite' ? 'elite' : 'basic');
+    } else {
+      openStudentSubscriptionModal((requiredPlan as any) || 'basic');
+    }
+  };
 
   useBackHandler(activeGame !== 'hub', () => setActiveGame('hub'), 'games-hub-game');
 
@@ -351,7 +372,9 @@ export const GamesHub: React.FC = () => {
                 Arcade & Brain Gym
               </span>
               <span className="text-[10px] font-bold text-[#FF5B00] bg-[#FF5B00]/10 px-2 py-0.5 rounded-full border border-[#FF5B00]/30">
-                {allGames.length} Games Ready
+                {isAspirantAccount
+                  ? `${aspirantUnlockedCount} / ${allGames.length} Unlocked (${(aspirantGoal.tier || 'free').toUpperCase()})`
+                  : `${allGames.length} Games Ready`}
               </span>
             </div>
             <h2 className="text-2xl font-black text-white tracking-tight mt-1 flex items-center gap-2">
@@ -462,7 +485,7 @@ export const GamesHub: React.FC = () => {
                 playSound.tileTap();
                 const access = checkStudentFeatureAccess('games', { gameId: game.id });
                 if (!access.hasAccess) {
-                  openStudentSubscriptionModal(access.requiredPlan || 'basic');
+                  openLockedGameUpgrade(access.requiredPlan);
                   return;
                 }
                 setActiveGame(game.id);
@@ -505,7 +528,19 @@ export const GamesHub: React.FC = () => {
                 const todayStr = new Date().toISOString().split('T')[0];
                 const dailyData = student.addOns?.dailyGameAttempts;
                 const attemptsToday = dailyData?.date === todayStr ? (dailyData?.attempts?.[game.id] || 0) : 0;
-                const isFreeDailyExhausted = !effectiveGamesBypass && (student.subscriptionPlan || 'free') === 'free' && attemptsToday >= 1;
+                const isFreeDailyExhausted =
+                  !effectiveGamesBypass &&
+                  !isAspirantAccount &&
+                  (student.subscriptionPlan || 'free') === 'free' &&
+                  attemptsToday >= 1;
+
+                const unlockBadgeLabel = isAspirantAccount
+                  ? access.requiredPlan === 'elite'
+                    ? 'Aspirant Elite'
+                    : 'Aspirant Basic'
+                  : access.requiredPlan === 'basic'
+                  ? 'Basic'
+                  : 'Standard';
 
                 return (
                   <div className="flex items-center justify-between text-xs text-slate-400 pt-2.5 border-t border-white/10">
@@ -520,12 +555,12 @@ export const GamesHub: React.FC = () => {
                         onClick={(e) => {
                           e.stopPropagation();
                           playSound.tileTap();
-                          openStudentSubscriptionModal(access.requiredPlan || 'basic');
+                          openLockedGameUpgrade(access.requiredPlan);
                         }}
                         className="flex items-center gap-1.5 px-3 py-1.5 bg-[#FF5B00] hover:bg-[#E04800] text-white text-xs font-bold rounded-xl transition-all shadow-md cursor-pointer"
                       >
                         <Lock className="w-3 h-3" />
-                        <span>Unlock ({access.requiredPlan === 'basic' ? 'Basic' : 'Standard'})</span>
+                        <span>Unlock ({unlockBadgeLabel})</span>
                       </button>
                     ) : isFreeDailyExhausted ? (
                       <button
@@ -533,7 +568,7 @@ export const GamesHub: React.FC = () => {
                         onClick={(e) => {
                           e.stopPropagation();
                           playSound.tileTap();
-                          openStudentSubscriptionModal('basic');
+                          openLockedGameUpgrade('basic');
                         }}
                         className="flex items-center gap-1.5 px-3 py-1.5 bg-[#FF5B00]/90 text-white text-xs font-bold rounded-xl transition-all shadow-md cursor-pointer"
                       >
@@ -546,7 +581,7 @@ export const GamesHub: React.FC = () => {
                         onClick={(e) => {
                           e.stopPropagation();
                           playSound.tileTap();
-                          if ((student.subscriptionPlan || 'free') === 'free') {
+                          if (!isAspirantAccount && (student.subscriptionPlan || 'free') === 'free') {
                             recordDailyGameAttempt(game.id);
                           }
                           setActiveGame(game.id);
@@ -564,6 +599,17 @@ export const GamesHub: React.FC = () => {
           );
         })}
       </motion.div>
+
+      <AspirantSubscriptionModal
+        isOpen={Boolean(aspirantUpgradeTarget)}
+        onClose={() => setAspirantUpgradeTarget(null)}
+        defaultTier={aspirantUpgradeTarget || 'basic'}
+        featureTitle={
+          aspirantUpgradeTarget === 'elite'
+            ? 'All 12 Arcade & Brain Games (Aspirant Elite)'
+            : '8 Arcade & Brain Games (Aspirant Basic)'
+        }
+      />
     </div>
   );
 };

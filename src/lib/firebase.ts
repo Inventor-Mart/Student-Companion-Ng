@@ -46,7 +46,7 @@ try {
   firestoreDb = initializeFirestore(
     app,
     {
-      experimentalForceLongPolling: true,
+      experimentalAutoDetectLongPolling: true,
       ignoreUndefinedProperties: true,
       localCache: canUsePersistentIndexedDb
         ? persistentLocalCache({ tabManager: persistentMultipleTabManager() })
@@ -59,7 +59,7 @@ try {
     firestoreDb = initializeFirestore(
       app,
       {
-        experimentalForceLongPolling: true,
+        experimentalAutoDetectLongPolling: true,
         ignoreUndefinedProperties: true,
         localCache: memoryLocalCache()
       },

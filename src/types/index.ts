@@ -34,6 +34,7 @@ export interface DailyExplorationState {
 export type AppFeatureId =
   | 'cbt'
   | 'aspirant-cbt'
+  | 'aspirant-past-questions'
   | 'syllabus'
   | 'formulas'
   | 'ai-coach'
@@ -628,8 +629,17 @@ export interface AspirantReferralReward {
   fulfilledBy?: string;
 }
 
-export type ForumAudience = 'student' | 'parent';
-export type ForumCategory = 'academics' | 'competitions' | 'general' | 'parenting' | 'exams';
+export type ForumAudience = 'student' | 'aspirant' | 'parent';
+export type ForumCategory =
+  | 'academics'
+  | 'competitions'
+  | 'general'
+  | 'parenting'
+  | 'exams'
+  | 'aspirant_jamb'
+  | 'aspirant_waec_neco'
+  | 'aspirant_admissions'
+  | 'aspirant_general';
 
 export interface ForumChannel {
   id: string;
@@ -1112,6 +1122,7 @@ export type NotificationDeepLinkTab =
   | 'community'
   | 'exam-prep'
   | 'aspirant-cbt'
+  | 'aspirant-past-questions'
   | 'admission-guide'
   | 'mock-tournaments'
   | 'parent_overview'
@@ -1291,4 +1302,86 @@ export interface AICoachQuotaStatus {
   resetsAt: string;
   dateWat: string;
 }
+
+export interface StoredMockQuestion {
+  id: string;
+  subject: string;
+  topic: string;
+  passage?: string;
+  question: string;
+  options: [string, string, string, string];
+  correctAnswer: number;
+  explanation: string;
+}
+
+export interface StoredMockExam {
+  id: string;
+  board: 'JAMB' | 'WAEC' | 'NECO';
+  paperNumber: number;
+  orderIndex: number;
+  title: string;
+  subtitle?: string;
+  source: 'starter' | 'tournament';
+  isFreeStarter: boolean;
+  tournamentId?: string;
+  weekKey?: string;
+  durationMinutes: number;
+  totalQuestions: number;
+  subjects: string[];
+  questions: StoredMockQuestion[];
+  createdAt: string;
+}
+
+export interface WeeklyTournamentLeaderboardEntry {
+  userId: string;
+  name: string;
+  state: string;
+  score: number;
+  maxScore: number;
+  timeTakenSeconds: number;
+  submittedAt: string;
+}
+
+export interface WeeklyNationalTournament {
+  id: string;
+  weekKey: string;
+  title: string;
+  subtitle?: string;
+  board: 'JAMB' | 'WAEC' | 'NECO';
+  entryFeeNaira: number;
+  startsAt: string;
+  endsAt: string;
+  status: 'upcoming' | 'live' | 'completed';
+  prizePoolLabel: string;
+  prizePoolSubtext?: string;
+  prizeNote?: string;
+  prizes: Array<{ rankLabel: string; reward: string }>;
+  examPaperId: string;
+  archivedToMockBank: boolean;
+  participantCount: number;
+  leaderboard: WeeklyTournamentLeaderboardEntry[];
+  prizeUpdatedBy?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TournamentRegistrationRecord {
+  id: string;
+  tournamentId: string;
+  weekKey: string;
+  userId: string;
+  userName: string;
+  userEmail?: string;
+  state?: string;
+  amountPaidNaira: number;
+  paymentMethod: 'wallet' | 'paystack';
+  paymentReference: string;
+  registeredAt: string;
+  hasSubmitted?: boolean;
+  submittedScore?: number;
+  timeTakenSeconds?: number;
+  submittedAt?: string;
+}
+
+
 

@@ -1,38 +1,69 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useApp } from '../../../context/AppContext';
-import { CBT_EXAMS_DATABASE } from '../../../data/cbtExamData';
-import { ASPIRANT_PAST_QUESTION_YEARS } from '../../../data/aspirantMockData';
-import { getJambQuestionsForSubjectAndYear, getAvailablePastQuestionYears } from '../../../data/jambPastQuestionsData';
-import { streamQuestionsBySubjectAndYear, fetchAvailableCloudPapers } from '../../../services/questionService';
-import { CBTExam, CBTExamResult, CBTQuestion } from '../../../types';
+import {
+  fetchStoredAspirantMockExams,
+  fetchCurrentWeeklyTournament,
+  submitWeeklyTournamentScore,
+} from '../../../services/aspirantMockService';
+import { CBTExamResult, StoredMockExam, StoredMockQuestion } from '../../../types';
 import { playSound, triggerHaptic } from '../../../utils/audioSynthesis';
 import { AspirantSubscriptionModal } from './AspirantSubscriptionModal';
 import { useActiveExamBackGuard, useBackHandler } from '../../../lib/backNavigation';
+import { MathText } from '../../../utils/mathFormatter';
 import {
   Timer,
-  CheckCircle2,
-  XCircle,
   Flag,
   ChevronLeft,
   ChevronRight,
-  RotateCcw,
   Sparkles,
   ArrowLeft,
   Award,
-  Zap,
   Lock,
+  BookOpen,
+  Trophy,
+  Calculator,
+  X,
+  CheckCircle2,
+  ShieldCheck,
+  Loader2,
+  Database,
+  Play,
   Layers,
-  HelpCircle,
-  Check,
-  BookOpen
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
-export const AspirantCBTSimulator: React.FC = () => {
-  const { aspirantGoal, saveExamResult, addStudentXP, setActiveStudentTab } = useApp();
+type BoardFilter = 'ALL' | 'JAMB' | 'WAEC' | 'NECO' | 'TOURNAMENT';
 
-  const [selectedYear, setSelectedYear] = useState<string>('2024');
-  const [selectedExamType, setSelectedExamType] = useState<'JAMB_UTME' | 'WAEC' | 'NECO'>('JAMB_UTME');
+interface SubjectGroup {
+  subject: string;
+  questions: StoredMockQuestion[];
+}
+
+export const AspirantCBTSimulator: React.FC = () => {
+  const {
+    student,
+    currentUser,
+    aspirantGoal,
+    isSuperAdmin,
+    saveExamResult,
+    addStudentXP,
+    setActiveStudentTab,
+    pendingTournamentExam,
+    setPendingTournamentExam,
+  } = useApp();
+
+  const [storedExams, setStoredExams] = useState<StoredMockExam[]>([]);
+  const [bankSource, setBankSource] = useState<'firestore' | 'server' | 'cache' | 'bundled'>('bundled');
+  const [isLoadingBank, setIsLoadingBank] = useState<boolean>(true);
+  const [boardFilter, setBoardFilter] = useState<BoardFilter>('ALL');
+
+  // Active exam session state
+  const [activePaper, setActivePaper] = useState<StoredMockExam | null>(null);
+  const [activeTournamentMeta, setActiveTournamentMeta] = useState<{
+    tournamentId: string;
+    weekKey: string;
+    title: string;
+  } | null>(null);
   const [activeSubjectTab, setActiveSubjectTab] = useState<number>(0);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState<number>(0);
   const [userAnswers, setUserAnswers] = useState<Record<string, number>>({});
@@ -41,14 +72,39 @@ export const AspirantCBTSimulator: React.FC = () => {
   const [isTestActive, setIsTestActive] = useState<boolean>(false);
   const [isSubmitted, setIsSubmitted] = useState<boolean>(false);
   const [isReviewMode, setIsReviewMode] = useState<boolean>(false);
-  const [lastExamResult, setLastExamResult] = useState<{ scaledScore: number; rawScore: number; totalQuestions: number } | null>(null);
-  const [secondsRemaining, setSecondsRemaining] = useState<number>(7200); // 2 hours for full JAMB UTME
+  const [secondsRemaining, setSecondsRemaining] = useState<number>(7200);
+  const [initialDurationSeconds, setInitialDurationSeconds] = useState<number>(7200);
+
+  const [lastExamResult, setLastExamResult] = useState<{
+    scaledScore: number;
+    rawScore: number;
+    totalQuestions: number;
+    percentage: number;
+    tournamentRank?: number | null;
+    tournamentSubmitError?: string | null;
+  } | null>(null);
+
   const [isSubscriptionModalOpen, setIsSubscriptionModalOpen] = useState<boolean>(false);
+  const [lockedFeatureTitle, setLockedFeatureTitle] = useState<string>('Unlock All Complete Mock Exams');
+  const [showCalculator, setShowCalculator] = useState<boolean>(false);
+  const [calcDisplay, setCalcDisplay] = useState<string>('0');
+  const [tournamentBooting, setTournamentBooting] = useState<boolean>(false);
+  const [tournamentBootError, setTournamentBootError] = useState<string | null>(null);
+
+  const submittedOnceRef = useRef<boolean>(false);
+
+  const currentTier = aspirantGoal.tier || 'free';
+  const isPaidAspirant = isSuperAdmin || currentTier === 'basic' || currentTier === 'elite';
 
   useBackHandler(
     isSubscriptionModalOpen,
     () => setIsSubscriptionModalOpen(false),
-    'aspirant-subscription-modal'
+    'aspirant-cbt-upgrade-modal'
+  );
+  useBackHandler(
+    showCalculator,
+    () => setShowCalculator(false),
+    'aspirant-cbt-calculator'
   );
   useBackHandler(
     isSubmitted,
@@ -56,132 +112,135 @@ export const AspirantCBTSimulator: React.FC = () => {
       setIsSubmitted(false);
       setIsTestActive(false);
       setIsReviewMode(false);
+      setActivePaper(null);
+      setActiveTournamentMeta(null);
     },
     'aspirant-cbt-results'
   );
   useActiveExamBackGuard(
     isTestActive && !isSubmitted,
-    `${selectedYear} ${selectedExamType.replace('_', ' ')} Simulator`,
+    activePaper?.title || 'Authentic Mock CBT Simulator',
     () => {
       setIsTestActive(false);
       setIsSubmitted(false);
       setIsReviewMode(false);
+      setActivePaper(null);
+      setActiveTournamentMeta(null);
+      setPendingTournamentExam(null);
     }
   );
 
-  // Cloud Firestore Streaming State
-  const [streamedQuestionsMap, setStreamedQuestionsMap] = useState<Record<string, CBTQuestion[]>>({});
-  const [streamSource, setStreamSource] = useState<'firestore' | 'cache' | 'bundled'>('bundled');
-  const [cloudPapersList, setCloudPapersList] = useState<Array<{ subject: string; year: number }>>([]);
-  const [isStreaming, setIsStreaming] = useState<boolean>(false);
-
-  const subjects = aspirantGoal.subjectCombination || [
-    'Use of English',
-    'Biology',
-    'Chemistry',
-    'Physics'
-  ];
-
-  const currentTier = aspirantGoal.tier || 'free';
-  const isYearLocked = currentTier === 'free' && parseInt(selectedYear) < 2023;
-
-  // On-demand streaming from Firestore with local caching and bundled fallback
+  // Load permanent stored 6 starter mocks + archived weekly tournament papers (never regenerates)
   useEffect(() => {
-    let isCancelled = false;
-    const streamExamQuestions = async () => {
-      setIsStreaming(true);
-      const examTypeKey = selectedExamType === 'JAMB_UTME' ? 'JAMB' : selectedExamType;
-      const yearNum = parseInt(selectedYear, 10) || 2024;
-      const resultMap: Record<string, CBTQuestion[]> = {};
-      let dominantSource: 'firestore' | 'cache' | 'bundled' = 'bundled';
-
-      try {
-        await Promise.all(
-          subjects.map(async (subj) => {
-            try {
-              const res = await streamQuestionsBySubjectAndYear(examTypeKey, subj, yearNum);
-              if (res.source === 'firestore') dominantSource = 'firestore';
-              else if (res.source === 'cache' && dominantSource !== 'firestore') dominantSource = 'cache';
-
-              if (res.questions && res.questions.length > 0) {
-                resultMap[subj] = res.questions.map((q, idx) => ({
-                  id: parseInt(q.id.replace(/\D/g, '').slice(-6), 10) || (idx + 1),
-                  question: q.question,
-                  options: q.options,
-                  correctOptionIndex: q.correctAnswer,
-                  explanation: q.explanation,
-                  topicRef: q.topic,
-                  passage: q.passage
-                } as any));
-              }
-            } catch (err) {
-              console.warn(`Error streaming questions for ${subj}:`, err);
-            }
-          })
-        );
-      } catch (err) {
-        console.warn('Streaming batch error:', err);
-      }
-
-      if (!isCancelled) {
-        setStreamedQuestionsMap(resultMap);
-        setStreamSource(dominantSource);
-        setIsStreaming(false);
-      }
-    };
-
-    streamExamQuestions();
+    let cancelled = false;
+    setIsLoadingBank(true);
+    fetchStoredAspirantMockExams()
+      .then((res) => {
+        if (cancelled) return;
+        setStoredExams(res.exams);
+        setBankSource(res.source);
+      })
+      .catch(() => {
+        // Fallback handled inside service
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoadingBank(false);
+      });
     return () => {
-      isCancelled = true;
+      cancelled = true;
     };
-  }, [selectedYear, selectedExamType, subjects.join(',')]);
-
-  // Discover newly uploaded cloud papers
-  useEffect(() => {
-    fetchAvailableCloudPapers().then(papers => {
-      setCloudPapersList(papers.map(p => ({ subject: p.subject, year: p.year })));
-    }).catch(() => {});
   }, []);
 
-  // Retrieve dedicated year-specific questions from cloud stream, JAMB archive, or CBT_EXAMS_DATABASE
-  const subjectExams = subjects.map(subj => {
-    if (streamedQuestionsMap[subj] && streamedQuestionsMap[subj].length > 0) {
-      return {
-        subject: subj,
-        questions: streamedQuestionsMap[subj]
-      };
+  // Helper to deduplicate questions by stem inside any paper so zero questions ever repeat
+  const groupPaperBySubject = (paper: StoredMockExam | null): SubjectGroup[] => {
+    if (!paper || !Array.isArray(paper.questions)) return [];
+    const seenStems = new Set<string>();
+    const map = new Map<string, StoredMockQuestion[]>();
+    for (const q of paper.questions) {
+      const stemKey = String(q.question || '').trim().toLowerCase();
+      if (!stemKey || seenStems.has(stemKey)) continue;
+      seenStems.add(stemKey);
+      const subj = q.subject || 'General';
+      if (!map.has(subj)) map.set(subj, []);
+      map.get(subj)!.push(q);
     }
-    if (selectedExamType === 'JAMB_UTME') {
-      const qList = getJambQuestionsForSubjectAndYear(subj, selectedYear, 40);
-      return {
-        subject: subj,
-        questions: qList
-      };
-    }
-    const match = CBT_EXAMS_DATABASE.find(e =>
-      e.subject.toLowerCase().includes(subj.toLowerCase()) ||
-      subj.toLowerCase().includes(e.subject.toLowerCase())
-    ) || CBT_EXAMS_DATABASE[0];
-    return {
-      subject: subj,
-      questions: match.questions
-    };
-  });
+    return Array.from(map.entries()).map(([subject, questions]) => ({ subject, questions }));
+  };
 
-  const activeSubject = subjectExams[activeSubjectTab] || subjectExams[0];
-  const activeQuestions = activeSubject.questions;
+  const subjectGroups = useMemo(() => groupPaperBySubject(activePaper), [activePaper]);
+  const activeSubject = subjectGroups[activeSubjectTab] || subjectGroups[0];
+  const activeQuestions = activeSubject?.questions || [];
   const currentQuestion = activeQuestions[currentQuestionIndex] || activeQuestions[0];
   const currentKey = `${activeSubjectTab}-${currentQuestionIndex}`;
+
+  const launchPaper = (
+    paper: StoredMockExam,
+    tournamentMeta: { tournamentId: string; weekKey: string; title: string } | null = null
+  ) => {
+    submittedOnceRef.current = false;
+    const durationSecs = Math.max(300, (paper.durationMinutes || 90) * 60);
+    setActivePaper(paper);
+    setActiveTournamentMeta(tournamentMeta);
+    setUserAnswers({});
+    setFlaggedQuestions(new Set());
+    setActiveSubjectTab(0);
+    setCurrentQuestionIndex(0);
+    setInitialDurationSeconds(durationSecs);
+    setSecondsRemaining(durationSecs);
+    setLastExamResult(null);
+    setIsReviewMode(false);
+    setIsSubmitted(false);
+    setIsTestActive(true);
+  };
+
+  // Auto-launch official Weekly National Mock Tournament paper when navigated from Tournaments page
+  useEffect(() => {
+    if (!pendingTournamentExam) return;
+    let cancelled = false;
+    setTournamentBooting(true);
+    setTournamentBootError(null);
+
+    fetchCurrentWeeklyTournament(student.id)
+      .then((payload) => {
+        if (cancelled) return;
+        const canSit = Boolean(payload.registration) || isSuperAdmin;
+        if (!canSit) {
+          setTournamentBootError(
+            'You must complete the ₦500 weekly registration before starting the official tournament exam.'
+          );
+          setPendingTournamentExam(null);
+          return;
+        }
+        launchPaper(payload.activePaper, {
+          tournamentId: payload.tournament.id,
+          weekKey: payload.tournament.weekKey,
+          title: payload.tournament.title,
+        });
+        setPendingTournamentExam(null);
+      })
+      .catch((err: any) => {
+        if (!cancelled) {
+          setTournamentBootError(err?.message || 'Unable to load this week’s tournament exam paper.');
+          setPendingTournamentExam(null);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setTournamentBooting(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [pendingTournamentExam, student.id, isSuperAdmin]);
 
   // Timer countdown
   useEffect(() => {
     if (!isTestActive || isSubmitted) return;
-
     const timer = setInterval(() => {
-      setSecondsRemaining(prev => {
+      setSecondsRemaining((prev) => {
         if (prev <= 1) {
           clearInterval(timer);
-          handleSubmitTest();
+          void handleSubmitTest();
           return 0;
         }
         if (prev <= 300 && prev % 60 === 0) {
@@ -192,17 +251,14 @@ export const AspirantCBTSimulator: React.FC = () => {
         return prev - 1;
       });
     }, 1000);
-
     return () => clearInterval(timer);
   }, [isTestActive, isSubmitted]);
 
-  // Keyboard shortcuts mimicking real JAMB CBT muscle memory
+  // Authentic JAMB CBT keyboard hotkeys
   useEffect(() => {
-    if (!isTestActive || isSubmitted) return;
-
+    if (!isTestActive || isSubmitted || !currentQuestion) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (['INPUT', 'TEXTAREA', 'SELECT'].includes((e.target as HTMLElement)?.tagName)) return;
-
       const key = e.key.toUpperCase();
       if (['A', 'B', 'C', 'D'].includes(key)) {
         const optionIndex = key === 'A' ? 0 : key === 'B' ? 1 : key === 'C' ? 2 : 3;
@@ -220,38 +276,36 @@ export const AspirantCBTSimulator: React.FC = () => {
         handleToggleFlag();
       }
     };
-
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isTestActive, isSubmitted, currentKey, currentQuestionIndex, activeSubjectTab]);
+  }, [isTestActive, isSubmitted, currentKey, currentQuestionIndex, activeSubjectTab, currentQuestion]);
 
-  const handleStartTest = () => {
-    if (isYearLocked) {
+  const handleOpenMockPaper = (exam: StoredMockExam) => {
+    const unlocked = isPaidAspirant || exam.isFreeStarter;
+    if (!unlocked) {
+      setLockedFeatureTitle(
+        exam.source === 'tournament'
+          ? `Unlock Archived Tournament Paper (${exam.weekKey || exam.title})`
+          : `Unlock ${exam.title}`
+      );
       setIsSubscriptionModalOpen(true);
       return;
     }
-    setUserAnswers({});
-    setFlaggedQuestions(new Set());
-    setActiveSubjectTab(0);
-    setCurrentQuestionIndex(0);
-    setSecondsRemaining(selectedExamType === 'JAMB_UTME' ? 7200 : 5400);
-    setIsTestActive(true);
-    setIsSubmitted(false);
-    setIsReviewMode(false);
+    launchPaper(exam, null);
   };
 
   const handleSelectOption = (idx: number) => {
     triggerHaptic('tick');
     playSound.snakeMove();
-    setUserAnswers(prev => ({
+    setUserAnswers((prev) => ({
       ...prev,
-      [currentKey]: idx
+      [currentKey]: idx,
     }));
   };
 
   const handleToggleFlag = () => {
     triggerHaptic('light');
-    setFlaggedQuestions(prev => {
+    setFlaggedQuestions((prev) => {
       const next = new Set(prev);
       if (next.has(currentKey)) next.delete(currentKey);
       else next.add(currentKey);
@@ -261,79 +315,108 @@ export const AspirantCBTSimulator: React.FC = () => {
 
   const handleNextQuestion = () => {
     if (currentQuestionIndex < activeQuestions.length - 1) {
-      setCurrentQuestionIndex(prev => prev + 1);
-    } else if (activeSubjectTab < subjectExams.length - 1) {
-      setActiveSubjectTab(prev => prev + 1);
+      setCurrentQuestionIndex((prev) => prev + 1);
+    } else if (activeSubjectTab < subjectGroups.length - 1) {
+      setActiveSubjectTab((prev) => prev + 1);
       setCurrentQuestionIndex(0);
     }
   };
 
   const handlePrevQuestion = () => {
     if (currentQuestionIndex > 0) {
-      setCurrentQuestionIndex(prev => prev - 1);
+      setCurrentQuestionIndex((prev) => prev - 1);
     } else if (activeSubjectTab > 0) {
-      setActiveSubjectTab(prev => prev - 1);
-      setCurrentQuestionIndex(subjectExams[activeSubjectTab - 1].questions.length - 1);
+      setActiveSubjectTab((prev) => prev - 1);
+      setCurrentQuestionIndex(subjectGroups[activeSubjectTab - 1].questions.length - 1);
     }
   };
 
-  const handleSubmitTest = () => {
+  const handleSubmitTest = async () => {
+    if (submittedOnceRef.current || !activePaper) return;
+    submittedOnceRef.current = true;
     setIsTestActive(false);
     setIsSubmitted(true);
     setIsReviewMode(false);
     playSound.levelUp();
 
-    let totalScore = 0;
+    let totalCorrect = 0;
     let totalQuestions = 0;
 
-    subjectExams.forEach((sub, sIdx) => {
-      sub.questions.forEach((q, qIdx) => {
+    subjectGroups.forEach((group, sIdx) => {
+      group.questions.forEach((q, qIdx) => {
         totalQuestions++;
-        const answer = userAnswers[`${sIdx}-${qIdx}`];
-        if (answer === q.correctOptionIndex) {
-          totalScore++;
+        if (userAnswers[`${sIdx}-${qIdx}`] === q.correctAnswer) {
+          totalCorrect++;
         }
       });
     });
 
-    const scaledJambScore = Math.round((totalScore / Math.max(1, totalQuestions)) * 400);
+    const percentage = Math.round((totalCorrect / Math.max(1, totalQuestions)) * 100);
+    const scaledJambScore = Math.round((totalCorrect / Math.max(1, totalQuestions)) * 400);
+    const timeSpentSeconds = Math.max(15, initialDurationSeconds - secondsRemaining);
+
+    let tournamentRank: number | null = null;
+    let tournamentSubmitError: string | null = null;
+
+    if (activeTournamentMeta) {
+      try {
+        const res = await submitWeeklyTournamentScore({
+          tournamentId: activeTournamentMeta.tournamentId,
+          userId: student.id,
+          userName: student.name || 'Aspirant',
+          state: 'Nigeria',
+          score: scaledJambScore,
+          maxScore: 400,
+          timeTakenSeconds: timeSpentSeconds,
+        });
+        tournamentRank = res.rank;
+      } catch (err: any) {
+        tournamentSubmitError = err?.message || 'Score saved locally; could not post to leaderboard.';
+      }
+    }
+
     setLastExamResult({
       scaledScore: scaledJambScore,
-      rawScore: totalScore,
-      totalQuestions
+      rawScore: totalCorrect,
+      totalQuestions,
+      percentage,
+      tournamentRank,
+      tournamentSubmitError,
     });
 
     const result: CBTExamResult = {
-      id: `res-asp-${Date.now()}`,
-      examId: `jamb-${selectedYear}`,
-      examTitle: `${selectedYear} ${selectedExamType} Simulator`,
-      subject: 'Combined 4-Subjects',
+      id: `res-mock-${Date.now()}`,
+      examId: activePaper.id,
+      examTitle: activeTournamentMeta ? `${activeTournamentMeta.title} (Official)` : activePaper.title,
+      subject: `${activePaper.board} Complete Mock`,
       score: scaledJambScore,
       totalQuestions: 400,
-      percentage: Math.round((totalScore / Math.max(1, totalQuestions)) * 100),
-      timeSpentSeconds: (selectedExamType === 'JAMB_UTME' ? 7200 : 5400) - secondsRemaining,
-      xpAwarded: Math.min(250, scaledJambScore),
+      percentage,
+      timeSpentSeconds,
+      xpAwarded: Math.min(250, Math.max(40, Math.round(scaledJambScore * 0.6))),
       date: new Date().toISOString(),
-      answers: {}
+      answers: {},
     };
 
     saveExamResult(result);
     addStudentXP({
       feature: 'aspirant-cbt',
-      baseXP: 150,
+      baseXP: activeTournamentMeta ? 220 : 150,
       difficulty: 'hard',
       questionCount: totalQuestions,
-      scorePercentage: result.percentage,
-      reason: `Completed ${selectedYear} ${selectedExamType} Full Simulator`
+      scorePercentage: percentage,
+      reason: `Completed ${activePaper.title}`,
     });
 
     try {
       confetti({
         particleCount: 80,
         spread: 70,
-        origin: { y: 0.6 }
+        origin: { y: 0.6 },
       });
-    } catch {}
+    } catch {
+      // Ignore confetti error
+    }
   };
 
   const formatTimer = (secs: number) => {
@@ -346,210 +429,383 @@ export const AspirantCBTSimulator: React.FC = () => {
     return `${mins.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
   };
 
-  // If Test is Not Active and Not Submitted: Show Setup & Past Question Catalog
+  const handleCalcInput = (val: string) => {
+    if (val === 'C') {
+      setCalcDisplay('0');
+      return;
+    }
+    if (val === '⌫') {
+      setCalcDisplay((prev) => (prev.length <= 1 ? '0' : prev.slice(0, -1)));
+      return;
+    }
+    if (val === '=') {
+      try {
+        const sanitized = calcDisplay.replace(/[^0-9+\-*/.()]/g, '');
+        if (!sanitized) return;
+        // Safe arithmetic evaluation using Function after strict numeric/operator whitelist
+        const computed = Function(`"use strict"; return (${sanitized})`)();
+        if (typeof computed === 'number' && Number.isFinite(computed)) {
+          setCalcDisplay(String(Number(computed.toFixed(6))));
+        } else {
+          setCalcDisplay('Error');
+        }
+      } catch {
+        setCalcDisplay('Error');
+      }
+      return;
+    }
+    setCalcDisplay((prev) => (prev === '0' || prev === 'Error' ? val : `${prev}${val}`));
+  };
+
+  const starterExams = useMemo(
+    () => storedExams.filter((e) => e.source === 'starter').sort((a, b) => a.orderIndex - b.orderIndex),
+    [storedExams]
+  );
+  const tournamentArchiveExams = useMemo(
+    () => storedExams.filter((e) => e.source === 'tournament'),
+    [storedExams]
+  );
+
+  const filteredExams = useMemo(() => {
+    if (boardFilter === 'ALL') return storedExams;
+    if (boardFilter === 'TOURNAMENT') return tournamentArchiveExams;
+    return storedExams.filter((e) => e.source === 'starter' && e.board === boardFilter);
+  }, [storedExams, tournamentArchiveExams, boardFilter]);
+
+  const totalAnsweredCount = Object.keys(userAnswers).length;
+  const totalExamQuestions = subjectGroups.reduce((acc, g) => acc + g.questions.length, 0);
+
+  // =========================================================================
+  // 1. CATALOG VIEW: 6 Permanent Stored Complete Mocks + Tournament Archives
+  // =========================================================================
   if (!isTestActive && !isSubmitted) {
     return (
       <div className="flex-1 min-h-0 h-full w-full overflow-y-auto px-4 pt-4 pb-24 space-y-5 touch-pan-y text-slate-100">
-        {/* Top Header Card */}
-        <div className="p-5 rounded-3xl bg-gradient-to-br from-slate-900 via-emerald-950/60 to-slate-950 border border-emerald-500/30 shadow-xl relative overflow-hidden">
-          <div className="flex items-center gap-2 text-xs font-semibold text-emerald-400">
-            <Timer className="w-4 h-4" />
-            <span>JAMB CBT Simulator Engine · 15+ Years Past Questions</span>
-          </div>
-
-          <h1 className="text-xl sm:text-2xl font-black text-slate-50 mt-1 leading-tight tracking-tight">
-            Authentic 4-Subject Computer-Based Test Simulator
-          </h1>
-
-          <p className="text-xs text-slate-300 mt-2 leading-relaxed max-w-xl">
-            Replicates the official JAMB UTME testing environment, countdown clock, subject tabs, question matrix grid, and keyboard hotkeys to develop speed and muscle memory.
-          </p>
-
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs">
-            <span className="px-2.5 py-1 rounded-lg bg-slate-900/90 border border-slate-800 text-slate-300">
-              Selected 4-Subject Combination: <strong className="text-emerald-400">{subjects.join(', ')}</strong>
-            </span>
-
-            <div className="flex items-center gap-2">
-              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-900/80 border border-slate-800">
-                {isStreaming ? (
-                  <span className="flex items-center gap-1.5 text-[11px] text-emerald-400">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
-                    Streaming from Firestore...
-                  </span>
-                ) : streamSource === 'firestore' ? (
-                  <span className="flex items-center gap-1.5 text-[11px] text-emerald-400 font-medium">
-                    <span className="w-2 h-2 rounded-full bg-emerald-400" />
-                    Cloud Streamed (Firestore)
-                  </span>
-                ) : streamSource === 'cache' ? (
-                  <span className="flex items-center gap-1.5 text-[11px] text-blue-400 font-medium">
-                    <span className="w-2 h-2 rounded-full bg-blue-400" />
-                    Offline Cached Ready
-                  </span>
-                ) : (
-                  <span className="flex items-center gap-1.5 text-[11px] text-emerald-300 font-medium">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                    Curated Bank Active
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Board & Year Selector */}
-        <div className="p-4 sm:p-5 rounded-3xl bg-slate-900/90 border border-slate-800 space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div>
-              <h2 className="text-sm font-bold text-slate-100">Choose Exam Board & Past Question Year</h2>
-              <p className="text-[11px] text-slate-400">Database spans 2008 to present for WAEC, NECO & JAMB</p>
-            </div>
-
-            {/* Exam Board Switcher */}
-            <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800">
-              {(['JAMB_UTME', 'WAEC', 'NECO'] as const).map(board => (
-                <button
-                  key={board}
-                  type="button"
-                  onClick={() => setSelectedExamType(board)}
-                  className={`py-1 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                    selectedExamType === board
-                      ? 'bg-emerald-600 text-white shadow-sm'
-                      : 'text-slate-400 hover:text-slate-200'
-                  }`}
-                >
-                  {board === 'JAMB_UTME' ? 'JAMB UTME' : board}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Past Question Years Grid (15+ Years) */}
-          <div>
-            <div className="flex items-center justify-between text-xs text-slate-400 mb-2">
-              <span>Select Paper Year:</span>
-              {currentTier === 'free' && (
-                <span className="text-[10px] text-amber-400 font-medium">
-                  Free Tier: 2023–2024 unlocked (Upgrade to unlock 2008–2022)
-                </span>
-              )}
-            </div>
-
-            <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-9 gap-2">
-              {ASPIRANT_PAST_QUESTION_YEARS.map(yr => {
-                const isSelected = selectedYear === yr;
-                const isLocked = currentTier === 'free' && parseInt(yr) < 2023;
-
-                return (
-                  <button
-                    key={yr}
-                    type="button"
-                    onClick={() => {
-                      if (isLocked) {
-                        setIsSubscriptionModalOpen(true);
-                      } else {
-                        setSelectedYear(yr);
-                      }
-                    }}
-                    className={`py-2 px-1 rounded-xl text-xs font-bold font-mono transition-all flex flex-col items-center justify-center gap-0.5 cursor-pointer relative ${
-                      isSelected
-                        ? 'bg-emerald-500 text-slate-950 shadow-md ring-2 ring-emerald-400'
-                        : isLocked
-                        ? 'bg-slate-950/60 text-slate-500 border border-slate-800/80 hover:border-amber-500/50'
-                        : 'bg-slate-950 text-slate-300 border border-slate-800 hover:bg-slate-800 hover:text-white'
-                    }`}
-                  >
-                    <span>{yr}</span>
-                    {isLocked && <Lock className="w-2.5 h-2.5 text-amber-500" />}
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Paper Type Indicator Badge */}
-            <div className="mt-3 p-2.5 rounded-xl bg-slate-950/80 border border-slate-800 flex items-center justify-between text-xs">
-              <div className="flex items-center gap-2">
-                <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
-                <span className="text-slate-300 font-medium">
-                  {parseInt(selectedYear) >= 2020
-                    ? `Dedicated ${selectedYear} ${selectedExamType} Past Paper with Step-by-Step Solutions`
-                    : `Syllabus-Calibrated ${selectedYear} ${selectedExamType} Historical Paper`}
-                </span>
-              </div>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-950/80 text-emerald-300 border border-emerald-800/50">
-                160 Questions • 4 Subjects
-              </span>
-            </div>
-          </div>
-
-          {/* Launch Exam CTA */}
-          <div className="pt-2 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-t border-slate-800">
-            <div className="text-xs text-slate-400">
-              <span>Standard Time: <strong>{selectedExamType === 'JAMB_UTME' ? '2h 00m' : '1h 30m'}</strong></span> ·{' '}
-              <span>Subjects: <strong>4 Combination</strong></span> ·{' '}
-              <span>Speed Target: <strong>300+ Score</strong></span>
+        {/* Top Hero Header */}
+        <div className="p-5 sm:p-6 rounded-3xl bg-gradient-to-br from-slate-900 via-emerald-950/60 to-slate-950 border border-emerald-500/30 shadow-xl relative overflow-hidden">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2 text-xs font-bold text-emerald-400">
+              <Timer className="w-4 h-4" />
+              <span>Authentic CBT Mock Simulator · Zero Repeated Questions</span>
             </div>
 
             <button
               type="button"
-              onClick={handleStartTest}
-              className="py-3 px-6 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 text-slate-950 font-black text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/25 active:scale-95 transition-all cursor-pointer"
+              onClick={() => setActiveStudentTab('aspirant-past-questions')}
+              className="py-1.5 px-3 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-300 text-[11px] font-bold flex items-center gap-1.5 cursor-pointer transition-colors"
             >
-              <span>Launch {selectedYear} {selectedExamType} Simulator</span>
-              <ChevronRight className="w-4 h-4" />
+              <BookOpen className="w-3.5 h-3.5" />
+              <span>15+ Years Past Questions Archive</span>
+              <ChevronRight className="w-3.5 h-3.5" />
             </button>
           </div>
+
+          <h1 className="text-xl sm:text-2xl font-black text-slate-50 mt-2 leading-tight tracking-tight">
+            Permanent Complete Mock Papers (JAMB, WAEC &amp; NECO)
+          </h1>
+
+          <p className="text-xs text-slate-300 mt-1.5 leading-relaxed max-w-2xl">
+            Every mock exam below is stored permanently in the cloud with strictly unique, non-repeating questions and step-by-step Chief Examiner explanations. Subsequent weekly National Mock Tournament papers automatically join this bank under their unique weekly ID.
+          </p>
+
+          <div className="mt-4 flex flex-wrap items-center gap-2 text-[11px]">
+            <span className="px-2.5 py-1 rounded-lg bg-slate-950/80 border border-slate-800 text-slate-300 flex items-center gap-1.5">
+              <Database className="w-3.5 h-3.5 text-emerald-400" />
+              <span>
+                <strong className="text-white">{starterExams.length}</strong> Permanent Starter Mocks +{' '}
+                <strong className="text-amber-400">{tournamentArchiveExams.length}</strong> Archived Weekly Tournaments
+              </span>
+            </span>
+
+            <span className="px-2.5 py-1 rounded-lg bg-slate-950/80 border border-slate-800 text-slate-300">
+              {isPaidAspirant ? (
+                <span className="text-emerald-400 font-bold flex items-center gap-1">
+                  <ShieldCheck className="w-3.5 h-3.5" /> All Mocks Unlocked ({isSuperAdmin ? 'Super Admin' : `Aspirant ${currentTier.toUpperCase()}`})
+                </span>
+              ) : (
+                <span className="text-amber-300 font-bold flex items-center gap-1">
+                  <Lock className="w-3.5 h-3.5" /> Free Tier: First 2 Complete Mocks Unlocked (Upgrade for #3–#6 &amp; Tournament Archives)
+                </span>
+              )}
+            </span>
+
+            {bankSource === 'firestore' && (
+              <span className="px-2.5 py-1 rounded-lg bg-emerald-950/70 border border-emerald-700/50 text-emerald-300 font-semibold">
+                Synced with Firebase
+              </span>
+            )}
+          </div>
         </div>
+
+        {/* Tournament Boot Status */}
+        {tournamentBooting && (
+          <div className="p-4 rounded-2xl bg-amber-950/40 border border-amber-500/40 flex items-center gap-3 text-xs text-amber-200">
+            <Loader2 className="w-4 h-4 animate-spin text-amber-400 shrink-0" />
+            <span>Loading official Weekly National Mock Tournament paper...</span>
+          </div>
+        )}
+        {tournamentBootError && (
+          <div className="p-4 rounded-2xl bg-rose-950/40 border border-rose-500/40 flex items-center justify-between gap-3 text-xs text-rose-200">
+            <span>{tournamentBootError}</span>
+            <button
+              type="button"
+              onClick={() => setActiveStudentTab('mock-tournaments')}
+              className="py-1.5 px-3 rounded-lg bg-amber-500 text-slate-950 font-black cursor-pointer shrink-0"
+            >
+              Go to Tournament
+            </button>
+          </div>
+        )}
+
+        {/* Board Filter Bar */}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+            {(
+              [
+                { id: 'ALL', label: `All Papers (${storedExams.length})` },
+                { id: 'JAMB', label: 'JAMB UTME (2)' },
+                { id: 'WAEC', label: 'WAEC WASSCE (2)' },
+                { id: 'NECO', label: 'NECO SSCE (2)' },
+                { id: 'TOURNAMENT', label: `Weekly Tournaments (${tournamentArchiveExams.length})` },
+              ] as Array<{ id: BoardFilter; label: string }>
+            ).map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setBoardFilter(tab.id)}
+                className={`py-1.5 px-3.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                  boardFilter === tab.id
+                    ? 'bg-emerald-500 text-slate-950 shadow-sm'
+                    : 'bg-slate-900 text-slate-400 border border-slate-800 hover:text-white'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setActiveStudentTab('mock-tournaments')}
+            className="py-1.5 px-3.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-300 text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+          >
+            <Trophy className="w-3.5 h-3.5" />
+            <span>Enter This Week’s ₦500 National Mock</span>
+          </button>
+        </div>
+
+        {/* Stored Mock Exams Grid */}
+        {isLoadingBank ? (
+          <div className="p-10 rounded-3xl bg-slate-900/70 border border-slate-800 flex flex-col items-center justify-center gap-3 text-slate-400 text-xs">
+            <Loader2 className="w-6 h-6 animate-spin text-emerald-400" />
+            <span>Loading permanent mock exam library...</span>
+          </div>
+        ) : filteredExams.length === 0 ? (
+          <div className="p-8 rounded-3xl bg-slate-900/70 border border-slate-800 text-center space-y-2">
+            <Trophy className="w-8 h-8 text-amber-400 mx-auto" />
+            <h3 className="text-sm font-bold text-white">No Archived Weekly Tournament Papers Yet</h3>
+            <p className="text-xs text-slate-400 max-w-md mx-auto">
+              Each week’s National Mock Tournament paper is automatically archived here with its unique weekly ID when the weekend tournament concludes.
+            </p>
+            <button
+              type="button"
+              onClick={() => setActiveStudentTab('mock-tournaments')}
+              className="mt-2 py-2 px-4 rounded-xl bg-amber-500 text-slate-950 font-black text-xs cursor-pointer"
+            >
+              View Active Weekly Tournament
+            </button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {filteredExams.map((exam) => {
+              const isUnlocked = isPaidAspirant || exam.isFreeStarter;
+              const isTournament = exam.source === 'tournament';
+
+              const boardAccent =
+                isTournament
+                  ? 'border-amber-500/40 bg-gradient-to-br from-slate-900 via-amber-950/20 to-slate-950'
+                  : exam.board === 'JAMB'
+                  ? 'border-emerald-500/35 bg-slate-900/90'
+                  : exam.board === 'WAEC'
+                  ? 'border-sky-500/35 bg-slate-900/90'
+                  : 'border-purple-500/35 bg-slate-900/90';
+
+              const badgeColor =
+                isTournament
+                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                  : exam.board === 'JAMB'
+                  ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40'
+                  : exam.board === 'WAEC'
+                  ? 'bg-sky-500/15 text-sky-300 border-sky-500/40'
+                  : 'bg-purple-500/15 text-purple-300 border-purple-500/40';
+
+              return (
+                <div
+                  key={exam.id}
+                  className={`p-5 rounded-3xl border shadow-lg flex flex-col justify-between gap-4 transition-all ${boardAccent}`}
+                >
+                  <div className="space-y-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className={`px-2.5 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider border ${badgeColor}`}>
+                          {isTournament ? `TOURNAMENT · ${exam.weekKey || exam.id.toUpperCase()}` : `${exam.board} PAPER #${exam.paperNumber}`}
+                        </span>
+                        <span className="px-2 py-0.5 rounded-lg text-[10px] font-mono text-slate-400 bg-slate-950 border border-slate-800">
+                          ID: {exam.id}
+                        </span>
+                      </div>
+
+                      {exam.isFreeStarter ? (
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shrink-0">
+                          FREE ACCESS
+                        </span>
+                      ) : isUnlocked ? (
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-sky-500/20 text-sky-300 border border-sky-500/40 shrink-0">
+                          UNLOCKED
+                        </span>
+                      ) : (
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center gap-1 shrink-0">
+                          <Lock className="w-3 h-3" /> PAID PLAN
+                        </span>
+                      )}
+                    </div>
+
+                    <div>
+                      <h2 className="text-base font-black text-white leading-snug">{exam.title}</h2>
+                      {exam.subtitle && (
+                        <p className="text-xs text-slate-400 mt-1 leading-relaxed">{exam.subtitle}</p>
+                      )}
+                    </div>
+
+                    <div className="flex flex-wrap gap-1.5">
+                      {exam.subjects.map((subj) => (
+                        <span
+                          key={subj}
+                          className="px-2 py-0.5 rounded-md bg-slate-950/90 border border-slate-800 text-[10px] font-semibold text-slate-300"
+                        >
+                          {subj}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="pt-3 border-t border-slate-800/90 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3 text-[11px] text-slate-400 font-mono">
+                      <span className="flex items-center gap-1">
+                        <Layers className="w-3.5 h-3.5 text-emerald-400" />
+                        {exam.totalQuestions} Unique Qs
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <Timer className="w-3.5 h-3.5 text-amber-400" />
+                        {exam.durationMinutes} mins
+                      </span>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => handleOpenMockPaper(exam)}
+                      className={`py-2.5 px-4 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer ${
+                        isUnlocked
+                          ? 'bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 text-slate-950 shadow-md shadow-emerald-500/20'
+                          : 'bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/50 text-amber-300'
+                      }`}
+                    >
+                      {isUnlocked ? (
+                        <>
+                          <Play className="w-3.5 h-3.5 fill-current" />
+                          <span>Start Mock CBT</span>
+                        </>
+                      ) : (
+                        <>
+                          <Lock className="w-3.5 h-3.5" />
+                          <span>Unlock Paper</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         <AspirantSubscriptionModal
           isOpen={isSubscriptionModalOpen}
           onClose={() => setIsSubscriptionModalOpen(false)}
           defaultTier="basic"
+          featureTitle={lockedFeatureTitle}
         />
       </div>
     );
   }
 
-  // Active Test Screen
-  if (isTestActive && !isSubmitted) {
+  // =========================================================================
+  // 2. ACTIVE CBT EXAM SCREEN
+  // =========================================================================
+  if (isTestActive && !isSubmitted && activePaper && currentQuestion) {
     return (
-      <div className="flex-1 w-full flex flex-col bg-[#070D18] text-slate-100 overflow-hidden select-none">
-        {/* Top JAMB Header HUD */}
-        <div className="bg-slate-900 border-b border-slate-800 px-3 py-2 flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-black text-emerald-400 font-mono tracking-tight">
-              {selectedYear} {selectedExamType}
-            </span>
-            <span className="text-[10px] text-slate-400 hidden sm:inline">
-              Candidate: <strong>{aspirantGoal.targetCourse}</strong>
+      <div className="flex-1 w-full flex flex-col bg-[#070D18] text-slate-100 overflow-hidden select-none relative">
+        {/* Top CBT HUD */}
+        <div className="bg-slate-900 border-b border-slate-800 px-3 py-2 flex items-center justify-between gap-2 shrink-0">
+          <div className="min-w-0 flex items-center gap-2">
+            {activeTournamentMeta ? (
+              <span className="px-2 py-0.5 rounded-md bg-amber-500/20 border border-amber-500/40 text-amber-300 text-[10px] font-black uppercase shrink-0">
+                OFFICIAL TOURNAMENT · {activeTournamentMeta.weekKey}
+              </span>
+            ) : (
+              <span className="px-2 py-0.5 rounded-md bg-emerald-500/15 border border-emerald-500/40 text-emerald-300 text-[10px] font-black uppercase shrink-0">
+                {activePaper.board} MOCK
+              </span>
+            )}
+            <span className="text-xs font-bold text-slate-200 truncate hidden sm:inline">
+              {activePaper.title}
             </span>
           </div>
 
           {/* Countdown Clock */}
-          <div className={`flex items-center gap-1.5 px-3 py-1 rounded-xl border font-mono font-black text-sm ${
-            secondsRemaining < 600
-              ? 'bg-rose-950 text-rose-300 border-rose-800 animate-pulse'
-              : 'bg-slate-950 text-amber-400 border-slate-800'
-          }`}>
+          <div
+            className={`flex items-center gap-1.5 px-3 py-1 rounded-xl border font-mono font-black text-sm shrink-0 ${
+              secondsRemaining < 600
+                ? 'bg-rose-950 text-rose-300 border-rose-800 animate-pulse'
+                : 'bg-slate-950 text-amber-400 border-slate-800'
+            }`}
+          >
             <Timer className="w-4 h-4" />
             <span>{formatTimer(secondsRemaining)}</span>
           </div>
 
-          <button
-            type="button"
-            onClick={handleSubmitTest}
-            className="py-1 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-black text-xs transition-colors cursor-pointer"
-          >
-            Submit Test
-          </button>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              type="button"
+              onClick={() => setShowCalculator((prev) => !prev)}
+              className={`p-1.5 rounded-lg border text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors ${
+                showCalculator
+                  ? 'bg-amber-500 text-slate-950 border-amber-400'
+                  : 'bg-slate-800 text-slate-200 border-slate-700 hover:bg-slate-700'
+              }`}
+              title="JAMB CBT Calculator"
+            >
+              <Calculator className="w-4 h-4" />
+              <span className="hidden md:inline">Calc</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => void handleSubmitTest()}
+              className="py-1.5 px-3 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs transition-colors cursor-pointer"
+            >
+              Submit ({totalAnsweredCount}/{totalExamQuestions})
+            </button>
+          </div>
         </div>
 
-        {/* 4 Subjects Navigation Tabs */}
+        {/* Subject Navigation Tabs */}
         <div className="bg-slate-950 border-b border-slate-800/80 px-2 py-1.5 flex items-center gap-1.5 overflow-x-auto shrink-0">
-          {subjectExams.map((sub, idx) => {
+          {subjectGroups.map((sub, idx) => {
             const isActive = activeSubjectTab === idx;
-            const answeredInSubject = sub.questions.filter((_, qIdx) => userAnswers[`${idx}-${qIdx}`] !== undefined).length;
+            const answeredInSub = sub.questions.filter(
+              (_, qIdx) => userAnswers[`${idx}-${qIdx}`] !== undefined
+            ).length;
 
             return (
               <button
@@ -566,19 +822,20 @@ export const AspirantCBTSimulator: React.FC = () => {
                 }`}
               >
                 <span>{sub.subject}</span>
-                <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full ${
-                  isActive ? 'bg-slate-950/30 text-slate-950' : 'bg-slate-800 text-slate-400'
-                }`}>
-                  {answeredInSubject}/{sub.questions.length}
+                <span
+                  className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full ${
+                    isActive ? 'bg-slate-950/25 text-slate-950' : 'bg-slate-800 text-slate-400'
+                  }`}
+                >
+                  {answeredInSub}/{sub.questions.length}
                 </span>
               </button>
             );
           })}
         </div>
 
-        {/* Question Area & Side Matrix Grid */}
+        {/* Main Exam Canvas + Question Matrix Grid */}
         <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
-          {/* Main Question Panel */}
           <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
             <div className="flex items-center justify-between pb-2 border-b border-slate-800">
               <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
@@ -590,57 +847,59 @@ export const AspirantCBTSimulator: React.FC = () => {
                 onClick={handleToggleFlag}
                 className={`flex items-center gap-1 text-xs font-semibold py-1 px-2.5 rounded-lg border transition-all cursor-pointer ${
                   flaggedQuestions.has(currentKey)
-                    ? 'bg-purple-950 text-purple-300 border-purple-800'
+                    ? 'bg-purple-950 text-purple-300 border-purple-700'
                     : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-slate-200'
                 }`}
               >
                 <Flag className="w-3.5 h-3.5" />
-                <span>{flaggedQuestions.has(currentKey) ? 'Flagged for Review' : 'Flag Question'}</span>
+                <span>{flaggedQuestions.has(currentKey) ? 'Flagged' : 'Flag (R)'}</span>
               </button>
             </div>
 
-            {/* Topic & Passage Badges */}
-            {(currentQuestion as any).topicRef && (
+            {currentQuestion.topic && (
               <div className="inline-block px-2.5 py-0.5 rounded-md bg-slate-800 text-slate-300 text-[10px] font-semibold border border-slate-700">
-                Topic: {(currentQuestion as any).topicRef}
+                Topic: {currentQuestion.topic}
               </div>
             )}
 
-            {(currentQuestion as any).passage && (
+            {currentQuestion.passage && (
               <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 text-xs sm:text-sm text-slate-300 leading-relaxed italic">
-                <span className="font-bold text-amber-400 not-italic block mb-1">Comprehension Passage:</span>
-                {(currentQuestion as any).passage}
+                <span className="font-bold text-amber-400 not-italic block mb-1">
+                  Comprehension Passage:
+                </span>
+                {currentQuestion.passage}
               </div>
             )}
 
-            {/* Question Text */}
             <div className="text-sm sm:text-base font-medium text-slate-100 leading-relaxed">
-              {currentQuestion.question}
+              <MathText text={currentQuestion.question} />
             </div>
 
-            {/* Options List */}
-            <div className="space-y-2 pt-2">
+            <div className="space-y-2.5 pt-2">
               {currentQuestion.options.map((opt, oIdx) => {
                 const isSelected = userAnswers[currentKey] === oIdx;
                 const letter = ['A', 'B', 'C', 'D'][oIdx];
-
                 return (
                   <button
                     key={oIdx}
                     type="button"
                     onClick={() => handleSelectOption(oIdx)}
-                    className={`w-full p-3 rounded-2xl border text-left text-xs sm:text-sm transition-all flex items-center gap-3 cursor-pointer ${
+                    className={`w-full p-3.5 rounded-2xl border text-left text-xs sm:text-sm transition-all flex items-center gap-3 cursor-pointer ${
                       isSelected
                         ? 'bg-emerald-950/60 border-emerald-500 text-white ring-1 ring-emerald-500/40 shadow-sm'
-                        : 'bg-slate-900/60 border-slate-800 text-slate-200 hover:bg-slate-850'
+                        : 'bg-slate-900/70 border-slate-800 text-slate-200 hover:bg-slate-800/80'
                     }`}
                   >
-                    <span className={`w-7 h-7 rounded-xl flex items-center justify-center font-bold text-xs shrink-0 ${
-                      isSelected ? 'bg-emerald-500 text-slate-950' : 'bg-slate-800 text-slate-400'
-                    }`}>
+                    <span
+                      className={`w-7 h-7 rounded-xl flex items-center justify-center font-bold text-xs shrink-0 ${
+                        isSelected ? 'bg-emerald-500 text-slate-950' : 'bg-slate-800 text-slate-400'
+                      }`}
+                    >
                       {letter}
                     </span>
-                    <span className="flex-1 leading-snug">{opt}</span>
+                    <span className="flex-1 leading-snug">
+                      <MathText text={opt} />
+                    </span>
                   </button>
                 );
               })}
@@ -648,12 +907,11 @@ export const AspirantCBTSimulator: React.FC = () => {
           </div>
 
           {/* Right Question Matrix Grid */}
-          <div className="w-full md:w-64 bg-slate-950 border-t md:border-t-0 md:border-l border-slate-800 p-3 flex flex-col justify-between shrink-0 max-h-56 md:max-h-none overflow-y-auto">
+          <div className="w-full md:w-64 bg-slate-950 border-t md:border-t-0 md:border-l border-slate-800 p-3 flex flex-col justify-between shrink-0 max-h-52 md:max-h-none overflow-y-auto">
             <div>
               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-2">
-                Questions Grid ({activeSubject.subject})
+                Question Palette ({activeSubject.subject})
               </span>
-
               <div className="grid grid-cols-8 md:grid-cols-5 gap-1.5">
                 {activeQuestions.map((_, qIdx) => {
                   const key = `${activeSubjectTab}-${qIdx}`;
@@ -683,7 +941,6 @@ export const AspirantCBTSimulator: React.FC = () => {
               </div>
             </div>
 
-            {/* Grid Legend */}
             <div className="pt-3 border-t border-slate-800 text-[10px] text-slate-400 grid grid-cols-2 gap-1.5 mt-2">
               <div className="flex items-center gap-1.5">
                 <span className="w-2.5 h-2.5 rounded bg-emerald-600 block" /> Answered
@@ -701,7 +958,7 @@ export const AspirantCBTSimulator: React.FC = () => {
           </div>
         </div>
 
-        {/* Bottom Muscle Memory Controls */}
+        {/* Bottom Controls */}
         <div className="bg-slate-900/95 border-t border-slate-800 px-4 py-2.5 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-2">
             <button
@@ -715,7 +972,7 @@ export const AspirantCBTSimulator: React.FC = () => {
             <button
               type="button"
               onClick={handleNextQuestion}
-              className="py-2 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-bold text-xs flex items-center gap-1 cursor-pointer"
+              className="py-2 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs flex items-center gap-1 cursor-pointer"
             >
               <span>Next (N)</span>
               <ChevronRight className="w-4 h-4" />
@@ -723,77 +980,129 @@ export const AspirantCBTSimulator: React.FC = () => {
           </div>
 
           <div className="hidden sm:flex items-center gap-2 text-[11px] text-slate-400">
-            <span>Hotkeys: <kbd className="px-1 bg-slate-800 rounded font-mono text-[10px]">A, B, C, D</kbd> to answer</span> ·{' '}
-            <span><kbd className="px-1 bg-slate-800 rounded font-mono text-[10px]">R</kbd> Flag</span>
+            <span>
+              Hotkeys: <kbd className="px-1 bg-slate-800 rounded font-mono text-[10px]">A-D</kbd> Answer
+            </span>{' '}
+            ·{' '}
+            <span>
+              <kbd className="px-1 bg-slate-800 rounded font-mono text-[10px]">R</kbd> Flag
+            </span>
           </div>
 
           <button
             type="button"
-            onClick={handleSubmitTest}
+            onClick={() => void handleSubmitTest()}
             className="py-2 px-4 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 text-slate-950 font-black text-xs cursor-pointer shadow-md"
           >
-            Submit All 4 Subjects
+            Finish &amp; Score
           </button>
         </div>
+
+        {/* Built-in JAMB On-Screen Calculator */}
+        {showCalculator && (
+          <div className="fixed bottom-16 right-4 z-50 w-64 rounded-2xl bg-slate-900 border border-slate-700 shadow-2xl p-3 space-y-2.5">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-bold text-amber-400 flex items-center gap-1.5">
+                <Calculator className="w-3.5 h-3.5" /> CBT Calculator
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowCalculator(false)}
+                className="p-1 rounded-lg bg-slate-800 text-slate-400 hover:text-white cursor-pointer"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-right font-mono text-lg font-black text-emerald-300 truncate">
+              {calcDisplay}
+            </div>
+            <div className="grid grid-cols-4 gap-1.5">
+              {['C', '(', ')', '⌫', '7', '8', '9', '/', '4', '5', '6', '*', '1', '2', '3', '-', '0', '.', '=', '+'].map(
+                (btn) => (
+                  <button
+                    key={btn}
+                    type="button"
+                    onClick={() => handleCalcInput(btn)}
+                    className={`py-2 rounded-lg text-xs font-black font-mono cursor-pointer transition-colors ${
+                      btn === '='
+                        ? 'bg-emerald-500 text-slate-950 hover:bg-emerald-400'
+                        : ['/', '*', '-', '+'].includes(btn)
+                        ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30 hover:bg-amber-500/30'
+                        : btn === 'C'
+                        ? 'bg-rose-500/20 text-rose-300 hover:bg-rose-500/30'
+                        : 'bg-slate-800 text-white hover:bg-slate-700'
+                    }`}
+                  >
+                    {btn}
+                  </button>
+                )
+              )}
+            </div>
+          </div>
+        )}
       </div>
     );
   }
 
-  // Interactive Review Mode (Step through every question with Chief Examiner solutions)
-  if (isReviewMode && isSubmitted) {
-    const reviewSubject = subjectExams[activeSubjectTab] || subjectExams[0];
-    const reviewQuestions = reviewSubject.questions;
+  // =========================================================================
+  // 3. CHIEF EXAMINER SOLUTION REVIEW MODE
+  // =========================================================================
+  if (isReviewMode && isSubmitted && activePaper) {
+    const reviewSubject = subjectGroups[activeSubjectTab] || subjectGroups[0];
+    const reviewQuestions = reviewSubject?.questions || [];
     const reviewQ = reviewQuestions[currentQuestionIndex] || reviewQuestions[0];
     const reviewKey = `${activeSubjectTab}-${currentQuestionIndex}`;
     const studentChoice = userAnswers[reviewKey];
-    const isCorrect = studentChoice === reviewQ.correctOptionIndex;
+    const isCorrect = reviewQ ? studentChoice === reviewQ.correctAnswer : false;
 
     return (
       <div className="flex-1 w-full flex flex-col bg-[#070D18] text-slate-100 overflow-hidden select-none">
-        {/* Review Header HUD */}
         <div className="bg-slate-900 border-b border-slate-800 px-3 py-2 flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 min-w-0">
             <button
+              type="button"
               onClick={() => setIsReviewMode(false)}
-              className="p-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white cursor-pointer"
-              title="Back to Scorecard"
+              className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white cursor-pointer"
             >
               <ArrowLeft className="w-4 h-4" />
             </button>
-            <span className="text-xs font-black text-purple-400 font-mono">
-              {selectedYear} {selectedExamType} Solution Review
+            <span className="text-xs font-black text-purple-300 truncate">
+              {activePaper.title} · Solution Review
             </span>
           </div>
 
-          <div className="flex items-center gap-2 text-xs">
-            <span className={`px-2 py-0.5 rounded-full font-bold text-[11px] ${
-              studentChoice === undefined
-                ? 'bg-slate-800 text-slate-400 border border-slate-700'
-                : isCorrect
-                ? 'bg-emerald-950 text-emerald-400 border border-emerald-800'
-                : 'bg-rose-950 text-rose-400 border border-rose-800'
-            }`}>
-              {studentChoice === undefined ? 'Unanswered (0)' : isCorrect ? 'Correct (+1)' : 'Incorrect (0)'}
+          <div className="flex items-center gap-2 text-xs shrink-0">
+            <span
+              className={`px-2 py-0.5 rounded-full font-bold text-[11px] ${
+                studentChoice === undefined
+                  ? 'bg-slate-800 text-slate-400 border border-slate-700'
+                  : isCorrect
+                  ? 'bg-emerald-950 text-emerald-400 border border-emerald-800'
+                  : 'bg-rose-950 text-rose-400 border border-rose-800'
+              }`}
+            >
+              {studentChoice === undefined ? 'Unanswered' : isCorrect ? 'Correct' : 'Incorrect'}
             </span>
             <button
+              type="button"
               onClick={() => setIsReviewMode(false)}
-              className="py-1 px-3 rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs cursor-pointer shadow-sm"
+              className="py-1 px-3 rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs cursor-pointer"
             >
-              Back to Scorecard
+              Scorecard
             </button>
           </div>
         </div>
 
-        {/* 4 Subjects Navigation Tabs */}
         <div className="bg-slate-950 border-b border-slate-800/80 px-2 py-1.5 flex items-center gap-1.5 overflow-x-auto shrink-0">
-          {subjectExams.map((sub, idx) => (
+          {subjectGroups.map((sub, idx) => (
             <button
               key={sub.subject}
+              type="button"
               onClick={() => {
                 setActiveSubjectTab(idx);
                 setCurrentQuestionIndex(0);
               }}
-              className={`py-1 px-3 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
+              className={`py-1 px-3 rounded-xl text-xs font-bold whitespace-nowrap cursor-pointer ${
                 activeSubjectTab === idx
                   ? 'bg-purple-600 text-white shadow-sm'
                   : 'bg-slate-900 text-slate-400 hover:text-white'
@@ -804,154 +1113,184 @@ export const AspirantCBTSimulator: React.FC = () => {
           ))}
         </div>
 
-        {/* Question Review Body */}
-        <div className="flex-1 w-full overflow-y-auto p-4 sm:p-6 space-y-4 max-w-4xl mx-auto">
-          <div className="flex items-center justify-between text-xs text-slate-400">
-            <span className="font-bold">Question {currentQuestionIndex + 1} of {reviewQuestions.length} ({reviewSubject.subject})</span>
-            {(reviewQ as any).topicRef && (
-              <span className="px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-[10px] text-amber-400 font-semibold">
-                {(reviewQ as any).topicRef}
+        {reviewQ && (
+          <div className="flex-1 w-full overflow-y-auto p-4 sm:p-6 space-y-4 max-w-4xl mx-auto">
+            <div className="flex items-center justify-between text-xs text-slate-400">
+              <span className="font-bold">
+                Question {currentQuestionIndex + 1} of {reviewQuestions.length} ({reviewSubject.subject})
               </span>
+              {reviewQ.topic && (
+                <span className="px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-[10px] text-amber-400 font-semibold">
+                  {reviewQ.topic}
+                </span>
+              )}
+            </div>
+
+            {reviewQ.passage && (
+              <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 text-xs text-slate-300 leading-relaxed italic">
+                <strong className="text-amber-400 not-italic block mb-1">Passage:</strong>
+                {reviewQ.passage}
+              </div>
             )}
-          </div>
 
-          {(reviewQ as any).passage && (
-            <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 text-xs text-slate-300 leading-relaxed italic">
-              <strong className="text-amber-400 not-italic block mb-1">Passage:</strong>
-              {(reviewQ as any).passage}
+            <div className="text-sm sm:text-base font-semibold text-white leading-relaxed">
+              <MathText text={reviewQ.question} />
             </div>
-          )}
 
-          <div className="text-sm sm:text-base font-semibold text-white leading-relaxed">
-            {reviewQ.question}
-          </div>
+            <div className="space-y-2 pt-2">
+              {reviewQ.options.map((opt, oIdx) => {
+                const isSelected = studentChoice === oIdx;
+                const isRight = reviewQ.correctAnswer === oIdx;
+                const letter = ['A', 'B', 'C', 'D'][oIdx];
 
-          {/* Options with Review Highlights */}
-          <div className="space-y-2 pt-2">
-            {reviewQ.options.map((opt, oIdx) => {
-              const isSelected = studentChoice === oIdx;
-              const isTheCorrectOne = reviewQ.correctOptionIndex === oIdx;
-              const letter = ['A', 'B', 'C', 'D'][oIdx];
+                let borderStyle = 'border-slate-800 bg-slate-900/60 text-slate-300';
+                if (isRight) {
+                  borderStyle = 'border-emerald-500 bg-emerald-950/60 text-white ring-1 ring-emerald-500';
+                } else if (isSelected && !isCorrect) {
+                  borderStyle = 'border-rose-500 bg-rose-950/60 text-rose-200 ring-1 ring-rose-500';
+                }
 
-              let borderStyle = 'border-slate-800 bg-slate-900/60 text-slate-300';
-              if (isTheCorrectOne) {
-                borderStyle = 'border-emerald-500 bg-emerald-950/60 text-white ring-1 ring-emerald-500';
-              } else if (isSelected && !isCorrect) {
-                borderStyle = 'border-rose-500 bg-rose-950/60 text-rose-200 ring-1 ring-rose-500';
-              }
-
-              return (
-                <div
-                  key={oIdx}
-                  className={`w-full p-3 rounded-2xl border text-left text-xs sm:text-sm flex items-center gap-3 ${borderStyle}`}
-                >
-                  <span className={`w-7 h-7 rounded-xl flex items-center justify-center font-bold text-xs shrink-0 ${
-                    isTheCorrectOne
-                      ? 'bg-emerald-500 text-slate-950'
-                      : isSelected
-                      ? 'bg-rose-500 text-white'
-                      : 'bg-slate-800 text-slate-400'
-                  }`}>
-                    {letter}
-                  </span>
-                  <span className="flex-1 leading-snug">{opt}</span>
-                  {isTheCorrectOne && (
-                    <span className="text-[10px] font-bold text-emerald-400 bg-emerald-950/90 px-2 py-0.5 rounded border border-emerald-800 shrink-0">
-                      Correct Answer
+                return (
+                  <div
+                    key={oIdx}
+                    className={`w-full p-3 rounded-2xl border text-left text-xs sm:text-sm flex items-center gap-3 ${borderStyle}`}
+                  >
+                    <span
+                      className={`w-7 h-7 rounded-xl flex items-center justify-center font-bold text-xs shrink-0 ${
+                        isRight
+                          ? 'bg-emerald-500 text-slate-950'
+                          : isSelected
+                          ? 'bg-rose-500 text-white'
+                          : 'bg-slate-800 text-slate-400'
+                      }`}
+                    >
+                      {letter}
                     </span>
-                  )}
-                  {isSelected && !isTheCorrectOne && (
-                    <span className="text-[10px] font-bold text-rose-400 bg-rose-950/90 px-2 py-0.5 rounded border border-rose-800 shrink-0">
-                      Your Choice
+                    <span className="flex-1 leading-snug">
+                      <MathText text={opt} />
                     </span>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+                    {isRight && (
+                      <span className="text-[10px] font-bold text-emerald-400 bg-emerald-950/90 px-2 py-0.5 rounded border border-emerald-800 shrink-0">
+                        Correct
+                      </span>
+                    )}
+                    {isSelected && !isRight && (
+                      <span className="text-[10px] font-bold text-rose-400 bg-rose-950/90 px-2 py-0.5 rounded border border-rose-800 shrink-0">
+                        Your Choice
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
 
-          {/* Chief Examiner Explanation */}
-          {reviewQ.explanation && (
-            <div className="p-4 rounded-2xl bg-[#0D1E38] border border-sky-500/30 text-xs sm:text-sm text-sky-100 space-y-1.5 shadow-md">
-              <span className="font-bold text-sky-300 text-xs uppercase tracking-wide flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5 text-sky-400" />
-                Chief Examiner's Step-by-Step Explanation
+            {reviewQ.explanation && (
+              <div className="p-4 rounded-2xl bg-[#0D1E38] border border-sky-500/30 text-xs sm:text-sm text-sky-100 space-y-1.5 shadow-md">
+                <span className="font-bold text-sky-300 text-xs uppercase tracking-wide flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-sky-400" />
+                  Chief Examiner’s Step-by-Step Explanation
+                </span>
+                <p className="leading-relaxed text-slate-200 whitespace-pre-line">
+                  <MathText text={reviewQ.explanation} />
+                </p>
+              </div>
+            )}
+
+            <div className="pt-4 flex items-center justify-between border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => {
+                  if (currentQuestionIndex > 0) setCurrentQuestionIndex((p) => p - 1);
+                  else if (activeSubjectTab > 0) {
+                    setActiveSubjectTab((p) => p - 1);
+                    setCurrentQuestionIndex(subjectGroups[activeSubjectTab - 1].questions.length - 1);
+                  }
+                }}
+                disabled={currentQuestionIndex === 0 && activeSubjectTab === 0}
+                className="py-2 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-30 text-xs font-bold text-slate-200 flex items-center gap-1 cursor-pointer"
+              >
+                <ChevronLeft className="w-4 h-4" /> Previous
+              </button>
+
+              <span className="text-xs text-slate-400 font-mono">
+                Q{currentQuestionIndex + 1} / {reviewQuestions.length}
               </span>
-              <p className="leading-relaxed text-slate-200 whitespace-pre-line">
-                {reviewQ.explanation}
-              </p>
+
+              <button
+                type="button"
+                onClick={() => {
+                  if (currentQuestionIndex < reviewQuestions.length - 1) setCurrentQuestionIndex((p) => p + 1);
+                  else if (activeSubjectTab < subjectGroups.length - 1) {
+                    setActiveSubjectTab((p) => p + 1);
+                    setCurrentQuestionIndex(0);
+                  }
+                }}
+                disabled={
+                  currentQuestionIndex === reviewQuestions.length - 1 &&
+                  activeSubjectTab === subjectGroups.length - 1
+                }
+                className="py-2 px-4 rounded-xl bg-purple-600 hover:bg-purple-500 disabled:opacity-30 text-xs font-bold text-white flex items-center gap-1 cursor-pointer"
+              >
+                Next <ChevronRight className="w-4 h-4" />
+              </button>
             </div>
-          )}
-
-          {/* Navigation Controls */}
-          <div className="pt-4 flex items-center justify-between border-t border-slate-800">
-            <button
-              onClick={() => {
-                if (currentQuestionIndex > 0) setCurrentQuestionIndex(prev => prev - 1);
-                else if (activeSubjectTab > 0) {
-                  setActiveSubjectTab(prev => prev - 1);
-                  setCurrentQuestionIndex(subjectExams[activeSubjectTab - 1].questions.length - 1);
-                }
-              }}
-              disabled={currentQuestionIndex === 0 && activeSubjectTab === 0}
-              className="py-2 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-30 text-xs font-bold text-slate-200 flex items-center gap-1 cursor-pointer"
-            >
-              <ChevronLeft className="w-4 h-4" /> Previous
-            </button>
-
-            <span className="text-xs text-slate-400 font-mono">
-              Q{currentQuestionIndex + 1} / {reviewQuestions.length}
-            </span>
-
-            <button
-              onClick={() => {
-                if (currentQuestionIndex < reviewQuestions.length - 1) setCurrentQuestionIndex(prev => prev + 1);
-                else if (activeSubjectTab < subjectExams.length - 1) {
-                  setActiveSubjectTab(prev => prev + 1);
-                  setCurrentQuestionIndex(0);
-                }
-              }}
-              disabled={currentQuestionIndex === reviewQuestions.length - 1 && activeSubjectTab === subjectExams.length - 1}
-              className="py-2 px-4 rounded-xl bg-purple-600 hover:bg-purple-500 disabled:opacity-30 text-xs font-bold text-white flex items-center gap-1 cursor-pointer"
-            >
-              Next <ChevronRight className="w-4 h-4" />
-            </button>
           </div>
-        </div>
+        )}
       </div>
     );
   }
 
-  // Submitted Scorecard View
+  // =========================================================================
+  // 4. SUBMITTED SCORECARD VIEW
+  // =========================================================================
   return (
     <div className="flex-1 min-h-0 h-full w-full overflow-y-auto px-4 pt-6 pb-24 space-y-5 touch-pan-y text-slate-100 flex flex-col items-center">
       <div className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-3xl p-6 text-center space-y-4 shadow-2xl">
         <div className="w-16 h-16 rounded-3xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 mx-auto flex items-center justify-center">
-          <Award className="w-8 h-8" />
+          {activeTournamentMeta ? <Trophy className="w-8 h-8 text-amber-400" /> : <Award className="w-8 h-8" />}
         </div>
 
         <div>
-          <h2 className="text-xl font-black text-white">{selectedYear} {selectedExamType} Simulator Completed</h2>
+          <h2 className="text-xl font-black text-white">
+            {activeTournamentMeta ? `${activeTournamentMeta.title} Completed` : `${activePaper?.title || 'Mock Exam'} Completed`}
+          </h2>
           <p className="text-xs text-slate-400 mt-1">
-            Target Course: <strong className="text-slate-200">{aspirantGoal.targetCourse}</strong> ({aspirantGoal.targetUniversity})
+            Target: <strong className="text-slate-200">{aspirantGoal.targetCourse}</strong> ({aspirantGoal.targetUniversity})
           </p>
         </div>
 
-        {/* 400-Point JAMB Metric */}
+        {activeTournamentMeta && (
+          <div className="p-3.5 rounded-2xl bg-amber-950/40 border border-amber-500/40 text-xs space-y-1">
+            {lastExamResult?.tournamentRank ? (
+              <div className="flex items-center justify-center gap-2 font-black text-amber-300">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                <span>Official Leaderboard Rank: #{lastExamResult.tournamentRank}</span>
+              </div>
+            ) : (
+              <p className="text-amber-200">
+                {lastExamResult?.tournamentSubmitError || 'Official tournament result recorded.'}
+              </p>
+            )}
+          </div>
+        )}
+
         <div className="p-4 rounded-2xl bg-slate-950 border border-emerald-500/40 space-y-1">
-          <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Estimated UTME Aggregate</span>
+          <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+            Scaled UTME Score Equivalent
+          </span>
           <div className="text-3xl font-black text-emerald-400 font-mono">
-            {lastExamResult?.scaledScore ?? 280} <span className="text-xs text-slate-400 font-normal">/ 400</span>
+            {lastExamResult?.scaledScore ?? 0}{' '}
+            <span className="text-xs text-slate-400 font-normal">/ 400</span>
           </div>
           <p className="text-[11px] text-slate-300">
-            Raw Score: <strong>{lastExamResult?.rawScore ?? 0}</strong> of <strong>{lastExamResult?.totalQuestions ?? 160}</strong> Questions Correct ({Math.round(((lastExamResult?.rawScore ?? 0) / Math.max(1, lastExamResult?.totalQuestions ?? 160)) * 100)}%)
+            Raw Score: <strong>{lastExamResult?.rawScore ?? 0}</strong> of{' '}
+            <strong>{lastExamResult?.totalQuestions ?? 60}</strong> Unique Questions ({lastExamResult?.percentage ?? 0}%)
           </p>
           <p className="text-[10px] text-slate-400">
-            Target cut-off: <strong className="text-amber-400">{aspirantGoal.targetScore || 310}</strong> points
+            Target cut-off: <strong className="text-amber-400">{aspirantGoal.targetScore || 310}</strong> / 400
           </p>
         </div>
 
-        {/* Review Answers & Explanations Button */}
         <button
           type="button"
           onClick={() => {
@@ -959,26 +1298,32 @@ export const AspirantCBTSimulator: React.FC = () => {
             setActiveSubjectTab(0);
             setCurrentQuestionIndex(0);
           }}
-          className="w-full py-3 px-4 rounded-xl bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/40 text-purple-300 hover:text-white text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm"
+          className="w-full py-3 px-4 rounded-xl bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/40 text-purple-300 hover:text-white text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer"
         >
           <BookOpen className="w-4 h-4 text-purple-400" />
           <span>Review Answers &amp; Chief Examiner Explanations</span>
         </button>
 
-        {/* Subject Breakdown */}
         <div className="space-y-1.5 text-xs text-left">
-          <span className="text-[10px] uppercase font-bold text-slate-400 block">Performance by Subject:</span>
-          {subjectExams.map((sub, sIdx) => {
+          <span className="text-[10px] uppercase font-bold text-slate-400 block">
+            Performance by Subject:
+          </span>
+          {subjectGroups.map((sub, sIdx) => {
             let correctInSub = 0;
             sub.questions.forEach((q, qIdx) => {
-              if (userAnswers[`${sIdx}-${qIdx}`] === q.correctOptionIndex) {
+              if (userAnswers[`${sIdx}-${qIdx}`] === q.correctAnswer) {
                 correctInSub++;
               }
             });
             return (
-              <div key={sub.subject} className="p-2.5 rounded-xl bg-slate-950/70 border border-slate-800 flex items-center justify-between">
+              <div
+                key={sub.subject}
+                className="p-2.5 rounded-xl bg-slate-950/70 border border-slate-800 flex items-center justify-between"
+              >
                 <span className="font-semibold text-slate-200">{sub.subject}</span>
-                <span className="font-mono text-emerald-400 font-bold">{correctInSub} / {sub.questions.length} Correct</span>
+                <span className="font-mono text-emerald-400 font-bold">
+                  {correctInSub} / {sub.questions.length} Correct
+                </span>
               </div>
             );
           })}
@@ -991,17 +1336,26 @@ export const AspirantCBTSimulator: React.FC = () => {
               setIsTestActive(false);
               setIsSubmitted(false);
               setIsReviewMode(false);
+              setActivePaper(null);
+              if (activeTournamentMeta) {
+                setActiveTournamentMeta(null);
+                setActiveStudentTab('mock-tournaments');
+              }
             }}
-            className="flex-1 py-3 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-300 transition-colors cursor-pointer"
+            className="flex-1 py-3 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-200 transition-colors cursor-pointer"
           >
-            Practice Another Paper
+            {activeTournamentMeta ? 'View Live Leaderboard' : 'Back to Mock Bank'}
           </button>
           <button
             type="button"
-            onClick={() => setActiveStudentTab('dashboard')}
+            onClick={() => {
+              setActivePaper(null);
+              setActiveTournamentMeta(null);
+              setActiveStudentTab('dashboard');
+            }}
             className="flex-1 py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 text-slate-950 text-xs font-black transition-all cursor-pointer shadow-md"
           >
-            Return to Aspirant Hub
+            Aspirant Hub
           </button>
         </div>
       </div>

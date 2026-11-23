@@ -341,8 +341,8 @@ service cloud.firestore {
              data.id is string && isValidId(data.id) &&
              data.title is string && data.title.size() <= 100 &&
              (!('description' in data) || (data.description is string && data.description.size() <= 300)) &&
-             data.audience in ['student', 'parent'] &&
-             data.category in ['academics', 'competitions', 'general', 'parenting', 'exams'] &&
+             data.audience in ['student', 'aspirant', 'parent'] &&
+             data.category in ['academics', 'competitions', 'general', 'parenting', 'exams', 'aspirant_jamb', 'aspirant_waec_neco', 'aspirant_admissions', 'aspirant_general'] &&
              (!('iconName' in data) || (data.iconName is string && data.iconName.size() <= 50)) &&
              (!('messageCount' in data) || (data.messageCount is number && data.messageCount >= 0)) &&
              (!('lastActivityAt' in data) || (data.lastActivityAt is string && data.lastActivityAt.size() <= 50));
@@ -425,6 +425,83 @@ service cloud.firestore {
              data.totalQuestions is number && data.totalQuestions > 0 &&
              data.questions is list && data.questions.size() <= 100 &&
              (data.questions.size() == 0 || data.questions[0] is map);
+    }
+
+    function isValidAspirantMockExam(data) {
+      return data.keys().hasAll(['id', 'board', 'paperNumber', 'orderIndex', 'title', 'source', 'isFreeStarter', 'durationMinutes', 'totalQuestions', 'subjects', 'questions', 'createdAt']) &&
+             data.keys().hasOnly([
+               'id', 'board', 'paperNumber', 'orderIndex', 'title', 'subtitle', 'source',
+               'isFreeStarter', 'tournamentId', 'weekKey', 'durationMinutes', 'totalQuestions',
+               'subjects', 'questions', 'createdAt'
+             ]) &&
+             data.id is string && isValidId(data.id) &&
+             data.board in ['JAMB', 'WAEC', 'NECO'] &&
+             data.paperNumber is number && data.paperNumber >= 1 &&
+             data.orderIndex is number && data.orderIndex >= 1 &&
+             data.title is string && data.title.size() >= 1 && data.title.size() <= 200 &&
+             (!('subtitle' in data) || (data.subtitle is string && data.subtitle.size() <= 260)) &&
+             data.source in ['starter', 'tournament'] &&
+             data.isFreeStarter is bool &&
+             (!('tournamentId' in data) || (data.tournamentId is string && isValidId(data.tournamentId))) &&
+             (!('weekKey' in data) || (data.weekKey is string && data.weekKey.size() <= 32)) &&
+             data.durationMinutes is number && data.durationMinutes >= 5 && data.durationMinutes <= 300 &&
+             data.totalQuestions is number && data.totalQuestions >= 1 && data.totalQuestions <= 200 &&
+             data.subjects is list && data.subjects.size() >= 1 && data.subjects.size() <= 10 && data.subjects[0] is string &&
+             data.questions is list && data.questions.size() >= 1 && data.questions.size() <= 200 && data.questions[0] is map &&
+             data.createdAt is string && data.createdAt.size() <= 64;
+    }
+
+    function isValidNationalMockTournament(data) {
+      return data.keys().hasAll(['id', 'weekKey', 'title', 'board', 'entryFeeNaira', 'startsAt', 'endsAt', 'status', 'prizePoolLabel', 'prizes', 'examPaperId', 'archivedToMockBank', 'participantCount', 'leaderboard', 'createdAt', 'updatedAt']) &&
+             data.keys().hasOnly([
+               'id', 'weekKey', 'title', 'subtitle', 'board', 'entryFeeNaira', 'startsAt', 'endsAt',
+               'status', 'prizePoolLabel', 'prizePoolSubtext', 'prizeNote', 'prizes', 'examPaperId',
+               'archivedToMockBank', 'participantCount', 'leaderboard', 'prizeUpdatedBy', 'createdAt', 'updatedAt'
+             ]) &&
+             data.id is string && isValidId(data.id) &&
+             data.weekKey is string && data.weekKey.size() <= 32 &&
+             data.title is string && data.title.size() >= 1 && data.title.size() <= 200 &&
+             (!('subtitle' in data) || (data.subtitle is string && data.subtitle.size() <= 260)) &&
+             data.board in ['JAMB', 'WAEC', 'NECO'] &&
+             data.entryFeeNaira is number && data.entryFeeNaira >= 0 &&
+             data.startsAt is string && data.startsAt.size() <= 64 &&
+             data.endsAt is string && data.endsAt.size() <= 64 &&
+             data.status in ['upcoming', 'live', 'completed'] &&
+             data.prizePoolLabel is string && data.prizePoolLabel.size() <= 160 &&
+             (!('prizePoolSubtext' in data) || (data.prizePoolSubtext is string && data.prizePoolSubtext.size() <= 300)) &&
+             (!('prizeNote' in data) || (data.prizeNote is string && data.prizeNote.size() <= 400)) &&
+             data.prizes is list && data.prizes.size() <= 10 && (data.prizes.size() == 0 || data.prizes[0] is map) &&
+             data.examPaperId is string && isValidId(data.examPaperId) &&
+             data.archivedToMockBank is bool &&
+             data.participantCount is number && data.participantCount >= 0 &&
+             data.leaderboard is list && data.leaderboard.size() <= 100 && (data.leaderboard.size() == 0 || data.leaderboard[0] is map) &&
+             (!('prizeUpdatedBy' in data) || (data.prizeUpdatedBy is string && data.prizeUpdatedBy.size() <= 150)) &&
+             data.createdAt is string && data.createdAt.size() <= 64 &&
+             data.updatedAt is string && data.updatedAt.size() <= 64;
+    }
+
+    function isValidTournamentRegistration(data) {
+      return data.keys().hasAll(['id', 'tournamentId', 'weekKey', 'userId', 'userName', 'amountPaidNaira', 'paymentMethod', 'paymentReference', 'registeredAt']) &&
+             data.keys().hasOnly([
+               'id', 'tournamentId', 'weekKey', 'userId', 'userName', 'userEmail', 'state',
+               'amountPaidNaira', 'paymentMethod', 'paymentReference', 'registeredAt',
+               'hasSubmitted', 'submittedScore', 'timeTakenSeconds', 'submittedAt'
+             ]) &&
+             data.id is string && isValidId(data.id) &&
+             data.tournamentId is string && isValidId(data.tournamentId) &&
+             data.weekKey is string && data.weekKey.size() <= 32 &&
+             data.userId is string && isValidId(data.userId) &&
+             data.userName is string && data.userName.size() >= 1 && data.userName.size() <= 120 &&
+             (!('userEmail' in data) || (data.userEmail is string && data.userEmail.size() <= 150)) &&
+             (!('state' in data) || (data.state is string && data.state.size() <= 64)) &&
+             data.amountPaidNaira is number && data.amountPaidNaira >= 0 &&
+             data.paymentMethod in ['wallet', 'paystack'] &&
+             data.paymentReference is string && data.paymentReference.size() <= 150 &&
+             data.registeredAt is string && data.registeredAt.size() <= 64 &&
+             (!('hasSubmitted' in data) || data.hasSubmitted is bool) &&
+             (!('submittedScore' in data) || (data.submittedScore is number && data.submittedScore >= 0)) &&
+             (!('timeTakenSeconds' in data) || (data.timeTakenSeconds is number && data.timeTakenSeconds >= 0)) &&
+             (!('submittedAt' in data) || (data.submittedAt is string && data.submittedAt.size() <= 64));
     }
 
     function isValidAdminLessonNote(data) {
@@ -1206,6 +1283,31 @@ service cloud.firestore {
       allow list: if isAdmin() || (isVerified() && resource.data.studentId == request.auth.uid);
       allow create: if isAdmin() && isValidId(usageId) && incoming().id == usageId && isValidAICoachUsage(incoming());
       allow update: if isAdmin() && isValidId(usageId) && isValidAICoachUsage(incoming());
+      allow delete: if isAdmin();
+    }
+
+    // 15. Permanent Aspirant Mock Exam Papers & Weekly National Mock Tournaments
+    match /aspirantMockExams/{examId} {
+      allow get: if isValidId(examId);
+      allow list: if true;
+      allow create: if isAdmin() && isValidId(examId) && incoming().id == examId && isValidAspirantMockExam(incoming());
+      allow update: if isAdmin() && isValidId(examId) && incoming().id == existing().id && isValidAspirantMockExam(incoming());
+      allow delete: if isAdmin();
+    }
+
+    match /nationalMockTournaments/{tournamentId} {
+      allow get: if isValidId(tournamentId);
+      allow list: if true;
+      allow create: if isAdmin() && isValidId(tournamentId) && incoming().id == tournamentId && isValidNationalMockTournament(incoming());
+      allow update: if isAdmin() && isValidId(tournamentId) && incoming().id == existing().id && isValidNationalMockTournament(incoming());
+      allow delete: if isAdmin();
+    }
+
+    match /tournamentRegistrations/{regId} {
+      allow get: if isValidId(regId) && (isAdmin() || (isVerified() && existing().userId == request.auth.uid));
+      allow list: if isAdmin() || (isVerified() && resource.data.userId == request.auth.uid);
+      allow create: if isAdmin() && isValidId(regId) && incoming().id == regId && isValidTournamentRegistration(incoming());
+      allow update: if isAdmin() && isValidId(regId) && incoming().id == existing().id && incoming().userId == existing().userId && isValidTournamentRegistration(incoming());
       allow delete: if isAdmin();
     }
   }

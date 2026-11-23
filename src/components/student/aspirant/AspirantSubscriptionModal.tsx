@@ -26,12 +26,14 @@ interface AspirantSubscriptionModalProps {
   isOpen: boolean;
   onClose: () => void;
   defaultTier?: AspirantTier;
+  featureTitle?: string;
 }
 
 export const AspirantSubscriptionModal: React.FC<AspirantSubscriptionModalProps> = ({
   isOpen,
   onClose,
-  defaultTier = 'elite'
+  defaultTier = 'elite',
+  featureTitle
 }) => {
   const {
     aspirantGoal,
@@ -52,9 +54,10 @@ export const AspirantSubscriptionModal: React.FC<AspirantSubscriptionModalProps>
 
   useEffect(() => {
     if (isOpen) {
+      setSelectedTier(defaultTier);
       prewarmLivePaystackConfig();
     }
-  }, [isOpen]);
+  }, [isOpen, defaultTier]);
 
   const existingRefCode = (student.referredByCode || appliedReferralCode || '').trim().toUpperCase();
   const [referralInput, setReferralInput] = useState<string>(existingRefCode);
@@ -266,7 +269,9 @@ export const AspirantSubscriptionModal: React.FC<AspirantSubscriptionModalProps>
                 </span>
               </div>
               <p className="text-xs text-slate-400 mt-0.5">
-                School Leavers WAEC, NECO & JAMB UTME Accelerated Preparation
+                {featureTitle
+                  ? `Unlock ${featureTitle} and accelerate your admission prep`
+                  : 'School Leavers WAEC, NECO & JAMB UTME Accelerated Preparation'}
               </p>
             </div>
           </div>
@@ -359,27 +364,27 @@ export const AspirantSubscriptionModal: React.FC<AspirantSubscriptionModalProps>
                 <ul className="space-y-1.5 text-[11px] text-slate-300">
                   <li className="flex items-center gap-1.5">
                     <Check className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                    <span>2 recent exam years past questions</span>
+                    <span>First 2 stored CBT Mock Exams</span>
                   </li>
                   <li className="flex items-center gap-1.5">
                     <Check className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                    <span>Formulas database unlocked</span>
+                    <span>4 Arcade Study Games unlocked</span>
                   </li>
                   <li className="flex items-center gap-1.5">
                     <Check className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                    <span>View mock leaderboards</span>
+                    <span>Aspirant Chat Rooms &amp; ₦500 Weekly Mocks</span>
+                  </li>
+                  <li className="flex items-center gap-1.5 text-slate-500 line-through">
+                    <X className="w-3.5 h-3.5 shrink-0" />
+                    <span>15+ Years Past Questions Archive</span>
+                  </li>
+                  <li className="flex items-center gap-1.5 text-slate-500 line-through">
+                    <X className="w-3.5 h-3.5 shrink-0" />
+                    <span>WAEC, NECO &amp; Tournament Mock Archives</span>
                   </li>
                   <li className="flex items-center gap-1.5 text-slate-500 line-through">
                     <X className="w-3.5 h-3.5 shrink-0" />
                     <span>SC AI Study Coach 24/7</span>
-                  </li>
-                  <li className="flex items-center gap-1.5 text-slate-500 line-through">
-                    <X className="w-3.5 h-3.5 shrink-0" />
-                    <span>Prepare for Exam Plan</span>
-                  </li>
-                  <li className="flex items-center gap-1.5 text-slate-500 line-through">
-                    <X className="w-3.5 h-3.5 shrink-0" />
-                    <span>Weekend Mock Tournaments</span>
                   </li>
                 </ul>
               </div>
@@ -406,7 +411,7 @@ export const AspirantSubscriptionModal: React.FC<AspirantSubscriptionModalProps>
                 <div className="text-lg font-black text-emerald-400 font-mono mt-1">
                   ₦5,000 <span className="text-xs text-slate-400 font-normal">/ month</span>
                 </div>
-                <div className="text-[10px] text-slate-400 mb-3">Topic mastery & past questions</div>
+                <div className="text-[10px] text-slate-400 mb-3">Past questions, full mocks &amp; 8 games</div>
 
                 <ul className="space-y-1.5 text-[11px] text-slate-300">
                   <li className="flex items-center gap-1.5">
@@ -415,23 +420,23 @@ export const AspirantSubscriptionModal: React.FC<AspirantSubscriptionModalProps>
                   </li>
                   <li className="flex items-center gap-1.5">
                     <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                    <span>Full topic-by-topic lesson notes</span>
+                    <span>All 6 stored JAMB, WAEC &amp; NECO mocks + archived tournaments</span>
                   </li>
                   <li className="flex items-center gap-1.5">
                     <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                    <span>Unlimited topical CBT engine</span>
+                    <span><strong>8 Arcade Study Games</strong> unlocked</span>
                   </li>
                   <li className="flex items-center gap-1.5">
                     <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                    <span>Admission & University Guide</span>
+                    <span>Full lesson notes &amp; Admission Guide</span>
                   </li>
                   <li className="flex items-center gap-1.5 text-slate-500 line-through">
                     <X className="w-3.5 h-3.5 shrink-0" />
-                    <span>SC AI Drill Sergeant Plan</span>
+                    <span>All 12 Arcade Games</span>
                   </li>
                   <li className="flex items-center gap-1.5 text-slate-500 line-through">
                     <X className="w-3.5 h-3.5 shrink-0" />
-                    <span>National Mock Tournaments</span>
+                    <span>24/7 SC AI Drill Sergeant</span>
                   </li>
                 </ul>
               </div>
@@ -462,7 +467,7 @@ export const AspirantSubscriptionModal: React.FC<AspirantSubscriptionModalProps>
                 <div className="text-lg font-black text-amber-400 font-mono mt-1">
                   ₦10,000 <span className="text-xs text-slate-400 font-normal">/ month</span>
                 </div>
-                <div className="text-[10px] text-slate-400 mb-3">Full SC AI drill sergeant & mock prizes</div>
+                <div className="text-[10px] text-slate-400 mb-3">All 12 games &amp; 24/7 SC AI coaching</div>
 
                 <ul className="space-y-1.5 text-[11px] text-slate-300">
                   <li className="flex items-center gap-1.5">
@@ -471,19 +476,19 @@ export const AspirantSubscriptionModal: React.FC<AspirantSubscriptionModalProps>
                   </li>
                   <li className="flex items-center gap-1.5">
                     <CheckCircle2 className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                    <span><strong>24/7 SC AI Study Coach</strong></span>
+                    <span><strong>All 12 Arcade &amp; Brain Games</strong> unlocked</span>
                   </li>
                   <li className="flex items-center gap-1.5">
                     <CheckCircle2 className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                    <span><strong>Prepare for Exam Plan</strong> (SC AI Drill Sergeant based on days left)</span>
+                    <span><strong>24/7 SC AI Study Coach</strong> &amp; Drill Sergeant</span>
                   </li>
                   <li className="flex items-center gap-1.5">
                     <CheckCircle2 className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                    <span><strong>National Weekend Mocks</strong> (Compete for ₦50k cash/airtime)</span>
+                    <span><strong>Prepare for Exam Plan</strong> tailored to days left</span>
                   </li>
                   <li className="flex items-center gap-1.5">
                     <CheckCircle2 className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                    <span>On-demand tutor booking (out-of-pocket)</span>
+                    <span>Priority access to Weekly Mock Tournaments (₦500 entry)</span>
                   </li>
                 </ul>
               </div>

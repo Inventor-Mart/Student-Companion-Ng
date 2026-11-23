@@ -233,3 +233,8 @@ export const renderFormattedSpan = (text: string, keyPrefix: string): React.Reac
     return <span key={k}>{part}</span>;
   });
 };
+
+export const MathText: React.FC<{ text: string; className?: string }> = ({ text, className }) => {
+  return <span className={className}>{renderFormattedSpan(text || '', 'mt')}</span>;
+};
+
